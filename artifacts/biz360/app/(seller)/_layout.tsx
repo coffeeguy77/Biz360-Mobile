@@ -17,7 +17,7 @@ function NativeLayout() {
         <Label>Dashboard</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="listings">
-        <Icon sf={{ default: "list.bullet", selected: "list.bullet.fill" }} />
+        <Icon sf={{ default: "list.bullet", selected: "list.bullet.rectangle.fill" }} />
         <Label>Listings</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="tours">

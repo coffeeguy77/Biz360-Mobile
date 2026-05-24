@@ -62,7 +62,7 @@ export default function BrokerDashboard() {
             onPress={() => router.push(`/listing/${l.id}` as any)}
           >
             <View style={[styles.listingHero, { backgroundColor: l.heroColor }]}>
-              <Feather name="building" size={20} color="#fff" />
+              <Feather name="briefcase" size={20} color="#fff" />
             </View>
             <View style={styles.listingInfo}>
               <Text style={[styles.listingName, { color: colors.foreground }]} numberOfLines={1}>{l.businessName}</Text>

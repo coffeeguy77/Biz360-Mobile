@@ -17,6 +17,7 @@ function NativeLayout() {
       <NativeTabs.Trigger name="leads"><Icon sf={{ default: "person.2", selected: "person.2.fill" }} /><Label>Leads</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="team"><Icon sf={{ default: "person.3", selected: "person.3.fill" }} /><Label>Team</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="analytics"><Icon sf={{ default: "chart.pie", selected: "chart.pie.fill" }} /><Label>Analytics</Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="billing"><Icon sf={{ default: "creditcard", selected: "creditcard.fill" }} /><Label>Billing</Label></NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -44,6 +45,7 @@ function ClassicLayout() {
       <Tabs.Screen name="leads" options={{ title: "Leads", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.2" tintColor={color} size={24} /> : <Feather name="users" size={22} color={color} /> }} />
       <Tabs.Screen name="team" options={{ title: "Team", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.3" tintColor={color} size={24} /> : <Feather name="user-check" size={22} color={color} /> }} />
       <Tabs.Screen name="analytics" options={{ title: "Analytics", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="chart.pie" tintColor={color} size={24} /> : <Feather name="pie-chart" size={22} color={color} /> }} />
+      <Tabs.Screen name="billing" options={{ title: "Billing", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="creditcard" tintColor={color} size={24} /> : <Feather name="credit-card" size={22} color={color} /> }} />
     </Tabs>
   );
 }

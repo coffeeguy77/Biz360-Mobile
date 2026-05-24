@@ -39,6 +39,38 @@ export default function ListingDetailScreen() {
     ]);
   };
 
+  const handleNDA = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      "Request NDA",
+      "To access confidential financials and lease details, you'll need to sign a Non-Disclosure Agreement. The seller will review your request within 24 hours.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send Request",
+          onPress: () =>
+            Alert.alert("NDA Requested", "Your request has been sent. You'll be notified once the seller approves."),
+        },
+      ]
+    );
+  };
+
+  const handleInspection = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert(
+      "Book Inspection",
+      "Request a time to visit the premises and meet the current owner. Your details will be shared with the seller.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Request Inspection",
+          onPress: () =>
+            Alert.alert("Inspection Requested", "Your inspection request has been sent. Expect a callback within 1 business day."),
+        },
+      ]
+    );
+  };
+
   const DETAIL_ROWS = [
     { label: "Asking Price", value: formatPrice(listing.askingPrice), highlight: true },
     { label: "Weekly Revenue", value: `$${listing.weeklyRevenue.toLocaleString()}` },
@@ -55,7 +87,7 @@ export default function ListingDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 160 }}>
         <View style={[styles.hero, { backgroundColor: listing.heroColor }]}>
           <TouchableOpacity
             style={[styles.backBtn, { top: insets.top + (Platform.OS === "web" ? 67 : 0) + 8 }]}
@@ -135,21 +167,35 @@ export default function ListingDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 12 }]}>
-        {listing.contactPreference !== "broker_only" && (
-          <TouchableOpacity style={[styles.footerBtn, { backgroundColor: colors.muted }]} onPress={handleCall}>
-            <Feather name="phone" size={18} color={colors.foreground} />
+      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 8 }]}>
+        <View style={styles.footerTopRow}>
+          {listing.contactPreference !== "broker_only" && (
+            <TouchableOpacity style={[styles.footerIconBtn, { backgroundColor: colors.muted }]} onPress={handleCall}>
+              <Feather name="phone" size={18} color={colors.foreground} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
+            onPress={() => router.push("/thread/thread-001" as any)}
+          >
+            <Feather name="message-circle" size={18} color="#fff" />
+            <Text style={styles.footerPrimaryText}>
+              {listing.contactPreference === "broker_only" ? "Contact Broker" : "Message Seller"}
+            </Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
-          onPress={() => router.push("/thread/thread-001" as any)}
-        >
-          <Feather name="message-circle" size={18} color="#fff" />
-          <Text style={styles.footerPrimaryText}>
-            {listing.contactPreference === "broker_only" ? "Contact Broker" : "Message Seller"}
-          </Text>
-        </TouchableOpacity>
+        </View>
+        <View style={styles.footerSecondRow}>
+          {listing.confidential && (
+            <TouchableOpacity style={[styles.footerSecBtn, { backgroundColor: "#F59E0B18", borderColor: "#F59E0B40" }]} onPress={handleNDA}>
+              <Feather name="lock" size={14} color="#F59E0B" />
+              <Text style={[styles.footerSecText, { color: "#F59E0B" }]}>Request NDA</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={[styles.footerSecBtn, { backgroundColor: colors.accent + "15", borderColor: colors.accent + "40", flex: listing.confidential ? undefined : 1 }]} onPress={handleInspection}>
+            <Feather name="calendar" size={14} color={colors.accent} />
+            <Text style={[styles.footerSecText, { color: colors.accent }]}>Book Inspection</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -182,8 +228,12 @@ const styles = StyleSheet.create({
   riskCard: { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
   oppTitle: { fontSize: 12, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 4 },
   oppText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
-  footer: { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
-  footerBtn: { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  footerPrimaryBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12 },
+  footer: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, gap: 8 },
+  footerTopRow: { flexDirection: "row", gap: 10 },
+  footerSecondRow: { flexDirection: "row", gap: 10 },
+  footerIconBtn: { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  footerPrimaryBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 12 },
   footerPrimaryText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  footerSecBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
+  footerSecText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 });
