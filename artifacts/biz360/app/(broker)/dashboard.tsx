@@ -1,0 +1,122 @@
+import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
+import React from "react";
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/context/AuthContext";
+import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
+import { useColors } from "@/hooks/useColors";
+
+const BROKER_LISTINGS = [DEMO_LISTINGS[3], DEMO_LISTINGS[4]];
+const PORTFOLIO_STATS = [
+  { label: "Active Listings", value: "2", icon: "briefcase", color: "#3B82F6" },
+  { label: "Total Leads", value: "34", icon: "users", color: "#F59E0B" },
+  { label: "Tour Views", value: "879", icon: "rotate-ccw", color: "#8B5CF6" },
+  { label: "Portfolio Value", value: "$570K", icon: "dollar-sign", color: "#16A34A" },
+];
+
+export default function BrokerDashboard() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80) }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={[styles.firmName, { color: colors.mutedForeground }]}>Premium Business Brokers</Text>
+            <Text style={[styles.name, { color: colors.foreground }]}>{user?.name?.split(" ")[0]}</Text>
+          </View>
+          <View style={[styles.planBadge, { backgroundColor: "#2563EB" }]}>
+            <Text style={styles.planText}>Broker Pro</Text>
+          </View>
+        </View>
+
+        <View style={styles.statsGrid}>
+          {PORTFOLIO_STATS.map((s) => (
+            <View key={s.label} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.statIcon, { backgroundColor: s.color + "18" }]}>
+                <Feather name={s.icon as any} size={16} color={s.color} />
+              </View>
+              <Text style={[styles.statVal, { color: colors.foreground }]}>{s.value}</Text>
+              <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.sectionRow}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Active Listings</Text>
+          <TouchableOpacity onPress={() => router.push("/(broker)/listings" as any)}>
+            <Text style={[styles.seeAll, { color: colors.primary }]}>See all</Text>
+          </TouchableOpacity>
+        </View>
+
+        {BROKER_LISTINGS.map((l) => (
+          <TouchableOpacity
+            key={l.id}
+            style={[styles.listingRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push(`/listing/${l.id}` as any)}
+          >
+            <View style={[styles.listingHero, { backgroundColor: l.heroColor }]}>
+              <Feather name="building" size={20} color="#fff" />
+            </View>
+            <View style={styles.listingInfo}>
+              <Text style={[styles.listingName, { color: colors.foreground }]} numberOfLines={1}>{l.businessName}</Text>
+              <Text style={[styles.listingMeta, { color: colors.mutedForeground }]}>{l.suburb} · {formatPrice(l.askingPrice)}</Text>
+              <Text style={[styles.listingViews, { color: colors.primary }]}>{l.viewCount} views · {l.savedCount} saved</Text>
+            </View>
+            <View style={[styles.confidentialTag, { backgroundColor: l.confidential ? "#F59E0B20" : "#16A34A20" }]}>
+              <Text style={[styles.confidentialText, { color: l.confidential ? "#F59E0B" : "#16A34A" }]}>
+                {l.confidential ? "Private" : "Public"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+
+        <View style={styles.sectionRow}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recent Leads</Text>
+        </View>
+        {["Michael R. — Iron Republic (HOT)", "Angela T. — Ember & Stone (WARM)"].map((lead) => (
+          <View key={lead} style={[styles.leadRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.leadDot, { backgroundColor: lead.includes("HOT") ? "#EF4444" : "#F59E0B" }]} />
+            <Text style={[styles.leadText, { color: colors.foreground }]}>{lead}</Text>
+            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  scroll: { paddingHorizontal: 16, gap: 14 },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  firmName: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  name: { fontSize: 24, fontFamily: "Inter_700Bold" },
+  planBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  planText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
+  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  statCard: { width: "47%", padding: 14, borderRadius: 14, borderWidth: 1, gap: 6 },
+  statIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  statVal: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  statLbl: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  seeAll: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  listingRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, borderWidth: 1 },
+  listingHero: { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  listingInfo: { flex: 1 },
+  listingName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  listingMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  listingViews: { fontSize: 11, fontFamily: "Inter_500Medium", marginTop: 2 },
+  confidentialTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  confidentialText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  leadRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  leadDot: { width: 8, height: 8, borderRadius: 4 },
+  leadText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+});

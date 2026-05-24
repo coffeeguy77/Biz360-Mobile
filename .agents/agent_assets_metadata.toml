@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "ZsBK3bbFiqwhpv4hC0fGt"
+uri = "file://artifacts/biz360/assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "mA_UJ5-s3S_vKu-BvI5a4"
+uri = "file://artifacts/biz360/assets/images/cafe-hero.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "lZv_hamXijV8YrMT35vhh"
+uri = "file://artifacts/biz360/assets/images/salon-hero.png"
+type = "image"
+title = "generated_image"

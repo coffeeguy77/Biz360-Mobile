@@ -1,0 +1,409 @@
+export type VerificationBadge =
+  | "identity"
+  | "abn"
+  | "financials"
+  | "lease"
+  | "equipment"
+  | "tour"
+  | "broker"
+  | "accountant"
+  | "seller_supplied";
+
+export interface TourPin {
+  id: string;
+  type:
+    | "equipment"
+    | "revenue"
+    | "cogs"
+    | "workflow"
+    | "staffing"
+    | "lease"
+    | "risk"
+    | "opportunity"
+    | "narration";
+  title: string;
+  description: string;
+  position: { x: number; y: number };
+  requiresNDA?: boolean;
+}
+
+export interface TourSpace {
+  id: string;
+  name: string;
+  photos: string[];
+  pins: TourPin[];
+}
+
+export interface Listing {
+  id: string;
+  businessName: string;
+  category: string;
+  subcategory: string;
+  state: string;
+  suburb: string;
+  askingPrice: number;
+  weeklyRevenue: number;
+  adjustedProfit: number;
+  rent: number;
+  leaseExpiry: string;
+  leaseOptions: string;
+  staffCount: number;
+  ownerHours: number;
+  reasonForSale: string;
+  franchiseStatus: string;
+  trainingPeriod: string;
+  growthOpportunities: string;
+  risks: string;
+  verified: boolean;
+  badges: VerificationBadge[];
+  hasTour: boolean;
+  tourSpaces?: TourSpace[];
+  confidential: boolean;
+  contactPreference: "message" | "call" | "broker_only";
+  sellerPhone?: string;
+  brokerId?: string;
+  heroColor: string;
+  description: string;
+  imageUrl?: string;
+  savedCount: number;
+  viewCount: number;
+  tourStarts: number;
+}
+
+export const DEMO_LISTINGS: Listing[] = [
+  {
+    id: "listing-cafe-001",
+    businessName: "The Daily Press Espresso Bar",
+    category: "Food & Beverage",
+    subcategory: "Cafe",
+    state: "VIC",
+    suburb: "Fitzroy",
+    askingPrice: 185000,
+    weeklyRevenue: 18500,
+    adjustedProfit: 72000,
+    rent: 4200,
+    leaseExpiry: "2027-06-30",
+    leaseOptions: "2 × 3 year options",
+    staffCount: 4,
+    ownerHours: 45,
+    reasonForSale: "Relocating interstate for family reasons",
+    franchiseStatus: "Independent",
+    trainingPeriod: "4 weeks",
+    growthOpportunities:
+      "Catering arm not yet activated, online orders, corporate accounts in nearby precinct",
+    risks: "New cafe opening 200m away in 6 months",
+    verified: true,
+    badges: ["identity", "abn", "financials", "lease", "tour", "seller_supplied"],
+    hasTour: true,
+    confidential: false,
+    contactPreference: "message",
+    heroColor: "#7C4A1E",
+    description:
+      "Established espresso bar in the heart of Fitzroy. Strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
+    savedCount: 47,
+    viewCount: 312,
+    tourStarts: 89,
+    tourSpaces: [
+      {
+        id: "space-001",
+        name: "Main Floor",
+        photos: ["front", "right", "back", "left", "front-right", "back-right", "back-left", "front-left"],
+        pins: [
+          {
+            id: "pin-001",
+            type: "equipment",
+            title: "La Marzocco Espresso Machine",
+            description:
+              "2022 La Marzocco Linea PB 3-group. Valued at $28,000 new. Fully serviced 3 months ago. Produces 250-300 coffees per day at peak. Included in sale price.",
+            position: { x: 0.25, y: 0.45 },
+          },
+          {
+            id: "pin-002",
+            type: "revenue",
+            title: "POS Counter — $18.5K/wk Revenue",
+            description:
+              "Weekly revenue consistently $17,000–$20,000 over 12 months. 65% coffee, 25% food, 10% merchandise. Peak hours: 7am–10am Mon–Fri. Saturday trade equal to a weekday.",
+            position: { x: 0.55, y: 0.5 },
+          },
+          {
+            id: "pin-003",
+            type: "staffing",
+            title: "Staffing — 4 FTE",
+            description:
+              "2 baristas (full-time), 1 kitchen hand (full-time), 1 floor staff (part-time). All staff willing to remain post-sale. Owner works 45hrs/week including roaster relationship management.",
+            position: { x: 0.7, y: 0.55 },
+          },
+          {
+            id: "pin-004",
+            type: "lease",
+            title: "Lease — $4,200/mo Until June 2027",
+            description:
+              "Current rent $4,200/month gross. Two 3-year options to renew at CPI+1%. Landlord cooperative and open to assignment. 98sqm footprint including kitchen and storage.",
+            position: { x: 0.15, y: 0.6 },
+            requiresNDA: true,
+          },
+          {
+            id: "pin-005",
+            type: "cogs",
+            title: "COGS — 28% of Revenue",
+            description:
+              "Cost of goods running at 28% of revenue. Coffee beans sourced from Genovese ($320/week). Food COGS at 32%. Strong supplier relationships with 30-day terms negotiated.",
+            position: { x: 0.4, y: 0.4 },
+          },
+          {
+            id: "pin-006",
+            type: "opportunity",
+            title: "Catering Opportunity — Not Yet Activated",
+            description:
+              "3 corporate offices within 200m have expressed interest in regular catering. Equipment and kitchen capacity supports this. Could add $1,500–$3,000/week in high-margin revenue.",
+            position: { x: 0.85, y: 0.45 },
+          },
+        ],
+      },
+      {
+        id: "space-002",
+        name: "Kitchen",
+        photos: ["front", "right", "back", "left"],
+        pins: [
+          {
+            id: "pin-007",
+            type: "equipment",
+            title: "Commercial Kitchen — Full Setup",
+            description:
+              "6-burner commercial range, double-door fridge, commercial dishwasher, prep benches. Health inspection rating: Excellent. Last inspection Jan 2024.",
+            position: { x: 0.3, y: 0.5 },
+          },
+          {
+            id: "pin-008",
+            type: "workflow",
+            title: "Food Prep Workflow",
+            description:
+              "All food prepared fresh daily 6am–8am. Menu designed for speed and consistency. SOPs documented for all items. New owner can operate with minimal culinary background.",
+            position: { x: 0.65, y: 0.55 },
+          },
+        ],
+      },
+      {
+        id: "space-003",
+        name: "Outdoor Seating",
+        photos: ["front", "right", "back", "left"],
+        pins: [
+          {
+            id: "pin-009",
+            type: "lease",
+            title: "Outdoor Licence — 12 Seats",
+            description:
+              "Council-approved footpath trading licence. 12 outdoor seats generating ~$2,400/week in fine weather. Licence transferable to new owner. Annual fee $1,800.",
+            position: { x: 0.4, y: 0.5 },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "listing-salon-001",
+    businessName: "Luxe & Co Hair Studio",
+    category: "Health & Beauty",
+    subcategory: "Hair Salon",
+    state: "NSW",
+    suburb: "Surry Hills",
+    askingPrice: 95000,
+    weeklyRevenue: 9800,
+    adjustedProfit: 52000,
+    rent: 3100,
+    leaseExpiry: "2026-12-31",
+    leaseOptions: "1 × 3 year option",
+    staffCount: 3,
+    ownerHours: 40,
+    reasonForSale: "Pursuing new venture in wellness industry",
+    franchiseStatus: "Independent",
+    trainingPeriod: "2 weeks",
+    growthOpportunities: "Add beauty services, launch loyalty app, expand retail product range",
+    risks: "Lease renewal negotiation due Dec 2026",
+    verified: true,
+    badges: ["identity", "abn", "financials", "tour", "seller_supplied"],
+    hasTour: true,
+    confidential: false,
+    contactPreference: "call",
+    heroColor: "#8B5CF6",
+    description:
+      "Premium hair studio with 3 styling chairs and a loyal client base of 400+ regulars. Designer fit-out with $40K investment. Turnkey including all products and software.",
+    savedCount: 28,
+    viewCount: 187,
+    tourStarts: 45,
+    tourSpaces: [
+      {
+        id: "salon-space-001",
+        name: "Main Studio",
+        photos: ["front", "right", "back", "left"],
+        pins: [
+          {
+            id: "salon-pin-001",
+            type: "equipment",
+            title: "3 Styling Stations — Fully Equipped",
+            description:
+              "3 Takara Belmont styling chairs ($3,200 each), Dyson Airwrap stations, colour trolleys. All equipment included. Fit-out cost $40K, 2 years old.",
+            position: { x: 0.35, y: 0.5 },
+          },
+          {
+            id: "salon-pin-002",
+            type: "revenue",
+            title: "Revenue — $9,800/wk",
+            description:
+              "Services: 70% colour/cut, 15% treatments, 15% retail product sales. Booking system (Kitomba) has 400+ active clients. Average client spend $185.",
+            position: { x: 0.6, y: 0.45 },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "listing-laundromat-001",
+    businessName: "SpinCity Laundromat",
+    category: "Services",
+    subcategory: "Laundromat",
+    state: "QLD",
+    suburb: "West End",
+    askingPrice: 145000,
+    weeklyRevenue: 6200,
+    adjustedProfit: 68000,
+    rent: 2800,
+    leaseExpiry: "2028-03-31",
+    leaseOptions: "2 × 5 year options",
+    staffCount: 1,
+    ownerHours: 15,
+    reasonForSale: "Semi-retirement. Owner wishes to reduce portfolio.",
+    franchiseStatus: "Independent",
+    trainingPeriod: "1 week",
+    growthOpportunities: "Add wash-dry-fold service, vending machines, online booking",
+    risks: "Washer maintenance costs rising",
+    verified: true,
+    badges: ["identity", "abn", "financials", "lease", "equipment", "seller_supplied"],
+    hasTour: false,
+    confidential: false,
+    contactPreference: "message",
+    heroColor: "#0EA5E9",
+    description:
+      "Highly automated coin-operated laundromat running with 15 owner hours per week. Strong passive income with 5-year lease secured. 22 washers, 16 dryers — all commercial grade.",
+    savedCount: 61,
+    viewCount: 445,
+    tourStarts: 12,
+  },
+  {
+    id: "listing-gym-001",
+    businessName: "Iron Republic Gym",
+    category: "Health & Fitness",
+    subcategory: "Gym",
+    state: "VIC",
+    suburb: "Richmond",
+    askingPrice: 320000,
+    weeklyRevenue: 22000,
+    adjustedProfit: 98000,
+    rent: 7500,
+    leaseExpiry: "2029-01-31",
+    leaseOptions: "1 × 5 year option",
+    staffCount: 8,
+    ownerHours: 50,
+    reasonForSale: "Owner expanding to new national brand, selling flagship",
+    franchiseStatus: "Independent",
+    trainingPeriod: "6 weeks",
+    growthOpportunities: "Personal training expansion, corporate memberships, online programming",
+    risks: "Competitive market — 2 budget gyms within 1km",
+    verified: true,
+    badges: ["identity", "abn", "financials", "lease", "equipment", "tour", "accountant"],
+    hasTour: true,
+    confidential: true,
+    contactPreference: "broker_only",
+    brokerId: "broker-001",
+    heroColor: "#1E3A5C",
+    description:
+      "Established premium gym with 800+ active members. 450sqm state-of-the-art facility with $180K equipment. Strong PT revenue stream and growing corporate accounts.",
+    savedCount: 93,
+    viewCount: 678,
+    tourStarts: 201,
+    tourSpaces: [
+      {
+        id: "gym-space-001",
+        name: "Weights Floor",
+        photos: ["front", "right", "back", "left"],
+        pins: [
+          {
+            id: "gym-pin-001",
+            type: "equipment",
+            title: "Equipment — $180K Value",
+            description:
+              "Full set of commercial Technogym and Life Fitness equipment. 3 squat racks, 2 platforms, cable machines, cardio suite. All maintained under service contract.",
+            position: { x: 0.4, y: 0.5 },
+          },
+          {
+            id: "gym-pin-002",
+            type: "revenue",
+            title: "800+ Members — $22K/wk Revenue",
+            description:
+              "823 active members at $49.95/month. 12 PTs generating $4,200/week in split revenue. Corporate accounts: 3 local businesses, $1,800/month.",
+            position: { x: 0.65, y: 0.45 },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "listing-restaurant-001",
+    businessName: "Ember & Stone Restaurant",
+    category: "Food & Beverage",
+    subcategory: "Restaurant",
+    state: "NSW",
+    suburb: "Newtown",
+    askingPrice: 250000,
+    weeklyRevenue: 28000,
+    adjustedProfit: 115000,
+    rent: 9500,
+    leaseExpiry: "2027-09-30",
+    leaseOptions: "1 × 5 year option",
+    staffCount: 12,
+    ownerHours: 60,
+    reasonForSale: "Owner health reasons",
+    franchiseStatus: "Independent",
+    trainingPeriod: "8 weeks",
+    growthOpportunities: "Private dining events, cooking classes, liquor licence upgrade",
+    risks: "Key chef dependency. Head chef has 6 months left on contract.",
+    verified: true,
+    badges: ["identity", "abn", "financials", "lease", "seller_supplied"],
+    hasTour: false,
+    confidential: true,
+    contactPreference: "broker_only",
+    brokerId: "broker-001",
+    heroColor: "#92400E",
+    description:
+      "Award-winning contemporary Australian restaurant. 80-cover dining room, full commercial kitchen, liquor licence. Rated in The Age Good Food Guide 2023.",
+    savedCount: 54,
+    viewCount: 389,
+    tourStarts: 28,
+  },
+];
+
+export function getListingById(id: string): Listing | undefined {
+  return DEMO_LISTINGS.find((l) => l.id === id);
+}
+
+export function formatPrice(price: number): string {
+  return `$${(price / 1000).toFixed(0)}K`;
+}
+
+export function formatRevenue(weekly: number): string {
+  const annual = weekly * 52;
+  if (annual >= 1000000) return `$${(annual / 1000000).toFixed(1)}M p.a.`;
+  return `$${(annual / 1000).toFixed(0)}K p.a.`;
+}
+
+export const BADGE_LABELS: Record<string, string> = {
+  identity: "ID Verified",
+  abn: "ABN Verified",
+  financials: "Financials",
+  lease: "Lease Docs",
+  equipment: "Equipment List",
+  tour: "360 Tour",
+  broker: "Broker Listed",
+  accountant: "Accountant Verified",
+  seller_supplied: "Seller Supplied",
+};
