@@ -1,0 +1,219 @@
+Build a mobile-first iOS and Android application called Biz360.
+
+Biz360 is a business-for-sale marketplace where private sellers and business brokers can create immersive 360-degree business tours with interactive pins, narrated explanations, financial details, buyer analytics, in-app messaging, click-to-call tracking, and advertising upgrades.
+
+The app must support three user types:
+1. Buyer
+2. Private Seller
+3. Broker / Multi-listing seller
+4. Admin
+
+Core positioning:
+“See the business before you buy it.”
+
+The hero feature is an interactive Business Tour 360. Sellers can create a guided walkthrough of their business using phone photos. The seller captures each space using a guided capture flow. Basic mode uses 4 directional photos: front, right, back, left. Better mode supports 8 directional photos. The app stitches or presents these as a panoramic walkthrough-style viewer. Each tour space can contain interactive pins.
+
+Pin types:
+- Equipment
+- Revenue
+- Cost of goods
+- Workflow
+- Staffing
+- Lease
+- Risk
+- Opportunity
+- Video
+- Photo gallery
+- Narration
+- Document
+
+Each pin can include:
+- Title
+- Description
+- Photos
+- Video
+- Audio narration
+- Document attachment
+- Visibility setting
+- Requires NDA toggle
+
+Seller listing fields:
+- Business name
+- Confidential listing toggle
+- Category
+- Subcategory
+- State
+- Suburb
+- Asking price
+- Weekly revenue
+- Adjusted profit / SDE
+- Rent
+- Lease expiry
+- Lease options
+- Staff count
+- Owner hours
+- Reason for sale
+- Equipment included
+- Stock included
+- Training period offered
+- Franchise status
+- Licences required
+- Growth opportunities
+- Risks / notes
+- Seller phone visibility toggle
+- Contact preference: message, masked call, broker only
+
+Buyer features:
+- Browse businesses
+- Search by keyword
+- Filter by category, state, suburb, price range, profit range, revenue range, lease type, tour available, verified documents
+- View listing
+- Enter 360 tour
+- Tap pins
+- Save listing
+- Compare listings
+- Message seller
+- Click to call if enabled
+- Request documents
+- Request NDA
+- Ask question about a specific pin
+- Book inspection request
+
+Seller dashboard:
+- Listing views
+- Unique buyers
+- Tour starts
+- Tour completion rate
+- Average tour time
+- Most viewed pins
+- Messages received
+- Calls clicked
+- Document requests
+- NDA requests
+- Saved listing count
+- Buyer return visits
+- Lead quality indicators
+
+Broker features:
+- Broker profile
+- Multiple active listings
+- Team members
+- Lead routing
+- Listing analytics
+- Broker subscription plan
+- Broker branding page
+- Export leads as CSV
+
+Admin features:
+- Approve listings
+- Approve broker accounts
+- Manage categories
+- Manage subscription plans
+- Manage featured ads
+- Moderate reported listings
+- View platform analytics
+- Suspend users
+- Mark listings as verified, document supplied, broker reviewed, accountant verified, or seller supplied
+
+Verification badges:
+- Identity verified
+- ABN verified
+- Financials uploaded
+- Lease uploaded
+- Equipment schedule uploaded
+- Tour created
+- Broker verified
+- Seller supplied data
+- Accountant verified
+
+Monetisation:
+Private seller packages:
+- Starter: basic listing
+- Tour Listing: 360 tour and pins
+- Pro Seller: advanced tour, documents, analytics
+- Premium Exit Pack: featured listing, AI tools, advanced analytics
+
+Broker packages:
+- Broker Lite: 3 listings
+- Broker Growth: 10 listings
+- Broker Pro: 30 listings
+- Broker Enterprise: custom
+
+Advertising:
+- Featured listing
+- Homepage spotlight
+- Category sponsor
+- Tour boost
+- Broker profile promotion
+- Retargeting-style promoted listings inside the app
+
+Tech stack:
+Use React Native with Expo and TypeScript.
+Use Expo Router.
+Use PostgreSQL database.
+Use Supabase or equivalent for auth, database, storage, and real-time messaging.
+Use cloud storage for photos, videos, audio, documents, and tour media.
+Use a 360 image viewer built with Three.js or React Native compatible panoramic viewer.
+Use push notifications for buyer/seller messages.
+Use Stripe for web payments and subscription management.
+Allow future support for Apple RoomPlan / ARKit on iOS for LiDAR-enabled room scanning.
+
+Design style:
+Premium, modern, clean, trustworthy, commercial.
+Use dark navy, white, soft grey, electric blue, and green trust accents.
+The app should feel like a mix of real estate marketplace, business broker CRM, and immersive 360 tour platform.
+
+Main navigation:
+Buyer:
+- Discover
+- Saved
+- Compare
+- Messages
+- Profile
+
+Seller:
+- Dashboard
+- Listings
+- Tours
+- Leads
+- Messages
+- Account
+
+Broker:
+- Dashboard
+- Listings
+- Leads
+- Team
+- Analytics
+- Billing
+
+Admin:
+- Listings
+- Users
+- Brokers
+- Reports
+- Ads
+- Revenue
+
+Build the MVP first:
+1. Authentication
+2. Buyer browsing
+3. Seller listing creation
+4. Basic 360 tour creation with uploaded directional photos
+5. Interactive pins
+6. Buyer messaging
+7. Click-to-call tracking
+8. Seller analytics
+9. Admin approval dashboard
+10. Subscription/package structure
+
+Create polished demo data for:
+- Cafe for sale
+- Salon for sale
+- Laundromat for sale
+- Gym for sale
+- Restaurant for sale
+
+The cafe listing should demonstrate the best 360 tour experience with pins for coffee machine, POS counter, kitchen, outdoor seating licence, rent/lease information, weekly sales, COGS, staffing workflow, and growth opportunities.
+
+Make the app production-ready, scalable, and designed so the 360 tour is the clear point of difference.
