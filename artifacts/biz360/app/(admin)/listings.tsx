@@ -1,9 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import React, { useState } from "react";
-import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
+import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 const PENDING = [
@@ -14,7 +16,16 @@ const PENDING = [
 export default function AdminListings() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { user, logout } = useAuth();
   const [listings, setListings] = useState(PENDING);
+
+  const showAccountMenu = () => {
+    Alert.alert(user?.name ?? "Admin", user?.email ?? "", [
+      { text: "Switch Account", onPress: () => router.replace("/(auth)/welcome" as any) },
+      { text: "Sign Out", style: "destructive", onPress: async () => { await logout(); router.replace("/(auth)/welcome" as any); } },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
   const approve = (id: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -29,10 +40,15 @@ export default function AdminListings() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Listing Approvals</Text>
-        <View style={[styles.badge, { backgroundColor: "#EF4444" }]}>
-          <Text style={styles.badgeText}>{listings.length}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Listing Approvals</Text>
+          <View style={[styles.badge, { backgroundColor: "#EF4444" }]}>
+            <Text style={styles.badgeText}>{listings.length}</Text>
+          </View>
         </View>
+        <TouchableOpacity style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={showAccountMenu}>
+          <Text style={[styles.avatarText, { color: colors.foreground }]}>{user?.name?.charAt(0) ?? "A"}</Text>
+        </TouchableOpacity>
       </View>
       <FlatList
         data={listings}
@@ -86,7 +102,9 @@ export default function AdminListings() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  avatarBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  avatarText: { fontSize: 15, fontFamily: "Inter_700Bold" },
   title: { fontSize: 26, fontFamily: "Inter_700Bold" },
   badge: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   badgeText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },

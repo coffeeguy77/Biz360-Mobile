@@ -101,6 +101,7 @@ export const DEMO_LISTINGS: Listing[] = [
     confidential: false,
     contactPreference: "message",
     heroColor: "#7C4A1E",
+    imageUrl: "https://picsum.photos/seed/cafe-biz360/800/500",
     description:
       "Established espresso bar in the heart of Fitzroy. Strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
     savedCount: 47,
@@ -229,6 +230,7 @@ export const DEMO_LISTINGS: Listing[] = [
     confidential: false,
     contactPreference: "call",
     heroColor: "#8B5CF6",
+    imageUrl: "https://picsum.photos/seed/salon-biz360/800/500",
     description:
       "Premium hair studio with 3 styling chairs and a loyal client base of 400+ regulars. Designer fit-out with $40K investment. Turnkey including all products and software.",
     savedCount: 28,
@@ -286,6 +288,7 @@ export const DEMO_LISTINGS: Listing[] = [
     confidential: false,
     contactPreference: "message",
     heroColor: "#0EA5E9",
+    imageUrl: "https://picsum.photos/seed/laundry-biz360/800/500",
     description:
       "Highly automated coin-operated laundromat running with 15 owner hours per week. Strong passive income with 5-year lease secured. 22 washers, 16 dryers — all commercial grade.",
     savedCount: 61,
@@ -319,6 +322,7 @@ export const DEMO_LISTINGS: Listing[] = [
     contactPreference: "broker_only",
     brokerId: "broker-001",
     heroColor: "#1E3A5C",
+    imageUrl: "https://picsum.photos/seed/gym-biz360/800/500",
     description:
       "Established premium gym with 800+ active members. 450sqm state-of-the-art facility with $180K equipment. Strong PT revenue stream and growing corporate accounts.",
     savedCount: 93,
@@ -377,6 +381,7 @@ export const DEMO_LISTINGS: Listing[] = [
     contactPreference: "broker_only",
     brokerId: "broker-001",
     heroColor: "#92400E",
+    imageUrl: "https://picsum.photos/seed/restaurant-biz360/800/500",
     description:
       "Award-winning contemporary Australian restaurant. 80-cover dining room, full commercial kitchen, liquor licence. Rated in The Age Good Food Guide 2023.",
     savedCount: 54,

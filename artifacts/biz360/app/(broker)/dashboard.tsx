@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
@@ -18,7 +18,15 @@ const PORTFOLIO_STATS = [
 export default function BrokerDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+
+  const showAccountMenu = () => {
+    Alert.alert(user?.name ?? "Account", user?.email ?? "", [
+      { text: "Switch Account", onPress: () => router.replace("/(auth)/welcome" as any) },
+      { text: "Sign Out", style: "destructive", onPress: async () => { await logout(); router.replace("/(auth)/welcome" as any); } },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -31,8 +39,13 @@ export default function BrokerDashboard() {
             <Text style={[styles.firmName, { color: colors.mutedForeground }]}>Premium Business Brokers</Text>
             <Text style={[styles.name, { color: colors.foreground }]}>{user?.name?.split(" ")[0]}</Text>
           </View>
-          <View style={[styles.planBadge, { backgroundColor: "#2563EB" }]}>
-            <Text style={styles.planText}>Broker Pro</Text>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <View style={[styles.planBadge, { backgroundColor: "#2563EB" }]}>
+              <Text style={styles.planText}>Broker Pro</Text>
+            </View>
+            <TouchableOpacity style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={showAccountMenu}>
+              <Text style={[styles.avatarText, { color: colors.foreground }]}>{user?.name?.charAt(0) ?? "B"}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -100,6 +113,8 @@ const styles = StyleSheet.create({
   name: { fontSize: 24, fontFamily: "Inter_700Bold" },
   planBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   planText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
+  avatarBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  avatarText: { fontSize: 15, fontFamily: "Inter_700Bold" },
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   statCard: { width: "47%", padding: 14, borderRadius: 14, borderWidth: 1, gap: 6 },
   statIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },

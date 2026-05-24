@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -26,7 +26,15 @@ const TOP_PINS = [
 export default function SellerDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+
+  const showAccountMenu = () => {
+    Alert.alert(user?.name ?? "Account", user?.email ?? "", [
+      { text: "Switch Account", onPress: () => router.replace("/(auth)/welcome" as any) },
+      { text: "Sign Out", style: "destructive", onPress: async () => { await logout(); router.replace("/(auth)/welcome" as any); } },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -42,10 +50,15 @@ export default function SellerDashboard() {
             <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Good morning,</Text>
             <Text style={[styles.name, { color: colors.foreground }]}>{user?.name?.split(" ")[0]}</Text>
           </View>
-          <TouchableOpacity style={[styles.upgradePill, { backgroundColor: colors.accent + "20" }]}>
-            <Feather name="star" size={12} color={colors.accent} />
-            <Text style={[styles.upgradeText, { color: colors.accent }]}>Upgrade</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <TouchableOpacity style={[styles.upgradePill, { backgroundColor: colors.accent + "20" }]}>
+              <Feather name="star" size={12} color={colors.accent} />
+              <Text style={[styles.upgradeText, { color: colors.accent }]}>Upgrade</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={showAccountMenu}>
+              <Text style={[styles.avatarText, { color: colors.foreground }]}>{user?.name?.charAt(0) ?? "S"}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={[styles.tourCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
@@ -122,6 +135,8 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   greeting: { fontSize: 14, fontFamily: "Inter_400Regular" },
   name: { fontSize: 24, fontFamily: "Inter_700Bold" },
+  avatarBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  avatarText: { fontSize: 15, fontFamily: "Inter_700Bold" },
   upgradePill: {
     flexDirection: "row", alignItems: "center", gap: 4,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,

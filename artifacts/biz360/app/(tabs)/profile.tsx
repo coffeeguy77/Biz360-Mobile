@@ -24,6 +24,7 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await logout();
+    router.replace("/(auth)/welcome");
   };
 
   return (
@@ -87,7 +88,7 @@ export default function ProfileScreen() {
 
         <TouchableOpacity
           style={[styles.switchRole, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => router.push("/(auth)/welcome" as any)}
+          onPress={() => router.replace("/(auth)/welcome" as any)}
         >
           <Feather name="refresh-cw" size={16} color={colors.primary} />
           <Text style={[styles.switchRoleText, { color: colors.primary }]}>Switch Role / Demo User</Text>

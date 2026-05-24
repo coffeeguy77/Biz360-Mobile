@@ -2,6 +2,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import {
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -28,6 +29,9 @@ export function ListingCard({ listing, onSave, isSaved }: Props) {
       activeOpacity={0.92}
     >
       <View style={[styles.heroImage, { backgroundColor: listing.heroColor }]}>
+        {listing.imageUrl && (
+          <Image source={{ uri: listing.imageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        )}
         <View style={styles.heroOverlay}>
           <View style={styles.heroTopRow}>
             {listing.confidential && (
