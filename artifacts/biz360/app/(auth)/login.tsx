@@ -26,10 +26,19 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) { setError("Please fill in all fields"); return; }
+    setError("");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLoading(true);
     await new Promise((r) => setTimeout(r, 800));
-    await login(DEMO_USERS.buyer);
+    const match = Object.values(DEMO_USERS).find(
+      (u) => u.email.toLowerCase() === email.trim().toLowerCase()
+    );
+    if (!match) {
+      setError("No account found with that email. Use one of the demo logins below.");
+      setLoading(false);
+      return;
+    }
+    await login(match);
     setLoading(false);
   };
 
@@ -108,15 +117,18 @@ export default function LoginScreen() {
           {(["buyer", "seller", "broker", "admin"] as const).map((role) => (
             <TouchableOpacity
               key={role}
-              style={[styles.demoBtn, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}
-              onPress={() => quickLogin(role)}
+              style={[styles.demoBtn, { backgroundColor: email === DEMO_USERS[role].email ? "#1E3A5C" : "#0F2040", borderColor: email === DEMO_USERS[role].email ? "#3B82F6" : "#1E3A5C" }]}
+              onPress={() => { setEmail(DEMO_USERS[role].email); setPassword("demo"); setError(""); }}
             >
-              <Text style={[styles.demoRole, { color: "#3B82F6" }]}>
-                {role.charAt(0).toUpperCase() + role.slice(1)}
-              </Text>
-              <Text style={[styles.demoEmail, { color: "#8B9CB8" }]}>
-                {DEMO_USERS[role].email}
-              </Text>
+              <View style={styles.demoBtnInner}>
+                <Text style={[styles.demoRole, { color: "#3B82F6" }]}>
+                  {role.charAt(0).toUpperCase() + role.slice(1)}
+                </Text>
+                <Text style={[styles.demoEmail, { color: "#8B9CB8" }]}>
+                  {DEMO_USERS[role].email}
+                </Text>
+              </View>
+              <Text style={[styles.demoBtnTap, { color: "#3B82F6" }]}>Tap to fill →</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -159,9 +171,12 @@ const styles = StyleSheet.create({
   demoGrid: { gap: 10, marginBottom: 24 },
   demoBtn: {
     padding: 14, borderRadius: 12, borderWidth: 1,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
-  demoRole: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  demoBtnInner: { gap: 2 },
+  demoRole: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   demoEmail: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  demoBtnTap: { fontSize: 11, fontFamily: "Inter_500Medium" },
   signupRow: { flexDirection: "row", justifyContent: "center" },
   signupText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   signupLink: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
