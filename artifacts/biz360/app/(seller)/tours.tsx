@@ -21,7 +21,8 @@ import { useColors } from "@/hooks/useColors";
 
 const cafe = DEMO_LISTINGS[0];
 
-const DIRECTIONS = ["Front", "Left", "Right", "Back", "Ceiling"] as const;
+const DIRS_4 = ["Front", "Right", "Back", "Left"] as const;
+const DIRS_8 = ["Front", "Front-Right", "Right", "Back-Right", "Back", "Back-Left", "Left", "Front-Left"] as const;
 
 const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color: string }[] = [
   { type: "equipment", label: "Equipment", icon: "tool", color: "#F59E0B" },
@@ -33,7 +34,12 @@ const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color
   { type: "risk", label: "Risk", icon: "alert-triangle", color: "#EF4444" },
   { type: "opportunity", label: "Opportunity", icon: "star", color: "#16A34A" },
   { type: "narration", label: "Narration", icon: "mic", color: "#EC4899" },
+  { type: "inspection", label: "Inspection", icon: "clipboard", color: "#06B6D4" },
+  { type: "highlight", label: "Highlight", icon: "zap", color: "#F59E0B" },
+  { type: "document", label: "Document", icon: "file-text", color: "#6366F1" },
 ];
+
+type Visibility = "public" | "nda_only" | "approved_only";
 
 interface DraftPin {
   id: string;
@@ -41,16 +47,25 @@ interface DraftPin {
   title: string;
   description: string;
   requiresNDA: boolean;
+  visibility: Visibility;
+  mediaUri?: string;
 }
 
 interface DraftSpace {
   name: string;
+  dirMode: 4 | 8;
   photos: Record<string, string>;
   pins: DraftPin[];
 }
 
-const EMPTY_SPACE: DraftSpace = { name: "", photos: {}, pins: [] };
-const EMPTY_PIN: DraftPin = { id: "", type: "equipment", title: "", description: "", requiresNDA: false };
+const EMPTY_SPACE: DraftSpace = { name: "", dirMode: 4, photos: {}, pins: [] };
+const EMPTY_PIN: DraftPin = { id: "", type: "equipment", title: "", description: "", requiresNDA: false, visibility: "public" };
+
+const VISIBILITY_OPTIONS: { val: Visibility; label: string; hint: string; icon: string; color: string }[] = [
+  { val: "public", label: "Public", hint: "All buyers can see this pin", icon: "eye", color: "#16A34A" },
+  { val: "nda_only", label: "NDA Required", hint: "Buyer must request and sign NDA", icon: "lock", color: "#F59E0B" },
+  { val: "approved_only", label: "Approved Only", hint: "Only seller-approved buyers", icon: "shield", color: "#3B82F6" },
+];
 
 export default function ToursScreen() {
   const colors = useColors();
@@ -61,6 +76,8 @@ export default function ToursScreen() {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [draftPin, setDraftPin] = useState<DraftPin>(EMPTY_PIN);
+
+  const activeDirections = draftSpace.dirMode === 4 ? DIRS_4 : DIRS_8;
 
   const pickPhoto = async (dir: string) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -75,10 +92,7 @@ export default function ToursScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setDraftSpace((prev) => ({
-        ...prev,
-        photos: { ...prev.photos, [dir]: result.assets[0].uri },
-      }));
+      setDraftSpace((prev) => ({ ...prev, photos: { ...prev.photos, [dir]: result.assets[0].uri } }));
     }
   };
 
@@ -89,38 +103,56 @@ export default function ToursScreen() {
     });
   };
 
+  const pickPinMedia = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo library access to attach media to this pin.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: true,
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setDraftPin((p) => ({ ...p, mediaUri: result.assets[0].uri }));
+    }
+  };
+
   const openAddPin = () => {
     setDraftPin({ ...EMPTY_PIN, id: `pin-${Date.now()}` });
     setShowPinModal(true);
   };
 
   const savePin = () => {
-    if (!draftPin.title.trim()) {
-      Alert.alert("Title required", "Please enter a title for this pin.");
-      return;
-    }
-    if (!draftPin.description.trim()) {
-      Alert.alert("Description required", "Please add a description so buyers know what this pin is about.");
-      return;
-    }
+    if (!draftPin.title.trim()) { Alert.alert("Title required", "Please enter a title for this pin."); return; }
+    if (!draftPin.description.trim()) { Alert.alert("Description required", "Please add a description so buyers know what this pin is about."); return; }
     setDraftSpace((prev) => ({ ...prev, pins: [...prev.pins, draftPin] }));
     setShowPinModal(false);
   };
 
-  const removePin = (id: string) => {
-    setDraftSpace((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== id) }));
-  };
+  const removePin = (id: string) => setDraftSpace((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== id) }));
 
   const handleSaveSpace = () => {
-    if (!draftSpace.name.trim()) {
-      Alert.alert("Name required", "Please enter a name for this tour space.");
-      return;
-    }
+    if (!draftSpace.name.trim()) { Alert.alert("Name required", "Please enter a name for this tour space."); return; }
     const photoCount = Object.keys(draftSpace.photos).length;
+    const totalDirs = draftSpace.dirMode;
+    if (photoCount === 0) { Alert.alert("Photos required", `Please add at least 1 of the ${totalDirs} directional photos before saving.`); return; }
     Alert.alert(
       "Space Created",
-      `"${draftSpace.name}" added with ${photoCount} photo${photoCount !== 1 ? "s" : ""} and ${draftSpace.pins.length} info pin${draftSpace.pins.length !== 1 ? "s" : ""}.`,
+      `"${draftSpace.name}" added with ${photoCount}/${totalDirs} photo${photoCount !== 1 ? "s" : ""} and ${draftSpace.pins.length} pin${draftSpace.pins.length !== 1 ? "s" : ""}.`,
       [{ text: "Done", onPress: () => { setShowSpaceModal(false); setDraftSpace(EMPTY_SPACE); } }]
+    );
+  };
+
+  const switchDirMode = (mode: 4 | 8) => {
+    Alert.alert(
+      `Switch to ${mode}-direction mode`,
+      mode === 8 ? "This adds 4 diagonal angles (Front-Right, Back-Right, Back-Left, Front-Left) for a more immersive tour." : "Reduce to 4 cardinal directions. Any diagonal photos will be removed.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Switch", onPress: () => setDraftSpace((prev) => ({ ...prev, dirMode: mode, photos: {} })) },
+      ]
     );
   };
 
@@ -146,22 +178,17 @@ export default function ToursScreen() {
           </View>
           <View style={styles.tourBody}>
             <View style={styles.tourStats}>
-              <View style={styles.tourStat}>
-                <Text style={[styles.tourStatVal, { color: colors.primary }]}>{cafe.tourSpaces?.length ?? 0}</Text>
-                <Text style={[styles.tourStatLbl, { color: colors.mutedForeground }]}>Spaces</Text>
-              </View>
-              <View style={styles.tourStat}>
-                <Text style={[styles.tourStatVal, { color: colors.primary }]}>{cafe.tourSpaces?.reduce((acc, s) => acc + s.pins.length, 0) ?? 0}</Text>
-                <Text style={[styles.tourStatLbl, { color: colors.mutedForeground }]}>Pins</Text>
-              </View>
-              <View style={styles.tourStat}>
-                <Text style={[styles.tourStatVal, { color: colors.primary }]}>{cafe.tourStarts}</Text>
-                <Text style={[styles.tourStatLbl, { color: colors.mutedForeground }]}>Starts</Text>
-              </View>
-              <View style={styles.tourStat}>
-                <Text style={[styles.tourStatVal, { color: colors.accent }]}>89%</Text>
-                <Text style={[styles.tourStatLbl, { color: colors.mutedForeground }]}>Completion</Text>
-              </View>
+              {[
+                { val: cafe.tourSpaces?.length ?? 0, lbl: "Spaces", color: colors.primary },
+                { val: cafe.tourSpaces?.reduce((a, s) => a + s.pins.length, 0) ?? 0, lbl: "Pins", color: colors.primary },
+                { val: cafe.tourStarts, lbl: "Starts", color: colors.primary },
+                { val: "89%", lbl: "Completion", color: colors.accent },
+              ].map(({ val, lbl, color }) => (
+                <View key={lbl} style={styles.tourStat}>
+                  <Text style={[styles.tourStatVal, { color }]}>{val}</Text>
+                  <Text style={[styles.tourStatLbl, { color: colors.mutedForeground }]}>{lbl}</Text>
+                </View>
+              ))}
             </View>
 
             <Text style={[styles.spacesTitle, { color: colors.foreground }]}>Tour Spaces</Text>
@@ -217,13 +244,33 @@ export default function ToursScreen() {
               onChangeText={(t) => setDraftSpace((p) => ({ ...p, name: t }))}
             />
 
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>DIRECTIONAL PHOTOS</Text>
-            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Tap each direction to choose a photo from your library. Buyers swipe through these in the tour.</Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PHOTO MODE</Text>
+            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Choose how many directional shots to capture for this space.</Text>
+            <View style={styles.modeRow}>
+              {([4, 8] as const).map((mode) => (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.modeChip, { backgroundColor: draftSpace.dirMode === mode ? colors.primary : colors.card, borderColor: draftSpace.dirMode === mode ? colors.primary : colors.border }]}
+                  onPress={() => draftSpace.dirMode !== mode ? switchDirMode(mode) : undefined}
+                >
+                  <Feather name="compass" size={14} color={draftSpace.dirMode === mode ? "#fff" : colors.mutedForeground} />
+                  <Text style={[styles.modeLabel, { color: draftSpace.dirMode === mode ? "#fff" : colors.foreground }]}>{mode}-Direction</Text>
+                  <Text style={[styles.modeHint, { color: draftSpace.dirMode === mode ? "rgba(255,255,255,0.7)" : colors.mutedForeground }]}>
+                    {mode === 4 ? "Front/Right/Back/Left" : "+ Diagonals"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+              DIRECTIONAL PHOTOS ({Object.keys(draftSpace.photos).length}/{draftSpace.dirMode})
+            </Text>
+            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Tap each slot to add a photo from your library. Buyers swipe through these in the tour.</Text>
             <View style={styles.photoGrid}>
-              {DIRECTIONS.map((dir) => {
+              {activeDirections.map((dir) => {
                 const uri = draftSpace.photos[dir];
                 return (
-                  <View key={dir} style={styles.photoSlotWrapper}>
+                  <View key={dir} style={[styles.photoSlotWrapper, { width: draftSpace.dirMode === 8 ? "23%" : "30%" }]}>
                     <TouchableOpacity
                       style={[styles.photoSlot, { backgroundColor: uri ? "transparent" : colors.card, borderColor: uri ? colors.primary : colors.border }]}
                       onPress={() => pickPhoto(dir)}
@@ -232,18 +279,18 @@ export default function ToursScreen() {
                         <Image source={{ uri }} style={styles.photoThumb} />
                       ) : (
                         <>
-                          <Feather name="camera" size={22} color={colors.mutedForeground} />
-                          <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>{dir}</Text>
+                          <Feather name="camera" size={draftSpace.dirMode === 8 ? 16 : 20} color={colors.mutedForeground} />
+                          <Text style={[styles.photoLabel, { color: colors.mutedForeground, fontSize: draftSpace.dirMode === 8 ? 9 : 11 }]}>{dir}</Text>
                         </>
                       )}
                     </TouchableOpacity>
                     {uri && (
-                      <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(dir)}>
-                        <Feather name="x" size={12} color="#fff" />
-                      </TouchableOpacity>
-                    )}
-                    {uri && (
-                      <Text style={[styles.photoLabelUnder, { color: colors.primary }]}>{dir}</Text>
+                      <>
+                        <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(dir)}>
+                          <Feather name="x" size={10} color="#fff" />
+                        </TouchableOpacity>
+                        <Text style={[styles.photoLabelUnder, { color: colors.primary, fontSize: 9 }]}>{dir}</Text>
+                      </>
                     )}
                   </View>
                 );
@@ -257,10 +304,11 @@ export default function ToursScreen() {
                 <Text style={styles.addPinText}>Add Pin</Text>
               </TouchableOpacity>
             </View>
-            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Buyers tap pins in the tour to see details. Add financial, lease, equipment, and other data points.</Text>
+            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>12 pin types available. Buyers tap pins for financial, lease, equipment and other data.</Text>
 
             {draftSpace.pins.map((pin) => {
               const meta = ALL_PIN_TYPES.find((p) => p.type === pin.type) ?? ALL_PIN_TYPES[0];
+              const visMeta = VISIBILITY_OPTIONS.find((v) => v.val === pin.visibility) ?? VISIBILITY_OPTIONS[0];
               return (
                 <View key={pin.id} style={[styles.pinRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={[styles.pinDot, { backgroundColor: meta.color }]}>
@@ -269,7 +317,7 @@ export default function ToursScreen() {
                   <View style={styles.pinRowInfo}>
                     <Text style={[styles.pinRowTitle, { color: colors.foreground }]}>{pin.title}</Text>
                     <Text style={[styles.pinRowMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-                      {meta.label}{pin.requiresNDA ? " · 🔒 NDA required" : ""}
+                      {meta.label} · {visMeta.label}{pin.mediaUri ? " · 📎" : ""}
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => removePin(pin.id)}>
@@ -323,7 +371,7 @@ export default function ToursScreen() {
             <View style={[styles.pinTypeBanner, { backgroundColor: selectedPinMeta.color + "15", borderColor: selectedPinMeta.color + "30" }]}>
               <Feather name={selectedPinMeta.icon as any} size={14} color={selectedPinMeta.color} />
               <Text style={[styles.pinTypeBannerText, { color: selectedPinMeta.color }]}>
-                {selectedPinMeta.label} pin — buyers tap this to learn about {selectedPinMeta.label.toLowerCase()} details
+                {selectedPinMeta.label} pin — buyers tap this to see {selectedPinMeta.label.toLowerCase()} details
               </Text>
             </View>
 
@@ -348,13 +396,53 @@ export default function ToursScreen() {
               textAlignVertical="top"
             />
 
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>ATTACH MEDIA (OPTIONAL)</Text>
+            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Attach a photo or document scan to this pin — buyers will see it when they tap.</Text>
+            {draftPin.mediaUri ? (
+              <View style={styles.mediaRow}>
+                <Image source={{ uri: draftPin.mediaUri }} style={styles.mediaThumb} />
+                <View style={styles.mediaInfo}>
+                  <Text style={[styles.mediaLabel, { color: colors.foreground }]}>Photo attached</Text>
+                  <TouchableOpacity onPress={() => setDraftPin((p) => ({ ...p, mediaUri: undefined }))}>
+                    <Text style={{ color: "#EF4444", fontSize: 12, fontFamily: "Inter_500Medium" }}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity style={[styles.attachBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={pickPinMedia}>
+                <Feather name="paperclip" size={16} color={colors.mutedForeground} />
+                <Text style={[styles.attachBtnText, { color: colors.mutedForeground }]}>Choose photo or scan from library</Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>VISIBILITY</Text>
+            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Control which buyers can see and interact with this pin.</Text>
+            <View style={styles.visGrid}>
+              {VISIBILITY_OPTIONS.map(({ val, label, hint, icon, color: visColor }) => {
+                const active = draftPin.visibility === val;
+                return (
+                  <TouchableOpacity
+                    key={val}
+                    style={[styles.visOption, { backgroundColor: active ? visColor + "15" : colors.card, borderColor: active ? visColor : colors.border }]}
+                    onPress={() => {
+                      setDraftPin((p) => ({ ...p, visibility: val, requiresNDA: val === "nda_only" ? true : p.requiresNDA }));
+                    }}
+                  >
+                    <Feather name={icon as any} size={16} color={active ? visColor : colors.mutedForeground} />
+                    <Text style={[styles.visLabel, { color: active ? visColor : colors.foreground }]}>{label}</Text>
+                    <Text style={[styles.visHint, { color: colors.mutedForeground }]}>{hint}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             <View style={[styles.toggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={{ flex: 1 }}>
                 <View style={styles.ndaLabelRow}>
                   <Feather name="lock" size={14} color="#F59E0B" />
                   <Text style={[styles.toggleLabel, { color: colors.foreground }]}>Requires NDA</Text>
                 </View>
-                <Text style={[styles.toggleHint, { color: colors.mutedForeground }]}>Lock this pin — buyers must request NDA access to view it</Text>
+                <Text style={[styles.toggleHint, { color: colors.mutedForeground }]}>Lock this pin — buyers need signed NDA to view the content</Text>
               </View>
               <Switch
                 value={draftPin.requiresNDA}
@@ -403,13 +491,17 @@ const styles = StyleSheet.create({
   fieldHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: -6 },
   nameInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15, fontFamily: "Inter_400Regular", marginTop: 4 },
   descInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 100, marginTop: 4 },
-  photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
-  photoSlotWrapper: { width: "30%", alignItems: "center", gap: 4 },
-  photoSlot: { width: "100%", aspectRatio: 1, borderRadius: 14, borderWidth: 1.5, alignItems: "center", justifyContent: "center", gap: 6, overflow: "hidden" },
+  modeRow: { flexDirection: "row", gap: 10, marginTop: 4 },
+  modeChip: { flex: 1, padding: 14, borderRadius: 14, borderWidth: 1.5, gap: 4 },
+  modeLabel: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  modeHint: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  photoSlotWrapper: { alignItems: "center", gap: 4 },
+  photoSlot: { width: "100%", aspectRatio: 1, borderRadius: 12, borderWidth: 1.5, alignItems: "center", justifyContent: "center", gap: 4, overflow: "hidden" },
   photoThumb: { width: "100%", height: "100%" },
-  photoLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  photoLabelUnder: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  removePhotoBtn: { position: "absolute", top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
+  photoLabel: { fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  photoLabelUnder: { fontFamily: "Inter_600SemiBold" },
+  removePhotoBtn: { position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
   pinSectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   addPinBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   addPinText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
@@ -425,6 +517,16 @@ const styles = StyleSheet.create({
   pinTypeLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   pinTypeBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1 },
   pinTypeBannerText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular" },
+  attachBtn: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, borderStyle: "dashed", marginTop: 4 },
+  attachBtnText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  mediaRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
+  mediaThumb: { width: 60, height: 60, borderRadius: 10 },
+  mediaInfo: { gap: 6 },
+  mediaLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  visGrid: { flexDirection: "row", gap: 8, marginTop: 4 },
+  visOption: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1.5, alignItems: "center", gap: 4 },
+  visLabel: { fontSize: 12, fontFamily: "Inter_700Bold", textAlign: "center" },
+  visHint: { fontSize: 10, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 14 },
   toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 14, borderRadius: 12, borderWidth: 1 },
   ndaLabelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 },
   toggleLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },

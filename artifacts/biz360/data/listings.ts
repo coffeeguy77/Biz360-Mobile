@@ -20,7 +20,10 @@ export interface TourPin {
     | "lease"
     | "risk"
     | "opportunity"
-    | "narration";
+    | "narration"
+    | "inspection"
+    | "highlight"
+    | "document";
   title: string;
   description: string;
   position: { x: number; y: number };

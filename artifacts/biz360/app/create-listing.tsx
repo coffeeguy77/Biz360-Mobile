@@ -6,49 +6,110 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { VerificationBadge } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 
-const STEPS = ["Basic Info", "Financials", "Contact", "Review"];
-const CATEGORIES = ["Food & Beverage", "Health & Beauty", "Services", "Health & Fitness", "Retail", "Professional Services"];
+const STEPS = ["Basic Info", "Financials", "Details", "Verification", "Contact & Review"];
+const CATEGORIES = ["Food & Beverage", "Health & Beauty", "Services", "Health & Fitness", "Retail", "Professional Services", "Manufacturing", "Hospitality", "Technology", "Transport"];
 const AU_STATES = ["VIC", "NSW", "QLD", "WA", "SA", "ACT", "TAS", "NT"];
+const FRANCHISE_OPTIONS = ["Independent", "Franchise", "License Agreement", "Cooperative"];
+
+const BADGE_META: { badge: VerificationBadge; label: string; desc: string; icon: string }[] = [
+  { badge: "identity", label: "Identity Verified", desc: "Seller ID confirmed via government document", icon: "user-check" },
+  { badge: "abn", label: "ABN Verified", desc: "Active ABN confirmed with the ATO", icon: "shield" },
+  { badge: "financials", label: "Financials Verified", desc: "P&L and BAS verified by accountant", icon: "trending-up" },
+  { badge: "lease", label: "Lease Verified", desc: "Lease agreement reviewed and confirmed", icon: "home" },
+  { badge: "equipment", label: "Equipment List", desc: "Full equipment schedule provided", icon: "tool" },
+  { badge: "tour", label: "360 Tour", desc: "Interactive business tour available", icon: "rotate-ccw" },
+  { badge: "broker", label: "Broker Represented", desc: "Licensed business broker engaged", icon: "briefcase" },
+  { badge: "accountant", label: "Accountant Signed", desc: "CPA/CA has signed off on financials", icon: "file-text" },
+  { badge: "seller_supplied", label: "Seller Supplied Docs", desc: "Seller has uploaded supporting documents", icon: "upload" },
+];
+
+interface FormState {
+  businessName: string;
+  category: string;
+  state: string;
+  suburb: string;
+  description: string;
+  confidential: boolean;
+  askingPrice: string;
+  weeklyRevenue: string;
+  adjustedProfit: string;
+  rent: string;
+  staffCount: string;
+  ownerHours: string;
+  leaseExpiry: string;
+  leaseOptions: string;
+  franchiseStatus: string;
+  trainingPeriod: string;
+  reasonForSale: string;
+  growthOpportunities: string;
+  risks: string;
+  badges: VerificationBadge[];
+  contactPreference: "message" | "call" | "broker_only";
+  sellerPhone: string;
+}
+
+const INITIAL_FORM: FormState = {
+  businessName: "", category: "", state: "", suburb: "", description: "",
+  confidential: false, askingPrice: "", weeklyRevenue: "", adjustedProfit: "",
+  rent: "", staffCount: "", ownerHours: "", leaseExpiry: "", leaseOptions: "",
+  franchiseStatus: "", trainingPeriod: "", reasonForSale: "", growthOpportunities: "",
+  risks: "", badges: [], contactPreference: "message", sellerPhone: "",
+};
 
 export default function CreateListing() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState({
-    businessName: "",
-    category: "",
-    state: "",
-    suburb: "",
-    askingPrice: "",
-    weeklyRevenue: "",
-    adjustedProfit: "",
-    rent: "",
-    staffCount: "",
-    ownerHours: "",
-    reasonForSale: "",
-    contactPreference: "message",
-    confidential: false,
-  });
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
 
-  const update = (key: string, value: string | boolean) => setForm((f) => ({ ...f, [key]: value }));
+  const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  const toggleBadge = (badge: VerificationBadge) => {
+    setForm((f) => ({
+      ...f,
+      badges: f.badges.includes(badge) ? f.badges.filter((b) => b !== badge) : [...f.badges, badge],
+    }));
+  };
 
   const next = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (step < STEPS.length - 1) setStep((s) => s + 1);
   };
 
+  const back = () => setStep((s) => s - 1);
+
   const submit = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
   };
+
+  const textField = (key: keyof FormState, label: string, placeholder: string, numeric = false, multiline = false) => (
+    <View key={key} style={styles.field}>
+      <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.inputMulti, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+        placeholder={placeholder}
+        placeholderTextColor={colors.mutedForeground}
+        value={form[key] as string}
+        onChangeText={(v) => update(key, v as any)}
+        keyboardType={numeric ? "numeric" : "default"}
+        multiline={multiline}
+        numberOfLines={multiline ? 3 : 1}
+        textAlignVertical={multiline ? "top" : "center"}
+      />
+    </View>
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -66,35 +127,20 @@ export default function CreateListing() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={[styles.stepTitle, { color: colors.foreground }]}>{STEPS[step]}</Text>
 
+        {/* ── Step 0: Basic Info ── */}
         {step === 0 && (
           <View style={styles.fields}>
-            {[
-              { key: "businessName", label: "Business Name", placeholder: "e.g. The Daily Press Cafe" },
-              { key: "suburb", label: "Suburb", placeholder: "e.g. Fitzroy" },
-            ].map(({ key, label, placeholder }) => (
-              <View key={key} style={styles.field}>
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                  placeholder={placeholder}
-                  placeholderTextColor={colors.mutedForeground}
-                  value={(form as any)[key]}
-                  onChangeText={(v) => update(key, v)}
-                />
-              </View>
-            ))}
+            {textField("businessName", "Business Name", "e.g. The Daily Press Cafe")}
+            {textField("suburb", "Suburb", "e.g. Fitzroy")}
+            {textField("description", "Business Description", "Briefly describe the business, its history, and what makes it attractive to buyers…", false, true)}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>Category</Text>
               <View style={styles.chipGrid}>
                 {CATEGORIES.map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    style={[styles.chip, { backgroundColor: form.category === c ? colors.primary : colors.muted }]}
-                    onPress={() => update("category", c)}
-                  >
+                  <TouchableOpacity key={c} style={[styles.chip, { backgroundColor: form.category === c ? colors.primary : colors.muted }]} onPress={() => update("category", c)}>
                     <Text style={[styles.chipText, { color: form.category === c ? "#fff" : colors.foreground }]}>{c}</Text>
                   </TouchableOpacity>
                 ))}
@@ -104,86 +150,133 @@ export default function CreateListing() {
               <Text style={[styles.label, { color: colors.mutedForeground }]}>State</Text>
               <View style={styles.chipGrid}>
                 {AU_STATES.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.chip, { backgroundColor: form.state === s ? colors.primary : colors.muted }]}
-                    onPress={() => update("state", s)}
-                  >
+                  <TouchableOpacity key={s} style={[styles.chip, { backgroundColor: form.state === s ? colors.primary : colors.muted }]} onPress={() => update("state", s)}>
                     <Text style={[styles.chipText, { color: form.state === s ? "#fff" : colors.foreground }]}>{s}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
-            <TouchableOpacity
-              style={[styles.toggleRow, { backgroundColor: form.confidential ? colors.primary + "18" : colors.card, borderColor: form.confidential ? colors.primary : colors.border }]}
-              onPress={() => update("confidential", !form.confidential)}
-            >
+            <View style={[styles.switchRow, { backgroundColor: form.confidential ? colors.primary + "18" : colors.card, borderColor: form.confidential ? colors.primary : colors.border }]}>
               <Feather name={form.confidential ? "eye-off" : "eye"} size={16} color={form.confidential ? colors.primary : colors.mutedForeground} />
-              <Text style={[styles.toggleLabel, { color: form.confidential ? colors.primary : colors.foreground }]}>Confidential Listing</Text>
-              <View style={[styles.toggleSwitch, { backgroundColor: form.confidential ? colors.primary : colors.muted }]}>
-                <View style={[styles.toggleKnob, { transform: [{ translateX: form.confidential ? 18 : 0 }] }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.switchLabel, { color: form.confidential ? colors.primary : colors.foreground }]}>Confidential Listing</Text>
+                <Text style={[styles.switchHint, { color: colors.mutedForeground }]}>Business name hidden from public search results</Text>
               </View>
-            </TouchableOpacity>
+              <Switch value={form.confidential} onValueChange={(v) => update("confidential", v)} trackColor={{ false: colors.muted, true: colors.primary + "60" }} thumbColor={form.confidential ? colors.primary : colors.mutedForeground} />
+            </View>
           </View>
         )}
 
+        {/* ── Step 1: Financials ── */}
         {step === 1 && (
           <View style={styles.fields}>
-            {[
-              { key: "askingPrice", label: "Asking Price ($)", placeholder: "185000" },
-              { key: "weeklyRevenue", label: "Weekly Revenue ($)", placeholder: "18500" },
-              { key: "adjustedProfit", label: "Adjusted Profit / SDE ($)", placeholder: "72000" },
-              { key: "rent", label: "Monthly Rent ($)", placeholder: "4200" },
-              { key: "staffCount", label: "Staff Count", placeholder: "4" },
-              { key: "ownerHours", label: "Owner Hours/Week", placeholder: "40" },
-            ].map(({ key, label, placeholder }) => (
-              <View key={key} style={styles.field}>
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                  placeholder={placeholder}
-                  placeholderTextColor={colors.mutedForeground}
-                  value={(form as any)[key]}
-                  onChangeText={(v) => update(key, v)}
-                  keyboardType="numeric"
-                />
-              </View>
-            ))}
+            {textField("askingPrice", "Asking Price ($)", "185000", true)}
+            {textField("weeklyRevenue", "Weekly Revenue ($)", "18500", true)}
+            {textField("adjustedProfit", "Adjusted Profit / SDE ($ p.a.)", "72000", true)}
+            {textField("rent", "Monthly Rent ($)", "4200", true)}
+            {textField("staffCount", "Staff Count", "4", true)}
+            {textField("ownerHours", "Owner Hours / Week", "40", true)}
+            {textField("leaseExpiry", "Lease Expiry Date", "e.g. June 2027")}
+            {textField("leaseOptions", "Lease Renewal Options", "e.g. 2 × 3-year options")}
           </View>
         )}
 
+        {/* ── Step 2: Details ── */}
         {step === 2 && (
+          <View style={styles.fields}>
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Franchise / License Status</Text>
+              <View style={styles.chipGrid}>
+                {FRANCHISE_OPTIONS.map((opt) => (
+                  <TouchableOpacity key={opt} style={[styles.chip, { backgroundColor: form.franchiseStatus === opt ? colors.primary : colors.muted }]} onPress={() => update("franchiseStatus", opt)}>
+                    <Text style={[styles.chipText, { color: form.franchiseStatus === opt ? "#fff" : colors.foreground }]}>{opt}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            {textField("trainingPeriod", "Training Period", "e.g. 4 weeks included")}
+            {textField("reasonForSale", "Reason for Sale", "e.g. Relocating interstate, retirement…", false, true)}
+            {textField("growthOpportunities", "Growth Opportunities", "What could a new owner do to grow revenue? e.g. catering, extended hours…", false, true)}
+            {textField("risks", "Risks / Disclosures", "Any risks or issues a buyer should know about (new competition, lease concerns…)", false, true)}
+          </View>
+        )}
+
+        {/* ── Step 3: Verification Badges ── */}
+        {step === 3 && (
+          <View style={styles.fields}>
+            <View style={[styles.badgeInfoCard, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
+              <Feather name="shield" size={16} color={colors.primary} />
+              <Text style={[styles.badgeInfoText, { color: colors.foreground }]}>
+                Verification badges increase buyer trust and reduce time to sale. Select all that apply to your listing.
+              </Text>
+            </View>
+            <Text style={[styles.badgesSelected, { color: colors.mutedForeground }]}>{form.badges.length} badge{form.badges.length !== 1 ? "s" : ""} selected</Text>
+            {BADGE_META.map(({ badge, label, desc, icon }) => {
+              const active = form.badges.includes(badge);
+              return (
+                <TouchableOpacity
+                  key={badge}
+                  style={[styles.badgeRow, { backgroundColor: active ? colors.accent + "12" : colors.card, borderColor: active ? colors.accent : colors.border }]}
+                  onPress={() => toggleBadge(badge)}
+                >
+                  <View style={[styles.badgeIcon, { backgroundColor: (active ? colors.accent : colors.mutedForeground) + "18" }]}>
+                    <Feather name={icon as any} size={16} color={active ? colors.accent : colors.mutedForeground} />
+                  </View>
+                  <View style={styles.badgeInfo}>
+                    <Text style={[styles.badgeLabel, { color: active ? colors.accent : colors.foreground }]}>{label}</Text>
+                    <Text style={[styles.badgeDesc, { color: colors.mutedForeground }]}>{desc}</Text>
+                  </View>
+                  {active ? (
+                    <Feather name="check-circle" size={20} color={colors.accent} />
+                  ) : (
+                    <Feather name="circle" size={20} color={colors.border} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ── Step 4: Contact & Review ── */}
+        {step === 4 && (
           <View style={styles.fields}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>Contact Preference</Text>
             {[
-              { val: "message", label: "Message Only", icon: "message-circle" },
-              { val: "call", label: "Message + Call", icon: "phone" },
-              { val: "broker_only", label: "Broker Only", icon: "shield" },
-            ].map(({ val, label, icon }) => (
+              { val: "message", label: "Message Only", icon: "message-circle", hint: "Buyers contact via in-app message" },
+              { val: "call", label: "Message + Call", icon: "phone", hint: "Buyers can message or click-to-call" },
+              { val: "broker_only", label: "Broker Only", icon: "shield", hint: "All enquiries routed through broker" },
+            ].map(({ val, label, icon, hint }) => (
               <TouchableOpacity
                 key={val}
                 style={[styles.radioRow, { backgroundColor: form.contactPreference === val ? colors.primary + "18" : colors.card, borderColor: form.contactPreference === val ? colors.primary : colors.border }]}
-                onPress={() => update("contactPreference", val)}
+                onPress={() => update("contactPreference", val as any)}
               >
                 <Feather name={icon as any} size={18} color={form.contactPreference === val ? colors.primary : colors.mutedForeground} />
-                <Text style={[styles.radioLabel, { color: form.contactPreference === val ? colors.primary : colors.foreground }]}>{label}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.radioLabel, { color: form.contactPreference === val ? colors.primary : colors.foreground }]}>{label}</Text>
+                  <Text style={[styles.radioHint, { color: colors.mutedForeground }]}>{hint}</Text>
+                </View>
                 {form.contactPreference === val && <Feather name="check" size={16} color={colors.primary} />}
               </TouchableOpacity>
             ))}
-          </View>
-        )}
 
-        {step === 3 && (
-          <View style={styles.fields}>
+            {form.contactPreference === "call" && textField("sellerPhone", "Phone Number", "e.g. 0400 000 000")}
+
+            <Text style={[styles.reviewSectionTitle, { color: colors.foreground }]}>Summary</Text>
             <View style={[styles.reviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {[
-                { label: "Business Name", value: form.businessName || "—" },
+                { label: "Business", value: form.businessName || "—" },
                 { label: "Category", value: form.category || "—" },
                 { label: "Location", value: `${form.suburb || "—"}, ${form.state || "—"}` },
                 { label: "Asking Price", value: form.askingPrice ? `$${parseInt(form.askingPrice).toLocaleString()}` : "—" },
                 { label: "Weekly Revenue", value: form.weeklyRevenue ? `$${parseInt(form.weeklyRevenue).toLocaleString()}` : "—" },
+                { label: "Adj. Profit", value: form.adjustedProfit ? `$${parseInt(form.adjustedProfit).toLocaleString()} p.a.` : "—" },
+                { label: "Lease Expiry", value: form.leaseExpiry || "—" },
+                { label: "Franchise", value: form.franchiseStatus || "—" },
+                { label: "Training", value: form.trainingPeriod || "—" },
                 { label: "Contact", value: form.contactPreference },
                 { label: "Confidential", value: form.confidential ? "Yes" : "No" },
+                { label: "Badges", value: form.badges.length > 0 ? `${form.badges.length} selected` : "None" },
               ].map(({ label, value }) => (
                 <View key={label} style={[styles.reviewRow, { borderBottomColor: colors.border }]}>
                   <Text style={[styles.reviewLabel, { color: colors.mutedForeground }]}>{label}</Text>
@@ -203,7 +296,7 @@ export default function CreateListing() {
 
       <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 12 }]}>
         {step > 0 && (
-          <TouchableOpacity style={[styles.backStepBtn, { backgroundColor: colors.muted }]} onPress={() => setStep((s) => s - 1)}>
+          <TouchableOpacity style={[styles.backStepBtn, { backgroundColor: colors.muted }]} onPress={back}>
             <Feather name="arrow-left" size={18} color={colors.foreground} />
           </TouchableOpacity>
         )}
@@ -229,19 +322,29 @@ const styles = StyleSheet.create({
   field: { gap: 8 },
   label: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
   input: { paddingHorizontal: 14, paddingVertical: 13, borderRadius: 12, borderWidth: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  inputMulti: { minHeight: 90, paddingTop: 13 },
   chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
   chipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  toggleRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
-  toggleLabel: { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  toggleSwitch: { width: 42, height: 24, borderRadius: 12, padding: 3 },
-  toggleKnob: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#fff" },
+  switchRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  switchLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  switchHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   radioRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
-  radioLabel: { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  radioLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  radioHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  badgeInfoCard: { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  badgeInfoText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  badgesSelected: { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "right" },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
+  badgeIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  badgeInfo: { flex: 1 },
+  badgeLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  badgeDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  reviewSectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginTop: 4 },
   reviewCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   reviewRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
   reviewLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  reviewValue: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  reviewValue: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "right", flex: 1, marginLeft: 16 },
   infoBox: { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
   infoText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   footer: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
