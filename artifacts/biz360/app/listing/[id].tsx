@@ -71,6 +71,22 @@ export default function ListingDetailScreen() {
     );
   };
 
+  const handleDocRequest = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert(
+      "Request Documents",
+      "Ask the seller to share supporting documents such as financial statements, BAS returns, lease agreement, and equipment lists.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send Request",
+          onPress: () =>
+            Alert.alert("Documents Requested", "Your request has been sent. The seller will upload documents for your review."),
+        },
+      ]
+    );
+  };
+
   const DETAIL_ROWS = [
     { label: "Asking Price", value: formatPrice(listing.askingPrice), highlight: true },
     { label: "Weekly Revenue", value: `$${listing.weeklyRevenue.toLocaleString()}` },
@@ -191,9 +207,13 @@ export default function ListingDetailScreen() {
               <Text style={[styles.footerSecText, { color: "#F59E0B" }]}>Request NDA</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={[styles.footerSecBtn, { backgroundColor: colors.accent + "15", borderColor: colors.accent + "40", flex: listing.confidential ? undefined : 1 }]} onPress={handleInspection}>
+          <TouchableOpacity style={[styles.footerSecBtn, { backgroundColor: colors.accent + "15", borderColor: colors.accent + "40" }]} onPress={handleInspection}>
             <Feather name="calendar" size={14} color={colors.accent} />
             <Text style={[styles.footerSecText, { color: colors.accent }]}>Book Inspection</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.footerSecBtn, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "40" }]} onPress={handleDocRequest}>
+            <Feather name="file-text" size={14} color={colors.primary} />
+            <Text style={[styles.footerSecText, { color: colors.primary }]}>Request Docs</Text>
           </TouchableOpacity>
         </View>
       </View>
