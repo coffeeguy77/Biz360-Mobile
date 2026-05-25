@@ -145,17 +145,17 @@ function updatePins(){
 
 function render(){applyTransform();updatePins();}
 
-// Momentum animation
+// Momentum animation — vx in px/ms
 function coast(vx){
   if(raf){cancelAnimationFrame(raf);raf=null;}
-  var t0=performance.now(),x0=tx;
-  var decel=0.97;
+  var t0=performance.now();
+  var decel=0.92; // 8% speed loss per frame at 60fps → stops in ~0.8s
   function step(now){
-    var dt=now-t0; t0=now;
+    var dt=Math.min(now-t0,64); t0=now; // cap dt so tab-wake doesn't teleport
     vx*=Math.pow(decel,dt/16.7);
-    tx=clampTx(tx+vx*dt/1000*60,sc);
+    tx=clampTx(tx+vx*dt,sc); // px/ms * ms = px
     render();
-    if(Math.abs(vx)>0.3&&raf!==null) raf=requestAnimationFrame(step);
+    if(Math.abs(vx)>0.01&&raf!==null) raf=requestAnimationFrame(step);
     else raf=null;
   }
   raf=requestAnimationFrame(step);
@@ -207,7 +207,7 @@ outer.addEventListener('touchmove',function(e){
   var ts=Array.from(e.touches);
   if(ts.length===1&&drag){
     var now=Date.now(),dt=Math.max(1,now-drag.t);
-    drag.vx=(ts[0].clientX-drag.lx)/dt*1000;
+    drag.vx=(ts[0].clientX-drag.lx)/dt; // px/ms
     drag.lx=ts[0].clientX;drag.t=now;
     tx=clampTx(drag.stx+(ts[0].clientX-drag.x0),sc);
     if(sc>1.05) ty=clampTy(drag.sty+(ts[0].clientY-drag.y0),sc);
@@ -385,15 +385,15 @@ function animateTo(targetTx,ms,onDone){
 function snapTo(velPxMs){
   // velPxMs: px/ms of finger velocity (positive = finger moved right)
   var rawX=-tx;
-  // Momentum: project where strip would coast to
-  var momentum=velPxMs*380; // ~380ms coast time
+  // Momentum capped at 3 photos max to prevent wild spin on fast flick
+  var momentum=Math.max(-3*VW,Math.min(3*VW,velPxMs*280));
   var projected=rawX-momentum;
   var targetRawX=Math.round(projected/VW)*VW;
   // Keep in middle set
   while(targetRawX<N*VW) targetRawX+=N*VW;
   while(targetRawX>=2*N*VW) targetRawX-=N*VW;
   var dist=Math.abs(targetRawX+tx);
-  var ms=Math.min(500,Math.max(180,dist/VW*280));
+  var ms=Math.min(420,Math.max(180,dist/VW*260));
   animateTo(-targetRawX,ms);
 }
 
