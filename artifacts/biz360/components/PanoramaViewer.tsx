@@ -26,8 +26,14 @@ const PIN_ICONS: Record<string, string> = {
   inspection:"&#128203;",highlight:"&#9889;",   document:"&#128196;",
 };
 
-// ─── Single equirectangular panorama (demo spaces with panoramaUrl) ────────────
-function buildSinglePanoHtml(panoramaUrl: string, startYaw: number, pins: TourPin[]): string {
+// ─── Single equirectangular panorama (demo spaces or stitched panorama) ─────────
+function buildSinglePanoHtml(
+  panoramaUrl: string,
+  startYaw: number,
+  pins: TourPin[],
+  haov = 360,
+  vaov = 120,
+): string {
   const hotspots = pins.map((p) => ({
     id: p.id,
     pitch: (0.5 - p.position.y) * 60,
@@ -64,8 +70,9 @@ function buildSinglePanoHtml(panoramaUrl: string, startYaw: number, pins: TourPi
     }
     pannellum.viewer('pano',{
       type:'equirectangular', panorama:'${panoramaUrl}',
+      haov:${haov}, vaov:${vaov},
       autoLoad:true, showControls:false, compass:false,
-      yaw:${startYaw}, pitch:0, hfov:100, minHfov:40, maxHfov:150,
+      yaw:${startYaw}, pitch:0, hfov:Math.min(100,${haov}*0.7), minHfov:40, maxHfov:Math.min(150,${haov}),
       mouseZoom:true, touchPanSpeedCoeffFactor:1.5, showFullscreenCtrl:false,
       hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked}};})
     });
@@ -318,11 +325,33 @@ interface Props {
 export function PanoramaViewer({ space, onPinPress }: Props) {
   const webRef = useRef<WebView>(null);
 
-  // For multi-scene: convert local file:// photos to base64 data URIs
+  const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
+
+  // For stitched local panoramas: convert file:// → base64 data URI
+  const [panoDataUri, setPanoDataUri] = useState<string | null>(
+    space.panoramaUrl && !isLocalPano ? space.panoramaUrl : null
+  );
+
+  // For flat strip viewer: convert local file:// photos to base64 data URIs
   const [photoDataUris, setPhotoDataUris] = useState<string[] | null>(
     space.panoramaUrl ? [] : null
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Convert local stitched panorama file to base64
+  useEffect(() => {
+    if (!isLocalPano || !space.panoramaUrl) return;
+    let cancelled = false;
+    FileSystem.readAsStringAsync(space.panoramaUrl, { encoding: "base64" })
+      .then((b64) => {
+        if (!cancelled) setPanoDataUri(`data:image/jpeg;base64,${b64}`);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setLoadError("Could not load panorama. Please delete this space and re-create it.");
+      });
+    return () => { cancelled = true; };
+  }, [space.id, space.panoramaUrl, isLocalPano]);
 
   useEffect(() => {
     if (space.panoramaUrl) return; // single panorama — no conversion needed
@@ -392,7 +421,17 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
     );
   }
 
-  // ── Loading base64 conversion ──
+  // ── Loading: local panorama file → base64 ──
+  if (isLocalPano && panoDataUri === null) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Loading panorama…</Text>
+      </View>
+    );
+  }
+
+  // ── Loading: flat strip photos → base64 ──
   if (photoDataUris === null) {
     return (
       <View style={styles.center}>
@@ -404,9 +443,15 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
   }
 
   // ── Build HTML ──
-  const html = space.panoramaUrl
-    ? buildSinglePanoHtml(space.panoramaUrl, space.panoramaStartYaw ?? 0, space.pins)
-    : buildFlatStripHtml(photoDataUris, space.pins);
+  let html: string;
+  if (space.panoramaUrl) {
+    const panoSrc = panoDataUri ?? space.panoramaUrl;
+    const haov = isLocalPano ? Math.min(360, space.photos.length * 70) : 360;
+    const vaov = isLocalPano ? 80 : 120;
+    html = buildSinglePanoHtml(panoSrc, space.panoramaStartYaw ?? 0, space.pins, haov, vaov);
+  } else {
+    html = buildFlatStripHtml(photoDataUris, space.pins);
+  }
 
   return (
     <View style={styles.container}>

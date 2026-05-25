@@ -158,6 +158,9 @@ export default function ToursScreen() {
   const removePin = (id: string) => setDraftSpace((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== id) }));
 
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+
+  const STITCH_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}:8080/api/stitch`;
 
   const handleSaveSpace = async () => {
     if (!draftSpace.name.trim()) { Alert.alert("Name required", "Please enter a name for this tour space."); return; }
@@ -165,9 +168,9 @@ export default function ToursScreen() {
     if (photoCount === 0) { Alert.alert("Photos required", `Please add at least 1 of the ${draftSpace.dirMode} directional photos before saving.`); return; }
 
     setSaving(true);
+    setSaveStatus("Copying photos…");
     try {
-      // Copy all photos to the app's documents directory so they persist
-      // across sessions (ImagePicker temp files can be cleared by iOS).
+      // Step 1: Copy all photos to documents directory for persistence
       const destDir = (FileSystem.documentDirectory ?? "") + "biz360_tour_photos/";
       await FileSystem.makeDirectoryAsync(destDir, { intermediates: true }).catch(() => {});
 
@@ -176,7 +179,6 @@ export default function ToursScreen() {
       for (const dir of dirs) {
         const uri = draftSpace.photos[dir];
         if (!uri) continue;
-        // Only copy local file:// URIs — data: and http URIs are already usable
         if (uri.startsWith("file://")) {
           const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
           const filename = `${Date.now()}_${dir.replace(/\s/g, "_")}.${ext}`;
@@ -186,6 +188,35 @@ export default function ToursScreen() {
         } else {
           photoArray.push(uri);
         }
+      }
+
+      // Step 2: Upload photos to the stitching API
+      let panoramaUrl: string | undefined;
+      setSaveStatus("Stitching panorama… (30–60 sec)");
+      try {
+        const form = new FormData();
+        photoArray.forEach((uri, i) => {
+          form.append("photos", { uri, name: `photo_${i}.jpg`, type: "image/jpeg" } as unknown as Blob);
+        });
+        const res = await fetch(STITCH_URL, { method: "POST", body: form });
+        if (res.ok) {
+          const data: { panorama?: string; haov?: number; vaov?: number } = await res.json();
+          if (data.panorama) {
+            // Step 3: Write stitched panorama to documents directory
+            const panoDir = (FileSystem.documentDirectory ?? "") + "biz360_tour_panos/";
+            await FileSystem.makeDirectoryAsync(panoDir, { intermediates: true }).catch(() => {});
+            const spaceId = `space-user-${Date.now()}`;
+            const panoPath = panoDir + spaceId + ".jpg";
+            await FileSystem.writeAsStringAsync(panoPath, data.panorama, { encoding: "base64" });
+            panoramaUrl = panoPath;
+          }
+        } else {
+          const body = await res.text().catch(() => "");
+          console.warn("Stitch API error:", res.status, body);
+        }
+      } catch (stitchErr) {
+        // Non-fatal — save with flat strip fallback
+        console.warn("Stitching failed, saving as flat tour:", stitchErr);
       }
 
       const tourPins: TourPin[] = draftSpace.pins.map((dp, i) => ({
@@ -201,10 +232,11 @@ export default function ToursScreen() {
       }));
 
       const newSpace: TourSpace = {
-        id: `space-user-${Date.now()}`,
+        id: panoramaUrl ? panoramaUrl.split("/").pop()!.replace(".jpg", "") : `space-user-${Date.now()}`,
         name: draftSpace.name.trim(),
         photos: photoArray,
         pins: tourPins,
+        ...(panoramaUrl ? { panoramaUrl, panoramaStartYaw: 0 } : {}),
       };
 
       setCreatedSpaces((prev) => [...prev, newSpace]);
@@ -214,6 +246,7 @@ export default function ToursScreen() {
       Alert.alert("Save failed", "Could not save photos. Please try again.");
     } finally {
       setSaving(false);
+      setSaveStatus("");
     }
   };
 
@@ -324,7 +357,7 @@ export default function ToursScreen() {
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Tour Space</Text>
             <TouchableOpacity onPress={handleSaveSpace} disabled={saving}>
               <Text style={[styles.modalSave, { color: saving ? colors.mutedForeground : colors.primary }]}>
-                {saving ? "Saving…" : "Create"}
+                {saving ? (saveStatus || "Saving…") : "Create"}
               </Text>
             </TouchableOpacity>
           </View>
