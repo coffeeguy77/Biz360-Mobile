@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { PanoramaViewer } from "@/components/PanoramaViewer";
 import { TourPin, TourSpace } from "@/data/listings";
 
 const { width: SW, height: SH } = Dimensions.get("window");
@@ -21,18 +22,18 @@ const COMPASS_LABELS_4 = ["N", "E", "S", "W"];
 const PLACEHOLDER_COLORS = ["#1A3A5C", "#142E4A", "#0F2238", "#0A1628", "#142E4A", "#1A3A5C", "#0F2238", "#0A1628"];
 
 const PIN_CFG: Record<string, { icon: string; color: string }> = {
-  equipment:  { icon: "tool",           color: "#F59E0B" },
-  revenue:    { icon: "trending-up",    color: "#16A34A" },
-  cogs:       { icon: "package",        color: "#EF4444" },
-  workflow:   { icon: "git-branch",     color: "#8B5CF6" },
-  staffing:   { icon: "users",          color: "#3B82F6" },
-  lease:      { icon: "home",           color: "#F97316" },
-  risk:       { icon: "alert-triangle", color: "#EF4444" },
-  opportunity:{ icon: "star",           color: "#16A34A" },
-  narration:  { icon: "mic",            color: "#EC4899" },
-  inspection: { icon: "clipboard",      color: "#06B6D4" },
-  highlight:  { icon: "zap",            color: "#F59E0B" },
-  document:   { icon: "file-text",      color: "#6366F1" },
+  equipment:   { icon: "tool",           color: "#F59E0B" },
+  revenue:     { icon: "trending-up",    color: "#16A34A" },
+  cogs:        { icon: "package",        color: "#EF4444" },
+  workflow:    { icon: "git-branch",     color: "#8B5CF6" },
+  staffing:    { icon: "users",          color: "#3B82F6" },
+  lease:       { icon: "home",           color: "#F97316" },
+  risk:        { icon: "alert-triangle", color: "#EF4444" },
+  opportunity: { icon: "star",           color: "#16A34A" },
+  narration:   { icon: "mic",            color: "#EC4899" },
+  inspection:  { icon: "clipboard",      color: "#06B6D4" },
+  highlight:   { icon: "zap",            color: "#F59E0B" },
+  document:    { icon: "file-text",      color: "#6366F1" },
 };
 
 function isUri(s: string) {
@@ -53,6 +54,16 @@ interface Props {
 }
 
 export function TourViewer({ space, onPinPress }: Props) {
+  // If a single equirectangular panorama is provided, use the immersive sphere viewer
+  if (space.panoramaUrl) {
+    return <PanoramaViewer space={space} onPinPress={onPinPress} />;
+  }
+
+  // Fallback: directional photo strip (for spaces without a panorama yet)
+  return <DirectionalStrip space={space} onPinPress={onPinPress} />;
+}
+
+function DirectionalStrip({ space, onPinPress }: Props) {
   const N = Math.max(space.photos.length, 1);
   const dirLabels = N >= 8 ? DIRECTION_LABELS_8 : DIRECTION_LABELS_4;
   const compassLabels = N >= 8 ? COMPASS_LABELS_8 : COMPASS_LABELS_4;
@@ -67,8 +78,6 @@ export function TourViewer({ space, onPinPress }: Props) {
   const prevIdx = mod(currentIdx - 1, N);
   const nextIdx = mod(currentIdx + 1, N);
   const currentAngleDeg = Math.round((currentIdx / N) * 360);
-  const currentDirLabel = dirLabels[currentIdx % dirLabels.length];
-  const currentCompassLabel = compassLabels[currentIdx % compassLabels.length];
 
   const snapTo = (direction: "next" | "prev" | "center", velocity = 0) => {
     if (isAnimating.current) return;
@@ -103,7 +112,6 @@ export function TourViewer({ space, onPinPress }: Props) {
         !isAnimating.current &&
         Math.abs(gs.dx) > 6 &&
         Math.abs(gs.dx) > Math.abs(gs.dy) * 1.3,
-
       onPanResponderGrant: () => {
         setInteracted(true);
         stripX.stopAnimation((val) => {
@@ -111,16 +119,13 @@ export function TourViewer({ space, onPinPress }: Props) {
           stripX.setValue(val);
         });
       },
-
       onPanResponderMove: (_, gs) => {
         stripX.setValue(stripXSnapshot.current + gs.dx);
       },
-
       onPanResponderRelease: (_, gs) => {
         stripXSnapshot.current = stripXSnapshot.current + gs.dx;
         const goNext = gs.dx < -SW * 0.18 || gs.vx < -0.7;
         const goPrev = gs.dx > SW * 0.18 || gs.vx > 0.7;
-
         if (goNext) snapTo("next", gs.vx);
         else if (goPrev) snapTo("prev", gs.vx);
         else snapTo("center", gs.vx);
@@ -132,12 +137,11 @@ export function TourViewer({ space, onPinPress }: Props) {
     (p) => Math.floor(p.position.x * N) === currentIdx
   );
 
-  const renderPhotoSlot = (photoIdx: number) => {
+  const renderSlot = (photoIdx: number) => {
     const photo = space.photos[photoIdx] ?? "";
     const uri = isUri(photo) ? photo : null;
     const bgColor = PLACEHOLDER_COLORS[photoIdx % PLACEHOLDER_COLORS.length];
     const label = dirLabels[photoIdx % dirLabels.length];
-
     return (
       <View key={photoIdx} style={{ width: SW, overflow: "hidden", backgroundColor: bgColor }}>
         {uri ? (
@@ -164,17 +168,15 @@ export function TourViewer({ space, onPinPress }: Props) {
 
   return (
     <View style={styles.container}>
-      {/* ── Panoramic photo strip ── */}
       <Animated.View
         style={[styles.strip, { transform: [{ translateX: stripX }] }]}
         {...panResponder.panHandlers}
       >
-        {renderPhotoSlot(prevIdx)}
-        {renderPhotoSlot(currentIdx)}
-        {renderPhotoSlot(nextIdx)}
+        {renderSlot(prevIdx)}
+        {renderSlot(currentIdx)}
+        {renderSlot(nextIdx)}
       </Animated.View>
 
-      {/* ── Info pins overlay (above strip, passes through drags) ── */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         {pinsForCurrent.map((pin) => {
           const frac = (pin.position.x * N) - Math.floor(pin.position.x * N);
@@ -188,9 +190,7 @@ export function TourViewer({ space, onPinPress }: Props) {
               onPress={() => onPinPress(pin)}
               activeOpacity={0.85}
             >
-              {pin.requiresNDA && (
-                <Feather name="lock" size={9} color="rgba(255,255,255,0.85)" />
-              )}
+              {pin.requiresNDA && <Feather name="lock" size={9} color="rgba(255,255,255,0.85)" />}
               <Feather name={cfg.icon as any} size={13} color="#fff" />
               <Text style={styles.pinLabel} numberOfLines={1}>
                 {pin.title.split(" ").slice(0, 3).join(" ")}
@@ -200,87 +200,68 @@ export function TourViewer({ space, onPinPress }: Props) {
         })}
       </View>
 
-      {/* ── Top segmented progress bar ── */}
       <View style={styles.progressBar}>
         {Array.from({ length: N }).map((_, i) => (
           <View
             key={i}
-            style={[
-              styles.progressSeg,
-              { backgroundColor: i === currentIdx ? "#fff" : "rgba(255,255,255,0.22)" },
-            ]}
+            style={[styles.progressSeg, {
+              backgroundColor: i === currentIdx ? "#fff" : "rgba(255,255,255,0.22)",
+            }]}
           />
         ))}
       </View>
 
-      {/* ── Direction label (top-left) ── */}
       <View style={styles.dirTag}>
         <Feather name="compass" size={11} color="rgba(255,255,255,0.75)" />
-        <Text style={styles.dirTagText}>{currentDirLabel}</Text>
+        <Text style={styles.dirTagText}>{dirLabels[currentIdx % dirLabels.length]}</Text>
       </View>
 
-      {/* ── Compass rose (bottom-right) ── */}
       <View style={styles.compass}>
-        <View style={[styles.compassRing]}>
-          {/* Tick marks for each photo angle */}
+        <View style={styles.compassRing}>
           {Array.from({ length: N }).map((_, i) => {
             const tickAngle = (i / N) * 360;
             const r = 22;
             const rad = ((tickAngle - 90) * Math.PI) / 180;
-            const x = r * Math.cos(rad);
-            const y = r * Math.sin(rad);
             return (
               <View
                 key={i}
-                style={[
-                  styles.compassTick,
-                  {
-                    left: 28 + x - 3,
-                    top: 28 + y - 3,
-                    backgroundColor: i === currentIdx ? "#3B82F6" : "rgba(255,255,255,0.35)",
-                    width: i === currentIdx ? 7 : 4,
-                    height: i === currentIdx ? 7 : 4,
-                    borderRadius: i === currentIdx ? 3.5 : 2,
-                  },
-                ]}
+                style={[styles.compassTick, {
+                  left: 28 + r * Math.cos(rad) - 3,
+                  top: 28 + r * Math.sin(rad) - 3,
+                  backgroundColor: i === currentIdx ? "#3B82F6" : "rgba(255,255,255,0.35)",
+                  width: i === currentIdx ? 7 : 4,
+                  height: i === currentIdx ? 7 : 4,
+                  borderRadius: i === currentIdx ? 3.5 : 2,
+                }]}
               />
             );
           })}
-          <Text style={styles.compassDir}>{currentCompassLabel}</Text>
+          <Text style={styles.compassDir}>{compassLabels[currentIdx % compassLabels.length]}</Text>
           <Text style={styles.compassDeg}>{currentAngleDeg}°</Text>
         </View>
       </View>
 
-      {/* ── Nav arrows (center vertical) ── */}
       {N > 1 && (
         <View style={styles.navArrows} pointerEvents="box-none">
-          <TouchableOpacity
-            style={styles.navArrow}
-            onPress={() => snapTo("prev")}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
+          <TouchableOpacity style={styles.navArrow} onPress={() => snapTo("prev")}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Feather name="chevron-left" size={24} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.navArrow}
-            onPress={() => snapTo("next")}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
+          <TouchableOpacity style={styles.navArrow} onPress={() => snapTo("next")}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Feather name="chevron-right" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
 
-      {/* ── Photo count badge ── */}
       <View style={styles.countBadge}>
         <Text style={styles.countText}>{currentIdx + 1} / {N}</Text>
       </View>
 
-      {/* ── First-time swipe hint ── */}
       {!interacted && N > 1 && (
         <View style={styles.hint}>
           <Feather name="move" size={13} color="rgba(255,255,255,0.7)" />
-          <Text style={styles.hintText}>Drag left or right to rotate view · Tap pins for details</Text>
+          <Text style={styles.hintText}>Drag to rotate view · Tap pins for details</Text>
         </View>
       )}
     </View>
@@ -288,187 +269,64 @@ export function TourViewer({ space, onPinPress }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#071221",
-    overflow: "hidden",
-  },
+  container: { flex: 1, backgroundColor: "#071221", overflow: "hidden" },
   strip: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: SW * 3,
-    flexDirection: "row",
+    position: "absolute", top: 0, bottom: 0, left: 0,
+    width: SW * 3, flexDirection: "row",
   },
-  placeholder: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gridH: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  gridV: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  placeholderContent: {
-    alignItems: "center",
-    gap: 10,
-  },
-  placeholderLabel: {
-    color: "rgba(255,255,255,0.25)",
-    fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
-  },
-  placeholderSub: {
-    color: "rgba(255,255,255,0.12)",
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-  },
-  photoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.18)",
-  },
+  placeholder: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  gridH: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "rgba(255,255,255,0.04)" },
+  gridV: { position: "absolute", top: 0, bottom: 0, width: 1, backgroundColor: "rgba(255,255,255,0.04)" },
+  placeholderContent: { alignItems: "center", gap: 10 },
+  placeholderLabel: { color: "rgba(255,255,255,0.25)", fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  placeholderSub: { color: "rgba(255,255,255,0.12)", fontSize: 12, fontFamily: "Inter_400Regular" },
+  photoOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.18)" },
   progressBar: {
-    position: "absolute",
-    top: 52,
-    left: 12,
-    right: 12,
-    flexDirection: "row",
-    gap: 3,
-    height: 3,
+    position: "absolute", top: 52, left: 12, right: 12,
+    flexDirection: "row", gap: 3, height: 3,
   },
-  progressSeg: {
-    flex: 1,
-    height: 3,
-    borderRadius: 1.5,
-  },
+  progressSeg: { flex: 1, height: 3, borderRadius: 1.5 },
   dirTag: {
-    position: "absolute",
-    top: 64,
-    left: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    position: "absolute", top: 64, left: 16,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
   },
-  dirTagText: {
-    color: "#fff",
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-  },
-  compass: {
-    position: "absolute",
-    bottom: 72,
-    right: 16,
-  },
+  dirTagText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  compass: { position: "absolute", bottom: 72, right: 16 },
   compassRing: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: "rgba(0,0,0,0.65)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center",
   },
-  compassTick: {
-    position: "absolute",
-  },
-  compassDir: {
-    color: "#3B82F6",
-    fontSize: 14,
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  compassDeg: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 9,
-    fontFamily: "Inter_500Medium",
-    textAlign: "center",
-  },
+  compassTick: { position: "absolute" },
+  compassDir: { color: "#3B82F6", fontSize: 14, fontFamily: "Inter_700Bold", textAlign: "center", lineHeight: 18 },
+  compassDeg: { color: "rgba(255,255,255,0.5)", fontSize: 9, fontFamily: "Inter_500Medium", textAlign: "center" },
   navArrows: {
-    position: "absolute",
-    top: "50%",
-    left: 0,
-    right: 0,
-    marginTop: -22,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 10,
+    position: "absolute", top: "50%", left: 0, right: 0,
+    marginTop: -22, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 10,
   },
   navArrow: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: "rgba(0,0,0,0.55)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center",
   },
   countBadge: {
-    position: "absolute",
-    bottom: 72,
-    left: 16,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    position: "absolute", bottom: 72, left: 16,
+    backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
   },
-  countText: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-  },
+  countText: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Inter_600SemiBold" },
   pin: {
-    position: "absolute",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-    elevation: 6,
-    maxWidth: 175,
+    position: "absolute", flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5, shadowRadius: 6, elevation: 6, maxWidth: 175,
   },
-  pinLabel: {
-    color: "#fff",
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-  },
+  pinLabel: { color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" },
   hint: {
-    position: "absolute",
-    bottom: 72,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    position: "absolute", bottom: 72, alignSelf: "center",
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(0,0,0,0.65)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
   },
-  hintText: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-  },
+  hintText: { color: "rgba(255,255,255,0.7)", fontSize: 11, fontFamily: "Inter_400Regular" },
 });

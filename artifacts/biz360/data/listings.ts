@@ -34,6 +34,8 @@ export interface TourSpace {
   id: string;
   name: string;
   photos: string[];
+  panoramaUrl?: string;
+  panoramaStartYaw?: number;
   pins: TourPin[];
 }
 
@@ -111,6 +113,8 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "space-001",
         name: "Main Floor",
+        panoramaUrl: "https://pannellum.org/images/alma.jpg",
+        panoramaStartYaw: 0,
         photos: [
           "https://picsum.photos/seed/cafe-main-0/1200/800",
           "https://picsum.photos/seed/cafe-main-1/1200/800",
@@ -176,6 +180,8 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "space-002",
         name: "Kitchen",
+        panoramaUrl: "https://pannellum.org/images/alma.jpg",
+        panoramaStartYaw: 180,
         photos: [
           "https://picsum.photos/seed/cafe-kitchen-0/1200/800",
           "https://picsum.photos/seed/cafe-kitchen-1/1200/800",
@@ -204,6 +210,8 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "space-003",
         name: "Outdoor Seating",
+        panoramaUrl: "https://pannellum.org/images/cerro-toco-0.jpg",
+        panoramaStartYaw: 0,
         photos: [
           "https://picsum.photos/seed/cafe-outdoor-0/1200/800",
           "https://picsum.photos/seed/cafe-outdoor-1/1200/800",
@@ -259,6 +267,8 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "salon-space-001",
         name: "Main Studio",
+        panoramaUrl: "https://pannellum.org/images/alma.jpg",
+        panoramaStartYaw: 90,
         photos: [
           "https://picsum.photos/seed/salon-main-0/1200/800",
           "https://picsum.photos/seed/salon-main-1/1200/800",
@@ -356,6 +366,8 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "gym-space-001",
         name: "Weights Floor",
+        panoramaUrl: "https://pannellum.org/images/alma.jpg",
+        panoramaStartYaw: 270,
         photos: [
           "https://picsum.photos/seed/gym-floor-0/1200/800",
           "https://picsum.photos/seed/gym-floor-1/1200/800",
