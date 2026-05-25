@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { DEMO_LISTINGS, TourPin } from "@/data/listings";
+import { DEMO_LISTINGS, TourPin, TourSpace } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 
 const cafe = DEMO_LISTINGS[0];
@@ -70,6 +70,8 @@ const VISIBILITY_OPTIONS: { val: Visibility; label: string; hint: string; icon: 
 export default function ToursScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+
+  const [createdSpaces, setCreatedSpaces] = useState<TourSpace[]>([]);
 
   const [showSpaceModal, setShowSpaceModal] = useState(false);
   const [draftSpace, setDraftSpace] = useState<DraftSpace>(EMPTY_SPACE);
@@ -138,11 +140,35 @@ export default function ToursScreen() {
     const photoCount = Object.keys(draftSpace.photos).length;
     const totalDirs = draftSpace.dirMode;
     if (photoCount === 0) { Alert.alert("Photos required", `Please add at least 1 of the ${totalDirs} directional photos before saving.`); return; }
-    Alert.alert(
-      "Space Created",
-      `"${draftSpace.name}" added with ${photoCount}/${totalDirs} photo${photoCount !== 1 ? "s" : ""} and ${draftSpace.pins.length} pin${draftSpace.pins.length !== 1 ? "s" : ""}.`,
-      [{ text: "Done", onPress: () => { setShowSpaceModal(false); setDraftSpace(EMPTY_SPACE); } }]
-    );
+
+    // Convert DraftSpace → TourSpace
+    const dirs = draftSpace.dirMode === 8 ? DIRS_8 : DIRS_4;
+    const photoArray: string[] = dirs
+      .map((dir) => draftSpace.photos[dir])
+      .filter((uri): uri is string => !!uri);
+
+    const tourPins: TourPin[] = draftSpace.pins.map((dp, i) => ({
+      id: dp.id,
+      type: dp.type,
+      title: dp.title,
+      description: dp.description,
+      requiresNDA: dp.requiresNDA,
+      position: {
+        x: parseFloat(((i + 0.5) / Math.max(draftSpace.pins.length, 1)).toFixed(2)),
+        y: 0.4 + (i % 3) * 0.1,
+      },
+    }));
+
+    const newSpace: TourSpace = {
+      id: `space-user-${Date.now()}`,
+      name: draftSpace.name.trim(),
+      photos: photoArray,
+      pins: tourPins,
+    };
+
+    setCreatedSpaces((prev) => [...prev, newSpace]);
+    setShowSpaceModal(false);
+    setDraftSpace(EMPTY_SPACE);
   };
 
   const switchDirMode = (mode: 4 | 8) => {
@@ -179,8 +205,8 @@ export default function ToursScreen() {
           <View style={styles.tourBody}>
             <View style={styles.tourStats}>
               {[
-                { val: cafe.tourSpaces?.length ?? 0, lbl: "Spaces", color: colors.primary },
-                { val: cafe.tourSpaces?.reduce((a, s) => a + s.pins.length, 0) ?? 0, lbl: "Pins", color: colors.primary },
+                { val: (cafe.tourSpaces?.length ?? 0) + createdSpaces.length, lbl: "Spaces", color: colors.primary },
+                { val: (cafe.tourSpaces?.reduce((a, s) => a + s.pins.length, 0) ?? 0) + createdSpaces.reduce((a, s) => a + s.pins.length, 0), lbl: "Pins", color: colors.primary },
                 { val: cafe.tourStarts, lbl: "Starts", color: colors.primary },
                 { val: "89%", lbl: "Completion", color: colors.accent },
               ].map(({ val, lbl, color }) => (
@@ -192,20 +218,36 @@ export default function ToursScreen() {
             </View>
 
             <Text style={[styles.spacesTitle, { color: colors.foreground }]}>Tour Spaces</Text>
-            {cafe.tourSpaces?.map((space) => (
-              <View key={space.id} style={[styles.spaceRow, { borderBottomColor: colors.border }]}>
-                <View style={[styles.spaceIcon, { backgroundColor: colors.primary + "18" }]}>
-                  <Feather name="camera" size={16} color={colors.primary} />
+            {[...(cafe.tourSpaces ?? []), ...createdSpaces].map((space, idx) => {
+              const isNew = idx >= (cafe.tourSpaces?.length ?? 0);
+              return (
+                <View key={space.id} style={[styles.spaceRow, { borderBottomColor: colors.border }]}>
+                  <View style={[styles.spaceIcon, { backgroundColor: isNew ? colors.accent + "25" : colors.primary + "18" }]}>
+                    <Feather name="camera" size={16} color={isNew ? colors.accent : colors.primary} />
+                  </View>
+                  <View style={styles.spaceInfo}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={[styles.spaceName, { color: colors.foreground }]}>{space.name}</Text>
+                      {isNew && (
+                        <View style={[styles.newBadge, { backgroundColor: colors.accent }]}>
+                          <Text style={styles.newBadgeText}>NEW</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.spaceMeta, { color: colors.mutedForeground }]}>{space.photos.length} photos · {space.pins.length} pins</Text>
+                  </View>
+                  {isNew ? (
+                    <TouchableOpacity onPress={() => setCreatedSpaces((prev) => prev.filter((s) => s.id !== space.id))}>
+                      <Feather name="trash-2" size={17} color="#EF4444" />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity onPress={() => router.push(`/tour/${cafe.id}` as any)}>
+                      <Feather name="eye" size={18} color={colors.primary} />
+                    </TouchableOpacity>
+                  )}
                 </View>
-                <View style={styles.spaceInfo}>
-                  <Text style={[styles.spaceName, { color: colors.foreground }]}>{space.name}</Text>
-                  <Text style={[styles.spaceMeta, { color: colors.mutedForeground }]}>{space.photos.length} photos · {space.pins.length} pins</Text>
-                </View>
-                <TouchableOpacity onPress={() => router.push(`/tour/${cafe.id}` as any)}>
-                  <Feather name="eye" size={18} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-            ))}
+              );
+            })}
 
             <View style={styles.btnRow}>
               <TouchableOpacity style={[styles.btn, { backgroundColor: colors.muted }]} onPress={() => setShowSpaceModal(true)}>
@@ -531,4 +573,6 @@ const styles = StyleSheet.create({
   ndaLabelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 },
   toggleLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   toggleHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  newBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  newBadgeText: { color: "#fff", fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
 });
