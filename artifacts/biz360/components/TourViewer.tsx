@@ -65,89 +65,125 @@ export function TourViewer({ space, onPinPress }: Props) {
   return <DirectionalStrip space={space} onPinPress={onPinPress} />;
 }
 
+// Each photo is rendered at this width — slightly wider than the screen so
+// adjacent shots bleed in on both sides, giving a true panoramic feel.
+const PHOTO_W = SW;
+
 function DirectionalStrip({ space, onPinPress }: Props) {
   const N = Math.max(space.photos.length, 1);
   const dirLabels = N >= 8 ? DIRECTION_LABELS_8 : DIRECTION_LABELS_4;
   const compassLabels = N >= 8 ? COMPASS_LABELS_8 : COMPASS_LABELS_4;
 
-  const currentIdxRef = useRef(0);
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const stripX = useRef(new Animated.Value(-SW)).current;
-  const stripXSnapshot = useRef(-SW);
-  const isAnimating = useRef(false);
+  // --- Seamless loop via tripling -----------------------------------------
+  // Render [copy0 | copy1 | copy2]. Start anchored on copy1 (middle).
+  // copy1 photo-i is at strip x = (N + i) * PHOTO_W.
+  // For it to be at viewport left-edge: translateX = -(N + i) * PHOTO_W.
+  // Starting at i=0:  startX = -N * PHOTO_W
+  const STRIP_W = N * PHOTO_W;
+  const startX = -STRIP_W;
+
+  const xRef = useRef(startX);
+  const panX = useRef(new Animated.Value(startX)).current;
+  const isGesture = useRef(false);
+
+  const [photoIdx, setPhotoIdx] = useState(0);
   const [interacted, setInteracted] = useState(false);
 
-  const prevIdx = mod(currentIdx - 1, N);
-  const nextIdx = mod(currentIdx + 1, N);
-  const currentAngleDeg = Math.round((currentIdx / N) * 360);
+  // idx of the photo whose left edge is visible (0-based within one copy)
+  const xToIdx = (x: number) =>
+    mod(Math.round((-x - STRIP_W) / PHOTO_W), N);
 
-  const snapTo = (direction: "next" | "prev" | "center", velocity = 0) => {
-    if (isAnimating.current) return;
-    isAnimating.current = true;
+  // After decay/spring settles, teleport into the middle copy if needed
+  const normalize = (x: number) => {
+    let n = x;
+    while (n > -STRIP_W + PHOTO_W) n -= STRIP_W;
+    while (n < -2 * STRIP_W + PHOTO_W) n += STRIP_W;
+    return n;
+  };
 
-    const toValue = direction === "next" ? -2 * SW : direction === "prev" ? 0 : -SW;
-    const newIdx =
-      direction === "next" ? mod(currentIdxRef.current + 1, N) :
-      direction === "prev" ? mod(currentIdxRef.current - 1, N) :
-      currentIdxRef.current;
+  const settle = (x: number) => {
+    const nx = normalize(x);
+    if (nx !== x) panX.setValue(nx);
+    xRef.current = nx;
+    setPhotoIdx(xToIdx(nx));
+  };
 
-    Animated.spring(stripX, {
-      toValue,
-      velocity,
-      tension: 130,
-      friction: 20,
+  const snapToIdx = (targetIdx: number, fromX: number, vx = 0) => {
+    // Find the nearest occurrence of targetIdx in the tripled strip
+    const candidateX = -STRIP_W - targetIdx * PHOTO_W;
+    // Pick whichever candidate is closest to fromX (could be in copy0 or copy2)
+    const candidates = [candidateX - STRIP_W, candidateX, candidateX + STRIP_W];
+    const best = candidates.reduce((a, b) =>
+      Math.abs(b - fromX) < Math.abs(a - fromX) ? b : a
+    );
+    Animated.spring(panX, {
+      toValue: best,
+      velocity: vx * SW,
+      tension: 140,
+      friction: 22,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished) {
-        stripX.setValue(-SW);
-        stripXSnapshot.current = -SW;
-        currentIdxRef.current = newIdx;
-        setCurrentIdx(newIdx);
-        isAnimating.current = false;
-      }
+      if (finished && !isGesture.current) settle(best);
     });
   };
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) =>
-        !isAnimating.current &&
-        Math.abs(gs.dx) > 6 &&
-        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.3,
+        Math.abs(gs.dx) > 5 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2,
       onPanResponderGrant: () => {
         setInteracted(true);
-        stripX.stopAnimation((val) => {
-          stripXSnapshot.current = val;
-          stripX.setValue(val);
+        isGesture.current = true;
+        panX.stopAnimation((val) => {
+          xRef.current = val;
+          panX.setValue(val);
         });
       },
       onPanResponderMove: (_, gs) => {
-        stripX.setValue(stripXSnapshot.current + gs.dx);
+        panX.setValue(xRef.current + gs.dx);
       },
       onPanResponderRelease: (_, gs) => {
-        stripXSnapshot.current = stripXSnapshot.current + gs.dx;
-        const goNext = gs.dx < -SW * 0.18 || gs.vx < -0.7;
-        const goPrev = gs.dx > SW * 0.18 || gs.vx > 0.7;
-        if (goNext) snapTo("next", gs.vx);
-        else if (goPrev) snapTo("prev", gs.vx);
-        else snapTo("center", gs.vx);
+        isGesture.current = false;
+        const rawX = xRef.current + gs.dx;
+        xRef.current = rawX;
+
+        // Decide snap target based on velocity + drag distance
+        const currentI = xToIdx(rawX);
+        const goNext = gs.dx < -PHOTO_W * 0.18 || gs.vx < -0.6;
+        const goPrev = gs.dx > PHOTO_W * 0.18 || gs.vx > 0.6;
+        const targetI = goNext
+          ? mod(currentI + 1, N)
+          : goPrev
+          ? mod(currentI - 1, N)
+          : currentI;
+
+        snapToIdx(targetI, rawX, gs.vx);
       },
     })
   ).current;
 
-  const pinsForCurrent = space.pins.filter(
-    (p) => Math.floor(p.position.x * N) === currentIdx
-  );
+  // Arrow tap helpers
+  const stepBy = (delta: number) => {
+    const targetI = mod(photoIdx + delta, N);
+    snapToIdx(targetI, xRef.current);
+  };
 
-  const renderSlot = (photoIdx: number) => {
-    const photo = space.photos[photoIdx] ?? "";
+  const pinsForCurrent = space.pins.filter(
+    (p) => Math.floor(p.position.x * N) === photoIdx
+  );
+  const currentAngleDeg = Math.round((photoIdx / N) * 360);
+
+  // Build tripled photo array for rendering
+  const tripled = [...space.photos, ...space.photos, ...space.photos];
+
+  const renderPhoto = (photo: string, key: number, originalIdx: number) => {
     const uri = isUri(photo) ? photo : null;
-    const bgColor = PLACEHOLDER_COLORS[photoIdx % PLACEHOLDER_COLORS.length];
-    const label = dirLabels[photoIdx % dirLabels.length];
+    const bgColor = PLACEHOLDER_COLORS[originalIdx % PLACEHOLDER_COLORS.length];
+    const label = dirLabels[originalIdx % dirLabels.length];
     return (
-      <View key={photoIdx} style={{ width: SW, overflow: "hidden", backgroundColor: bgColor }}>
+      <View key={key} style={{ width: PHOTO_W, height: "100%", backgroundColor: bgColor, overflow: "hidden" }}>
         {uri ? (
-          <Image source={{ uri }} style={[StyleSheet.absoluteFill, { width: SW }]} resizeMode="cover" />
+          <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
           <View style={styles.placeholder}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -170,15 +206,15 @@ function DirectionalStrip({ space, onPinPress }: Props) {
 
   return (
     <View style={styles.container}>
+      {/* Continuous tripled strip — drag freely left/right */}
       <Animated.View
-        style={[styles.strip, { transform: [{ translateX: stripX }] }]}
+        style={[styles.panoramaStrip, { width: 3 * STRIP_W, transform: [{ translateX: panX }] }]}
         {...panResponder.panHandlers}
       >
-        {renderSlot(prevIdx)}
-        {renderSlot(currentIdx)}
-        {renderSlot(nextIdx)}
+        {tripled.map((photo, i) => renderPhoto(photo, i, i % N))}
       </Animated.View>
 
+      {/* Pins for the current photo */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         {pinsForCurrent.map((pin) => {
           const frac = (pin.position.x * N) - Math.floor(pin.position.x * N);
@@ -202,22 +238,25 @@ function DirectionalStrip({ space, onPinPress }: Props) {
         })}
       </View>
 
+      {/* Progress dots */}
       <View style={styles.progressBar}>
         {Array.from({ length: N }).map((_, i) => (
           <View
             key={i}
             style={[styles.progressSeg, {
-              backgroundColor: i === currentIdx ? "#fff" : "rgba(255,255,255,0.22)",
+              backgroundColor: i === photoIdx ? "#fff" : "rgba(255,255,255,0.22)",
             }]}
           />
         ))}
       </View>
 
+      {/* Direction label */}
       <View style={styles.dirTag}>
         <Feather name="compass" size={11} color="rgba(255,255,255,0.75)" />
-        <Text style={styles.dirTagText}>{dirLabels[currentIdx % dirLabels.length]}</Text>
+        <Text style={styles.dirTagText}>{dirLabels[photoIdx % dirLabels.length]}</Text>
       </View>
 
+      {/* Compass rose */}
       <View style={styles.compass}>
         <View style={styles.compassRing}>
           {Array.from({ length: N }).map((_, i) => {
@@ -230,40 +269,43 @@ function DirectionalStrip({ space, onPinPress }: Props) {
                 style={[styles.compassTick, {
                   left: 28 + r * Math.cos(rad) - 3,
                   top: 28 + r * Math.sin(rad) - 3,
-                  backgroundColor: i === currentIdx ? "#3B82F6" : "rgba(255,255,255,0.35)",
-                  width: i === currentIdx ? 7 : 4,
-                  height: i === currentIdx ? 7 : 4,
-                  borderRadius: i === currentIdx ? 3.5 : 2,
+                  backgroundColor: i === photoIdx ? "#3B82F6" : "rgba(255,255,255,0.35)",
+                  width: i === photoIdx ? 7 : 4,
+                  height: i === photoIdx ? 7 : 4,
+                  borderRadius: i === photoIdx ? 3.5 : 2,
                 }]}
               />
             );
           })}
-          <Text style={styles.compassDir}>{compassLabels[currentIdx % compassLabels.length]}</Text>
+          <Text style={styles.compassDir}>{compassLabels[photoIdx % compassLabels.length]}</Text>
           <Text style={styles.compassDeg}>{currentAngleDeg}°</Text>
         </View>
       </View>
 
+      {/* Nav arrows */}
       {N > 1 && (
         <View style={styles.navArrows} pointerEvents="box-none">
-          <TouchableOpacity style={styles.navArrow} onPress={() => snapTo("prev")}
+          <TouchableOpacity style={styles.navArrow} onPress={() => stepBy(-1)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Feather name="chevron-left" size={24} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.navArrow} onPress={() => snapTo("next")}
+          <TouchableOpacity style={styles.navArrow} onPress={() => stepBy(1)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Feather name="chevron-right" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
 
+      {/* Photo counter */}
       <View style={styles.countBadge}>
-        <Text style={styles.countText}>{currentIdx + 1} / {N}</Text>
+        <Text style={styles.countText}>{photoIdx + 1} / {N}</Text>
       </View>
 
+      {/* First-time hint */}
       {!interacted && N > 1 && (
         <View style={styles.hint}>
           <Feather name="move" size={13} color="rgba(255,255,255,0.7)" />
-          <Text style={styles.hintText}>Drag to rotate view · Tap pins for details</Text>
+          <Text style={styles.hintText}>Drag to pan view · Tap pins for details</Text>
         </View>
       )}
     </View>
@@ -272,9 +314,9 @@ function DirectionalStrip({ space, onPinPress }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#071221", overflow: "hidden" },
-  strip: {
+  panoramaStrip: {
     position: "absolute", top: 0, bottom: 0, left: 0,
-    width: SW * 3, flexDirection: "row",
+    flexDirection: "row",
   },
   placeholder: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   gridH: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "rgba(255,255,255,0.04)" },
