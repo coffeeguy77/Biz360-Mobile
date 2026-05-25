@@ -75,18 +75,24 @@ export default function ToursScreen() {
   const STORAGE_KEY = `biz360_spaces_${cafe.id}`;
 
   const [createdSpaces, setCreatedSpaces] = useState<TourSpace[]>([]);
+  const [storageLoaded, setStorageLoaded] = useState(false);
 
+  // Load once on mount
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) {
         try { setCreatedSpaces(JSON.parse(raw)); } catch { /* ignore */ }
       }
+      setStorageLoaded(true);
     });
   }, []);
 
+  // Save only after the initial load has finished — prevents the empty-array
+  // on-mount write from racing ahead of and overwriting the loaded data.
   useEffect(() => {
+    if (!storageLoaded) return;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(createdSpaces));
-  }, [createdSpaces]);
+  }, [createdSpaces, storageLoaded]);
 
   const [showSpaceModal, setShowSpaceModal] = useState(false);
   const [draftSpace, setDraftSpace] = useState<DraftSpace>(EMPTY_SPACE);
