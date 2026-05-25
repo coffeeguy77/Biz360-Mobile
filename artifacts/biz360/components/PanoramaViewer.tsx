@@ -192,20 +192,6 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
     }
   };
 
-  if (Platform.OS === "web") {
-    return (
-      <View style={styles.webFallback}>
-        <WebView
-          source={{ html }}
-          style={styles.webView}
-          javaScriptEnabled
-          onMessage={handleMessage}
-          scrollEnabled={false}
-        />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       <WebView

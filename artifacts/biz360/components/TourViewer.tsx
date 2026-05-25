@@ -5,6 +5,7 @@ import {
   Dimensions,
   Image,
   PanResponder,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -54,12 +55,13 @@ interface Props {
 }
 
 export function TourViewer({ space, onPinPress }: Props) {
-  // If a single equirectangular panorama is provided, use the immersive sphere viewer
-  if (space.panoramaUrl) {
+  // On native: use the immersive WebView-based sphere viewer
+  // On web (canvas preview): react-native-webview has no web support, fall through to strip
+  if (space.panoramaUrl && Platform.OS !== "web") {
     return <PanoramaViewer space={space} onPinPress={onPinPress} />;
   }
 
-  // Fallback: directional photo strip (for spaces without a panorama yet)
+  // Fallback: directional photo strip
   return <DirectionalStrip space={space} onPinPress={onPinPress} />;
 }
 
