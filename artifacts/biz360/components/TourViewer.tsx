@@ -55,13 +55,14 @@ interface Props {
 }
 
 export function TourViewer({ space, onPinPress }: Props) {
-  // On native: use the immersive WebView-based sphere viewer
-  // On web (canvas preview): react-native-webview has no web support, fall through to strip
-  if (space.panoramaUrl && Platform.OS !== "web") {
+  // On native: use the immersive Pannellum WebView viewer for any space that has
+  // photos or a pre-stitched panoramaUrl. Web falls back to the directional strip
+  // because react-native-webview has no web support.
+  if (Platform.OS !== "web" && (space.panoramaUrl || space.photos.length > 0)) {
     return <PanoramaViewer space={space} onPinPress={onPinPress} />;
   }
 
-  // Fallback: directional photo strip
+  // Web / empty space fallback: directional photo strip
   return <DirectionalStrip space={space} onPinPress={onPinPress} />;
 }
 

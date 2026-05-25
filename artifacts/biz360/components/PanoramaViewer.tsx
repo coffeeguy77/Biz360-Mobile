@@ -1,58 +1,49 @@
-import React, { useRef } from "react";
-import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
+import * as FileSystem from "expo-file-system";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { WebView } from "react-native-webview";
 import { TourPin, TourSpace } from "@/data/listings";
 
+// Approximate horizontal/vertical field of view for a typical iPhone landscape photo
+const HAOV = 80;
+const VAOV = 50;
+
+const DIR_8 = ["Front","Front-Right","Right","Back-Right","Back","Back-Left","Left","Front-Left"];
+const DIR_4 = ["Front","Right","Back","Left"];
+
 const PIN_COLORS: Record<string, string> = {
-  equipment:   "#F59E0B",
-  revenue:     "#16A34A",
-  cogs:        "#EF4444",
-  workflow:    "#8B5CF6",
-  staffing:    "#3B82F6",
-  lease:       "#F97316",
-  risk:        "#EF4444",
-  opportunity: "#16A34A",
-  narration:   "#EC4899",
-  inspection:  "#06B6D4",
-  highlight:   "#F59E0B",
-  document:    "#6366F1",
+  equipment:"#F59E0B", revenue:"#16A34A", cogs:"#EF4444",
+  workflow:"#8B5CF6",  staffing:"#3B82F6", lease:"#F97316",
+  risk:"#EF4444",      opportunity:"#16A34A", narration:"#EC4899",
+  inspection:"#06B6D4",highlight:"#F59E0B",   document:"#6366F1",
 };
-
 const PIN_ICONS: Record<string, string> = {
-  equipment:   "&#128296;",
-  revenue:     "&#128200;",
-  cogs:        "&#128230;",
-  workflow:    "&#128256;",
-  staffing:    "&#128101;",
-  lease:       "&#127968;",
-  risk:        "&#9888;&#65039;",
-  opportunity: "&#11088;",
-  narration:   "&#127908;",
-  inspection:  "&#128203;",
-  highlight:   "&#9889;",
-  document:    "&#128196;",
+  equipment:"&#128296;", revenue:"&#128200;",  cogs:"&#128230;",
+  workflow:"&#128256;",  staffing:"&#128101;", lease:"&#127968;",
+  risk:"&#9888;&#65039;",opportunity:"&#11088;",narration:"&#127908;",
+  inspection:"&#128203;",highlight:"&#9889;",   document:"&#128196;",
 };
 
-interface PinHotspot {
-  id: string;
-  pitch: number;
-  yaw: number;
-  title: string;
-  color: string;
-  icon: string;
-  locked: boolean;
-}
-
-function buildPanoHtml(
-  panoramaUrl: string,
-  startYaw: number,
-  pins: PinHotspot[]
-): string {
-  const pinsJson = JSON.stringify(pins);
+// ─── Single equirectangular panorama (demo spaces with panoramaUrl) ────────────
+function buildSinglePanoHtml(panoramaUrl: string, startYaw: number, pins: TourPin[]): string {
+  const hotspots = pins.map((p) => ({
+    id: p.id,
+    pitch: (0.5 - p.position.y) * 60,
+    yaw: p.position.x * 360 - 180,
+    title: p.title.split(" ").slice(0, 4).join(" "),
+    color: PIN_COLORS[p.type] ?? "#3B82F6",
+    icon: PIN_ICONS[p.type] ?? "&#8505;",
+    locked: !!p.requiresNDA,
+  }));
 
   return `<!DOCTYPE html>
-<html>
-<head>
+<html><head>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
   <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
@@ -65,97 +56,160 @@ function buildPanoHtml(
     .pnlm-load-box p{color:#fff!important}
     .pnlm-lbar{background:#3B82F6!important}
     .pnlm-lbar-fill{background:#60A5FA!important}
-    .pin-bubble{
-      display:inline-flex;align-items:center;gap:5px;
-      padding:6px 12px;border-radius:20px;
-      font:-apple-system-body;font-size:12px;font-weight:700;
-      color:#fff;cursor:pointer;white-space:nowrap;
-      box-shadow:0 3px 10px rgba(0,0,0,0.6);
-      border:1.5px solid rgba(255,255,255,0.25);
-      transform:translateY(-50%);
-      transition:transform 0.1s,opacity 0.1s;
-      user-select:none;-webkit-user-select:none
-    }
-    .pin-bubble:active{transform:translateY(-50%) scale(0.93);opacity:0.85}
-    .pin-lock{font-size:10px;opacity:0.8}
   </style>
-</head>
-<body>
+</head><body>
   <div id="pano"></div>
   <script>
-    var PINS = ${pinsJson};
+    var PINS = ${JSON.stringify(hotspots)};
+    function createPin(container, args) {
+      container.style.cssText = 'background:'+args.color+';border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;font-weight:700;font-family:-apple-system,system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:1.5px solid rgba(255,255,255,0.25);display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none;transform:translateY(-50%)';
+      container.innerHTML = (args.locked?'<span style="font-size:10px">&#128274;</span> ':'')+args.icon+' '+args.label;
+      ['touchend','click'].forEach(function(ev){container.addEventListener(ev,function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));});});
+    }
+    pannellum.viewer('pano',{
+      type:'equirectangular', panorama:'${panoramaUrl}',
+      autoLoad:true, showControls:false, compass:false,
+      yaw:${startYaw}, pitch:0, hfov:100, minHfov:40, maxHfov:150,
+      mouseZoom:true, touchPanSpeedCoeffFactor:1.5, showFullscreenCtrl:false,
+      hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked}};})
+    });
+  </script>
+</body></html>`;
+}
+
+// ─── Multi-scene tour from separate directional photos ─────────────────────────
+function buildMultiSceneHtml(photos: string[], pins: TourPin[]): string {
+  const N = photos.length;
+  const dirLabels = N >= 8 ? DIR_8 : DIR_4;
+
+  return `<!DOCTYPE html>
+<html><head>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;background:#071221;overflow:hidden}
+    #pano{width:100vw;height:100vh}
+    .pnlm-about-msg,.pnlm-load-button,.pnlm-orientation-button{display:none!important}
+    .pnlm-load-box{background:rgba(7,18,33,0.9)!important;border-radius:12px!important}
+    .pnlm-load-box p{color:#fff!important}
+    .pnlm-lbar{background:#3B82F6!important}
+    .pnlm-lbar-fill{background:#60A5FA!important}
+  </style>
+</head><body>
+  <div id="pano"></div>
+  <script>
+    var HAOV = ${HAOV};
+    var VAOV = ${VAOV};
+    var N = ${N};
+    var PHOTOS = ${JSON.stringify(photos)};
+    var PINS_RAW = ${JSON.stringify(pins.map((p) => ({
+      id: p.id,
+      type: p.type,
+      posX: p.position.x,
+      posY: p.position.y,
+      title: p.title.split(" ").slice(0, 4).join(" "),
+      color: PIN_COLORS[p.type] ?? "#3B82F6",
+      icon: PIN_ICONS[p.type] ?? "&#8505;",
+      locked: !!p.requiresNDA,
+    })))};
+    var DIR_LABELS = ${JSON.stringify(dirLabels)};
+
+    var viewer = null;
 
     function createPin(container, args) {
-      container.style.background = args.color;
-      container.style.borderRadius = '20px';
-      container.style.padding = '6px 12px';
-      container.style.color = '#fff';
-      container.style.fontSize = '12px';
-      container.style.fontWeight = '700';
-      container.style.fontFamily = '-apple-system, system-ui, sans-serif';
-      container.style.whiteSpace = 'nowrap';
-      container.style.boxShadow = '0 3px 10px rgba(0,0,0,0.6)';
-      container.style.border = '1.5px solid rgba(255,255,255,0.25)';
-      container.style.display = 'inline-flex';
-      container.style.alignItems = 'center';
-      container.style.gap = '5px';
-      container.style.cursor = 'pointer';
-      container.style.userSelect = 'none';
-      container.style.transform = 'translateY(-50%)';
-      container.innerHTML = (args.locked ? '<span style="font-size:10px">&#128274;</span> ' : '') + args.icon + ' ' + args.label;
-      container.addEventListener('touchstart', function(e) {
-        e.stopPropagation();
-        container.style.opacity = '0.8';
-        container.style.transform = 'translateY(-50%) scale(0.93)';
-      });
-      container.addEventListener('touchend', function(e) {
-        e.stopPropagation();
-        e.preventDefault();
-        container.style.opacity = '1';
-        container.style.transform = 'translateY(-50%)';
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));
-        }
-      });
-      container.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));
-        }
+      container.style.cssText = 'background:'+args.color+';border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;font-weight:700;font-family:-apple-system,system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:1.5px solid rgba(255,255,255,0.25);display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none;-webkit-user-select:none;transform:translateY(-50%)';
+      container.innerHTML = (args.locked?'<span style="font-size:10px">&#128274;</span> ':'')+args.icon+' '+args.label;
+      ['touchend','click'].forEach(function(ev){
+        container.addEventListener(ev,function(e){
+          e.stopPropagation();e.preventDefault();
+          if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));
+        });
       });
     }
 
-    pannellum.viewer('pano', {
-      type: 'equirectangular',
-      panorama: '${panoramaUrl}',
-      autoLoad: true,
-      showControls: false,
-      compass: false,
-      yaw: ${startYaw},
-      pitch: 0,
-      hfov: 100,
-      minHfov: 40,
-      maxHfov: 150,
-      mouseZoom: true,
-      touchPanSpeedCoeffFactor: 1.5,
-      showFullscreenCtrl: false,
-      hotSpots: PINS.map(function(p) {
-        return {
-          id: p.id,
-          pitch: p.pitch,
-          yaw: p.yaw,
-          type: 'custom',
-          cssClass: '',
-          createTooltipFunc: createPin,
-          createTooltipArgs: {id:p.id, label:p.title, icon:p.icon, color:p.color, locked:p.locked}
+    function createNav(container, args) {
+      container.style.cssText = 'background:rgba(0,0,0,0.7);border-radius:24px;padding:8px 16px;color:#fff;font-size:13px;font-weight:700;font-family:-apple-system,system-ui,sans-serif;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.5);border:1.5px solid rgba(255,255,255,0.3);cursor:pointer;user-select:none;-webkit-user-select:none;transform:translateY(-50%)';
+      container.innerHTML = args.label;
+      ['touchend','click'].forEach(function(ev){
+        container.addEventListener(ev,function(e){
+          e.stopPropagation();e.preventDefault();
+          if(viewer) viewer.loadScene(args.sceneId);
+        });
+      });
+    }
+
+    var scenes = {};
+    for(var i=0;i<N;i++){
+      (function(idx){
+        var sceneId = 's'+idx;
+        var prevId  = 's'+((idx-1+N)%N);
+        var nextId  = 's'+((idx+1)%N);
+        var nextLbl = DIR_LABELS[(idx+1)%N];
+        var prevLbl = DIR_LABELS[(idx-1+N)%N];
+
+        var hotSpots = [
+          { pitch:0, yaw: HAOV*0.46, type:'custom', cssClass:'',
+            createTooltipFunc:createNav,
+            createTooltipArgs:{label:nextLbl+' \u2192', sceneId:nextId} },
+          { pitch:0, yaw:-HAOV*0.46, type:'custom', cssClass:'',
+            createTooltipFunc:createNav,
+            createTooltipArgs:{label:'\u2190 '+prevLbl, sceneId:prevId} },
+        ];
+
+        PINS_RAW.forEach(function(p){
+          if(Math.floor(p.posX * N) === idx){
+            var relX = p.posX * N - idx;
+            hotSpots.push({
+              pitch: (0.5-p.posY)*VAOV,
+              yaw:   (relX-0.5)*HAOV,
+              type:'custom', cssClass:'',
+              createTooltipFunc:createPin,
+              createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked}
+            });
+          }
+        });
+
+        scenes[sceneId] = {
+          type:'equirectangular',
+          panorama: PHOTOS[idx],
+          haov: HAOV,
+          vaov: VAOV,
+          hotSpots: hotSpots
         };
-      })
+      })(i);
+    }
+
+    viewer = pannellum.viewer('pano', {
+      default: {
+        firstScene:'s0',
+        sceneFadeDuration:400,
+        autoLoad:true,
+        showControls:false,
+        compass:false,
+        pitch:0,
+        hfov: HAOV,
+        minHfov:40,
+        maxHfov: HAOV,
+        mouseZoom:false,
+        touchPanSpeedCoeffFactor:1.8,
+        showFullscreenCtrl:false,
+        keyboardZoom:false
+      },
+      scenes: scenes
+    });
+
+    viewer.on('scenechange', function(sceneId){
+      var idx = parseInt(sceneId.replace('s',''), 10);
+      if(window.ReactNativeWebView)
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'sceneChange',idx:idx,label:DIR_LABELS[idx]||sceneId}));
     });
   </script>
-</body>
-</html>`;
+</body></html>`;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
 interface Props {
   space: TourSpace;
   onPinPress: (pin: TourPin) => void;
@@ -164,21 +218,37 @@ interface Props {
 export function PanoramaViewer({ space, onPinPress }: Props) {
   const webRef = useRef<WebView>(null);
 
-  const pinHotspots: PinHotspot[] = space.pins.map((pin) => ({
-    id: pin.id,
-    pitch: (0.5 - pin.position.y) * 60,
-    yaw: pin.position.x * 360 - 180,
-    title: pin.title.split(" ").slice(0, 4).join(" "),
-    color: PIN_COLORS[pin.type] ?? "#3B82F6",
-    icon: PIN_ICONS[pin.type] ?? "&#8505;",
-    locked: !!pin.requiresNDA,
-  }));
-
-  const html = buildPanoHtml(
-    space.panoramaUrl!,
-    space.panoramaStartYaw ?? 0,
-    pinHotspots
+  // For multi-scene: convert local file:// photos to base64 data URIs
+  const [photoDataUris, setPhotoDataUris] = useState<string[] | null>(
+    space.panoramaUrl ? [] : null
   );
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (space.panoramaUrl) return; // single panorama — no conversion needed
+    if (!space.photos.length) { setPhotoDataUris([]); return; }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const uris = await Promise.all(
+          space.photos.map(async (photo) => {
+            // Already a data URI or remote URL — use as-is
+            if (photo.startsWith("data:") || photo.startsWith("http")) return photo;
+            // Local file — read as base64
+            const base64 = await FileSystem.readAsStringAsync(photo, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            return `data:image/jpeg;base64,${base64}`;
+          })
+        );
+        if (!cancelled) setPhotoDataUris(uris);
+      } catch (err) {
+        if (!cancelled) setLoadError("Could not load photos for this space.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [space.id]);
 
   const handleMessage = (event: { nativeEvent: { data: string } }) => {
     try {
@@ -187,10 +257,33 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
         const pin = space.pins.find((p) => p.id === data.id);
         if (pin) onPinPress(pin);
       }
-    } catch {
-      // ignore malformed messages
-    }
+    } catch { /* ignore */ }
   };
+
+  // ── Error state ──
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>{loadError}</Text>
+      </View>
+    );
+  }
+
+  // ── Loading base64 conversion ──
+  if (photoDataUris === null) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Preparing tour…</Text>
+        <Text style={styles.loadingHint}>Converting {space.photos.length} photos</Text>
+      </View>
+    );
+  }
+
+  // ── Build HTML ──
+  const html = space.panoramaUrl
+    ? buildSinglePanoHtml(space.panoramaUrl, space.panoramaStartYaw ?? 0, space.pins)
+    : buildMultiSceneHtml(photoDataUris, space.pins);
 
   return (
     <View style={styles.container}>
@@ -220,22 +313,26 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#071221",
+  container: { flex: 1, backgroundColor: "#071221" },
+  webView: { flex: 1, backgroundColor: "#071221" },
+  center: {
+    flex: 1, backgroundColor: "#071221",
+    alignItems: "center", justifyContent: "center", gap: 12, padding: 24,
   },
-  webView: {
-    flex: 1,
-    backgroundColor: "#071221",
+  loadingText: {
+    color: "#fff", fontSize: 16,
+    fontFamily: Platform.OS === "web" ? "system-ui" : "Inter_600SemiBold",
   },
-  webFallback: {
-    flex: 1,
-    backgroundColor: "#071221",
+  loadingHint: {
+    color: "#8B9CB8", fontSize: 13,
+    fontFamily: Platform.OS === "web" ? "system-ui" : "Inter_400Regular",
+  },
+  errorText: {
+    color: "#EF4444", fontSize: 14, textAlign: "center",
+    fontFamily: Platform.OS === "web" ? "system-ui" : "Inter_400Regular",
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#071221",
+    alignItems: "center", justifyContent: "center", backgroundColor: "#071221",
   },
 });
