@@ -40,6 +40,7 @@ export default function LoginScreen() {
     }
     await login(match);
     setLoading(false);
+    router.replace("/");
   };
 
   const quickLogin = async (role: keyof typeof DEMO_USERS) => {
@@ -47,6 +48,7 @@ export default function LoginScreen() {
     setLoading(true);
     await login(DEMO_USERS[role]);
     setLoading(false);
+    router.replace("/");
   };
 
   return (

@@ -34,6 +34,7 @@ export default function WelcomeScreen() {
     setLoading(true);
     await login(DEMO_USERS[selected]);
     setLoading(false);
+    router.replace("/");
   };
 
   return (
