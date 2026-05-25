@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -156,40 +157,64 @@ export default function ToursScreen() {
 
   const removePin = (id: string) => setDraftSpace((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== id) }));
 
-  const handleSaveSpace = () => {
+  const [saving, setSaving] = useState(false);
+
+  const handleSaveSpace = async () => {
     if (!draftSpace.name.trim()) { Alert.alert("Name required", "Please enter a name for this tour space."); return; }
     const photoCount = Object.keys(draftSpace.photos).length;
-    const totalDirs = draftSpace.dirMode;
-    if (photoCount === 0) { Alert.alert("Photos required", `Please add at least 1 of the ${totalDirs} directional photos before saving.`); return; }
+    if (photoCount === 0) { Alert.alert("Photos required", `Please add at least 1 of the ${draftSpace.dirMode} directional photos before saving.`); return; }
 
-    // Convert DraftSpace → TourSpace
-    const dirs = draftSpace.dirMode === 8 ? DIRS_8 : DIRS_4;
-    const photoArray: string[] = dirs
-      .map((dir) => draftSpace.photos[dir])
-      .filter((uri): uri is string => !!uri);
+    setSaving(true);
+    try {
+      // Copy all photos to the app's documents directory so they persist
+      // across sessions (ImagePicker temp files can be cleared by iOS).
+      const destDir = (FileSystem.documentDirectory ?? "") + "biz360_tour_photos/";
+      await FileSystem.makeDirectoryAsync(destDir, { intermediates: true }).catch(() => {});
 
-    const tourPins: TourPin[] = draftSpace.pins.map((dp, i) => ({
-      id: dp.id,
-      type: dp.type,
-      title: dp.title,
-      description: dp.description,
-      requiresNDA: dp.requiresNDA,
-      position: {
-        x: parseFloat(((i + 0.5) / Math.max(draftSpace.pins.length, 1)).toFixed(2)),
-        y: 0.4 + (i % 3) * 0.1,
-      },
-    }));
+      const dirs = draftSpace.dirMode === 8 ? DIRS_8 : DIRS_4;
+      const photoArray: string[] = [];
+      for (const dir of dirs) {
+        const uri = draftSpace.photos[dir];
+        if (!uri) continue;
+        // Only copy local file:// URIs — data: and http URIs are already usable
+        if (uri.startsWith("file://")) {
+          const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
+          const filename = `${Date.now()}_${dir.replace(/\s/g, "_")}.${ext}`;
+          const dest = destDir + filename;
+          await FileSystem.copyAsync({ from: uri, to: dest });
+          photoArray.push(dest);
+        } else {
+          photoArray.push(uri);
+        }
+      }
 
-    const newSpace: TourSpace = {
-      id: `space-user-${Date.now()}`,
-      name: draftSpace.name.trim(),
-      photos: photoArray,
-      pins: tourPins,
-    };
+      const tourPins: TourPin[] = draftSpace.pins.map((dp, i) => ({
+        id: dp.id,
+        type: dp.type,
+        title: dp.title,
+        description: dp.description,
+        requiresNDA: dp.requiresNDA,
+        position: {
+          x: parseFloat(((i + 0.5) / Math.max(draftSpace.pins.length, 1)).toFixed(2)),
+          y: 0.4 + (i % 3) * 0.1,
+        },
+      }));
 
-    setCreatedSpaces((prev) => [...prev, newSpace]);
-    setShowSpaceModal(false);
-    setDraftSpace(EMPTY_SPACE);
+      const newSpace: TourSpace = {
+        id: `space-user-${Date.now()}`,
+        name: draftSpace.name.trim(),
+        photos: photoArray,
+        pins: tourPins,
+      };
+
+      setCreatedSpaces((prev) => [...prev, newSpace]);
+      setShowSpaceModal(false);
+      setDraftSpace(EMPTY_SPACE);
+    } catch (err) {
+      Alert.alert("Save failed", "Could not save photos. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const switchDirMode = (mode: 4 | 8) => {
@@ -297,8 +322,10 @@ export default function ToursScreen() {
               <Text style={[styles.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
             </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Tour Space</Text>
-            <TouchableOpacity onPress={handleSaveSpace}>
-              <Text style={[styles.modalSave, { color: colors.primary }]}>Create</Text>
+            <TouchableOpacity onPress={handleSaveSpace} disabled={saving}>
+              <Text style={[styles.modalSave, { color: saving ? colors.mutedForeground : colors.primary }]}>
+                {saving ? "Saving…" : "Create"}
+              </Text>
             </TouchableOpacity>
           </View>
 

@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -230,21 +230,44 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
 
     let cancelled = false;
     (async () => {
-      try {
-        const uris = await Promise.all(
-          space.photos.map(async (photo) => {
-            // Already a data URI or remote URL — use as-is
-            if (photo.startsWith("data:") || photo.startsWith("http")) return photo;
-            // Local file — read as base64
+      const results: (string | null)[] = await Promise.all(
+        space.photos.map(async (photo) => {
+          // Already a data URI or remote URL — use as-is
+          if (photo.startsWith("data:") || photo.startsWith("http")) return photo;
+          // Local file:// URI — read as base64
+          try {
             const base64 = await FileSystem.readAsStringAsync(photo, {
-              encoding: FileSystem.EncodingType.Base64,
+              encoding: "base64",
             });
             return `data:image/jpeg;base64,${base64}`;
-          })
+          } catch {
+            // File may have been cleared from cache; try via fetch as fallback
+            try {
+              const resp = await fetch(photo);
+              if (!resp.ok) return null;
+              const blob = await resp.blob();
+              return await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } catch {
+              return null; // skip this photo
+            }
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      const valid = results.filter((r): r is string => r !== null);
+      if (valid.length === 0) {
+        setLoadError(
+          "Photos for this space are no longer available.\n\nThis can happen when iOS clears the app cache. Please delete this space and re-create it — photos will now be saved permanently."
         );
-        if (!cancelled) setPhotoDataUris(uris);
-      } catch (err) {
-        if (!cancelled) setLoadError("Could not load photos for this space.");
+      } else {
+        setPhotoDataUris(valid);
       }
     })();
     return () => { cancelled = true; };
