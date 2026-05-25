@@ -111,7 +111,16 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "space-001",
         name: "Main Floor",
-        photos: ["front", "right", "back", "left", "front-right", "back-right", "back-left", "front-left"],
+        photos: [
+          "https://picsum.photos/seed/cafe-main-0/1200/800",
+          "https://picsum.photos/seed/cafe-main-1/1200/800",
+          "https://picsum.photos/seed/cafe-main-2/1200/800",
+          "https://picsum.photos/seed/cafe-main-3/1200/800",
+          "https://picsum.photos/seed/cafe-main-4/1200/800",
+          "https://picsum.photos/seed/cafe-main-5/1200/800",
+          "https://picsum.photos/seed/cafe-main-6/1200/800",
+          "https://picsum.photos/seed/cafe-main-7/1200/800",
+        ],
         pins: [
           {
             id: "pin-001",
@@ -167,7 +176,12 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "space-002",
         name: "Kitchen",
-        photos: ["front", "right", "back", "left"],
+        photos: [
+          "https://picsum.photos/seed/cafe-kitchen-0/1200/800",
+          "https://picsum.photos/seed/cafe-kitchen-1/1200/800",
+          "https://picsum.photos/seed/cafe-kitchen-2/1200/800",
+          "https://picsum.photos/seed/cafe-kitchen-3/1200/800",
+        ],
         pins: [
           {
             id: "pin-007",
@@ -190,7 +204,12 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "space-003",
         name: "Outdoor Seating",
-        photos: ["front", "right", "back", "left"],
+        photos: [
+          "https://picsum.photos/seed/cafe-outdoor-0/1200/800",
+          "https://picsum.photos/seed/cafe-outdoor-1/1200/800",
+          "https://picsum.photos/seed/cafe-outdoor-2/1200/800",
+          "https://picsum.photos/seed/cafe-outdoor-3/1200/800",
+        ],
         pins: [
           {
             id: "pin-009",
@@ -240,7 +259,12 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "salon-space-001",
         name: "Main Studio",
-        photos: ["front", "right", "back", "left"],
+        photos: [
+          "https://picsum.photos/seed/salon-main-0/1200/800",
+          "https://picsum.photos/seed/salon-main-1/1200/800",
+          "https://picsum.photos/seed/salon-main-2/1200/800",
+          "https://picsum.photos/seed/salon-main-3/1200/800",
+        ],
         pins: [
           {
             id: "salon-pin-001",
@@ -332,7 +356,12 @@ export const DEMO_LISTINGS: Listing[] = [
       {
         id: "gym-space-001",
         name: "Weights Floor",
-        photos: ["front", "right", "back", "left"],
+        photos: [
+          "https://picsum.photos/seed/gym-floor-0/1200/800",
+          "https://picsum.photos/seed/gym-floor-1/1200/800",
+          "https://picsum.photos/seed/gym-floor-2/1200/800",
+          "https://picsum.photos/seed/gym-floor-3/1200/800",
+        ],
         pins: [
           {
             id: "gym-pin-001",
