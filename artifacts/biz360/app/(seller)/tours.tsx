@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Image,
@@ -71,7 +72,21 @@ export default function ToursScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
+  const STORAGE_KEY = `biz360_spaces_${cafe.id}`;
+
   const [createdSpaces, setCreatedSpaces] = useState<TourSpace[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
+      if (raw) {
+        try { setCreatedSpaces(JSON.parse(raw)); } catch { /* ignore */ }
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(createdSpaces));
+  }, [createdSpaces]);
 
   const [showSpaceModal, setShowSpaceModal] = useState(false);
   const [draftSpace, setDraftSpace] = useState<DraftSpace>(EMPTY_SPACE);
@@ -236,15 +251,20 @@ export default function ToursScreen() {
                     </View>
                     <Text style={[styles.spaceMeta, { color: colors.mutedForeground }]}>{space.photos.length} photos · {space.pins.length} pins</Text>
                   </View>
-                  {isNew ? (
-                    <TouchableOpacity onPress={() => setCreatedSpaces((prev) => prev.filter((s) => s.id !== space.id))}>
-                      <Feather name="trash-2" size={17} color="#EF4444" />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <TouchableOpacity onPress={() => {
+                      const allSpaces = [...(cafe.tourSpaces ?? []), ...createdSpaces];
+                      const spaceIdx = allSpaces.findIndex((s) => s.id === space.id);
+                      router.push(`/tour/${cafe.id}?startSpace=${spaceIdx >= 0 ? spaceIdx : 0}` as any);
+                    }}>
+                      <Feather name="eye" size={18} color={isNew ? colors.accent : colors.primary} />
                     </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity onPress={() => router.push(`/tour/${cafe.id}` as any)}>
-                      <Feather name="eye" size={18} color={colors.primary} />
-                    </TouchableOpacity>
-                  )}
+                    {isNew && (
+                      <TouchableOpacity onPress={() => setCreatedSpaces((prev) => prev.filter((s) => s.id !== space.id))}>
+                        <Feather name="trash-2" size={17} color="#EF4444" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               );
             })}

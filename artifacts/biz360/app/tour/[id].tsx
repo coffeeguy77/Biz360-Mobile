@@ -1,22 +1,35 @@
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinSheet } from "@/components/PinSheet";
 import { TourViewer } from "@/components/TourViewer";
-import { DEMO_LISTINGS, TourPin } from "@/data/listings";
+import { DEMO_LISTINGS, TourPin, TourSpace } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 
 export default function TourScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, startSpace } = useLocalSearchParams<{ id: string; startSpace?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const listing = DEMO_LISTINGS.find((l) => l.id === id);
-  const [activeSpaceIdx, setActiveSpaceIdx] = useState(0);
+  const [extraSpaces, setExtraSpaces] = useState<TourSpace[]>([]);
+  const [activeSpaceIdx, setActiveSpaceIdx] = useState(startSpace ? parseInt(startSpace, 10) : 0);
   const [activePin, setActivePin] = useState<TourPin | null>(null);
 
-  if (!listing || !listing.tourSpaces?.length) {
+  useEffect(() => {
+    if (!id) return;
+    AsyncStorage.getItem(`biz360_spaces_${id}`).then((raw) => {
+      if (raw) {
+        try { setExtraSpaces(JSON.parse(raw)); } catch { /* ignore */ }
+      }
+    });
+  }, [id]);
+
+  const allSpaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...extraSpaces];
+
+  if (!listing && extraSpaces.length === 0 && allSpaces.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: "#071221" }]}>
         <Feather name="rotate-ccw" size={40} color="#3B82F6" />
@@ -28,8 +41,22 @@ export default function TourScreen() {
     );
   }
 
-  const spaces = listing.tourSpaces;
-  const activeSpace = spaces[activeSpaceIdx];
+  if (allSpaces.length === 0) {
+    return (
+      <View style={[styles.center, { backgroundColor: "#071221" }]}>
+        <Feather name="rotate-ccw" size={40} color="#3B82F6" />
+        <Text style={styles.noTourText}>No tour spaces yet</Text>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={styles.backText}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const safeIdx = Math.min(activeSpaceIdx, allSpaces.length - 1);
+  const activeSpace = allSpaces[safeIdx];
+  const demoCount = listing?.tourSpaces?.length ?? 0;
+  const isUserSpace = safeIdx >= demoCount;
 
   return (
     <View style={styles.container}>
@@ -38,30 +65,45 @@ export default function TourScreen() {
           <Feather name="x" size={20} color="#fff" />
         </TouchableOpacity>
         <View style={styles.tourInfo}>
-          <Text style={styles.tourTitle} numberOfLines={1}>{listing.businessName}</Text>
-          <Text style={styles.tourSpace}>{activeSpace.name}</Text>
+          <Text style={styles.tourTitle} numberOfLines={1}>{listing?.businessName ?? "Tour"}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={styles.tourSpace}>{activeSpace.name}</Text>
+            {isUserSpace && (
+              <View style={styles.userSpaceBadge}>
+                <Text style={styles.userSpaceBadgeText}>YOUR SPACE</Text>
+              </View>
+            )}
+          </View>
         </View>
         <TouchableOpacity style={styles.iconBtn}>
           <Feather name="share-2" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      {spaces.length > 1 && (
+      {allSpaces.length > 1 && (
         <View style={styles.spaceTabs}>
-          {spaces.map((space, idx) => (
-            <TouchableOpacity
-              key={space.id}
-              style={[
-                styles.spaceTab,
-                { backgroundColor: idx === activeSpaceIdx ? "#2563EB" : "rgba(255,255,255,0.1)" },
-              ]}
-              onPress={() => setActiveSpaceIdx(idx)}
-            >
-              <Text style={[styles.spaceTabText, { color: idx === activeSpaceIdx ? "#fff" : "rgba(255,255,255,0.6)" }]}>
-                {space.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {allSpaces.map((space, idx) => {
+            const isUser = idx >= demoCount;
+            return (
+              <TouchableOpacity
+                key={space.id}
+                style={[
+                  styles.spaceTab,
+                  {
+                    backgroundColor:
+                      idx === safeIdx
+                        ? isUser ? "#16A34A" : "#2563EB"
+                        : "rgba(255,255,255,0.1)",
+                  },
+                ]}
+                onPress={() => setActiveSpaceIdx(idx)}
+              >
+                <Text style={[styles.spaceTabText, { color: idx === safeIdx ? "#fff" : "rgba(255,255,255,0.6)" }]}>
+                  {space.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
 
@@ -79,7 +121,7 @@ export default function TourScreen() {
               <Text style={styles.legendText}>{label}</Text>
             </View>
           ))}
-          <Text style={styles.legendMore}>+{Math.max(0, (activeSpace.pins.length ?? 0))} pins</Text>
+          <Text style={styles.legendMore}>+{Math.max(0, activeSpace.pins.length ?? 0)} pins</Text>
         </View>
       </View>
 
@@ -105,6 +147,8 @@ const styles = StyleSheet.create({
   tourInfo: { flex: 1, alignItems: "center", gap: 2 },
   tourTitle: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   tourSpace: { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
+  userSpaceBadge: { backgroundColor: "#16A34A", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  userSpaceBadgeText: { color: "#fff", fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
   spaceTabs: {
     position: "absolute", top: 90, left: 0, right: 0, zIndex: 10,
     flexDirection: "row", paddingHorizontal: 12, gap: 8,
