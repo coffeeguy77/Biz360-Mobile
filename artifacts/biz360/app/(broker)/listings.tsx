@@ -1,13 +1,14 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings, PendingListing } from "@/lib/adminStore";
+import { getPendingListings, PendingListing, savePendingListings } from "@/lib/adminStore";
 
 const STATUS_CONFIG = {
   pending:  { label: "Pending Review", color: "#F59E0B", icon: "clock"       },
@@ -28,6 +29,24 @@ export default function BrokerListings() {
       });
     }, [user?.id]),
   );
+
+  const handleDelete = (item: PendingListing, name: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert("Delete Listing", `Remove "${name}" from your listings?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          const updated = listings.filter((l) => l.id !== item.id);
+          setListings(updated);
+          const all = await getPendingListings();
+          await savePendingListings(all.filter((l) => l.id !== item.id));
+        },
+      },
+    ]);
+  };
 
   const activeCount  = listings.filter((l) => l.status === "approved").length;
   const pendingCount = listings.filter((l) => l.status === "pending").length;
@@ -80,6 +99,13 @@ export default function BrokerListings() {
                   <Feather name={sc.icon as any} size={10} color="#fff" />
                   <Text style={styles.statusPillText}>{sc.label}</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.deleteIcon}
+                  onPress={() => handleDelete(item, name)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Feather name="trash-2" size={15} color="rgba(255,255,255,0.8)" />
+                </TouchableOpacity>
                 <Text style={styles.heroName} numberOfLines={1}>{name}</Text>
                 <Text style={styles.heroPrice}>{price && price > 0 ? formatPrice(price) : "Price TBC"}</Text>
               </View>
@@ -191,6 +217,7 @@ const styles = StyleSheet.create({
   card:          { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   cardHero:      { height: 90, padding: 14, justifyContent: "flex-end", gap: 2 },
   statusPill:    { position: "absolute", top: 10, left: 10, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  deleteIcon:    { position: "absolute", top: 10, right: 10 },
   statusPillText:{ color: "#fff", fontSize: 10, fontFamily: "Inter_600SemiBold" },
   heroName:      { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
   heroPrice:     { color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" },
