@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -8,28 +7,28 @@ import { PinSheet } from "@/components/PinSheet";
 import { TourViewer } from "@/components/TourViewer";
 import { DEMO_LISTINGS, TourPin, TourSpace } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
+import { apiGet } from "@/lib/apiStore";
 
 export default function TourScreen() {
   const { id, startSpace } = useLocalSearchParams<{ id: string; startSpace?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const listing = DEMO_LISTINGS.find((l) => l.id === id);
-  const [extraSpaces, setExtraSpaces] = useState<TourSpace[]>([]);
+  const [kvSpaces, setKvSpaces] = useState<TourSpace[]>([]);
   const [activeSpaceIdx, setActiveSpaceIdx] = useState(startSpace ? parseInt(startSpace, 10) : 0);
   const [activePin, setActivePin] = useState<TourPin | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    AsyncStorage.getItem(`biz360_spaces_${id}`).then((raw) => {
-      if (raw) {
-        try { setExtraSpaces(JSON.parse(raw)); } catch { /* ignore */ }
-      }
+    // Load spaces from KV (real listings use biz360_tour_spaces_v1_<listingId>)
+    apiGet<TourSpace[]>(`biz360_tour_spaces_v1_${id}`).then((spaces) => {
+      if (spaces && spaces.length > 0) setKvSpaces(spaces);
     });
   }, [id]);
 
-  const allSpaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...extraSpaces];
+  const allSpaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...kvSpaces];
 
-  if (!listing && extraSpaces.length === 0 && allSpaces.length === 0) {
+  if (!listing && kvSpaces.length === 0 && allSpaces.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: "#071221" }]}>
         <Feather name="rotate-ccw" size={40} color="#3B82F6" />

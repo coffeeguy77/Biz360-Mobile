@@ -23,54 +23,8 @@ export interface Thread {
   unreadSeller: number;
 }
 
-function ts(msAgo: number) { return Date.now() - msAgo; }
-
 function defaultThreadMap(): Record<string, Thread> {
-  return {
-    "thread-001": {
-      id: "thread-001",
-      listingId: "listing-cafe-001",
-      listingName: "The Daily Press Espresso Bar",
-      sellerName: "Sarah Mitchell",
-      buyerName: "Alex Chen",
-      messages: [
-        { id: "d1", from: "seller", text: "Hello! Thanks for your enquiry about The Daily Press Espresso Bar. Happy to answer any questions.", timestamp: ts(7200000) },
-        { id: "d2", from: "buyer",  text: "Hi Sarah! I'm very interested. Could you tell me about the lease renewal options?", timestamp: ts(6900000) },
-        { id: "d3", from: "seller", text: "Of course! The current lease has two 3-year renewal options at CPI+1%. The landlord is open to assignment and has been very cooperative.", timestamp: ts(6700000) },
-        { id: "d4", from: "buyer",  text: "Great. Are all the equipment items included in the sale?", timestamp: ts(6500000) },
-        { id: "d5", from: "seller", text: "Yes — all equipment is included. The La Marzocco is valued at $28,000 and was serviced 3 months ago.", timestamp: ts(6300000) },
-      ],
-      updatedAt: ts(6300000),
-      unreadBuyer: 0,
-      unreadSeller: 0,
-    },
-    "thread-002": {
-      id: "thread-002",
-      listingId: "listing-gym-001",
-      listingName: "Iron Republic Gym",
-      sellerName: "James Harrington",
-      buyerName: "Alex Chen",
-      messages: [
-        { id: "d6", from: "seller", text: "Hi Alex, I've forwarded your enquiry to the vendor. They'd like to arrange an inspection next week — does that suit you?", timestamp: ts(86400000) },
-      ],
-      updatedAt: ts(86400000),
-      unreadBuyer: 1,
-      unreadSeller: 0,
-    },
-    "thread-003": {
-      id: "thread-003",
-      listingId: "listing-laundromat-001",
-      listingName: "SpinCity Laundromat",
-      sellerName: "SpinCity Support",
-      buyerName: "Alex Chen",
-      messages: [
-        { id: "d7", from: "seller", text: "The financial statements from FY23 are now available for download in the documents section.", timestamp: ts(259200000) },
-      ],
-      updatedAt: ts(259200000),
-      unreadBuyer: 0,
-      unreadSeller: 0,
-    },
-  };
+  return {};
 }
 
 async function writeMap(map: Record<string, Thread>): Promise<void> {

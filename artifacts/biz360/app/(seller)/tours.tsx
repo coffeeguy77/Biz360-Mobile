@@ -507,6 +507,15 @@ export default function ToursScreen() {
                       </Text>
                     </View>
                     <View style={styles.spaceActions}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const idx = allSpaces.indexOf(space);
+                          router.push(`/tour/${selectedListing!.listingId}?startSpace=${idx}` as any);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Feather name="eye" size={16} color={colors.mutedForeground} />
+                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => openEditSpace(space)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Feather name="edit-2" size={16} color={colors.primary} />
                       </TouchableOpacity>
