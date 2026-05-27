@@ -37,6 +37,7 @@ export interface TourSpace {
   panoramaUrl?: string;
   panoramaStartYaw?: number;
   pins: TourPin[];
+  dirMode?: 4 | 8 | "panorama";
 }
 
 export interface Listing {

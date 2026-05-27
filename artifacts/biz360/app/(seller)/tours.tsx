@@ -105,6 +105,7 @@ export default function ToursScreen() {
   const [draftPin, setDraftPin] = useState<DraftPin>(EMPTY_PIN);
   const [pinPlaceMode, setPinPlaceMode] = useState(false);
   const [panoLayout, setPanoLayout] = useState({ width: 1, height: 1 });
+  const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
 
   const activeDirections = draftSpace.dirMode === 4 ? DIRS_4 : draftSpace.dirMode === 8 ? DIRS_8 : [];
 
@@ -174,6 +175,35 @@ export default function ToursScreen() {
     }
   };
 
+  const openEditSpace = (space: TourSpace) => {
+    const dirMode: 4 | 8 | "panorama" = space.dirMode ?? (space.panoramaUrl ? "panorama" : space.photos.length > 4 ? 8 : 4);
+    const dirs = dirMode === 8 ? DIRS_8 : dirMode === 4 ? DIRS_4 : [];
+    const photos: Record<string, string> = {};
+    if (dirMode !== "panorama") {
+      dirs.forEach((dir, i) => { if (space.photos[i]) photos[dir] = space.photos[i]; });
+    }
+    const draftPins: DraftPin[] = space.pins.map((p) => ({
+      id: p.id,
+      type: p.type,
+      title: p.title,
+      description: p.description,
+      requiresNDA: p.requiresNDA ?? false,
+      visibility: "public" as Visibility,
+      x: p.position.x,
+      y: p.position.y,
+    }));
+    setDraftSpace({ name: space.name, dirMode, photos, panoramaUri: space.panoramaUrl, pins: draftPins });
+    setEditingSpaceId(space.id);
+    setShowSpaceModal(true);
+  };
+
+  const closeSpaceModal = () => {
+    setShowSpaceModal(false);
+    setDraftSpace(EMPTY_SPACE);
+    setEditingSpaceId(null);
+    setPinPlaceMode(false);
+  };
+
   const savePin = () => {
     if (!draftPin.title.trim()) { Alert.alert("Title required", "Please enter a title for this pin."); return; }
     if (!draftPin.description.trim()) { Alert.alert("Description required", "Please add a description so buyers know what this pin is about."); return; }
@@ -197,35 +227,42 @@ export default function ToursScreen() {
     }
 
     setSaving(true);
+    const isEditing = editingSpaceId !== null;
+    // Files already saved to docDir don't need re-copying
+    const alreadySaved = (uri: string) => uri.includes("biz360_tour_");
+
     try {
       const docDir = FileSystem.documentDirectory ?? "";
 
       if (draftSpace.dirMode === "panorama") {
-        // ── Panorama mode: copy single file and store as panoramaUrl ──
+        // ── Panorama mode ──
         setSaveStatus("Saving panorama…");
-        const panoDir = docDir + "biz360_tour_panos/";
-        await FileSystem.makeDirectoryAsync(panoDir, { intermediates: true }).catch(() => {});
-        const spaceId = `space-pano-${Date.now()}`;
         const uri = draftSpace.panoramaUri!;
-        const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
-        const dest = panoDir + spaceId + "." + ext;
-        if (uri.startsWith("file://")) {
-          await FileSystem.copyAsync({ from: uri, to: dest });
+        let panoramaUrl = uri;
+        if (!alreadySaved(uri)) {
+          const panoDir = docDir + "biz360_tour_panos/";
+          await FileSystem.makeDirectoryAsync(panoDir, { intermediates: true }).catch(() => {});
+          const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
+          const dest = panoDir + `pano-${Date.now()}.` + ext;
+          if (uri.startsWith("file://")) await FileSystem.copyAsync({ from: uri, to: dest });
+          panoramaUrl = uri.startsWith("file://") ? dest : uri;
         }
-        const panoramaUrl = uri.startsWith("file://") ? dest : uri;
 
         const tourPins = buildTourPins(draftSpace.pins);
-        const newSpace: TourSpace = {
-          id: spaceId,
+        const savedSpace: TourSpace = {
+          id: isEditing ? editingSpaceId! : `space-pano-${Date.now()}`,
           name: draftSpace.name.trim(),
           photos: [],
           pins: tourPins,
           panoramaUrl,
           panoramaStartYaw: 0,
+          dirMode: "panorama",
         };
-        setCreatedSpaces((prev) => [...prev, newSpace]);
+        setCreatedSpaces((prev) =>
+          isEditing ? prev.map((s) => s.id === editingSpaceId ? savedSpace : s) : [...prev, savedSpace]
+        );
       } else {
-        // ── Directional mode (4 or 8): copy photos, save as flat strip ──
+        // ── Directional mode (4 or 8) ──
         setSaveStatus("Copying photos…");
         const destDir = docDir + "biz360_tour_photos/";
         await FileSystem.makeDirectoryAsync(destDir, { intermediates: true }).catch(() => {});
@@ -235,29 +272,30 @@ export default function ToursScreen() {
         for (const dir of dirs) {
           const uri = draftSpace.photos[dir];
           if (!uri) continue;
-          if (uri.startsWith("file://")) {
+          if (alreadySaved(uri) || !uri.startsWith("file://")) {
+            photoArray.push(uri);
+          } else {
             const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
-            const filename = `${Date.now()}_${dir.replace(/\s/g, "_")}.${ext}`;
-            const dest = destDir + filename;
+            const dest = destDir + `${Date.now()}_${dir.replace(/\s/g, "_")}.${ext}`;
             await FileSystem.copyAsync({ from: uri, to: dest });
             photoArray.push(dest);
-          } else {
-            photoArray.push(uri);
           }
         }
 
         const tourPins = buildTourPins(draftSpace.pins);
-        const newSpace: TourSpace = {
-          id: `space-user-${Date.now()}`,
+        const savedSpace: TourSpace = {
+          id: isEditing ? editingSpaceId! : `space-user-${Date.now()}`,
           name: draftSpace.name.trim(),
           photos: photoArray,
           pins: tourPins,
+          dirMode: draftSpace.dirMode,
         };
-        setCreatedSpaces((prev) => [...prev, newSpace]);
+        setCreatedSpaces((prev) =>
+          isEditing ? prev.map((s) => s.id === editingSpaceId ? savedSpace : s) : [...prev, savedSpace]
+        );
       }
 
-      setShowSpaceModal(false);
-      setDraftSpace(EMPTY_SPACE);
+      closeSpaceModal();
     } catch (err) {
       Alert.alert("Save failed", "Could not save photos. Please try again.");
     } finally {
@@ -361,6 +399,11 @@ export default function ToursScreen() {
                       <Feather name="eye" size={18} color={isNew ? colors.accent : colors.primary} />
                     </TouchableOpacity>
                     {isNew && (
+                      <TouchableOpacity onPress={() => openEditSpace(space)}>
+                        <Feather name="edit-2" size={16} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                    {isNew && (
                       <TouchableOpacity onPress={() => setCreatedSpaces((prev) => prev.filter((s) => s.id !== space.id))}>
                         <Feather name="trash-2" size={17} color="#EF4444" />
                       </TouchableOpacity>
@@ -384,17 +427,17 @@ export default function ToursScreen() {
         </View>
       </ScrollView>
 
-      {/* ── Create Space Modal ── */}
-      <Modal visible={showSpaceModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSpaceModal(false)}>
+      {/* ── Create / Edit Space Modal ── */}
+      <Modal visible={showSpaceModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeSpaceModal}>
         <View style={[styles.modal, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity onPress={() => setShowSpaceModal(false)}>
+            <TouchableOpacity onPress={closeSpaceModal}>
               <Text style={[styles.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Tour Space</Text>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>{editingSpaceId ? "Edit Space" : "New Tour Space"}</Text>
             <TouchableOpacity onPress={handleSaveSpace} disabled={saving}>
               <Text style={[styles.modalSave, { color: saving ? colors.mutedForeground : colors.primary }]}>
-                {saving ? (saveStatus || "Saving…") : "Create"}
+                {saving ? (saveStatus || "Saving…") : editingSpaceId ? "Save" : "Create"}
               </Text>
             </TouchableOpacity>
           </View>
