@@ -196,7 +196,7 @@ export function FilterSheet({ visible, filters, onApply, onClose }: Props) {
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
+  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)" },
   sheet: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
