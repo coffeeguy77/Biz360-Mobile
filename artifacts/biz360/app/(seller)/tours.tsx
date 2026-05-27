@@ -390,7 +390,7 @@ export default function ToursScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>SPACE NAME</Text>
             <TextInput
               style={[styles.nameInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
@@ -550,23 +550,20 @@ export default function ToursScreen() {
               </View>
             )}
           </ScrollView>
-        </View>
-      </Modal>
 
-      {/* ── Create Pin Modal ── */}
-      <Modal visible={showPinModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPinModal(false)}>
-        <View style={[styles.modal, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity onPress={() => setShowPinModal(false)}>
-              <Text style={[styles.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Info Pin</Text>
-            <TouchableOpacity onPress={savePin}>
-              <Text style={[styles.modalSave, { color: colors.primary }]}>Add</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {/* ── Pin editor — inline overlay so it works while space modal is open ── */}
+          {showPinModal && (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 50 }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                <TouchableOpacity onPress={() => setShowPinModal(false)}>
+                  <Text style={[styles.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Info Pin</Text>
+                <TouchableOpacity onPress={savePin}>
+                  <Text style={[styles.modalSave, { color: colors.primary }]}>Add</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PIN TYPE</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pinTypeRow}>
               {ALL_PIN_TYPES.map(({ type, label, icon, color: pinColor }) => {
@@ -667,7 +664,9 @@ export default function ToursScreen() {
                 thumbColor={draftPin.requiresNDA ? "#F59E0B" : colors.mutedForeground}
               />
             </View>
-          </ScrollView>
+              </ScrollView>
+            </View>
+          )}
         </View>
       </Modal>
     </View>

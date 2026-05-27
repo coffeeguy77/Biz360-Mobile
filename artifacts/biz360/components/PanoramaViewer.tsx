@@ -100,82 +100,93 @@ function buildFlatPanoHtml(panoSrc: string, pins: TourPin[]): string {
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}
-#outer{position:relative;width:100vw;height:100vh;overflow:hidden}
-#img{position:absolute;top:0;left:0;height:100vh;width:auto;display:block;pointer-events:none;user-select:none;-webkit-user-select:none;transform-origin:0 0;will-change:transform}
+#outer{width:100vw;height:100vh;overflow:hidden;background-repeat:repeat-x;background-position:0 0;background-size:auto 100vh}
 .pin{position:fixed;transform:translate(-50%,-50%);border-radius:20px;padding:6px 12px;color:#fff;font:700 12px -apple-system,system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:1.5px solid rgba(255,255,255,0.25);display:flex;align-items:center;gap:5px;cursor:pointer;pointer-events:auto;user-select:none;-webkit-user-select:none;z-index:10}
 #hint{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.7);padding:5px 16px;border-radius:20px;font:13px -apple-system,system-ui,sans-serif;pointer-events:none;z-index:10;opacity:1;transition:opacity 1s}
 </style>
 </head><body>
-<div id="outer">
-  <img id="img" src="${panoSrc}" />
-</div>
+<div id="outer"></div>
 <div id="hint">← Swipe to pan →</div>
 <script>
 var PINS=${JSON.stringify(pinsData)};
 var VW=window.innerWidth,VH=window.innerHeight;
-var imgW=VW, sc=1, tx=0, ty=0;
-var raf=null, drag=null, pinch=null, lastTap=0;
+// bgX can be any value — CSS repeat-x handles the tiling seamlessly
+var bgX=0,ty=0,sc=1,imgW=VW;
+var raf=null,drag=null,pinch=null,lastTap=0;
+var outer=document.getElementById('outer');
 
-// Fade hint after 2.5s
 setTimeout(function(){document.getElementById('hint').style.opacity='0';},2500);
 
-function clampTx(x,s){
-  var scaled=imgW*s;
-  if(scaled<=VW) return (VW-scaled)/2;
-  return Math.max(VW-scaled,Math.min(0,x));
-}
-function clampTy(y,s){
-  var maxTy=0,minTy=VH*(1-s);
-  return Math.max(minTy,Math.min(maxTy,y));
-}
+// Load image dimensions without re-fetching (browser caches data URIs by reference)
+var _dim=new Image();
+_dim.onload=function(){
+  imgW=_dim.naturalWidth*(VH/_dim.naturalHeight);
+  render();
+};
+_dim.src='${panoSrc}';
+
+// Set background image once (separate from dimensions load)
+outer.style.backgroundImage="url('${panoSrc}')";
 
 function applyTransform(){
-  document.getElementById('img').style.transform='translate3d('+tx+'px,'+ty+'px,0) scale('+sc+')';
+  var totalW=imgW*sc;
+  outer.style.backgroundSize=totalW+'px '+(VH*sc)+'px';
+  outer.style.backgroundPosition=bgX+'px '+ty+'px';
 }
 
+function clampTy(y,s){return Math.max(VH*(1-s),Math.min(0,y));}
+
 function updatePins(){
+  var totalW=imgW*sc;
   PINS.forEach(function(p,j){
-    var px=p.posX*imgW*sc+tx;
+    // Wrap rawX into [0, totalW) so the pin always appears on the visible repeat
+    var rawX=p.posX*totalW+bgX;
+    var screenX=((rawX%totalW)+totalW)%totalW;
     var py=p.posY*VH*sc+ty;
-    var vis=px>-160&&px<VW+160&&py>0&&py<VH;
+    var vis=screenX<VW+160&&py>0&&py<VH;
     pinEls[j].style.display=vis?'flex':'none';
-    if(vis){pinEls[j].style.left=px+'px';pinEls[j].style.top=py+'px';}
+    if(vis){pinEls[j].style.left=screenX+'px';pinEls[j].style.top=py+'px';}
   });
 }
 
 function render(){applyTransform();updatePins();}
 
-// Momentum animation — vx in px/ms
+// Momentum — bgX is free (no X clamping), CSS repeat handles edges
 function coast(vx){
   if(raf){cancelAnimationFrame(raf);raf=null;}
   var t0=performance.now();
-  var decel=0.92; // 8% speed loss per frame at 60fps → stops in ~0.8s
+  var decel=0.92;
   function step(now){
-    var dt=Math.min(now-t0,64); t0=now; // cap dt so tab-wake doesn't teleport
+    var dt=Math.min(now-t0,64);t0=now;
     vx*=Math.pow(decel,dt/16.7);
-    tx=clampTx(tx+vx*dt,sc); // px/ms * ms = px
+    bgX+=vx*dt;
     render();
-    if(Math.abs(vx)>0.01&&raf!==null) raf=requestAnimationFrame(step);
+    if(Math.abs(vx)>0.01&&raf!==null)raf=requestAnimationFrame(step);
     else raf=null;
   }
   raf=requestAnimationFrame(step);
 }
 
-// Build pin elements
+// Build pin elements (appended to body, not outer, so outer touches don't block them)
 var pinEls=PINS.map(function(p){
   var el=document.createElement('div');
   el.className='pin';
   el.style.background=p.color;
   el.innerHTML=(p.locked?'<span style="font-size:10px">\uD83D\uDD12</span> ':'')+p.icon+' '+p.title;
-  el.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));});
-  el.addEventListener('click',function(e){e.stopPropagation();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));});
+  el.addEventListener('touchend',function(e){
+    e.stopPropagation();e.preventDefault();
+    if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));
+  });
+  el.addEventListener('click',function(e){
+    e.stopPropagation();
+    if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));
+  });
   document.body.appendChild(el);
   return el;
 });
 
 function ptDist(a,b){var dx=a.clientX-b.clientX,dy=a.clientY-b.clientY;return Math.sqrt(dx*dx+dy*dy);}
 
-var outer=document.getElementById('outer');
 outer.addEventListener('touchstart',function(e){
   if(raf){cancelAnimationFrame(raf);raf=null;}
   var ts=Array.from(e.touches);
@@ -183,22 +194,21 @@ outer.addEventListener('touchstart',function(e){
     var now=Date.now();
     if(now-lastTap<280){
       e.preventDefault();lastTap=0;
-      if(sc>1.1){sc=1;tx=clampTx(tx,1);ty=0;}
+      if(sc>1.1){sc=1;ty=0;}
       else{
-        var px=ts[0].clientX,py=ts[0].clientY;
-        var nsc=2.5;
-        tx=px-(px-tx)/sc*nsc;
+        var nsc=2.5,px=ts[0].clientX,py=ts[0].clientY;
+        bgX=px-(px-bgX)/sc*nsc;
         ty=py-(py-ty)/sc*nsc;
-        sc=nsc;tx=clampTx(tx,sc);ty=clampTy(ty,sc);
+        sc=nsc;ty=clampTy(ty,sc);
       }
       render();drag=null;pinch=null;return;
     }
     lastTap=now;
-    drag={stx:tx,sty:ty,x0:ts[0].clientX,y0:ts[0].clientY,lx:ts[0].clientX,t:Date.now(),vx:0};
+    drag={stBgX:bgX,sty:ty,x0:ts[0].clientX,y0:ts[0].clientY,lx:ts[0].clientX,t:Date.now(),vx:0};
     pinch=null;
   } else if(ts.length>=2){
     drag=null;
-    pinch={stx:tx,sty:ty,ssc:sc,d0:ptDist(ts[0],ts[1]),mx0:(ts[0].clientX+ts[1].clientX)/2,my0:(ts[0].clientY+ts[1].clientY)/2};
+    pinch={stBgX:bgX,sty:ty,ssc:sc,d0:ptDist(ts[0],ts[1]),mx0:(ts[0].clientX+ts[1].clientX)/2,my0:(ts[0].clientY+ts[1].clientY)/2};
   }
 },{passive:false});
 
@@ -207,38 +217,31 @@ outer.addEventListener('touchmove',function(e){
   var ts=Array.from(e.touches);
   if(ts.length===1&&drag){
     var now=Date.now(),dt=Math.max(1,now-drag.t);
-    drag.vx=(ts[0].clientX-drag.lx)/dt; // px/ms
+    drag.vx=(ts[0].clientX-drag.lx)/dt;
     drag.lx=ts[0].clientX;drag.t=now;
-    tx=clampTx(drag.stx+(ts[0].clientX-drag.x0),sc);
-    if(sc>1.05) ty=clampTy(drag.sty+(ts[0].clientY-drag.y0),sc);
+    bgX=drag.stBgX+(ts[0].clientX-drag.x0); // free — no X clamp
+    if(sc>1.05)ty=clampTy(drag.sty+(ts[0].clientY-drag.y0),sc);
     render();
   } else if(ts.length>=2&&pinch){
     var d=ptDist(ts[0],ts[1]);
     var mx=(ts[0].clientX+ts[1].clientX)/2,my=(ts[0].clientY+ts[1].clientY)/2;
     var nsc=Math.max(1,Math.min(5,pinch.ssc*d/pinch.d0));
-    tx=pinch.mx0-(pinch.mx0-pinch.stx)/pinch.ssc*nsc+(mx-pinch.mx0);
+    bgX=pinch.mx0-(pinch.mx0-pinch.stBgX)/pinch.ssc*nsc+(mx-pinch.mx0);
     ty=pinch.my0-(pinch.my0-pinch.sty)/pinch.ssc*nsc+(my-pinch.my0);
-    sc=nsc;tx=clampTx(tx,sc);ty=clampTy(ty,sc);render();
+    sc=nsc;ty=clampTy(ty,sc);render();
   }
 },{passive:false});
 
 outer.addEventListener('touchend',function(e){
   var ts=Array.from(e.touches);
   if(ts.length===0){
-    if(drag){coast(drag.vx);}
+    if(drag)coast(drag.vx);
     drag=null;
   } else if(ts.length===1&&pinch){
     pinch=null;
-    drag={stx:tx,sty:ty,x0:ts[0].clientX,y0:ts[0].clientY,lx:ts[0].clientX,t:Date.now(),vx:0};
+    drag={stBgX:bgX,sty:ty,x0:ts[0].clientX,y0:ts[0].clientY,lx:ts[0].clientX,t:Date.now(),vx:0};
   }
 },{passive:true});
-
-// Init: once image loads, set starting position at left edge (or center if narrow)
-document.getElementById('img').addEventListener('load',function(){
-  imgW=this.naturalWidth*(VH/this.naturalHeight);
-  tx=clampTx(0,sc);
-  render();
-});
 
 render();
 </script>
