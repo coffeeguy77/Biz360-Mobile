@@ -19,7 +19,6 @@ import type { AdminUser } from "@/lib/adminStore";
 
 const domain   = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}/api` : "/api";
-
 const CODE_LEN = 6;
 
 function maskPhone(phone: string): string {
@@ -35,15 +34,15 @@ function defaultPlanForRole(role: string): string | undefined {
 
 export default function VerifyPhoneScreen() {
   const insets = useSafeAreaInsets();
-  const { login } = useAuth();
+  const { loginAsReal } = useAuth();
   const { phone, name, role } = useLocalSearchParams<{ phone: string; name: string; role: string }>();
 
-  const [digits,    setDigits]    = useState<string[]>(Array(CODE_LEN).fill(""));
+  const [code,      setCode]      = useState("");
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
   const [error,     setError]     = useState("");
   const [countdown, setCountdown] = useState(30);
-  const inputRefs = useRef<(TextInput | null)[]>([]);
+  const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -51,33 +50,13 @@ export default function VerifyPhoneScreen() {
     return () => clearTimeout(t);
   }, [countdown]);
 
-  const handleDigit = (idx: number, val: string) => {
-    const digit = val.replace(/\D/g, "").slice(-1);
-    const next  = [...digits];
-    next[idx]   = digit;
-    setDigits(next);
+  const handleCodeChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, "").slice(0, CODE_LEN);
+    setCode(cleaned);
     setError("");
-    if (digit && idx < CODE_LEN - 1) {
-      inputRefs.current[idx + 1]?.focus();
-    }
-    if (digit && idx === CODE_LEN - 1) {
-      const code = [...next].join("");
-      if (code.length === CODE_LEN) verify(code);
-    }
+    if (cleaned.length === CODE_LEN) verify(cleaned);
   };
 
-  const handleKeyPress = (idx: number, key: string) => {
-    if (key === "Backspace") {
-      if (digits[idx] === "" && idx > 0) {
-        const next    = [...digits];
-        next[idx - 1] = "";
-        setDigits(next);
-        inputRefs.current[idx - 1]?.focus();
-      }
-    }
-  };
-
-  // After OTP approval, upsert this user into the admin users list so revenue stats reflect them
   async function registerInAdminStore(userId: string) {
     try {
       const existing = await getUsers();
@@ -95,13 +74,13 @@ export default function VerifyPhoneScreen() {
         await saveUsers([adminUser, ...existing]);
       }
     } catch {
-      // Non-critical — don't block login if this fails
+      // non-critical
     }
   }
 
   const verify = async (codeOverride?: string) => {
-    const code = codeOverride ?? digits.join("");
-    if (code.length < CODE_LEN) { setError("Enter all 6 digits"); return; }
+    const otp = codeOverride ?? code;
+    if (otp.length < CODE_LEN) { setError("Enter all 6 digits"); return; }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setVerifying(true);
@@ -111,14 +90,14 @@ export default function VerifyPhoneScreen() {
       const res  = await fetch(`${API_BASE}/biz360/auth/verify-otp`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ phone, code }),
+        body:    JSON.stringify({ phone, code: otp }),
       });
       const json = await res.json() as { ok?: boolean; error?: string };
 
       if (!res.ok || !json.ok) {
         setError(json.error ?? "Incorrect code. Please try again.");
-        setDigits(Array(CODE_LEN).fill(""));
-        inputRefs.current[0]?.focus();
+        setCode("");
+        inputRef.current?.focus();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setVerifying(false);
         return;
@@ -126,19 +105,17 @@ export default function VerifyPhoneScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Stable ID: reuse existing user's ID for this phone, or derive one from phone only
-      const allUsers   = await getUsers().catch(() => [] as AdminUser[]);
-      const prevUser   = allUsers.find((u) => u.email === phone);
-      const userId     = prevUser?.id ?? `u-${phone?.replace(/\D/g, "")}`;
+      const allUsers = await getUsers().catch(() => [] as AdminUser[]);
+      const prevUser = allUsers.find((u) => u.email === phone);
+      const userId   = prevUser?.id ?? `u-${phone?.replace(/\D/g, "")}`;
 
-      // Register in admin store (non-blocking)
       registerInAdminStore(userId);
 
-      await login({
+      await loginAsReal({
         id:    userId,
         name:  name ?? "User",
         email: phone ?? "",
-        role:  (role as UserRole) ?? "buyer",
+        role:  (role as UserRole) ?? "seller",
       });
       setVerifying(false);
       router.replace("/");
@@ -152,7 +129,7 @@ export default function VerifyPhoneScreen() {
     if (countdown > 0) return;
     setResending(true);
     setError("");
-    setDigits(Array(CODE_LEN).fill(""));
+    setCode("");
     try {
       await fetch(`${API_BASE}/biz360/auth/send-otp`, {
         method:  "POST",
@@ -165,10 +142,8 @@ export default function VerifyPhoneScreen() {
       setError("Failed to resend. Please try again.");
     }
     setResending(false);
-    inputRefs.current[0]?.focus();
+    inputRef.current?.focus();
   };
-
-  const filled = digits.filter(Boolean).length;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 16 }]}>
@@ -186,27 +161,40 @@ export default function VerifyPhoneScreen() {
         <Text style={styles.phoneHighlight}>{maskPhone(phone ?? "")}</Text>
       </Text>
 
-      <View style={styles.codeRow}>
-        {digits.map((d, idx) => (
-          <TextInput
+      {/* ── OTP boxes — tap any box to focus the hidden input ── */}
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={() => inputRef.current?.focus()}
+        style={styles.codeRow}
+      >
+        {Array.from({ length: CODE_LEN }).map((_, idx) => (
+          <View
             key={idx}
-            ref={(r) => { inputRefs.current[idx] = r; }}
             style={[
               styles.codeBox,
-              d ? styles.codeBoxFilled : null,
-              error ? styles.codeBoxError : null,
+              code[idx]             ? styles.codeBoxFilled  : null,
+              code.length === idx   ? styles.codeBoxActive  : null,
+              error                 ? styles.codeBoxError   : null,
             ]}
-            value={d}
-            onChangeText={(val) => handleDigit(idx, val)}
-            onKeyPress={({ nativeEvent }) => handleKeyPress(idx, nativeEvent.key)}
-            keyboardType="number-pad"
-            maxLength={1}
-            selectTextOnFocus
-            caretHidden
-            autoFocus={idx === 0}
-          />
+          >
+            <Text style={styles.codeDigit}>{code[idx] ?? ""}</Text>
+          </View>
         ))}
-      </View>
+      </TouchableOpacity>
+
+      {/* Single hidden TextInput — captures typed + SMS auto-fill */}
+      <TextInput
+        ref={inputRef}
+        value={code}
+        onChangeText={handleCodeChange}
+        keyboardType="number-pad"
+        maxLength={CODE_LEN}
+        textContentType="oneTimeCode"
+        autoComplete="one-time-code"
+        autoFocus
+        style={styles.hiddenInput}
+        caretHidden
+      />
 
       {error ? (
         <View style={styles.errorRow}>
@@ -216,16 +204,16 @@ export default function VerifyPhoneScreen() {
       ) : null}
 
       <TouchableOpacity
-        style={[styles.verifyBtn, { opacity: verifying || filled < CODE_LEN ? 0.6 : 1 }]}
+        style={[styles.verifyBtn, { opacity: verifying || code.length < CODE_LEN ? 0.6 : 1 }]}
         onPress={() => verify()}
-        disabled={verifying || filled < CODE_LEN}
+        disabled={verifying || code.length < CODE_LEN}
       >
         {verifying ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <>
             <Feather name="check-circle" size={18} color="#fff" />
-            <Text style={styles.verifyBtnText}>Verify & Create Account</Text>
+            <Text style={styles.verifyBtnText}>Verify & Sign In</Text>
           </>
         )}
       </TouchableOpacity>
@@ -252,24 +240,27 @@ export default function VerifyPhoneScreen() {
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: "#071221", paddingHorizontal: 24 },
-  backBtn:         { marginBottom: 32 },
-  iconWrap:        { width: 64, height: 64, borderRadius: 20, backgroundColor: "#0F2040", alignItems: "center", justifyContent: "center", marginBottom: 24 },
-  heading:         { color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold", marginBottom: 10 },
-  sub:             { color: "#8B9CB8", fontSize: 15, fontFamily: "Inter_400Regular", lineHeight: 22, marginBottom: 36 },
-  phoneHighlight:  { color: "#fff", fontFamily: "Inter_600SemiBold" },
-  codeRow:         { flexDirection: "row", gap: 10, marginBottom: 20 },
-  codeBox:         { flex: 1, aspectRatio: 1, borderRadius: 14, borderWidth: 1.5, borderColor: "#1E3A5C", backgroundColor: "#0F2040", color: "#fff", fontSize: 24, fontFamily: "Inter_700Bold", textAlign: "center" },
-  codeBoxFilled:   { borderColor: "#3B82F6", backgroundColor: "#1E3A5C" },
-  codeBoxError:    { borderColor: "#EF4444" },
-  errorRow:        { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
-  errorText:       { color: "#EF4444", fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
-  verifyBtn:       { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "#2563EB", borderRadius: 14, paddingVertical: 16, marginBottom: 20 },
-  verifyBtnText:   { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
-  resendRow:       { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 16 },
-  resendLabel:     { color: "#8B9CB8", fontSize: 14, fontFamily: "Inter_400Regular" },
-  resendLink:      { color: "#3B82F6", fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  resendCooldown:  { color: "#475569", fontSize: 14, fontFamily: "Inter_400Regular" },
-  hint:            { textAlign: "center", color: "#475569", fontSize: 13, fontFamily: "Inter_400Regular" },
-  hintLink:        { color: "#8B9CB8", fontFamily: "Inter_600SemiBold" },
+  container:      { flex: 1, backgroundColor: "#071221", paddingHorizontal: 24 },
+  backBtn:        { marginBottom: 32 },
+  iconWrap:       { width: 64, height: 64, borderRadius: 20, backgroundColor: "#0F2040", alignItems: "center", justifyContent: "center", marginBottom: 24 },
+  heading:        { color: "#fff", fontSize: 26, fontFamily: "Inter_700Bold", marginBottom: 10 },
+  sub:            { color: "#8B9CB8", fontSize: 15, fontFamily: "Inter_400Regular", lineHeight: 22, marginBottom: 36 },
+  phoneHighlight: { color: "#fff", fontFamily: "Inter_600SemiBold" },
+  codeRow:        { flexDirection: "row", gap: 10, marginBottom: 4 },
+  codeBox:        { flex: 1, aspectRatio: 1, borderRadius: 14, borderWidth: 1.5, borderColor: "#1E3A5C", backgroundColor: "#0F2040", alignItems: "center", justifyContent: "center" },
+  codeBoxFilled:  { borderColor: "#3B82F6", backgroundColor: "#1E3A5C" },
+  codeBoxActive:  { borderColor: "#3B82F6" },
+  codeBoxError:   { borderColor: "#EF4444" },
+  codeDigit:      { color: "#fff", fontSize: 24, fontFamily: "Inter_700Bold" },
+  hiddenInput:    { position: "absolute", width: 1, height: 1, opacity: 0 },
+  errorRow:       { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, marginTop: 12 },
+  errorText:      { color: "#EF4444", fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
+  verifyBtn:      { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "#2563EB", borderRadius: 14, paddingVertical: 16, marginBottom: 20, marginTop: 16 },
+  verifyBtnText:  { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
+  resendRow:      { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 16 },
+  resendLabel:    { color: "#8B9CB8", fontSize: 14, fontFamily: "Inter_400Regular" },
+  resendLink:     { color: "#3B82F6", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  resendCooldown: { color: "#475569", fontSize: 14, fontFamily: "Inter_400Regular" },
+  hint:           { textAlign: "center", color: "#475569", fontSize: 13, fontFamily: "Inter_400Regular" },
+  hintLink:       { color: "#8B9CB8", fontFamily: "Inter_600SemiBold" },
 });
