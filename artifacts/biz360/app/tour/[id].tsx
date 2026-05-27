@@ -14,21 +14,32 @@ export default function TourScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const listing = DEMO_LISTINGS.find((l) => l.id === id);
-  const [kvSpaces, setKvSpaces] = useState<TourSpace[]>([]);
+  const [kvSpaces,  setKvSpaces]  = useState<TourSpace[]>([]);
+  const [kvLoading, setKvLoading] = useState(true);
   const [activeSpaceIdx, setActiveSpaceIdx] = useState(startSpace ? parseInt(startSpace, 10) : 0);
-  const [activePin, setActivePin] = useState<TourPin | null>(null);
+  const [activePin,      setActivePin]      = useState<TourPin | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    // Load spaces from KV (real listings use biz360_tour_spaces_v1_<listingId>)
     apiGet<TourSpace[]>(`biz360_tour_spaces_v1_${id}`).then((spaces) => {
       if (spaces && spaces.length > 0) setKvSpaces(spaces);
+      setKvLoading(false);
     });
   }, [id]);
 
   const allSpaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...kvSpaces];
 
-  if (!listing && kvSpaces.length === 0 && allSpaces.length === 0) {
+  // Wait for async fetch before showing "no tour" — avoids false negative on first render
+  if (kvLoading && !listing) {
+    return (
+      <View style={[styles.center, { backgroundColor: "#071221" }]}>
+        <Feather name="rotate-ccw" size={28} color="#3B82F6" />
+        <Text style={styles.noTourText}>Loading tour…</Text>
+      </View>
+    );
+  }
+
+  if (!listing && allSpaces.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: "#071221" }]}>
         <Feather name="rotate-ccw" size={40} color="#3B82F6" />

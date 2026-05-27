@@ -4,52 +4,80 @@ import React, { useCallback, useState } from "react";
 import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { DEMO_LISTINGS } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing } from "@/lib/adminStore";
-
-const DEMO_LEADS = [
-  { id: "sl1", name: "David Park",    action: "Requested financials",      time: "1h ago",     quality: "hot",  canMessage: true  },
-  { id: "sl2", name: "Emma Thompson", action: "Completed 360 Tour (4:32)", time: "3h ago",     quality: "warm", canMessage: false },
-  { id: "sl3", name: "Mike Johnson",  action: "Saved listing",             time: "Yesterday",  quality: "warm", canMessage: true  },
-  { id: "sl4", name: "Lisa Chen",     action: "Viewed listing",            time: "2 days ago", quality: "cold", canMessage: false },
-  { id: "sl5", name: "Tom Wilson",    action: "Requested NDA",             time: "3 days ago", quality: "hot",  canMessage: true  },
-];
+import { getThreads, formatThreadTime, Thread } from "@/lib/messageStore";
 
 const QC: Record<string, string>       = { hot: "#EF4444", warm: "#F59E0B", cold: "#3B82F6" };
 const QC_LABEL: Record<string, string> = { hot: "HOT", warm: "WARM", cold: "COLD" };
 type Filter = "all" | "hot" | "warm" | "cold";
 
+interface Lead {
+  id: string;
+  name: string;
+  action: string;
+  time: string;
+  quality: "hot" | "warm" | "cold";
+  canMessage: boolean;
+  threadId: string;
+  listingName: string;
+}
+
+function threadToLead(t: Thread): Lead {
+  const ageMs  = Date.now() - t.updatedAt;
+  const unread = (t.unreadSeller ?? 0) > 0;
+  const quality: "hot" | "warm" | "cold" =
+    unread || ageMs < 3_600_000   ? "hot"  :
+    ageMs  < 86_400_000           ? "warm" : "cold";
+  const last = t.messages[t.messages.length - 1];
+  const action = last ? (last.from === "buyer" ? last.text.slice(0, 60) : "You replied") : "Started a conversation";
+  return {
+    id:          t.id,
+    name:        t.buyerName,
+    action,
+    time:        formatThreadTime(t.updatedAt),
+    quality,
+    canMessage:  true,
+    threadId:    t.id,
+    listingName: t.listingName,
+  };
+}
+
 export default function SellerLeads() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [filter, setFilter]       = useState<Filter>("all");
+  const [filter,     setFilter]     = useState<Filter>("all");
   const [myListings, setMyListings] = useState<PendingListing[]>([]);
+  const [leads,      setLeads]      = useState<Lead[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       if (!user?.id) return;
-      getPendingListings().then((all) =>
-        setMyListings(all.filter((p) => p.submittedBy === user.id)),
-      );
+      let active = true;
+      (async () => {
+        const [allListings, allThreads] = await Promise.all([
+          getPendingListings(),
+          getThreads(),
+        ]);
+        if (!active) return;
+        const mine      = allListings.filter((p) => p.submittedBy === user.id);
+        const myIds     = new Set(mine.map((p) => p.listingId));
+        const myThreads = allThreads.filter((t) => myIds.has(t.listingId));
+        setMyListings(mine);
+        setLeads(myThreads.map(threadToLead));
+      })();
+      return () => { active = false; };
     }, [user?.id]),
   );
 
-  const hasListings    = myListings.length > 0;
-  const leads          = hasListings ? DEMO_LEADS : [];
-  const filtered       = filter === "all" ? leads : leads.filter((l) => l.quality === filter);
-  const hotCount       = leads.filter((l) => l.quality === "hot").length;
+  const hasListings = myListings.length > 0;
+  const filtered    = filter === "all" ? leads : leads.filter((l) => l.quality === filter);
+  const hotCount    = leads.filter((l) => l.quality === "hot").length;
 
-  const primaryListing = myListings.length > 0
-    ? (DEMO_LISTINGS.find((d) => d.id === myListings[0].listingId) ?? null)
-    : null;
-
-  const handleMessage = (lead: typeof DEMO_LEADS[0]) => {
-    const threadId    = `seller-lead-${lead.id}`;
-    const listingName = primaryListing?.businessName ?? "Your Listing";
+  const handleMessage = (lead: Lead) => {
     router.push(
-      `/thread/${threadId}?listingName=${encodeURIComponent(listingName)}&sellerName=${encodeURIComponent(user?.name ?? "Seller")}&buyerName=${encodeURIComponent(lead.name)}` as any,
+      `/thread/${lead.threadId}?listingName=${encodeURIComponent(lead.listingName)}&sellerName=${encodeURIComponent(user?.name ?? "Seller")}&buyerName=${encodeURIComponent(lead.name)}` as any,
     );
   };
 

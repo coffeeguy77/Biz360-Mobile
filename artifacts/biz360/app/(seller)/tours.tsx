@@ -9,6 +9,7 @@ import {
   Alert,
   Dimensions,
   Image,
+  ImageBackground,
   Modal,
   Platform,
   ScrollView,
@@ -172,6 +173,12 @@ export default function ToursScreen() {
   }, [allSpaces, spacesLoaded]);
 
   const selectedListing = listings.find((l) => l.listingId === selectedId);
+  const bannerPhoto =
+    selectedListing?.photos?.[0] ??
+    allSpaces[0]?.photos?.[0]    ??
+    allSpaces[0]?.panoramaUrl    ??
+    null;
+  const heroBg = selectedListing?.heroColor ?? "#0F2040";
 
   // ── Photo pickers ──────────────────────────────────────────────────────────
 
@@ -457,10 +464,22 @@ export default function ToursScreen() {
           {/* ── Tour card ── */}
           {selectedListing && (
             <View style={[styles.tourCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.tourHero, { backgroundColor: selectedListing.heroColor ?? "#0F2040" }]}>
-                <Feather name="rotate-ccw" size={28} color="#fff" />
-                <Text style={styles.tourHeroTitle}>{selectedListing.businessName ?? "My Listing"}</Text>
-              </View>
+              {bannerPhoto ? (
+                <ImageBackground
+                  source={{ uri: bannerPhoto }}
+                  style={styles.tourHero}
+                  imageStyle={styles.tourHeroImg}
+                >
+                  <View style={styles.tourHeroOverlay} />
+                  <Feather name="rotate-ccw" size={28} color="#fff" />
+                  <Text style={styles.tourHeroTitle}>{selectedListing.businessName ?? "My Listing"}</Text>
+                </ImageBackground>
+              ) : (
+                <View style={[styles.tourHero, { backgroundColor: heroBg }]}>
+                  <Feather name="rotate-ccw" size={28} color="#fff" />
+                  <Text style={styles.tourHeroTitle}>{selectedListing.businessName ?? "My Listing"}</Text>
+                </View>
+              )}
 
               <View style={styles.tourBody}>
                 {/* Stats row */}
@@ -1045,7 +1064,9 @@ const styles = StyleSheet.create({
   pickerChip:        { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, marginRight: 8 },
   pickerChipText:    { fontSize: 13, fontFamily: "Inter_600SemiBold", maxWidth: 180 },
   tourCard:          { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  tourHero:          { height: 100, alignItems: "center", justifyContent: "center", gap: 8 },
+  tourHero:          { height: 100, alignItems: "center", justifyContent: "center", gap: 8, overflow: "hidden" },
+  tourHeroImg:       { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  tourHeroOverlay:   { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.45)" },
   tourHeroTitle:     { color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" },
   tourBody:          { padding: 14, gap: 14 },
   tourStats:         { flexDirection: "row", justifyContent: "space-between" },

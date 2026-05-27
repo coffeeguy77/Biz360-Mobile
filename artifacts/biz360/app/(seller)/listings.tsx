@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing, savePendingListings } from "@/lib/adminStore";
+import { apiGet } from "@/lib/apiStore";
 
 const STATUS_CONFIG = {
   pending:  { label: "Pending Review", color: "#F59E0B", icon: "clock"       },
@@ -20,13 +21,31 @@ export default function SellerListings() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [listings, setListings] = useState<PendingListing[]>([]);
+  const [listings,    setListings]    = useState<PendingListing[]>([]);
+  const [tourPhotos,  setTourPhotos]  = useState<Record<string, string | null>>({});
 
   useFocusEffect(
     useCallback(() => {
-      getPendingListings().then((all) => {
-        setListings(all.filter((p) => p.submittedBy === user?.id));
-      });
+      if (!user?.id) return;
+      let active = true;
+      (async () => {
+        const all  = await getPendingListings();
+        const mine = all.filter((p) => p.submittedBy === user!.id);
+        if (!active) return;
+        setListings(mine);
+        // Load first available photo (listing photo or tour space photo) per listing
+        const entries = await Promise.all(
+          mine.map(async (l) => {
+            if (l.photos?.[0]) return [l.listingId, l.photos[0]] as [string, string];
+            const spaces = await apiGet<any[]>(`biz360_tour_spaces_v1_${l.listingId}`);
+            const photo  = spaces?.[0]?.photos?.[0] ?? spaces?.[0]?.panoramaUrl ?? null;
+            return [l.listingId, photo] as [string, string | null];
+          }),
+        );
+        if (!active) return;
+        setTourPhotos(Object.fromEntries(entries));
+      })();
+      return () => { active = false; };
     }, [user?.id]),
   );
 
@@ -89,7 +108,7 @@ export default function SellerListings() {
           const suburb     = demo?.suburb       ?? item.suburb       ?? "";
           const state      = demo?.state        ?? item.state        ?? "";
           const category   = demo?.category     ?? item.category     ?? "";
-          const featureImg = item.photos?.[0] ?? demo?.photos?.[0] ?? null;
+          const featureImg = item.photos?.[0] ?? tourPhotos[item.listingId] ?? null;
 
           const heroInner = (
             <>

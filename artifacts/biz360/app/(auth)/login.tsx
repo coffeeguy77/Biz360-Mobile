@@ -254,7 +254,7 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.demoGrid}>
-              {(["buyer", "seller", "broker", "admin"] as const).map((role) => (
+              {(["buyer", "broker", "admin"] as const).map((role) => (
                 <TouchableOpacity
                   key={role}
                   style={[
