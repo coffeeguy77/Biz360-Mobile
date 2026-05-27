@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, ImageBackground, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
@@ -83,29 +83,47 @@ export default function SellerListings() {
           const demo = DEMO_LISTINGS.find((d) => d.id === item.listingId);
           const sc   = STATUS_CONFIG[item.status];
 
-          const heroColor = demo?.heroColor ?? item.heroColor ?? "#2563EB";
-          const name      = demo?.businessName ?? item.businessName ?? "Unnamed Listing";
-          const price     = demo?.askingPrice  ?? item.askingPrice;
-          const suburb    = demo?.suburb       ?? item.suburb       ?? "";
-          const state     = demo?.state        ?? item.state        ?? "";
-          const category  = demo?.category     ?? item.category     ?? "";
+          const heroColor  = demo?.heroColor ?? item.heroColor ?? "#2563EB";
+          const name       = demo?.businessName ?? item.businessName ?? "Unnamed Listing";
+          const price      = demo?.askingPrice  ?? item.askingPrice;
+          const suburb     = demo?.suburb       ?? item.suburb       ?? "";
+          const state      = demo?.state        ?? item.state        ?? "";
+          const category   = demo?.category     ?? item.category     ?? "";
+          const featureImg = item.photos?.[0] ?? demo?.photos?.[0] ?? null;
+
+          const heroInner = (
+            <>
+              <View style={[styles.statusPill, { backgroundColor: sc.color }]}>
+                <Feather name={sc.icon as any} size={10} color="#fff" />
+                <Text style={styles.statusPillText}>{sc.label}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.deleteIcon}
+                onPress={() => handleDelete(item, name)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Feather name="trash-2" size={15} color="rgba(255,255,255,0.8)" />
+              </TouchableOpacity>
+              <Text style={styles.heroPrice}>{price && price > 0 ? formatPrice(price) : "Price TBC"}</Text>
+            </>
+          );
 
           const cardContent = (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: item.status === "rejected" ? "#EF444440" : colors.border }]}>
-              <View style={[styles.cardHero, { backgroundColor: heroColor }]}>
-                <View style={[styles.statusPill, { backgroundColor: sc.color }]}>
-                  <Feather name={sc.icon as any} size={10} color="#fff" />
-                  <Text style={styles.statusPillText}>{sc.label}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.deleteIcon}
-                  onPress={() => handleDelete(item, name)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              {featureImg ? (
+                <ImageBackground
+                  source={{ uri: featureImg }}
+                  style={styles.cardHero}
+                  imageStyle={styles.cardHeroImg}
                 >
-                  <Feather name="trash-2" size={15} color="rgba(255,255,255,0.8)" />
-                </TouchableOpacity>
-                <Text style={styles.heroPrice}>{price && price > 0 ? formatPrice(price) : "Price TBC"}</Text>
-              </View>
+                  <View style={styles.cardHeroOverlay} />
+                  {heroInner}
+                </ImageBackground>
+              ) : (
+                <View style={[styles.cardHero, { backgroundColor: heroColor }]}>
+                  {heroInner}
+                </View>
+              )}
 
               <View style={styles.cardBody}>
                 <Text style={[styles.cardName, { color: colors.foreground }]}>{name}</Text>
@@ -207,8 +225,10 @@ const styles = StyleSheet.create({
   empty:         { alignItems: "center", paddingTop: 80, gap: 10 },
   emptyTitle:    { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   emptyHint:     { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
-  card:          { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  cardHero:      { height: 110, padding: 14, justifyContent: "space-between", flexDirection: "row", alignItems: "flex-start" },
+  card:            { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  cardHero:        { height: 130, padding: 14, justifyContent: "space-between", flexDirection: "row", alignItems: "flex-start" },
+  cardHeroImg:     { resizeMode: "cover" },
+  cardHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)" },
   statusPill:    { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
   statusPillText:{ color: "#fff", fontSize: 10, fontFamily: "Inter_600SemiBold" },
   deleteIcon:    { position: "absolute", top: 10, right: 12 },
