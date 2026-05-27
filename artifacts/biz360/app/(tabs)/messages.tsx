@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React from "react";
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { formatThreadTime, Thread, useThreadList } from "@/lib/messageStore";
@@ -10,11 +11,31 @@ function initials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function ThreadRow({ item, colors }: { item: Thread; colors: ReturnType<typeof useColors> }) {
+function ThreadRow({
+  item,
+  colors,
+  onDelete,
+}: {
+  item: Thread;
+  colors: ReturnType<typeof useColors>;
+  onDelete: () => void;
+}) {
   const last = item.messages[item.messages.length - 1];
   const preview = last ? last.text : "No messages yet";
   const timeLabel = item.updatedAt ? formatThreadTime(item.updatedAt) : "";
   const unread = item.unreadBuyer ?? 0;
+
+  const handleDelete = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      "Delete Conversation",
+      `Remove your conversation about "${item.listingName}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: onDelete },
+      ],
+    );
+  };
 
   return (
     <TouchableOpacity
@@ -40,6 +61,13 @@ function ThreadRow({ item, colors }: { item: Thread; colors: ReturnType<typeof u
           <Text style={styles.unreadText}>{unread}</Text>
         </View>
       )}
+      <TouchableOpacity
+        style={styles.trashBtn}
+        onPress={handleDelete}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Feather name="trash-2" size={16} color={colors.mutedForeground} />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
@@ -47,7 +75,7 @@ function ThreadRow({ item, colors }: { item: Thread; colors: ReturnType<typeof u
 export default function MessagesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { threads, loading } = useThreadList();
+  const { threads, loading, remove } = useThreadList();
 
   const totalUnread = threads.reduce((sum, t) => sum + (t.unreadBuyer ?? 0), 0);
 
@@ -70,7 +98,13 @@ export default function MessagesScreen() {
         <FlatList
           data={threads}
           keyExtractor={(i) => i.id}
-          renderItem={({ item }) => <ThreadRow item={item} colors={colors} />}
+          renderItem={({ item }) => (
+            <ThreadRow
+              item={item}
+              colors={colors}
+              onDelete={() => remove(item.id)}
+            />
+          )}
           contentContainerStyle={{ paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80) }}
           scrollEnabled
           showsVerticalScrollIndicator={false}
@@ -98,16 +132,17 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   thread: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  avatarText: { fontSize: 16, fontFamily: "Inter_700Bold" },
   info: { flex: 1, gap: 2 },
   infoTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   threadName: { fontSize: 15, fontFamily: "Inter_600SemiBold", flex: 1 },
   time: { fontSize: 12, fontFamily: "Inter_400Regular" },
   listingName: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  preview: { fontSize: 13, lineHeight: 18 },
-  unreadBadge: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  preview: { fontSize: 13 },
+  unreadBadge: { minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
   unreadText: { color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
-  empty: { alignItems: "center", paddingTop: 80, paddingHorizontal: 32, gap: 10 },
-  emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
-  emptyHint: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, marginTop: 4 },
+  trashBtn: { padding: 4, marginLeft: 4 },
+  empty: { alignItems: "center", paddingTop: 80, gap: 10, paddingHorizontal: 32 },
+  emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 4 },
+  emptyHint: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
 });

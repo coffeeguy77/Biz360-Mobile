@@ -23,7 +23,6 @@ function formatAge(ts: number) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-/** Resolve display data from either a DEMO listing or inline form data */
 function resolveDisplay(item: PendingListing) {
   const demo = DEMO_LISTINGS.find((l) => l.id === item.listingId);
   if (demo) {
@@ -88,9 +87,20 @@ export default function AdminListings() {
     ]);
   };
 
+  const deletePending = (id: string, name: string) => {
+    Alert.alert("Delete Listing", `Permanently delete "${name}" from the queue?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive", onPress: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setPending((prev) => prev.filter((p) => p.id !== id));
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Text style={[styles.title, { color: colors.foreground }]}>Listing Approvals</Text>
@@ -125,8 +135,14 @@ export default function AdminListings() {
           const d = resolveDisplay(item);
           return (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {/* Hero */}
               <View style={[styles.cardTop, { backgroundColor: d.heroColor }]}>
+                <TouchableOpacity
+                  style={styles.deleteIcon}
+                  onPress={() => deletePending(item.id, d.businessName)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="trash-2" size={14} color="rgba(255,255,255,0.8)" />
+                </TouchableOpacity>
                 <View style={[styles.waitTag, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
                   <Feather name="clock" size={10} color="#fff" />
                   <Text style={styles.waitText}>Waiting {formatAge(item.submittedAt)}</Text>
@@ -140,7 +156,6 @@ export default function AdminListings() {
                 </Text>
               </View>
 
-              {/* Body */}
               <View style={styles.cardBody}>
                 <View style={styles.infoRow}>
                   {[
@@ -156,7 +171,6 @@ export default function AdminListings() {
                 </View>
 
                 <View style={styles.actions}>
-                  {/* Preview only available for DEMO listings */}
                   {d.demoId ? (
                     <TouchableOpacity
                       style={[styles.previewBtn, { borderColor: colors.border }]}
@@ -209,7 +223,8 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   card: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
   cardTop: { minHeight: 90, padding: 14, justifyContent: "flex-end", gap: 2 },
-  waitTag: { position: "absolute", top: 10, right: 10, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
+  deleteIcon: { position: "absolute", top: 10, right: 36, zIndex: 1 },
+  waitTag: { position: "absolute", top: 10, right: 56, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   waitText: { color: "#fff", fontSize: 10, fontFamily: "Inter_500Medium" },
   rolePill: { position: "absolute", top: 10, left: 10, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   roleText: { color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold", textTransform: "uppercase" },

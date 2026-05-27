@@ -72,7 +72,15 @@ export function useLeads() {
     });
   };
 
-  return { leads, setLeads, loading };
+  const deleteLead = (id: string) => {
+    setLeadsState((prev) => {
+      const next = prev.filter((l) => l.id !== id);
+      saveLeads(next).catch(() => {});
+      return next;
+    });
+  };
+
+  return { leads, setLeads, deleteLead, loading };
 }
 
 // ─── Team Members ─────────────────────────────────────────────────────────────

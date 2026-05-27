@@ -73,29 +73,36 @@ function defaultThreadMap(): Record<string, Thread> {
   };
 }
 
-async function readMap(): Promise<Record<string, Thread>> {
+async function writeMap(map: Record<string, Thread>): Promise<void> {
+  await apiSet(STORAGE_KEY, map);
+}
+
+async function getOrInitMap(): Promise<Record<string, Thread>> {
   try {
     const data = await apiGet<Record<string, Thread>>(STORAGE_KEY);
-    return data ?? {};
+    if (data !== null) return data;
+    const defaults = defaultThreadMap();
+    await writeMap(defaults);
+    return defaults;
   } catch {
     return {};
   }
 }
 
-async function writeMap(map: Record<string, Thread>): Promise<void> {
-  await apiSet(STORAGE_KEY, map);
-}
-
 export async function getThreads(): Promise<Thread[]> {
-  const [map, defaults] = await Promise.all([readMap(), Promise.resolve(defaultThreadMap())]);
-  const merged: Record<string, Thread> = { ...defaults, ...map };
-  return Object.values(merged).sort((a, b) => b.updatedAt - a.updatedAt);
+  const map = await getOrInitMap();
+  return Object.values(map).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getThread(id: string): Promise<Thread | null> {
-  const map = await readMap();
-  if (map[id]) return map[id];
-  return defaultThreadMap()[id] ?? null;
+  const map = await getOrInitMap();
+  return map[id] ?? null;
+}
+
+export async function deleteThread(threadId: string): Promise<void> {
+  const map = await getOrInitMap();
+  delete map[threadId];
+  await writeMap(map);
 }
 
 export interface NewThreadMeta {
@@ -111,11 +118,10 @@ export async function sendMessage(
   from: "buyer" | "seller",
   meta?: NewThreadMeta,
 ): Promise<Thread> {
-  const map = await readMap();
+  const map = await getOrInitMap();
 
   if (!map[threadId]) {
-    const defaults = defaultThreadMap();
-    map[threadId] = defaults[threadId] ?? {
+    map[threadId] = {
       id: threadId,
       listingId: meta?.listingId ?? "",
       listingName: meta?.listingName ?? "Listing",
@@ -146,9 +152,8 @@ export async function sendMessage(
 }
 
 export async function markRead(threadId: string, role: "buyer" | "seller"): Promise<void> {
-  const map = await readMap();
-  const defaults = defaultThreadMap();
-  const thread = map[threadId] ?? defaults[threadId];
+  const map = await getOrInitMap();
+  const thread = map[threadId];
   if (!thread) return;
   const updated = { ...thread };
   if (role === "buyer") updated.unreadBuyer = 0;
@@ -188,7 +193,12 @@ export function useThreadList() {
     }, []),
   );
 
-  return { threads, loading };
+  const remove = async (id: string) => {
+    setThreads((prev) => prev.filter((t) => t.id !== id));
+    await deleteThread(id);
+  };
+
+  return { threads, loading, remove };
 }
 
 export function useThreadDetail(id: string) {

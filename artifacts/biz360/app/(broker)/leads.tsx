@@ -10,11 +10,12 @@ import { formatLeadTime, Lead, TEAM_MEMBERS, useLeads } from "@/lib/brokerStore"
 const QC: Record<string, string> = { hot: "#EF4444", warm: "#F59E0B", cold: "#3B82F6" };
 const QC_LABEL: Record<string, string> = { hot: "HOT", warm: "WARM", cold: "COLD" };
 
-function LeadCard({ item, colors, onMessage, onAssign }: {
+function LeadCard({ item, colors, onMessage, onAssign, onDelete }: {
   item: Lead;
   colors: ReturnType<typeof useColors>;
   onMessage: () => void;
   onAssign: () => void;
+  onDelete: () => void;
 }) {
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: item.quality === "hot" ? QC.hot + "40" : colors.border }]}>
@@ -25,6 +26,9 @@ function LeadCard({ item, colors, onMessage, onAssign }: {
         </View>
         <Text style={[styles.leadName, { color: colors.foreground }]}>{item.name}</Text>
         <Text style={[styles.time, { color: colors.mutedForeground }]}>{formatLeadTime(item.timestamp)}</Text>
+        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Feather name="trash-2" size={15} color={colors.mutedForeground} />
+        </TouchableOpacity>
       </View>
       <Text style={[styles.listing, { color: colors.primary }]}>{item.listing}</Text>
       <Text style={[styles.action,  { color: colors.mutedForeground }]}>{item.action}</Text>
@@ -57,7 +61,7 @@ function LeadCard({ item, colors, onMessage, onAssign }: {
 export default function BrokerLeads() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { leads, setLeads } = useLeads();
+  const { leads, setLeads, deleteLead } = useLeads();
 
   const hotCount  = leads.filter((l) => l.quality === "hot"  && l.status === "open").length;
   const openCount = leads.filter((l) => l.status === "open").length;
@@ -79,6 +83,21 @@ export default function BrokerLeads() {
         },
       })),
       { text: "Cancel", style: "cancel" as const },
+    ]);
+  };
+
+  const handleDelete = (lead: Lead) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert("Remove Lead", `Remove ${lead.name} from your leads?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          deleteLead(lead.id);
+        },
+      },
     ]);
   };
 
@@ -115,6 +134,7 @@ export default function BrokerLeads() {
             colors={colors}
             onMessage={() => handleMessage(item)}
             onAssign={() => handleAssign(item)}
+            onDelete={() => handleDelete(item)}
           />
         )}
       />

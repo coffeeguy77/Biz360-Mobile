@@ -1,6 +1,8 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import React, { useState, useMemo } from "react";
 import {
+  Alert,
   FlatList,
   Platform,
   StyleSheet,
@@ -12,8 +14,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ListingCard } from "@/components/ListingCard";
 import { FilterSheet, FilterState } from "@/components/FilterSheet";
-import { DEMO_LISTINGS, Listing } from "@/data/listings";
+import { DEMO_LISTINGS } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
+import { useHiddenListings } from "@/lib/hiddenListings";
 
 const DEFAULT_FILTERS: FilterState = {
   categories: [], states: [], hasTour: false, verified: false, maxPrice: null,
@@ -27,8 +30,11 @@ export default function DiscoverScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [savedIds, setSavedIds] = useState<string[]>([]);
 
+  const { hiddenIds, hide } = useHiddenListings();
+
   const filtered = useMemo(() => {
     return DEMO_LISTINGS.filter((l) => {
+      if (hiddenIds.includes(l.id)) return false;
       if (search && !l.businessName.toLowerCase().includes(search.toLowerCase()) &&
         !l.category.toLowerCase().includes(search.toLowerCase()) &&
         !l.suburb.toLowerCase().includes(search.toLowerCase())) return false;
@@ -38,11 +44,31 @@ export default function DiscoverScreen() {
       if (filters.verified && !l.verified) return false;
       return true;
     });
-  }, [search, filters]);
+  }, [search, filters, hiddenIds]);
 
   const toggleSave = (id: string) => {
     setSavedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleLongPress = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const listing = DEMO_LISTINGS.find((l) => l.id === id);
+    Alert.alert(
+      "Remove Listing",
+      `Hide "${listing?.businessName}" from the marketplace?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            hide(id);
+          },
+        },
+      ],
     );
   };
 
@@ -112,6 +138,7 @@ export default function DiscoverScreen() {
             listing={item}
             onSave={toggleSave}
             isSaved={savedIds.includes(item.id)}
+            onLongPress={handleLongPress}
           />
         )}
         contentContainerStyle={[
@@ -125,7 +152,9 @@ export default function DiscoverScreen() {
             <Feather name="search" size={40} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No results</Text>
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Try different search terms or filters
+              {hiddenIds.length > 0
+                ? "All listings have been removed. Add real listings to populate the marketplace."
+                : "Try different search terms or filters"}
             </Text>
           </View>
         }
@@ -169,7 +198,7 @@ const styles = StyleSheet.create({
   },
   filterBadgeText: { color: "#fff", fontSize: 9, fontFamily: "Inter_700Bold" },
   list: { paddingHorizontal: 16, paddingTop: 16 },
-  empty: { alignItems: "center", paddingTop: 60, gap: 10 },
+  empty: { alignItems: "center", paddingTop: 60, gap: 10, paddingHorizontal: 32 },
   emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 4 },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
 });

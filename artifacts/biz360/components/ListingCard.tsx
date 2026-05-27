@@ -15,9 +15,10 @@ interface Props {
   listing: Listing;
   onSave?: (id: string) => void;
   isSaved?: boolean;
+  onLongPress?: (id: string) => void;
 }
 
-export function ListingCard({ listing, onSave, isSaved }: Props) {
+export function ListingCard({ listing, onSave, isSaved, onLongPress }: Props) {
   const colors = useColors();
 
   const primaryBadges = listing.badges.slice(0, 3);
@@ -26,6 +27,8 @@ export function ListingCard({ listing, onSave, isSaved }: Props) {
     <TouchableOpacity
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={() => router.push(`/listing/${listing.id}` as any)}
+      onLongPress={onLongPress ? () => onLongPress(listing.id) : undefined}
+      delayLongPress={400}
       activeOpacity={0.92}
     >
       <View style={[styles.heroImage, { backgroundColor: listing.heroColor }]}>

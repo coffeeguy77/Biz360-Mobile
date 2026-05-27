@@ -1,13 +1,14 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings, PendingListing } from "@/lib/adminStore";
+import { getPendingListings, PendingListing, savePendingListings } from "@/lib/adminStore";
 
 const STATUS_CONFIG = {
   pending:  { label: "Pending Review", color: "#F59E0B", icon: "clock"       },
@@ -31,6 +32,22 @@ export default function SellerListings() {
 
   const activeCount  = listings.filter((l) => l.status === "approved").length;
   const pendingCount = listings.filter((l) => l.status === "pending").length;
+
+  const handleDelete = (item: PendingListing, name: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert("Delete Listing", `Remove "${name}" from your listings?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive", onPress: async () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          const updated = listings.filter((l) => l.id !== item.id);
+          setListings(updated);
+          const all = await getPendingListings();
+          await savePendingListings(all.filter((l) => l.id !== item.id));
+        },
+      },
+    ]);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -80,6 +97,13 @@ export default function SellerListings() {
                   <Feather name={sc.icon as any} size={10} color="#fff" />
                   <Text style={styles.statusPillText}>{sc.label}</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.deleteIcon}
+                  onPress={() => handleDelete(item, name)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Feather name="trash-2" size={15} color="rgba(255,255,255,0.8)" />
+                </TouchableOpacity>
                 <Text style={styles.heroPrice}>{price && price > 0 ? formatPrice(price) : "Price TBC"}</Text>
               </View>
 
@@ -89,7 +113,6 @@ export default function SellerListings() {
                   {[suburb, state].filter(Boolean).join(", ")}{category ? ` · ${category}` : ""}
                 </Text>
 
-                {/* Metrics for approved DEMO listings */}
                 {demo && item.status === "approved" && (
                   <View style={styles.metricsRow}>
                     {[
@@ -105,7 +128,6 @@ export default function SellerListings() {
                   </View>
                 )}
 
-                {/* Status notes */}
                 {item.status === "pending" && (
                   <View style={[styles.statusNote, { backgroundColor: "#F59E0B12", borderColor: "#F59E0B30" }]}>
                     <Feather name="info" size={12} color="#F59E0B" />
@@ -123,7 +145,6 @@ export default function SellerListings() {
                   </View>
                 )}
 
-                {/* Edit button — user-created pending/rejected listings */}
                 {(item.status === "pending" || item.status === "rejected") && !demo && (
                   <View style={styles.actionRow}>
                     <TouchableOpacity
@@ -138,7 +159,6 @@ export default function SellerListings() {
                   </View>
                 )}
 
-                {/* Action buttons — all approved listings get View; DEMO listings also get Tour */}
                 {item.status === "approved" && (
                   <View style={styles.actionRow}>
                     <TouchableOpacity
@@ -163,7 +183,6 @@ export default function SellerListings() {
             </View>
           );
 
-          // All approved listings are tappable (non-DEMO uses pending store fallback in /listing/[id])
           if (item.status === "approved") {
             return (
               <TouchableOpacity onPress={() => router.push(`/listing/${item.listingId}` as any)}>
@@ -189,10 +208,11 @@ const styles = StyleSheet.create({
   emptyTitle:    { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   emptyHint:     { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
   card:          { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  cardHero:      { height: 110, padding: 14, justifyContent: "space-between" },
+  cardHero:      { height: 110, padding: 14, justifyContent: "space-between", flexDirection: "row", alignItems: "flex-start" },
   statusPill:    { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
   statusPillText:{ color: "#fff", fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  heroPrice:     { color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold" },
+  deleteIcon:    { position: "absolute", top: 10, right: 12 },
+  heroPrice:     { position: "absolute", bottom: 14, left: 14, color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold" },
   cardBody:      { padding: 14, gap: 8 },
   cardName:      { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   cardMeta:      { fontSize: 12, fontFamily: "Inter_400Regular" },
