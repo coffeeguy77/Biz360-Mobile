@@ -492,14 +492,52 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
 
-  // Panoramas (local file:// or remote https://) are passed directly to the WebView
-  // — no base64 conversion. This avoids OOM errors with large Insta360 files.
+  // panoDataUri: null = still loading, string = ready (data URI or https:// URL)
+  // Only used when space.panoramaUrl is set.
+  const [panoDataUri, setPanoDataUri] = useState<string | null>(
+    // Remote https:// URLs need no conversion — mark ready immediately
+    space.panoramaUrl && !isLocalPano ? space.panoramaUrl : null
+  );
 
   // For flat strip viewer: convert local file:// photos to base64 data URIs
   const [photoDataUris, setPhotoDataUris] = useState<string[] | null>(
     space.panoramaUrl ? [] : null
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // ── Load local panorama as base64 data URI ──────────────────────────────────
+  // file:// URIs inside injected WebView HTML are blocked by iOS/Android sandbox
+  // regardless of allowFileAccess / allowingReadAccessToURL — the only reliable
+  // approach in Expo Go is a data URI. We guard on file size first.
+  useEffect(() => {
+    if (!isLocalPano || !space.panoramaUrl) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const info = await FileSystem.getInfoAsync(space.panoramaUrl!);
+        if (!info.exists) {
+          if (!cancelled) setLoadError("Panorama file not found.\n\nDelete this space and re-upload the photo.");
+          return;
+        }
+        const sizeMb = ("size" in info && info.size) ? info.size / (1024 * 1024) : 0;
+        if (sizeMb > 25) {
+          if (!cancelled) setLoadError(
+            `Panorama is ${sizeMb.toFixed(0)} MB — too large to preview.\n\n` +
+            "Please export a compressed version (under 25 MB) from your camera app and re-upload."
+          );
+          return;
+        }
+        const base64 = await FileSystem.readAsStringAsync(space.panoramaUrl!, {
+          encoding: "base64",
+        });
+        if (!cancelled) setPanoDataUri(`data:image/jpeg;base64,${base64}`);
+      } catch (e) {
+        if (!cancelled) setLoadError("Could not load panorama file.\n\nTry deleting and re-uploading the photo.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [space.id, space.panoramaUrl]);
 
   useEffect(() => {
     if (space.panoramaUrl) return; // single panorama — no conversion needed
@@ -569,6 +607,17 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
     );
   }
 
+  // ── Loading: local panorama → base64 ──
+  if (space.panoramaUrl && isLocalPano && panoDataUri === null) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Loading panorama…</Text>
+        <Text style={styles.loadingHint}>This may take a moment for large files</Text>
+      </View>
+    );
+  }
+
   // ── Loading: flat strip photos → base64 ──
   if (photoDataUris === null) {
     return (
@@ -581,22 +630,12 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
   }
 
   // ── Build HTML ──
-  // ALL panoramas → flat pan viewer (no Pannellum / spherical projection).
-  // For local file:// URIs, iOS WebKit requires:
-  //   baseUrl  = the directory containing the file  (e.g. file:///…/tmp/)
-  //   allowingReadAccessToURL = same directory
-  // Without this, <img src="file:///…"> is blocked even with allowFileAccess.
+  // ALL panoramas use the flat pan viewer. Local files are passed as
+  // base64 data URIs (the only approach that works in Expo Go's sandbox).
+  // Remote https:// URLs are passed directly — no conversion needed.
   let html: string;
-
-  // Directory that contains the panorama file (trailing slash required by iOS).
-  // For remote https:// URLs this stays undefined and has no effect.
-  const localPanoDir: string | undefined =
-    isLocalPano && space.panoramaUrl
-      ? space.panoramaUrl.substring(0, space.panoramaUrl.lastIndexOf("/") + 1)
-      : undefined;
-
-  if (space.panoramaUrl) {
-    html = buildFlatPanoHtml(space.panoramaUrl, space.pins);
+  if (space.panoramaUrl && panoDataUri) {
+    html = buildFlatPanoHtml(panoDataUri, space.pins);
   } else {
     html = buildFlatStripHtml(photoDataUris, space.pins);
   }
@@ -605,9 +644,9 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
     <View style={styles.container}>
       <WebView
         ref={webRef}
-        source={{ html, baseUrl: localPanoDir ?? "about:blank" }}
+        source={{ html }}
         style={styles.webView}
-        originWhitelist={["*", "file://*"]}
+        originWhitelist={["*"]}
         javaScriptEnabled
         domStorageEnabled
         onMessage={handleMessage}
@@ -617,9 +656,6 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
         showsVerticalScrollIndicator={false}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        allowFileAccess
-        allowUniversalAccessFromFileURLs
-        allowingReadAccessToURL={localPanoDir}
         startInLoadingState
         renderLoading={() => (
           <View style={styles.loadingOverlay}>
