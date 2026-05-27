@@ -4,10 +4,13 @@ import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   Alert,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -29,11 +32,29 @@ type Section = "alerts" | "documents" | "ndas" | "settings" | "help" | null;
 export default function ProfileScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
-  const { user, realUser, restoreReal, logout } = useAuth();
+  const { user, realUser, restoreReal, logout, updateProfile } = useAuth();
 
   const [savedCount,    setSavedCount]    = useState(0);
   const [expanded,      setExpanded]      = useState<Section>(null);
   const [expandedFaq,   setExpandedFaq]   = useState<number | null>(null);
+  const [editVisible,   setEditVisible]   = useState(false);
+  const [draftName,     setDraftName]     = useState("");
+  const [saving,        setSaving]        = useState(false);
+
+  const openEdit = () => {
+    setDraftName(user?.name ?? "");
+    setEditVisible(true);
+  };
+
+  const saveProfile = async () => {
+    const trimmed = draftName.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    await updateProfile({ name: trimmed });
+    setSaving(false);
+    setEditVisible(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
   const isDemo = realUser && user?.id !== realUser.id;
 
@@ -259,11 +280,11 @@ export default function ProfileScreen() {
                 <SettingsRow label="Role"  value={user?.role  ?? "—"} colors={colors} last />
               </View>
               <TouchableOpacity
-                style={[styles.ctaBtn, { backgroundColor: colors.muted, marginTop: 12 }]}
-                onPress={() => Alert.alert("Coming Soon", "Profile editing will be available in the next update.")}
+                style={[styles.ctaBtn, { backgroundColor: colors.primary, marginTop: 12 }]}
+                onPress={openEdit}
               >
-                <Feather name="edit-2" size={14} color={colors.foreground} />
-                <Text style={[styles.ctaBtnText, { color: colors.foreground }]}>Edit Profile</Text>
+                <Feather name="edit-2" size={14} color="#fff" />
+                <Text style={[styles.ctaBtnText, { color: "#fff" }]}>Edit Profile</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -343,6 +364,57 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ── Edit Profile Modal ── */}
+      <Modal visible={editVisible} animationType="slide" transparent onRequestClose={() => setEditVisible(false)}>
+        <Pressable style={styles.editBackdrop} onPress={() => setEditVisible(false)} />
+        <View style={[styles.editSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.editHandle} />
+          <View style={styles.editHeader}>
+            <Text style={[styles.editTitle, { color: colors.foreground }]}>Edit Profile</Text>
+            <TouchableOpacity
+              style={[styles.editCloseBtn, { backgroundColor: colors.muted }]}
+              onPress={() => setEditVisible(false)}
+            >
+              <Feather name="x" size={16} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Name field */}
+          <View style={styles.editFields}>
+            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground }]}>Display Name</Text>
+            <TextInput
+              style={[styles.editInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+              value={draftName}
+              onChangeText={setDraftName}
+              placeholder="Your name"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={saveProfile}
+            />
+            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground, marginTop: 14 }]}>Email (read-only)</Text>
+            <View style={[styles.editInputReadOnly, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Text style={[styles.editInputReadOnlyText, { color: colors.mutedForeground }]}>{user?.email ?? "—"}</Text>
+            </View>
+            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground, marginTop: 14 }]}>Role</Text>
+            <View style={[styles.editInputReadOnly, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Text style={[styles.editInputReadOnlyText, { color: colors.mutedForeground }]}>{user?.role ?? "—"}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.editSaveBtn, { backgroundColor: draftName.trim() ? colors.primary : colors.muted, opacity: saving ? 0.7 : 1 }]}
+            onPress={saveProfile}
+            disabled={saving || !draftName.trim()}
+          >
+            <Feather name="check" size={16} color={draftName.trim() ? "#fff" : colors.mutedForeground} />
+            <Text style={[styles.editSaveBtnText, { color: draftName.trim() ? "#fff" : colors.mutedForeground }]}>
+              {saving ? "Saving…" : "Save Changes"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -398,10 +470,25 @@ const styles = StyleSheet.create({
   faqQ:             { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   faqQuestion:      { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold", lineHeight: 18 },
   faqAnswer:        { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 6, lineHeight: 18, opacity: 0.85 },
-  switchRole:       { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
-  switchRoleText:   { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  realUserBadge:    { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
-  realUserText:     { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1 },
-  logoutBtn:        { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
-  logoutText:       { color: "#EF4444", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  switchRole:            { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
+  switchRoleText:        { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  realUserBadge:         { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  realUserText:          { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1 },
+  logoutBtn:             { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
+  logoutText:            { color: "#EF4444", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
+  // ── Edit Profile Modal ──
+  editBackdrop:          { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)" },
+  editSheet:             { position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, borderTopWidth: 1, borderColor: "#1E3A5C" },
+  editHandle:            { width: 36, height: 4, borderRadius: 2, backgroundColor: "#2D4A6A", alignSelf: "center", marginBottom: 16 },
+  editHeader:            { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 20 },
+  editTitle:             { fontSize: 18, fontFamily: "Inter_700Bold" },
+  editCloseBtn:          { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  editFields:            { paddingHorizontal: 20 },
+  editFieldLabel:        { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 },
+  editInput:             { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
+  editInputReadOnly:     { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  editInputReadOnlyText: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  editSaveBtn:           { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginHorizontal: 20, marginTop: 24, paddingVertical: 14, borderRadius: 14 },
+  editSaveBtnText:       { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });

@@ -9,6 +9,7 @@ import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing } from "@/lib/adminStore";
 import { trackEvent } from "@/lib/analyticsStore";
+import { apiGet } from "@/lib/apiStore";
 import { useAuth } from "@/context/AuthContext";
 import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
 
@@ -28,7 +29,8 @@ export default function ListingDetailScreen() {
   const { user } = useAuth();
   const buyerId  = user?.id ?? "guest";
 
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved,  setIsSaved]  = useState(false);
+  const [hasTour,  setHasTour]  = useState(false);
   const viewFiredRef = useRef(false);
 
   // 1. Try DEMO_LISTINGS first (synchronous)
@@ -52,6 +54,14 @@ export default function ListingDetailScreen() {
     if (!id) return;
     getSavedIds().then((ids) => setIsSaved(ids.includes(id)));
   }, [id]);
+
+  // Check for 360 tour spaces in KV once the listing resolves
+  useEffect(() => {
+    if (!id || !pendingItem) return;
+    apiGet<unknown[]>(`biz360_tour_spaces_v1_${id}`).then((spaces) => {
+      setHasTour(Array.isArray(spaces) && spaces.length > 0);
+    });
+  }, [id, pendingItem]);
 
   // Track listing view — fires once when a KV listing resolves
   useEffect(() => {
@@ -337,6 +347,27 @@ export default function ListingDetailScreen() {
         )}
 
         <View style={styles.body}>
+          {/* ── 360° Tour CTA ── */}
+          {hasTour && (
+            <TouchableOpacity
+              style={[styles.tourCTA, { backgroundColor: "#1E3A5C" }]}
+              onPress={() => {
+                trackEvent(id!, "tour_start", buyerId);
+                router.push(`/tour/${id}` as any);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" }}>
+                <Feather name="rotate-ccw" size={22} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.tourCTATitle}>Enter 360° Business Tour</Text>
+                <Text style={styles.tourCTASub}>Walk through the space before you enquire</Text>
+              </View>
+              <Feather name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+            </TouchableOpacity>
+          )}
+
           {/* Description */}
           {!!item.description && (
             <Text style={[styles.desc, { color: colors.mutedForeground }]}>{item.description}</Text>

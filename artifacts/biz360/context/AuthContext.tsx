@@ -20,6 +20,7 @@ interface AuthContextType {
   restoreReal:   () => Promise<void>;               // switch back to realUser from a demo session
   logout:        () => Promise<void>;               // full sign-out, clears everything
   updateRole:    (role: UserRole) => Promise<void>;
+  updateProfile: (fields: Partial<Pick<User, "name" | "avatar">>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -110,8 +111,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updated);
   };
 
+  const updateProfile = async (fields: Partial<Pick<User, "name" | "avatar">>) => {
+    if (!user) return;
+    const updated = { ...user, ...fields };
+    await AsyncStorage.setItem(CURRENT_KEY, JSON.stringify(updated));
+    setUser(updated);
+    // If this is the real (phone-verified) user, keep realUser in sync too
+    if (realUser && realUser.id === user.id) {
+      const updatedReal = { ...realUser, ...fields };
+      await AsyncStorage.setItem(REAL_KEY, JSON.stringify(updatedReal));
+      setRealUser(updatedReal);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, realUser, isLoading, login, loginAsReal, restoreReal, logout, updateRole }}>
+    <AuthContext.Provider value={{ user, realUser, isLoading, login, loginAsReal, restoreReal, logout, updateRole, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );
