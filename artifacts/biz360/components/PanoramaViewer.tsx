@@ -492,31 +492,14 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
 
-  // For stitched local panoramas: convert file:// → base64 data URI
-  const [panoDataUri, setPanoDataUri] = useState<string | null>(
-    space.panoramaUrl && !isLocalPano ? space.panoramaUrl : null
-  );
+  // Panoramas (local file:// or remote https://) are passed directly to the WebView
+  // — no base64 conversion. This avoids OOM errors with large Insta360 files.
 
   // For flat strip viewer: convert local file:// photos to base64 data URIs
   const [photoDataUris, setPhotoDataUris] = useState<string[] | null>(
     space.panoramaUrl ? [] : null
   );
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  // Convert local stitched panorama file to base64
-  useEffect(() => {
-    if (!isLocalPano || !space.panoramaUrl) return;
-    let cancelled = false;
-    FileSystem.readAsStringAsync(space.panoramaUrl, { encoding: "base64" })
-      .then((b64) => {
-        if (!cancelled) setPanoDataUri(`data:image/jpeg;base64,${b64}`);
-      })
-      .catch(() => {
-        if (!cancelled)
-          setLoadError("Could not load panorama. Please delete this space and re-create it.");
-      });
-    return () => { cancelled = true; };
-  }, [space.id, space.panoramaUrl, isLocalPano]);
 
   useEffect(() => {
     if (space.panoramaUrl) return; // single panorama — no conversion needed
@@ -586,16 +569,6 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
     );
   }
 
-  // ── Loading: local panorama file → base64 ──
-  if (isLocalPano && panoDataUri === null) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-        <Text style={styles.loadingText}>Loading panorama…</Text>
-      </View>
-    );
-  }
-
   // ── Loading: flat strip photos → base64 ──
   if (photoDataUris === null) {
     return (
@@ -608,14 +581,12 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
   }
 
   // ── Build HTML ──
-  // Local stitched panoramas (file://) → flat pan viewer (no spherical distortion)
-  // Remote HTTPS panoramas (demo listings) → Pannellum (real equirectangular 360°)
-  // No panorama → flat photo strip
+  // ALL panoramas (local file:// or remote https://) → flat pan viewer.
+  // No Pannellum / no spherical projection — looks identical to the Insta360 app's
+  // flat view. file:// URIs are loaded directly via allowFileAccess on the WebView.
   let html: string;
-  if (space.panoramaUrl && isLocalPano) {
-    html = buildFlatPanoHtml(panoDataUri!, space.pins);
-  } else if (space.panoramaUrl && !isLocalPano) {
-    html = buildSinglePanoHtml(space.panoramaUrl, space.panoramaStartYaw ?? 0, space.pins);
+  if (space.panoramaUrl) {
+    html = buildFlatPanoHtml(space.panoramaUrl, space.pins);
   } else {
     html = buildFlatStripHtml(photoDataUris, space.pins);
   }
@@ -624,9 +595,9 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
     <View style={styles.container}>
       <WebView
         ref={webRef}
-        source={{ html }}
+        source={{ html, baseUrl: isLocalPano ? "file:///" : undefined }}
         style={styles.webView}
-        originWhitelist={["*"]}
+        originWhitelist={["*", "file://*"]}
         javaScriptEnabled
         domStorageEnabled
         onMessage={handleMessage}
@@ -636,6 +607,8 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
         showsVerticalScrollIndicator={false}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
+        allowFileAccess
+        allowUniversalAccessFromFileURLs
         startInLoadingState
         renderLoading={() => (
           <View style={styles.loadingOverlay}>

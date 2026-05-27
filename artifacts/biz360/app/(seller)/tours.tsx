@@ -402,6 +402,29 @@ export default function ToursScreen() {
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PHOTO MODE</Text>
             <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Choose how buyers experience this space in the tour.</Text>
+
+            {/* 360° panorama — full-width top button */}
+            {(() => {
+              const active = draftSpace.dirMode === "panorama";
+              return (
+                <TouchableOpacity
+                  style={[styles.modeChipWide, { backgroundColor: active ? "#7C3AED" : colors.card, borderColor: active ? "#7C3AED" : colors.border }]}
+                  onPress={() => !active ? switchDirMode("panorama") : undefined}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 18 }}>🔮</Text>
+                    <View>
+                      <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>360° Photo</Text>
+                      <Text style={[styles.modeHint, { color: active ? "rgba(255,255,255,0.75)" : colors.mutedForeground }]}>
+                        Insta360 / Panoramic — upload a pre-made panorama
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })()}
+
+            {/* Directional buttons — two per row */}
             <View style={styles.modeRow}>
               {([4, 8] as const).map((mode) => {
                 const active = draftSpace.dirMode === mode;
@@ -414,27 +437,11 @@ export default function ToursScreen() {
                     <Feather name="compass" size={14} color={active ? "#fff" : colors.mutedForeground} />
                     <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>{mode}-Direction</Text>
                     <Text style={[styles.modeHint, { color: active ? "rgba(255,255,255,0.7)" : colors.mutedForeground }]}>
-                      {mode === 4 ? "Front/Right/Back/Left" : "+ Diagonals"}
+                      {mode === 4 ? "Front / Right / Back / Left" : "8 directions incl. diagonals"}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
-              {/* 360° panorama button */}
-              {(() => {
-                const active = draftSpace.dirMode === "panorama";
-                return (
-                  <TouchableOpacity
-                    style={[styles.modeChip, { backgroundColor: active ? "#7C3AED" : colors.card, borderColor: active ? "#7C3AED" : colors.border }]}
-                    onPress={() => !active ? switchDirMode("panorama") : undefined}
-                  >
-                    <Text style={{ fontSize: 14 }}>🔮</Text>
-                    <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>360°</Text>
-                    <Text style={[styles.modeHint, { color: active ? "rgba(255,255,255,0.7)" : colors.mutedForeground }]}>
-                      Insta360 / Panoramic
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })()}
             </View>
 
             {draftSpace.dirMode === "panorama" ? (
@@ -700,7 +707,8 @@ const styles = StyleSheet.create({
   fieldHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: -6 },
   nameInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15, fontFamily: "Inter_400Regular", marginTop: 4 },
   descInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 100, marginTop: 4 },
-  modeRow: { flexDirection: "row", gap: 10, marginTop: 4 },
+  modeRow: { flexDirection: "row", gap: 10, marginTop: 6 },
+  modeChipWide: { width: "100%", padding: 16, borderRadius: 14, borderWidth: 1.5, marginTop: 4 },
   modeChip: { flex: 1, padding: 14, borderRadius: 14, borderWidth: 1.5, gap: 4 },
   modeLabel: { fontSize: 14, fontFamily: "Inter_700Bold" },
   modeHint: { fontSize: 11, fontFamily: "Inter_400Regular" },
