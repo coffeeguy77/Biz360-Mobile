@@ -1,1 +1,2 @@
 - [API KV Store](api-kv-store.md) — AsyncStorage replaced by shared PostgreSQL-backed KV endpoint; stores now consistent across all devices
+- [Twilio Verify setup](twilio-verify.md) — phone OTP auth via Twilio Verify; server endpoints + OTP screen pattern.
