@@ -74,11 +74,24 @@ export interface AdminCategory {
   sortOrder: number;
 }
 
+export interface CleanupSettings {
+  soldRetentionDays: number; // days to keep photos after marking sold (default 90)
+  inactivityDays:    number; // days of no login before purge (default 60)
+  whitelist:         string[]; // user IDs exempt from all automatic cleanup
+}
+
+export const DEFAULT_CLEANUP_SETTINGS: CleanupSettings = {
+  soldRetentionDays: 90,
+  inactivityDays:    60,
+  whitelist:         [],
+};
+
 export interface PendingListing {
   id: string;
   listingId: string;
   submittedAt: number;
   status: "pending" | "approved" | "rejected" | "sold";
+  soldAt?: number; // timestamp when marked sold — used for retention countdown
   submittedBy: string;
   submittedByRole: string;
   businessName?: string;
@@ -180,6 +193,15 @@ async function load<T>(key: string, defaults: () => T): Promise<T> {
 async function save<T>(key: string, data: T): Promise<void> {
   await apiSet(key, data);
 }
+
+const CLEANUP_SETTINGS_KEY = "biz360_cleanup_settings";
+export const getCleanupSettings  = async (): Promise<CleanupSettings> => {
+  try {
+    const data = await apiGet<CleanupSettings>(CLEANUP_SETTINGS_KEY);
+    return data ? { ...DEFAULT_CLEANUP_SETTINGS, ...data } : { ...DEFAULT_CLEANUP_SETTINGS };
+  } catch { return { ...DEFAULT_CLEANUP_SETTINGS }; }
+};
+export const saveCleanupSettings = (s: CleanupSettings) => apiSet(CLEANUP_SETTINGS_KEY, s);
 
 const FEATURED_REV_KEY = "biz360_admin_featured_revenue";
 export const getFeaturedRevenue  = async (): Promise<number> => {

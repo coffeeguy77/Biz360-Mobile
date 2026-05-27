@@ -18,6 +18,7 @@ function NativeLayout() {
       <NativeTabs.Trigger name="reports"><Icon sf={{ default: "flag", selected: "flag.fill" }} /><Label>Reports</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="revenue"><Icon sf={{ default: "dollarsign.circle", selected: "dollarsign.circle.fill" }} /><Label>Revenue</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="categories"><Icon sf={{ default: "tag", selected: "tag.fill" }} /><Label>Categories</Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="settings"><Icon sf={{ default: "slider.horizontal.3", selected: "slider.horizontal.3" }} /><Label>Settings</Label></NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -46,6 +47,7 @@ function ClassicLayout() {
       <Tabs.Screen name="reports" options={{ title: "Reports", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="flag" tintColor={color} size={24} /> : <Feather name="flag" size={22} color={color} /> }} />
       <Tabs.Screen name="revenue" options={{ title: "Revenue", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="dollarsign.circle" tintColor={color} size={24} /> : <Feather name="dollar-sign" size={22} color={color} /> }} />
       <Tabs.Screen name="categories" options={{ title: "Categories", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="tag" tintColor={color} size={24} /> : <Feather name="tag" size={22} color={color} /> }} />
+      <Tabs.Screen name="settings"   options={{ title: "Settings",   tabBarIcon: ({ color }) => isIOS ? <SymbolView name="slider.horizontal.3" tintColor={color} size={24} /> : <Feather name="sliders" size={22} color={color} /> }} />
     </Tabs>
   );
 }

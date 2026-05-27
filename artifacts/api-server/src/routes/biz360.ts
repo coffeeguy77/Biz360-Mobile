@@ -91,53 +91,96 @@ router.delete("/biz360/img/folder", async (req, res): Promise<void> => {
   }
 });
 
+// ─── Cleanup settings ─────────────────────────────────────────────────────────
+
+interface CleanupSettings {
+  soldRetentionDays: number;
+  inactivityDays:    number;
+  whitelist:         string[];
+}
+const CLEANUP_DEFAULTS: CleanupSettings = { soldRetentionDays: 90, inactivityDays: 60, whitelist: [] };
+
+async function loadCleanupSettings(): Promise<CleanupSettings> {
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_cleanup_settings"));
+    const val  = rows[0]?.value as Partial<CleanupSettings> | null | undefined;
+    return val ? { ...CLEANUP_DEFAULTS, ...val } : { ...CLEANUP_DEFAULTS };
+  } catch { return { ...CLEANUP_DEFAULTS }; }
+}
+
+router.get("/biz360/cleanup-settings", async (_req, res): Promise<void> => {
+  res.json(await loadCleanupSettings());
+});
+
+router.put("/biz360/cleanup-settings", async (req, res): Promise<void> => {
+  const body = req.body as Partial<CleanupSettings>;
+  const current = await loadCleanupSettings();
+  const updated: CleanupSettings = {
+    soldRetentionDays: Number(body.soldRetentionDays ?? current.soldRetentionDays),
+    inactivityDays:    Number(body.inactivityDays    ?? current.inactivityDays),
+    whitelist:         Array.isArray(body.whitelist) ? body.whitelist : current.whitelist,
+  };
+  try {
+    await db
+      .insert(kvStore).values({ key: "biz360_cleanup_settings", value: updated })
+      .onConflictDoUpdate({ target: kvStore.key, set: { value: updated, updatedAt: new Date() } });
+    res.json({ ok: true, settings: updated });
+  } catch {
+    res.status(500).json({ error: "DB error" });
+  }
+});
+
 // ─── Cleanup engine ───────────────────────────────────────────────────────────
 // POST /biz360/cleanup  — scans users + listings, purges stale Cloudinary assets
 // Also called on server startup and every 24 h via app.ts scheduler.
 
-const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
+async function deleteFolder(prefix: string) {
+  await cloudinary.api.delete_resources_by_prefix(prefix);
+  try { await cloudinary.api.delete_folder(prefix); } catch { /* ok if already gone */ }
+}
 
 async function runCleanup(): Promise<{ purgedUsers: string[]; purgedListings: string[] }> {
   const purgedUsers:    string[] = [];
   const purgedListings: string[] = [];
 
   try {
-    // ── 1. Inactive-user purge ──────────────────────────────────────────────
-    const users = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_users"));
+    const settings  = await loadCleanupSettings();
+    const whitelist = new Set(settings.whitelist);
+    const inactMs   = settings.inactivityDays    * 86_400_000;
+    const soldMs    = settings.soldRetentionDays  * 86_400_000;
+    const now       = Date.now();
+
+    // ── 1. Inactive-user purge (skip whitelisted) ───────────────────────────
+    const users    = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_users"));
     const userList = (users[0]?.value ?? []) as { id: string }[];
-    const now = Date.now();
 
     for (const u of userList) {
-      if (!u.id) continue;
+      if (!u.id || whitelist.has(u.id)) continue;
       const loginRows = await db.select().from(kvStore)
         .where(eq(kvStore.key, `biz360_last_login_${u.id}`));
       const lastLogin = loginRows[0]?.value as number | null | undefined;
-      if (lastLogin && now - lastLogin > TWO_MONTHS_MS) {
+      if (lastLogin && now - lastLogin > inactMs) {
         const prefix = `biz360/${u.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-        try {
-          await cloudinary.api.delete_resources_by_prefix(prefix);
-          try { await cloudinary.api.delete_folder(prefix); } catch { /* ok */ }
-          purgedUsers.push(u.id);
-        } catch { /* skip if no assets */ }
+        try { await deleteFolder(prefix); purgedUsers.push(u.id); } catch { /* no assets */ }
       }
     }
 
-    // ── 2. Sold-listing purge ───────────────────────────────────────────────
+    // ── 2. Sold-listing purge (after retention period, skip whitelisted) ────
     const listingRows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
-    const listings = (listingRows[0]?.value ?? []) as { status: string; submittedBy: string; listingId: string }[];
+    const listings    = (listingRows[0]?.value ?? []) as {
+      status: string; submittedBy: string; listingId: string; soldAt?: number;
+    }[];
 
     for (const l of listings) {
       if (l.status !== "sold") continue;
+      if (whitelist.has(l.submittedBy)) continue;
+      const soldAt = l.soldAt ?? 0;
+      if (!soldAt || now - soldAt < soldMs) continue; // still within grace period
       const safeUser = l.submittedBy.replace(/[^a-zA-Z0-9_-]/g, "_");
       const safeLid  = l.listingId.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const prefix   = `biz360/${safeUser}/${safeLid}`;
-      try {
-        await cloudinary.api.delete_resources_by_prefix(prefix);
-        try { await cloudinary.api.delete_folder(prefix); } catch { /* ok */ }
-        purgedListings.push(l.listingId);
-      } catch { /* skip if no assets */ }
+      try { await deleteFolder(`biz360/${safeUser}/${safeLid}`); purgedListings.push(l.listingId); } catch { /* no assets */ }
     }
-  } catch { /* non-critical — don't crash server */ }
+  } catch { /* non-critical */ }
 
   return { purgedUsers, purgedListings };
 }

@@ -1,13 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { PendingListing, useAdminPending } from "@/lib/adminStore";
+import { CleanupSettings, DEFAULT_CLEANUP_SETTINGS, getCleanupSettings, PendingListing, useAdminPending } from "@/lib/adminStore";
 
 const domain   = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}/api` : "/api";
@@ -26,6 +26,19 @@ function formatAge(ts: number) {
   if (h < 1)   return "Just now";
   if (h < 24)  return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+function formatDate(ts: number) {
+  return new Date(ts).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function retentionLabel(soldAt: number | undefined, retentionDays: number): string {
+  if (!soldAt) return "Photos pending cleanup";
+  const expiresAt  = soldAt + retentionDays * 86_400_000;
+  const remaining  = expiresAt - Date.now();
+  if (remaining <= 0) return "Photos eligible for deletion";
+  const daysLeft   = Math.ceil(remaining / 86_400_000);
+  return `Photos retained until ${formatDate(expiresAt)} (${daysLeft}d)`;
 }
 
 function resolveDisplay(item: PendingListing) {
@@ -57,13 +70,11 @@ function resolveDisplay(item: PendingListing) {
 async function deleteCloudinaryFolder(submittedBy: string, listingId: string) {
   const safeUser = submittedBy.replace(/[^a-zA-Z0-9_-]/g, "_");
   const safeLid  = listingId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  try {
-    await fetch(`${API_BASE}/biz360/img/folder`, {
-      method:  "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ prefix: `biz360/${safeUser}/${safeLid}` }),
-    });
-  } catch { /* non-critical */ }
+  await fetch(`${API_BASE}/biz360/img/folder`, {
+    method:  "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ prefix: `biz360/${safeUser}/${safeLid}` }),
+  });
 }
 
 export default function AdminListings() {
@@ -71,11 +82,16 @@ export default function AdminListings() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { data: pending, setData: setPending } = useAdminPending();
-  const [tab, setTab] = useState<Tab>("pending");
+  const [tab, setTab]                       = useState<Tab>("pending");
+  const [cleanupSettings, setCleanupSettings] = useState<CleanupSettings>(DEFAULT_CLEANUP_SETTINGS);
 
-  const queue   = pending.filter((p) => p.status === "pending");
-  const active  = pending.filter((p) => p.status === "approved");
-  const sold    = pending.filter((p) => p.status === "sold");
+  useEffect(() => {
+    getCleanupSettings().then(setCleanupSettings).catch(() => {});
+  }, []);
+
+  const queue  = pending.filter((p) => p.status === "pending");
+  const active = pending.filter((p) => p.status === "approved");
+  const sold   = pending.filter((p) => p.status === "sold");
 
   const listData: PendingListing[] =
     tab === "pending" ? queue :
@@ -125,16 +141,39 @@ export default function AdminListings() {
   };
 
   const markSold = (item: PendingListing, name: string) => {
+    const days = cleanupSettings.soldRetentionDays;
     Alert.alert(
       "Mark as Sold",
-      `Mark "${name}" as sold? This will remove all associated 360° tour photos from storage.`,
+      `Mark "${name}" as sold?\n\nTour photos will be kept for ${days} days then automatically removed. You can override this in the Sold tab.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Mark Sold", style: "destructive", onPress: async () => {
+          text: "Mark Sold", style: "destructive", onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setPending((prev) => prev.map((p) => p.id === item.id ? { ...p, status: "sold" } : p));
-            await deleteCloudinaryFolder(item.submittedBy, item.listingId);
+            setPending((prev) => prev.map((p) =>
+              p.id === item.id ? { ...p, status: "sold", soldAt: Date.now() } : p,
+            ));
+          },
+        },
+      ],
+    );
+  };
+
+  const deleteNow = (item: PendingListing, name: string) => {
+    Alert.alert(
+      "Delete Photos Now",
+      `Override the retention period and delete all 360° tour photos for "${name}" immediately? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete Now", style: "destructive", onPress: async () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            try {
+              await deleteCloudinaryFolder(item.submittedBy, item.listingId);
+              Alert.alert("Done", "Tour photos have been deleted.");
+            } catch {
+              Alert.alert("Error", "Could not delete photos. Try again.");
+            }
           },
         },
       ],
@@ -230,7 +269,9 @@ export default function AdminListings() {
                 <View style={[styles.waitTag, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
                   <Feather name="clock" size={10} color="#fff" />
                   <Text style={styles.waitText}>
-                    {tab === "sold" ? "Sold" : formatAge(item.submittedAt)}
+                    {tab === "sold"
+                      ? (item.soldAt ? `Sold ${formatDate(item.soldAt)}` : "Sold")
+                      : formatAge(item.submittedAt)}
                   </Text>
                 </View>
                 <View style={[styles.rolePill, { backgroundColor: "rgba(0,0,0,0.35)" }]}>
@@ -306,19 +347,30 @@ export default function AdminListings() {
                       </View>
                     )}
                     <TouchableOpacity
-                      style={[styles.soldBtn]}
+                      style={styles.soldBtn}
                       onPress={() => markSold(item, d.businessName)}
                     >
                       <Feather name="tag" size={16} color="#fff" />
-                      <Text style={styles.soldText}>Mark Sold</Text>
+                      <Text style={styles.soldBtnText}>Mark Sold</Text>
                     </TouchableOpacity>
                   </View>
                 )}
 
                 {tab === "sold" && (
-                  <View style={[styles.soldTag, { borderColor: colors.border }]}>
-                    <Feather name="check-circle" size={14} color="#16A34A" />
-                    <Text style={[styles.soldTagText, { color: "#16A34A" }]}>Photos removed from storage</Text>
+                  <View style={styles.soldFooter}>
+                    <View style={[styles.retentionTag, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <Feather name="clock" size={12} color={colors.mutedForeground} />
+                      <Text style={[styles.retentionText, { color: colors.mutedForeground }]}>
+                        {retentionLabel(item.soldAt, cleanupSettings.soldRetentionDays)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.deleteNowBtn, { borderColor: "#EF4444" }]}
+                      onPress={() => deleteNow(item, d.businessName)}
+                    >
+                      <Feather name="trash-2" size={13} color="#EF4444" />
+                      <Text style={styles.deleteNowText}>Delete Now</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -368,7 +420,10 @@ const styles = StyleSheet.create({
   approveBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 10 },
   approveText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   soldBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 10, backgroundColor: "#16A34A" },
-  soldText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  soldTag: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1 },
-  soldTagText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  soldBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  soldFooter: { gap: 8 },
+  retentionTag: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1 },
+  retentionText: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
+  deleteNowBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 9, borderRadius: 10, borderWidth: 1 },
+  deleteNowText: { color: "#EF4444", fontSize: 13, fontFamily: "Inter_600SemiBold" },
 });
