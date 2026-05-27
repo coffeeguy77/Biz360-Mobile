@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState, useMemo } from "react";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -14,58 +15,110 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ListingCard } from "@/components/ListingCard";
 import { FilterSheet, FilterState } from "@/components/FilterSheet";
-import { DEMO_LISTINGS } from "@/data/listings";
+import { Listing } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { useHiddenListings } from "@/lib/hiddenListings";
+import { getPendingListings, PendingListing } from "@/lib/adminStore";
 
 const DEFAULT_FILTERS: FilterState = {
   categories: [], states: [], hasTour: false, verified: false, maxPrice: null,
 };
 
+function pendingToListing(p: PendingListing): Listing {
+  return {
+    id:                  p.listingId,
+    businessName:        p.businessName        ?? "Unnamed Listing",
+    category:            p.category            ?? "",
+    subcategory:         "",
+    state:               p.state               ?? "",
+    suburb:              p.suburb              ?? "",
+    askingPrice:         p.askingPrice         ?? 0,
+    weeklyRevenue:       p.weeklyRevenue       ?? 0,
+    adjustedProfit:      p.adjustedProfit      ?? 0,
+    rent:                p.rent                ?? 0,
+    leaseExpiry:         p.leaseExpiry         ?? "",
+    leaseOptions:        p.leaseOptions        ?? "",
+    staffCount:          p.staffCount          ?? 0,
+    ownerHours:          p.ownerHours          ?? 0,
+    reasonForSale:       p.reasonForSale       ?? "",
+    franchiseStatus:     p.franchiseStatus     ?? "",
+    trainingPeriod:      p.trainingPeriod      ?? "",
+    growthOpportunities: p.growthOpportunities ?? "",
+    risks:               p.risks               ?? "",
+    verified:            false,
+    badges:              [],
+    hasTour:             false,
+    confidential:        p.confidential        ?? false,
+    contactPreference:   "message",
+    sellerPhone:         p.sellerPhone,
+    heroColor:           p.heroColor           ?? "#2563EB",
+    description:         p.description         ?? "",
+    imageUrl:            p.photos?.[0],
+    savedCount:          0,
+    viewCount:           0,
+    tourStarts:          0,
+  };
+}
+
 export default function DiscoverScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [search,      setSearch]      = useState("");
+  const [filters,     setFilters]     = useState<FilterState>(DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
-  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [savedIds,    setSavedIds]    = useState<string[]>([]);
+  const [listings,    setListings]    = useState<Listing[]>([]);
+  const [hiddenIds,   setHiddenIds]   = useState<string[]>([]);
 
-  const { hiddenIds, hide } = useHiddenListings();
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getPendingListings().then((all) => {
+        if (!active) return;
+        const approved = all
+          .filter((p) => p.status === "approved")
+          .map(pendingToListing);
+        setListings(approved);
+      });
+      return () => { active = false; };
+    }, []),
+  );
 
   const filtered = useMemo(() => {
-    return DEMO_LISTINGS.filter((l) => {
+    return listings.filter((l) => {
       if (hiddenIds.includes(l.id)) return false;
-      if (search && !l.businessName.toLowerCase().includes(search.toLowerCase()) &&
-        !l.category.toLowerCase().includes(search.toLowerCase()) &&
-        !l.suburb.toLowerCase().includes(search.toLowerCase())) return false;
+      const q = search.toLowerCase();
+      if (q && !l.businessName.toLowerCase().includes(q) &&
+        !l.category.toLowerCase().includes(q) &&
+        !l.suburb.toLowerCase().includes(q)) return false;
       if (filters.categories.length && !filters.categories.includes(l.category)) return false;
       if (filters.states.length && !filters.states.includes(l.state)) return false;
       if (filters.hasTour && !l.hasTour) return false;
       if (filters.verified && !l.verified) return false;
+      if (filters.maxPrice && l.askingPrice > filters.maxPrice) return false;
       return true;
     });
-  }, [search, filters, hiddenIds]);
+  }, [search, filters, hiddenIds, listings]);
 
   const toggleSave = (id: string) => {
     setSavedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   };
 
   const handleLongPress = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const listing = DEMO_LISTINGS.find((l) => l.id === id);
+    const listing = listings.find((l) => l.id === id);
     Alert.alert(
-      "Remove Listing",
-      `Hide "${listing?.businessName}" from the marketplace?`,
+      "Hide Listing",
+      `Hide "${listing?.businessName}" from your view?`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Remove",
+          text: "Hide",
           style: "destructive",
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            hide(id);
+            setHiddenIds((prev) => [...prev, id]);
           },
         },
       ],
@@ -90,7 +143,7 @@ export default function DiscoverScreen() {
         <View style={styles.headerTop}>
           <Text style={[styles.title, { color: colors.foreground }]}>Discover</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            {filtered.length} businesses for sale
+            {filtered.length} {filtered.length === 1 ? "business" : "businesses"} for sale
           </Text>
         </View>
 
@@ -115,7 +168,7 @@ export default function DiscoverScreen() {
               styles.filterBtn,
               {
                 backgroundColor: activeFilterCount > 0 ? colors.primary : colors.card,
-                borderColor: activeFilterCount > 0 ? colors.primary : colors.border,
+                borderColor:     activeFilterCount > 0 ? colors.primary : colors.border,
               },
             ]}
             onPress={() => setShowFilters(true)}
@@ -145,16 +198,16 @@ export default function DiscoverScreen() {
           styles.list,
           { paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80) },
         ]}
-        scrollEnabled={!!filtered.length}
+        scrollEnabled
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Feather name="search" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No results</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No listings yet</Text>
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              {hiddenIds.length > 0
-                ? "All listings have been removed. Add real listings to populate the marketplace."
-                : "Try different search terms or filters"}
+              {search || activeFilterCount > 0
+                ? "Try different search terms or filters."
+                : "Approved listings from sellers will appear here."}
             </Text>
           </View>
         }
@@ -171,34 +224,19 @@ export default function DiscoverScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 },
-  title: { fontSize: 26, fontFamily: "Inter_700Bold" },
-  subtitle: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  searchRow: { flexDirection: "row", gap: 10, alignItems: "center" },
-  searchBox: {
-    flex: 1, flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 14, paddingVertical: 11,
-    borderRadius: 12, borderWidth: 1,
-  },
-  searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
-  filterBtn: {
-    width: 44, height: 44, borderRadius: 12,
-    alignItems: "center", justifyContent: "center", borderWidth: 1,
-  },
-  filterBadge: {
-    position: "absolute", top: -4, right: -4,
-    width: 16, height: 16, borderRadius: 8,
-    backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center",
-  },
+  container:       { flex: 1 },
+  header:          { paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  headerTop:       { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 },
+  title:           { fontSize: 26, fontFamily: "Inter_700Bold" },
+  subtitle:        { fontSize: 13, fontFamily: "Inter_400Regular" },
+  searchRow:       { flexDirection: "row", gap: 10, alignItems: "center" },
+  searchBox:       { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, borderWidth: 1 },
+  searchInput:     { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  filterBtn:       { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  filterBadge:     { position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center" },
   filterBadgeText: { color: "#fff", fontSize: 9, fontFamily: "Inter_700Bold" },
-  list: { paddingHorizontal: 16, paddingTop: 16 },
-  empty: { alignItems: "center", paddingTop: 60, gap: 10, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 4 },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
+  list:            { paddingHorizontal: 16, paddingTop: 16 },
+  empty:           { alignItems: "center", paddingTop: 80, gap: 10, paddingHorizontal: 32 },
+  emptyTitle:      { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 4 },
+  emptyText:       { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
 });

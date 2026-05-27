@@ -2,7 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { apiGet, apiSet } from "./apiStore";
 
-const STORAGE_KEY = "biz360_threads_v2";
+const STORAGE_KEY = "biz360_threads_v3";
 
 export interface StoredMessage {
   id: string;
