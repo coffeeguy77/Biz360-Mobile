@@ -87,6 +87,8 @@ const VISIBILITY_OPTIONS: { val: Visibility; label: string; hint: string; icon: 
 async function uploadTourPhoto(
   uri: string,
   key: string,
+  userId: string,
+  listingId: string,
   onStatus: (s: string) => void,
 ): Promise<string> {
   if (uri.startsWith("http")) return uri; // already a server URL
@@ -98,18 +100,17 @@ async function uploadTourPhoto(
     const ext      = uri.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "jpg";
     const mimeType = ext === "png" ? "image/png" : "image/jpeg";
     const controller = new AbortController();
-    const timer      = setTimeout(() => controller.abort(), 120_000); // 2 min for large files
+    const timer      = setTimeout(() => controller.abort(), 120_000);
     const res = await fetch(`${apiBase}/biz360/img`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ key, data: base64, mimeType }),
+      body:    JSON.stringify({ key, data: base64, mimeType, userId, listingId }),
       signal:  controller.signal,
     });
     clearTimeout(timer);
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     const json = await res.json() as { url: string };
-    // Cloudinary returns a full https:// URL — use it as-is
-    return json.url;
+    return json.url; // Cloudinary full https:// URL
   } catch {
     return uri; // graceful fallback to local path
   }
@@ -343,13 +344,14 @@ export default function ToursScreen() {
     const isEditing  = editingSpaceId !== null;
     const spaceIdNow = isEditing ? editingSpaceId! : `space-${Date.now()}`;
     const listingKey = selectedId ?? spaceIdNow;
+    const userId     = user?.id ?? "unknown";
 
     try {
       if (draftSpace.dirMode === "panorama") {
         setSaveStatus("Uploading panorama…");
         const uri = draftSpace.panoramaUri!;
-        const imgKey      = `${listingKey}_pano_${Date.now()}`;
-        const panoramaUrl = await uploadTourPhoto(uri, imgKey, setSaveStatus);
+        const imgKey      = `pano_${Date.now()}`;
+        const panoramaUrl = await uploadTourPhoto(uri, imgKey, userId, listingKey, setSaveStatus);
         const tourPins    = buildTourPins(draftSpace.pins);
         const savedSpace: TourSpace = {
           id:   spaceIdNow,
@@ -365,8 +367,8 @@ export default function ToursScreen() {
           const uri = draftSpace.photos[dir];
           if (!uri) continue;
           setSaveStatus(`Uploading photo ${++photoIdx}…`);
-          const imgKey     = `${listingKey}_${dir.replace(/\s/g, "_")}_${Date.now()}`;
-          const uploadedUrl = await uploadTourPhoto(uri, imgKey, setSaveStatus);
+          const imgKey      = `${dir.replace(/\s/g, "_")}_${Date.now()}`;
+          const uploadedUrl = await uploadTourPhoto(uri, imgKey, userId, listingKey, setSaveStatus);
           photoArray.push(uploadedUrl);
         }
         const tourPins = buildTourPins(draftSpace.pins);

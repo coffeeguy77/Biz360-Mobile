@@ -78,7 +78,7 @@ export interface PendingListing {
   id: string;
   listingId: string;
   submittedAt: number;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "sold";
   submittedBy: string;
   submittedByRole: string;
   businessName?: string;

@@ -14,6 +14,7 @@ const STATUS_CONFIG = {
   pending:  { label: "Pending Review", color: "#F59E0B", icon: "clock"       },
   approved: { label: "Active",         color: "#16A34A", icon: "check-circle" },
   rejected: { label: "Rejected",       color: "#EF4444", icon: "x-circle"     },
+  sold:     { label: "Sold",           color: "#8B5CF6", icon: "tag"          },
 } as const;
 
 export default function BrokerListings() {

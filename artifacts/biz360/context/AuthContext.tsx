@@ -1,6 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
+const domain   = process.env.EXPO_PUBLIC_DOMAIN;
+const API_BASE = domain ? `https://${domain}/api` : "/api";
+
+function pingLastLogin(userId: string) {
+  fetch(`${API_BASE}/biz360/kv/${encodeURIComponent(`biz360_last_login_${userId}`)}`, {
+    method:  "PUT",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ value: Date.now() }),
+  }).catch(() => {});
+}
+
 export type UserRole = "buyer" | "seller" | "broker" | "admin";
 
 export interface User {
@@ -66,7 +77,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.getItem(REAL_KEY),
     ]).then(([cur, real]) => {
       try { if (cur)  setUser(JSON.parse(cur));      } catch {}
-      try { if (real) setRealUser(JSON.parse(real)); } catch {}
+      try {
+        if (real) {
+          const parsed = JSON.parse(real) as User;
+          setRealUser(parsed);
+          pingLastLogin(parsed.id); // heartbeat — keeps account alive
+        }
+      } catch {}
       setIsLoading(false);
     });
   }, []);
@@ -85,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ]);
     setUser(u);
     setRealUser(u);
+    pingLastLogin(u.id); // record login for inactivity cleanup
   };
 
   // Restore the phone-verified account after a demo session

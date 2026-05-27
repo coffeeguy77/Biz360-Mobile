@@ -1,13 +1,18 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { PendingListing, useAdminPending } from "@/lib/adminStore";
+
+const domain   = process.env.EXPO_PUBLIC_DOMAIN;
+const API_BASE = domain ? `https://${domain}/api` : "/api";
+
+type Tab = "pending" | "active" | "sold";
 
 function formatPrice(n: number) {
   if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
@@ -49,13 +54,33 @@ function resolveDisplay(item: PendingListing) {
   };
 }
 
+async function deleteCloudinaryFolder(submittedBy: string, listingId: string) {
+  const safeUser = submittedBy.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const safeLid  = listingId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  try {
+    await fetch(`${API_BASE}/biz360/img/folder`, {
+      method:  "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ prefix: `biz360/${safeUser}/${safeLid}` }),
+    });
+  } catch { /* non-critical */ }
+}
+
 export default function AdminListings() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { data: pending, setData: setPending } = useAdminPending();
+  const [tab, setTab] = useState<Tab>("pending");
 
-  const queue = pending.filter((p) => p.status === "pending");
+  const queue   = pending.filter((p) => p.status === "pending");
+  const active  = pending.filter((p) => p.status === "approved");
+  const sold    = pending.filter((p) => p.status === "sold");
+
+  const listData: PendingListing[] =
+    tab === "pending" ? queue :
+    tab === "active"  ? active :
+    sold;
 
   const showAccountMenu = () => {
     Alert.alert(user?.name ?? "Admin", user?.email ?? "", [
@@ -99,11 +124,34 @@ export default function AdminListings() {
     ]);
   };
 
+  const markSold = (item: PendingListing, name: string) => {
+    Alert.alert(
+      "Mark as Sold",
+      `Mark "${name}" as sold? This will remove all associated 360° tour photos from storage.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Mark Sold", style: "destructive", onPress: async () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setPending((prev) => prev.map((p) => p.id === item.id ? { ...p, status: "sold" } : p));
+            await deleteCloudinaryFolder(item.submittedBy, item.listingId);
+          },
+        },
+      ],
+    );
+  };
+
+  const TABS: { key: Tab; label: string; count: number }[] = [
+    { key: "pending", label: "Pending", count: queue.length  },
+    { key: "active",  label: "Active",  count: active.length },
+    { key: "sold",    label: "Sold",    count: sold.length   },
+  ];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Listing Approvals</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>Listings</Text>
           {queue.length > 0 && (
             <View style={[styles.badge, { backgroundColor: "#EF4444" }]}>
               <Text style={styles.badgeText}>{queue.length}</Text>
@@ -118,17 +166,51 @@ export default function AdminListings() {
         </TouchableOpacity>
       </View>
 
+      {/* Tabs */}
+      <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
+        {TABS.map((t) => (
+          <TouchableOpacity
+            key={t.key}
+            style={[styles.tab, tab === t.key && { borderBottomColor: "#3B82F6", borderBottomWidth: 2 }]}
+            onPress={() => setTab(t.key)}
+          >
+            <Text style={[styles.tabText, { color: tab === t.key ? "#3B82F6" : colors.mutedForeground }]}>
+              {t.label}
+            </Text>
+            {t.count > 0 && (
+              <View style={[styles.tabBadge, { backgroundColor: tab === t.key ? "#3B82F6" : colors.border }]}>
+                <Text style={[styles.tabBadgeText, { color: tab === t.key ? "#fff" : colors.mutedForeground }]}>
+                  {t.count}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <FlatList
-        data={queue}
+        data={listData}
         keyExtractor={(i) => i.id}
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80) }]}
         scrollEnabled
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="check-circle" size={40} color={colors.accent} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>All caught up!</Text>
-            <Text style={[styles.emptyText,  { color: colors.mutedForeground }]}>No pending listings to review.</Text>
+            <Feather
+              name={tab === "pending" ? "check-circle" : tab === "active" ? "list" : "tag"}
+              size={40}
+              color={colors.accent}
+            />
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              {tab === "pending" ? "All caught up!" : tab === "active" ? "No active listings" : "No sold listings"}
+            </Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+              {tab === "pending"
+                ? "No pending listings to review."
+                : tab === "active"
+                ? "Approved listings appear here."
+                : "Listings marked as sold appear here."}
+            </Text>
           </View>
         }
         renderItem={({ item }) => {
@@ -136,16 +218,20 @@ export default function AdminListings() {
           return (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={[styles.cardTop, { backgroundColor: d.heroColor }]}>
-                <TouchableOpacity
-                  style={styles.deleteIcon}
-                  onPress={() => deletePending(item.id, d.businessName)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Feather name="trash-2" size={14} color="rgba(255,255,255,0.8)" />
-                </TouchableOpacity>
+                {tab !== "sold" && (
+                  <TouchableOpacity
+                    style={styles.deleteIcon}
+                    onPress={() => deletePending(item.id, d.businessName)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Feather name="trash-2" size={14} color="rgba(255,255,255,0.8)" />
+                  </TouchableOpacity>
+                )}
                 <View style={[styles.waitTag, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
                   <Feather name="clock" size={10} color="#fff" />
-                  <Text style={styles.waitText}>Waiting {formatAge(item.submittedAt)}</Text>
+                  <Text style={styles.waitText}>
+                    {tab === "sold" ? "Sold" : formatAge(item.submittedAt)}
+                  </Text>
                 </View>
                 <View style={[styles.rolePill, { backgroundColor: "rgba(0,0,0,0.35)" }]}>
                   <Text style={styles.roleText}>{item.submittedByRole ?? "seller"}</Text>
@@ -170,36 +256,71 @@ export default function AdminListings() {
                   ))}
                 </View>
 
-                <View style={styles.actions}>
-                  {d.demoId ? (
+                {tab === "pending" && (
+                  <View style={styles.actions}>
+                    {d.demoId ? (
+                      <TouchableOpacity
+                        style={[styles.previewBtn, { borderColor: colors.border }]}
+                        onPress={() => router.push(`/listing/${d.demoId}` as any)}
+                      >
+                        <Feather name="eye" size={14} color={colors.foreground} />
+                        <Text style={[styles.previewText, { color: colors.foreground }]}>Preview</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[styles.previewBtn, { borderColor: colors.border, opacity: 0.4 }]}>
+                        <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+                        <Text style={[styles.previewText, { color: colors.mutedForeground }]}>No Preview</Text>
+                      </View>
+                    )}
                     <TouchableOpacity
-                      style={[styles.previewBtn, { borderColor: colors.border }]}
-                      onPress={() => router.push(`/listing/${d.demoId}` as any)}
+                      style={[styles.rejectBtn, { borderColor: "#EF4444" }]}
+                      onPress={() => reject(item.id, d.businessName)}
                     >
-                      <Feather name="eye" size={14} color={colors.foreground} />
-                      <Text style={[styles.previewText, { color: colors.foreground }]}>Preview</Text>
+                      <Feather name="x" size={16} color="#EF4444" />
+                      <Text style={styles.rejectText}>Reject</Text>
                     </TouchableOpacity>
-                  ) : (
-                    <View style={[styles.previewBtn, { borderColor: colors.border, opacity: 0.4 }]}>
-                      <Feather name="eye-off" size={14} color={colors.mutedForeground} />
-                      <Text style={[styles.previewText, { color: colors.mutedForeground }]}>No Preview</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.rejectBtn, { borderColor: "#EF4444" }]}
-                    onPress={() => reject(item.id, d.businessName)}
-                  >
-                    <Feather name="x" size={16} color="#EF4444" />
-                    <Text style={styles.rejectText}>Reject</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.approveBtn, { backgroundColor: colors.accent }]}
-                    onPress={() => approve(item.id)}
-                  >
-                    <Feather name="check" size={16} color="#fff" />
-                    <Text style={styles.approveText}>Approve</Text>
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      style={[styles.approveBtn, { backgroundColor: colors.accent }]}
+                      onPress={() => approve(item.id)}
+                    >
+                      <Feather name="check" size={16} color="#fff" />
+                      <Text style={styles.approveText}>Approve</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {tab === "active" && (
+                  <View style={styles.actions}>
+                    {d.demoId ? (
+                      <TouchableOpacity
+                        style={[styles.previewBtn, { borderColor: colors.border }]}
+                        onPress={() => router.push(`/listing/${d.demoId}` as any)}
+                      >
+                        <Feather name="eye" size={14} color={colors.foreground} />
+                        <Text style={[styles.previewText, { color: colors.foreground }]}>View</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[styles.previewBtn, { borderColor: colors.border, opacity: 0.4 }]}>
+                        <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+                        <Text style={[styles.previewText, { color: colors.mutedForeground }]}>No Preview</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.soldBtn]}
+                      onPress={() => markSold(item, d.businessName)}
+                    >
+                      <Feather name="tag" size={16} color="#fff" />
+                      <Text style={styles.soldText}>Mark Sold</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {tab === "sold" && (
+                  <View style={[styles.soldTag, { borderColor: colors.border }]}>
+                    <Feather name="check-circle" size={14} color="#16A34A" />
+                    <Text style={[styles.soldTagText, { color: "#16A34A" }]}>Photos removed from storage</Text>
+                  </View>
+                )}
               </View>
             </View>
           );
@@ -217,14 +338,19 @@ const styles = StyleSheet.create({
   badgeText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
   avatarBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   avatarText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  tabs: { flexDirection: "row", borderBottomWidth: 1, paddingHorizontal: 8 },
+  tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12 },
+  tabText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  tabBadge: { minWidth: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  tabBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold" },
   list: { padding: 16, gap: 14 },
   empty: { alignItems: "center", paddingTop: 80, gap: 10 },
   emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   card: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
   cardTop: { minHeight: 90, padding: 14, justifyContent: "flex-end", gap: 2 },
-  deleteIcon: { position: "absolute", top: 10, right: 36, zIndex: 1 },
-  waitTag: { position: "absolute", top: 10, right: 56, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
+  deleteIcon: { position: "absolute", top: 10, right: 10, zIndex: 1 },
+  waitTag: { position: "absolute", top: 10, right: 34, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   waitText: { color: "#fff", fontSize: 10, fontFamily: "Inter_500Medium" },
   rolePill: { position: "absolute", top: 10, left: 10, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   roleText: { color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold", textTransform: "uppercase" },
@@ -241,4 +367,8 @@ const styles = StyleSheet.create({
   rejectText: { color: "#EF4444", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   approveBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 10 },
   approveText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  soldBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 10, backgroundColor: "#16A34A" },
+  soldText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  soldTag: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1 },
+  soldTagText: { fontSize: 13, fontFamily: "Inter_500Medium" },
 });
