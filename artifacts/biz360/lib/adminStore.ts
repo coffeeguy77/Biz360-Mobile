@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { DEMO_LISTINGS } from "@/data/listings";
 
 export interface AdminUser {
   id: string;
@@ -63,7 +62,8 @@ const K = {
   brokers:    "biz360_admin_brokers",
   reports:    "biz360_admin_reports",
   categories: "biz360_admin_categories",
-  pending:    "biz360_admin_pending",
+  // v2: fixes seed data so broker/seller demo listings match what each role actually sees
+  pending:    "biz360_admin_pending_v2",
 };
 
 const HERO_COLORS = ["#2563EB", "#7C3AED", "#0891B2", "#059669", "#D97706", "#DC2626", "#0F766E", "#9333EA"];
@@ -75,12 +75,12 @@ export function randomHeroColor() {
 
 function defaultUsers(): AdminUser[] {
   return [
-    { id: "u1", name: "Alex Chen",        email: "alex@example.com",         role: "buyer",  status: "active",    joined: "Jan 2024" },
-    { id: "u2", name: "Sarah Mitchell",   email: "sarah@example.com",        role: "seller", status: "active",    joined: "Mar 2024" },
-    { id: "u3", name: "James Harrington", email: "james@premiumbiz.com.au",  role: "broker", status: "active",    joined: "Feb 2024" },
-    { id: "u4", name: "David Park",       email: "david@example.com",        role: "buyer",  status: "active",    joined: "Apr 2024" },
-    { id: "u5", name: "Priya Sharma",     email: "priya@example.com",        role: "seller", status: "active",    joined: "Apr 2024" },
-    { id: "u6", name: "Unknown User",     email: "spam@example.com",         role: "buyer",  status: "suspended", joined: "May 2024" },
+    { id: "u1", name: "Alex Chen",        email: "alex@example.com",        role: "buyer",  status: "active",    joined: "Jan 2024" },
+    { id: "u2", name: "Sarah Mitchell",   email: "sarah@example.com",       role: "seller", status: "active",    joined: "Mar 2024" },
+    { id: "u3", name: "James Harrington", email: "james@premiumbiz.com.au", role: "broker", status: "active",    joined: "Feb 2024" },
+    { id: "u4", name: "David Park",       email: "david@example.com",       role: "buyer",  status: "active",    joined: "Apr 2024" },
+    { id: "u5", name: "Priya Sharma",     email: "priya@example.com",       role: "seller", status: "active",    joined: "Apr 2024" },
+    { id: "u6", name: "Unknown User",     email: "spam@example.com",        role: "buyer",  status: "suspended", joined: "May 2024" },
   ];
 }
 
@@ -116,14 +116,16 @@ function defaultCategories(): AdminCategory[] {
 }
 
 function defaultPending(): PendingListing[] {
-  return DEMO_LISTINGS.slice(0, 2).map((l, i) => ({
-    id: `p${i + 1}`,
-    listingId: l.id,
-    submittedAt: Date.now() - (i + 1) * 3600000,
-    status: "pending" as const,
-    submittedBy: i === 0 ? "seller-001" : "broker-001",
-    submittedByRole: i === 0 ? "seller" : "broker",
-  }));
+  const now = Date.now();
+  return [
+    // ── Broker's two live listings (already approved, matching broker listings screen) ──
+    { id: "p-gym",        listingId: "listing-gym-001",        submittedAt: now - 30*86400000, status: "approved", submittedBy: "broker-001", submittedByRole: "broker" },
+    { id: "p-restaurant", listingId: "listing-restaurant-001", submittedAt: now - 28*86400000, status: "approved", submittedBy: "broker-001", submittedByRole: "broker" },
+    // ── Seller's live listing (already approved, matching seller listings screen) ──
+    { id: "p-cafe",       listingId: "listing-cafe-001",       submittedAt: now - 20*86400000, status: "approved", submittedBy: "seller-001", submittedByRole: "seller" },
+    // ── One pending submission for admin to review ──
+    { id: "p-salon",      listingId: "listing-salon-001",      submittedAt: now - 2*3600000,   status: "pending",  submittedBy: "broker-001", submittedByRole: "broker" },
+  ];
 }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -168,7 +170,7 @@ function usePersistedList<T>(
     }, []),
   );
 
-  const setData = async (updated: T[] | ((prev: T[]) => T[])) => {
+  const setData = (updated: T[] | ((prev: T[]) => T[])) => {
     setDataState((prev) => {
       const next = typeof updated === "function" ? updated(prev) : updated;
       saveFn(next).catch(() => {});
@@ -179,8 +181,8 @@ function usePersistedList<T>(
   return { data, setData, loading };
 }
 
-export const useAdminUsers      = () => usePersistedList(getUsers,           saveUsers);
-export const useAdminBrokers    = () => usePersistedList(getBrokers,         saveBrokers);
-export const useAdminReports    = () => usePersistedList(getReports,         saveReports);
-export const useAdminCategories = () => usePersistedList(getCategories,      saveCategories);
-export const useAdminPending    = () => usePersistedList(getPendingListings,  savePendingListings);
+export const useAdminUsers      = () => usePersistedList(getUsers,            saveUsers);
+export const useAdminBrokers    = () => usePersistedList(getBrokers,          saveBrokers);
+export const useAdminReports    = () => usePersistedList(getReports,          saveReports);
+export const useAdminCategories = () => usePersistedList(getCategories,       saveCategories);
+export const useAdminPending    = () => usePersistedList(getPendingListings,   savePendingListings);
