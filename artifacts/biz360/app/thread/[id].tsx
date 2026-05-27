@@ -25,11 +25,12 @@ import {
 } from "@/lib/messageStore";
 
 export default function ThreadScreen() {
-  const { id, listingName, sellerName, buyerName } = useLocalSearchParams<{
+  const { id, listingName, sellerName, buyerName, listingId: listingIdParam } = useLocalSearchParams<{
     id: string;
     listingName?: string;
     sellerName?: string;
     buyerName?: string;
+    listingId?: string;
   }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -43,7 +44,7 @@ export default function ThreadScreen() {
   const role = (user?.role === "seller" ? "seller" : "buyer") as "buyer" | "seller";
 
   const meta = {
-    listingId: thread?.listingId ?? "",
+    listingId: thread?.listingId || (listingIdParam ? decodeURIComponent(listingIdParam) : "") || id,
     listingName: thread?.listingName ?? decodeURIComponent(listingName ?? "Listing"),
     sellerName: thread?.sellerName ?? decodeURIComponent(sellerName ?? "Seller"),
     buyerName: thread?.buyerName ?? (buyerName ? decodeURIComponent(buyerName) : user?.name ?? "Buyer"),

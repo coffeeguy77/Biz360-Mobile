@@ -1,5 +1,4 @@
-import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiGet, apiSet } from "./apiStore";
 
 const STORAGE_KEY = "biz360_threads_v3";
@@ -136,16 +135,14 @@ export function useThreadList() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      setLoading(true);
-      getThreads().then((t) => {
-        if (active) { setThreads(t); setLoading(false); }
-      });
-      return () => { active = false; };
-    }, []),
-  );
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    getThreads()
+      .then((t) => { if (active) { setThreads(t); setLoading(false); } })
+      .catch(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   const remove = async (id: string) => {
     setThreads((prev) => prev.filter((t) => t.id !== id));
@@ -159,20 +156,18 @@ export function useThreadDetail(id: string) {
   const [thread, setThread] = useState<Thread | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const reload = useCallback(() => {
-    getThread(id).then(setThread);
-  }, [id]);
+  const reload = () => {
+    getThread(id).then(setThread).catch(() => {});
+  };
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      setLoading(true);
-      getThread(id).then((t) => {
-        if (active) { setThread(t); setLoading(false); }
-      });
-      return () => { active = false; };
-    }, [id]),
-  );
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    getThread(id)
+      .then((t) => { if (active) { setThread(t); setLoading(false); } })
+      .catch(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [id]);
 
   return { thread, loading, reload };
 }
