@@ -57,6 +57,7 @@ export interface AdminReport {
   id: string;
   type: string;
   listing: string;
+  listingId?: string;
   reporter: string;
   severity: "high" | "medium" | "low";
   status: "open" | "dismissed" | "suspended";
@@ -117,6 +118,7 @@ export interface PendingListing {
   sellerPhone?: string;
   badges?: string[];
   confidential?: boolean;
+  suspended?: boolean;
 }
 
 const K = {
@@ -154,11 +156,7 @@ function defaultBrokers(): AdminBroker[] {
 }
 
 function defaultReports(): AdminReport[] {
-  const now = Date.now();
-  return [
-    { id: "r1", type: "Misleading financials", listing: "The Daily Press Espresso Bar", reporter: "Anonymous buyer", severity: "medium", status: "open", createdAt: now - 7200000  },
-    { id: "r2", type: "Spam / fake listing",   listing: "ABC Cafe (test)",              reporter: "System",          severity: "high",   status: "open", createdAt: now - 86400000 },
-  ];
+  return [];
 }
 
 function defaultCategories(): AdminCategory[] {
@@ -214,6 +212,28 @@ export const getBrokers          = () => load(K.brokers,    defaultBrokers);
 export const saveBrokers         = (d: AdminBroker[])    => save(K.brokers,    d);
 export const getReports          = () => load(K.reports,    defaultReports);
 export const saveReports         = (d: AdminReport[])    => save(K.reports,    d);
+
+export async function submitReport(
+  report: Omit<AdminReport, "id" | "createdAt" | "status">,
+): Promise<void> {
+  const existing = await getReports();
+  const newReport: AdminReport = {
+    ...report,
+    id: `r_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    status: "open",
+    createdAt: Date.now(),
+  };
+  await saveReports([...existing, newReport]);
+}
+
+export async function suspendListing(listingId: string): Promise<void> {
+  const listings = await getPendingListings();
+  const updated = listings.map((l) =>
+    l.listingId === listingId ? { ...l, suspended: true } : l,
+  );
+  await savePendingListings(updated);
+}
+
 export const getCategories       = () => load(K.categories, defaultCategories);
 export const saveCategories      = (d: AdminCategory[])  => save(K.categories, d);
 export const getPendingListings  = () => load(K.pending,   defaultPending);

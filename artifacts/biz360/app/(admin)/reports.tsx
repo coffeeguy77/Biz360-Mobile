@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { useAdminReports } from "@/lib/adminStore";
+import { suspendListing, useAdminReports } from "@/lib/adminStore";
 
 const SEV_COLORS: Record<string, string> = { high: "#EF4444", medium: "#F59E0B", low: "#3B82F6" };
 
@@ -31,13 +31,14 @@ export default function AdminReports() {
     setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "dismissed" } : r));
   };
 
-  const suspend = (id: string, listing: string) => {
+  const suspend = (id: string, listing: string, listingId?: string) => {
     Alert.alert("Suspend Listing", `This will remove "${listing}" from the marketplace. Continue?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Suspend", style: "destructive", onPress: () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
           setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "suspended" } : r));
+          if (listingId) suspendListing(listingId).catch(() => {});
         },
       },
     ]);
@@ -117,7 +118,7 @@ export default function AdminReports() {
                 <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.muted }]} onPress={() => dismiss(item.id)}>
                   <Text style={[styles.actionText, { color: colors.foreground }]}>Dismiss</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: "#EF444420", borderWidth: 1, borderColor: "#EF4444" }]} onPress={() => suspend(item.id, item.listing)}>
+                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: "#EF444420", borderWidth: 1, borderColor: "#EF4444" }]} onPress={() => suspend(item.id, item.listing, item.listingId)}>
                   <Text style={[styles.actionText, { color: "#EF4444" }]}>Suspend Listing</Text>
                 </TouchableOpacity>
               </View>
