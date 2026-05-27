@@ -2,117 +2,17 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VerificationBadges } from "@/components/VerificationBadge";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings, PendingListing, submitReport } from "@/lib/adminStore";
+import { getPendingListings, PendingListing } from "@/lib/adminStore";
 import { trackEvent } from "@/lib/analyticsStore";
 import { apiGet } from "@/lib/apiStore";
 import { useAuth } from "@/context/AuthContext";
 import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
 
-// ── Report Sheet ───────────────────────────────────────────────────────────────
-
-const REPORT_TYPES = [
-  { label: "Spam or fake listing",       severity: "high"   as const },
-  { label: "Misleading financials",      severity: "high"   as const },
-  { label: "Incorrect information",      severity: "medium" as const },
-  { label: "Suspicious seller activity", severity: "medium" as const },
-  { label: "Inappropriate content",      severity: "low"    as const },
-  { label: "Other",                      severity: "low"    as const },
-];
-
-function ReportSheet({
-  visible, listingId, listingName, reporterName, onClose,
-}: {
-  visible: boolean;
-  listingId: string;
-  listingName: string;
-  reporterName: string;
-  onClose: () => void;
-}) {
-  const colors = useColors();
-  const [selected, setSelected]   = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone]            = useState(false);
-
-  const reset = () => { setSelected(null); setSubmitting(false); setDone(false); };
-  const handleClose = () => { reset(); onClose(); };
-
-  const handleSubmit = async () => {
-    if (!selected || submitting) return;
-    const t = REPORT_TYPES.find((r) => r.label === selected)!;
-    setSubmitting(true);
-    try {
-      await submitReport({ type: selected, listing: listingName, listingId, reporter: reporterName, severity: t.severity });
-      setDone(true);
-    } finally {
-      setSubmitting(false);
-    }
-    setTimeout(handleClose, 1500);
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <TouchableOpacity style={rs.overlay} activeOpacity={1} onPress={handleClose} />
-      <View style={[rs.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {done ? (
-          <View style={rs.doneWrap}>
-            <Feather name="check-circle" size={36} color={colors.accent} />
-            <Text style={[rs.doneTitle, { color: colors.foreground }]}>Report submitted</Text>
-            <Text style={[rs.doneSub, { color: colors.mutedForeground }]}>We'll review this listing shortly.</Text>
-          </View>
-        ) : (
-          <>
-            <View style={rs.handle} />
-            <Text style={[rs.title, { color: colors.foreground }]}>Report Listing</Text>
-            <Text style={[rs.sub, { color: colors.mutedForeground }]}>What's the issue with this listing?</Text>
-            <View style={rs.typeList}>
-              {REPORT_TYPES.map((t) => (
-                <TouchableOpacity
-                  key={t.label}
-                  style={[rs.typeRow, { borderColor: selected === t.label ? colors.primary : colors.border, backgroundColor: selected === t.label ? colors.primary + "15" : "transparent" }]}
-                  onPress={() => setSelected(t.label)}
-                >
-                  <Feather name={selected === t.label ? "check-circle" : "circle"} size={16} color={selected === t.label ? colors.primary : colors.mutedForeground} />
-                  <Text style={[rs.typeLabel, { color: colors.foreground }]}>{t.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={[rs.submitBtn, { backgroundColor: selected ? "#EF4444" : colors.muted, opacity: submitting ? 0.6 : 1 }]}
-              onPress={handleSubmit}
-              disabled={!selected || submitting}
-            >
-              {submitting
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={rs.submitText}>Submit Report</Text>
-              }
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </Modal>
-  );
-}
-
-const rs = StyleSheet.create({
-  overlay:   { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
-  sheet:     { position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, gap: 12 },
-  handle:    { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.18)", alignSelf: "center", marginBottom: 4 },
-  title:     { fontSize: 18, fontFamily: "Inter_700Bold" },
-  sub:       { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: -4 },
-  typeList:  { gap: 8 },
-  typeRow:   { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
-  typeLabel: { fontSize: 14, fontFamily: "Inter_400Regular", flex: 1 },
-  submitBtn: { paddingVertical: 14, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 4 },
-  submitText:{ color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  doneWrap:  { alignItems: "center", paddingVertical: 28, gap: 10 },
-  doneTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  doneSub:   { fontSize: 13, fontFamily: "Inter_400Regular" },
-});
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -132,7 +32,6 @@ export default function ListingDetailScreen() {
 
   const [isSaved,       setIsSaved]       = useState(false);
   const [hasTour,       setHasTour]       = useState(false);
-  const [reportVisible, setReportVisible] = useState(false);
   const viewFiredRef = useRef(false);
 
   // 1. Try DEMO_LISTINGS first (synchronous)
@@ -287,26 +186,27 @@ export default function ListingDetailScreen() {
             <TouchableOpacity style={[styles.saveBtn, { top: insets.top + (Platform.OS === "web" ? 67 : 0) + 8 }]} onPress={handleSave}>
               <Feather name="bookmark" size={20} color={isSaved ? "#3B82F6" : "#fff"} />
             </TouchableOpacity>
-            <View style={styles.heroContent}>
-              {listing.confidential && (
-                <View style={styles.confPill}>
-                  <Feather name="eye-off" size={11} color="#fff" />
-                  <Text style={styles.confText}>Confidential Listing</Text>
-                </View>
-              )}
-              {listing.priceDisplay === "poa" ? (
-                <View>
-                  <Text style={styles.heroPrice}>POA</Text>
-                  <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
-                </View>
-              ) : listing.priceDisplay === "weeklyRevenue" ? (
-                <Text style={styles.heroPrice}>${listing.weeklyRevenue.toLocaleString()}/wk</Text>
-              ) : (
-                <Text style={styles.heroPrice}>{formatPrice(listing.askingPrice)}</Text>
-              )}
-              <Text style={styles.heroName}>{listing.businessName}</Text>
-              <Text style={styles.heroMeta}>{listing.suburb}, {listing.state} · {listing.category}</Text>
-            </View>
+          </View>
+
+          <View style={styles.listingInfoBlock}>
+            {listing.confidential && (
+              <View style={[styles.confPill, { alignSelf: "flex-start", marginBottom: 4 }]}>
+                <Feather name="eye-off" size={11} color="#fff" />
+                <Text style={styles.confText}>Confidential Listing</Text>
+              </View>
+            )}
+            {listing.priceDisplay === "poa" ? (
+              <View>
+                <Text style={[styles.infoPrice, { color: colors.foreground }]}>POA</Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
+              </View>
+            ) : listing.priceDisplay === "weeklyRevenue" ? (
+              <Text style={[styles.infoPrice, { color: colors.foreground }]}>${listing.weeklyRevenue.toLocaleString()}/wk</Text>
+            ) : (
+              <Text style={[styles.infoPrice, { color: colors.foreground }]}>{formatPrice(listing.askingPrice)}</Text>
+            )}
+            <Text style={[styles.infoName, { color: colors.foreground }]}>{listing.businessName}</Text>
+            <Text style={[styles.infoMeta, { color: colors.mutedForeground }]}>{listing.suburb}, {listing.state} · {listing.category}</Text>
           </View>
 
           <View style={styles.body}>
@@ -384,19 +284,8 @@ export default function ListingDetailScreen() {
               <Feather name="file-text" size={14} color={colors.primary} />
               <Text style={[styles.footerSecText, { color: colors.primary }]}>Request Docs</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.footerSecBtn, { backgroundColor: "#EF444412", borderColor: "#EF444430" }]} onPress={() => setReportVisible(true)}>
-              <Feather name="flag" size={14} color="#EF4444" />
-              <Text style={[styles.footerSecText, { color: "#EF4444" }]}>Report</Text>
-            </TouchableOpacity>
           </View>
         </View>
-        <ReportSheet
-          visible={reportVisible}
-          listingId={listing.id}
-          listingName={listing.businessName}
-          reporterName={user?.name ?? "Anonymous"}
-          onClose={() => setReportVisible(false)}
-        />
       </View>
     );
   }
@@ -445,24 +334,6 @@ export default function ListingDetailScreen() {
           <TouchableOpacity style={[styles.saveBtn, { top: topOffset }]} onPress={handleSave}>
             <Feather name="bookmark" size={20} color={isSaved ? "#3B82F6" : "#fff"} />
           </TouchableOpacity>
-          <View style={styles.heroContent}>
-            {item.priceDisplay === "poa" ? (
-              <View>
-                <Text style={styles.heroPrice}>POA</Text>
-                <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
-              </View>
-            ) : item.priceDisplay === "weeklyRevenue" ? (
-              <Text style={styles.heroPrice}>{revenue && revenue > 0 ? `$${revenue.toLocaleString()}/wk` : safeFormatPrice(price)}</Text>
-            ) : (
-              <Text style={styles.heroPrice}>{safeFormatPrice(price)}</Text>
-            )}
-            <Text style={styles.heroName}>{businessName}</Text>
-            {(locationMeta || item.category) && (
-              <Text style={styles.heroMeta}>
-                {locationMeta}{item.category ? `${locationMeta ? " · " : ""}${item.category}` : ""}
-              </Text>
-            )}
-          </View>
         </View>
 
         {/* ── Photo strip (if > 1 photo) ── */}
@@ -477,6 +348,31 @@ export default function ListingDetailScreen() {
             ))}
           </ScrollView>
         )}
+
+        <View style={styles.listingInfoBlock}>
+          {item.confidential && (
+            <View style={[styles.confPill, { alignSelf: "flex-start", marginBottom: 4 }]}>
+              <Feather name="eye-off" size={11} color="#fff" />
+              <Text style={styles.confText}>Confidential Listing</Text>
+            </View>
+          )}
+          {item.priceDisplay === "poa" ? (
+            <View>
+              <Text style={[styles.infoPrice, { color: colors.foreground }]}>POA</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
+            </View>
+          ) : item.priceDisplay === "weeklyRevenue" ? (
+            <Text style={[styles.infoPrice, { color: colors.foreground }]}>{revenue && revenue > 0 ? `$${revenue.toLocaleString()}/wk` : safeFormatPrice(price)}</Text>
+          ) : (
+            <Text style={[styles.infoPrice, { color: colors.foreground }]}>{safeFormatPrice(price)}</Text>
+          )}
+          <Text style={[styles.infoName, { color: colors.foreground }]}>{businessName}</Text>
+          {(locationMeta || item.category) && (
+            <Text style={[styles.infoMeta, { color: colors.mutedForeground }]}>
+              {locationMeta}{item.category ? `${locationMeta ? " · " : ""}${item.category}` : ""}
+            </Text>
+          )}
+        </View>
 
         <View style={styles.body}>
           {/* ── 360° Tour CTA ── */}
@@ -578,19 +474,8 @@ export default function ListingDetailScreen() {
             <Feather name="file-text" size={14} color={colors.primary} />
             <Text style={[styles.footerSecText, { color: colors.primary }]}>Request Docs</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.footerSecBtn, { backgroundColor: "#EF444412", borderColor: "#EF444430" }]} onPress={() => setReportVisible(true)}>
-            <Feather name="flag" size={14} color="#EF4444" />
-            <Text style={[styles.footerSecText, { color: "#EF4444" }]}>Report</Text>
-          </TouchableOpacity>
         </View>
       </View>
-      <ReportSheet
-        visible={reportVisible}
-        listingId={id!}
-        listingName={businessName}
-        reporterName={user?.name ?? "Anonymous"}
-        onClose={() => setReportVisible(false)}
-      />
     </View>
   );
 }
@@ -602,12 +487,8 @@ const styles = StyleSheet.create({
   hero:            { height: 240, justifyContent: "flex-end" },
   backBtn:         { position: "absolute", left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
   saveBtn:         { position: "absolute", right: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
-  heroContent:     { padding: 16, gap: 4, backgroundColor: "rgba(0,0,0,0.3)" },
-  confPill:        { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, marginBottom: 4 },
+  confPill:        { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#1E3A5C", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   confText:        { color: "#fff", fontSize: 10, fontFamily: "Inter_500Medium" },
-  heroPrice:       { color: "#fff", fontSize: 30, fontFamily: "Inter_700Bold" },
-  heroName:        { color: "#fff", fontSize: 18, fontFamily: "Inter_600SemiBold" },
-  heroMeta:        { color: "rgba(255,255,255,0.7)", fontSize: 13, fontFamily: "Inter_400Regular" },
   photoStrip:      { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
   photoStripThumb: { width: 120, height: 80, borderRadius: 8 },
   body:            { padding: 16, gap: 16 },
@@ -624,6 +505,10 @@ const styles = StyleSheet.create({
   riskCard:        { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
   cardTag:         { fontSize: 12, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 4 },
   cardText:        { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  listingInfoBlock:{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 2, gap: 3 },
+  infoPrice:       { fontSize: 30, fontFamily: "Inter_700Bold" },
+  infoName:        { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 2 },
+  infoMeta:        { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 1 },
   infoBox:         { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
   infoText:        { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   footer:          { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, gap: 8 },
