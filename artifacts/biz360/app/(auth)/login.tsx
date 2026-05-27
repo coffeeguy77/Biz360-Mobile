@@ -32,7 +32,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
 
-  const [mode,     setMode]     = useState<"email" | "phone">("email");
+  const [mode,     setMode]     = useState<"email" | "phone">("phone");
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
   const [phone,    setPhone]    = useState("");
@@ -145,18 +145,18 @@ export default function LoginScreen() {
         {/* ── Mode toggle ── */}
         <View style={[styles.toggle, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
           <TouchableOpacity
-            style={[styles.toggleBtn, mode === "email" && { backgroundColor: "#2563EB" }]}
-            onPress={() => switchMode("email")}
-          >
-            <Feather name="mail" size={14} color={mode === "email" ? "#fff" : "#8B9CB8"} />
-            <Text style={[styles.toggleLabel, { color: mode === "email" ? "#fff" : "#8B9CB8" }]}>Email</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             style={[styles.toggleBtn, mode === "phone" && { backgroundColor: "#2563EB" }]}
             onPress={() => switchMode("phone")}
           >
             <Feather name="smartphone" size={14} color={mode === "phone" ? "#fff" : "#8B9CB8"} />
             <Text style={[styles.toggleLabel, { color: mode === "phone" ? "#fff" : "#8B9CB8" }]}>Phone</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, mode === "email" && { backgroundColor: "#2563EB" }]}
+            onPress={() => switchMode("email")}
+          >
+            <Feather name="mail" size={14} color={mode === "email" ? "#fff" : "#8B9CB8"} />
+            <Text style={[styles.toggleLabel, { color: mode === "email" ? "#fff" : "#8B9CB8" }]}>Email</Text>
           </TouchableOpacity>
         </View>
 
