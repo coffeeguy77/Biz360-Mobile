@@ -1087,7 +1087,7 @@ const styles = StyleSheet.create({
   pickerChip:        { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, marginRight: 8 },
   pickerChipText:    { fontSize: 13, fontFamily: "Inter_600SemiBold", maxWidth: 180 },
   tourCard:          { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  tourHero:          { height: 100, alignItems: "center", justifyContent: "center", gap: 8, overflow: "hidden" },
+  tourHero:          { height: 200, alignItems: "center", justifyContent: "center", gap: 8, overflow: "hidden" },
   tourHeroImg:       { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   tourHeroOverlay:   { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.45)" },
   tourHeroTitle:     { color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" },

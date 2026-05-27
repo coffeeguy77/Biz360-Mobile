@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
   emptyTitle:    { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   emptyHint:     { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
   card:            { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  cardHero:        { height: 130, padding: 14, justifyContent: "space-between", flexDirection: "row", alignItems: "flex-start" },
+  cardHero:        { height: 260, padding: 14, justifyContent: "space-between", flexDirection: "row", alignItems: "flex-start" },
   cardHeroImg:     { resizeMode: "cover" },
   cardHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)" },
   statusPill:    { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
