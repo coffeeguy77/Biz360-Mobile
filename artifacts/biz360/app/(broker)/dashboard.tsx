@@ -6,19 +6,33 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
+import { formatLeadTime, useLeads } from "@/lib/brokerStore";
 
 const BROKER_LISTINGS = [DEMO_LISTINGS[3], DEMO_LISTINGS[4]];
-const PORTFOLIO_STATS = [
-  { label: "Active Listings", value: "2", icon: "briefcase", color: "#3B82F6" },
-  { label: "Total Leads", value: "34", icon: "users", color: "#F59E0B" },
-  { label: "Tour Views", value: "879", icon: "rotate-ccw", color: "#8B5CF6" },
-  { label: "Portfolio Value", value: "$570K", icon: "dollar-sign", color: "#16A34A" },
-];
+
+const QC_COLOR: Record<string, string> = { hot: "#EF4444", warm: "#F59E0B", cold: "#3B82F6" };
 
 export default function BrokerDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { leads } = useLeads();
+
+  const totalLeads   = leads.length;
+  const totalViews   = BROKER_LISTINGS.reduce((s, l) => s + l.viewCount, 0);
+  const totalTours   = BROKER_LISTINGS.reduce((s, l) => s + l.tourStarts, 0);
+  const portfolioVal = BROKER_LISTINGS.reduce((s, l) => s + l.askingPrice, 0);
+
+  const portfolioStats = [
+    { label: "Active Listings", value: String(BROKER_LISTINGS.length), icon: "briefcase",   color: "#3B82F6" },
+    { label: "Total Leads",     value: String(totalLeads),             icon: "users",        color: "#F59E0B" },
+    { label: "Tour Starts",     value: String(totalTours),             icon: "rotate-ccw",   color: "#8B5CF6" },
+    { label: "Portfolio Value", value: formatPrice(portfolioVal),      icon: "dollar-sign",  color: "#16A34A" },
+  ];
+
+  const recentLeads = [...leads]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 4);
 
   const showAccountMenu = () => {
     Alert.alert(user?.name ?? "Account", user?.email ?? "", [
@@ -50,7 +64,7 @@ export default function BrokerDashboard() {
         </View>
 
         <View style={styles.statsGrid}>
-          {PORTFOLIO_STATS.map((s) => (
+          {portfolioStats.map((s) => (
             <View key={s.label} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={[styles.statIcon, { backgroundColor: s.color + "18" }]}>
                 <Feather name={s.icon as any} size={16} color={s.color} />
@@ -92,14 +106,32 @@ export default function BrokerDashboard() {
 
         <View style={styles.sectionRow}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recent Leads</Text>
+          <TouchableOpacity onPress={() => router.push("/(broker)/leads" as any)}>
+            <Text style={[styles.seeAll, { color: colors.primary }]}>See all</Text>
+          </TouchableOpacity>
         </View>
-        {["Michael R. — Iron Republic (HOT)", "Angela T. — Ember & Stone (WARM)"].map((lead) => (
-          <View key={lead} style={[styles.leadRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={[styles.leadDot, { backgroundColor: lead.includes("HOT") ? "#EF4444" : "#F59E0B" }]} />
-            <Text style={[styles.leadText, { color: colors.foreground }]}>{lead}</Text>
-            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+
+        {recentLeads.length === 0 ? (
+          <View style={[styles.emptyLeads, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.emptyLeadsText, { color: colors.mutedForeground }]}>No leads yet. Listings will generate leads as buyers engage.</Text>
           </View>
-        ))}
+        ) : (
+          recentLeads.map((lead) => (
+            <TouchableOpacity
+              key={lead.id}
+              style={[styles.leadRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push("/(broker)/leads" as any)}
+            >
+              <View style={[styles.leadDot, { backgroundColor: QC_COLOR[lead.quality] }]} />
+              <View style={styles.leadInfo}>
+                <Text style={[styles.leadName, { color: colors.foreground }]}>{lead.name}</Text>
+                <Text style={[styles.leadListing, { color: colors.mutedForeground }]}>{lead.listing} · {lead.action}</Text>
+              </View>
+              <Text style={[styles.leadTime, { color: colors.mutedForeground }]}>{formatLeadTime(lead.timestamp)}</Text>
+              <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -132,6 +164,11 @@ const styles = StyleSheet.create({
   confidentialTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   confidentialText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   leadRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
-  leadDot: { width: 8, height: 8, borderRadius: 4 },
-  leadText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  leadDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  leadInfo: { flex: 1 },
+  leadName: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  leadListing: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+  leadTime: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  emptyLeads: { padding: 16, borderRadius: 12, borderWidth: 1 },
+  emptyLeadsText: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 19 },
 });
