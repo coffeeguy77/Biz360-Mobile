@@ -66,14 +66,16 @@ export default function TourScreen() {
         </TouchableOpacity>
         <View style={styles.tourInfo}>
           <Text style={styles.tourTitle} numberOfLines={1}>{listing?.businessName ?? "Tour"}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={styles.tourSpace}>{activeSpace.name}</Text>
-            {isUserSpace && (
-              <View style={styles.userSpaceBadge}>
-                <Text style={styles.userSpaceBadgeText}>YOUR SPACE</Text>
-              </View>
-            )}
-          </View>
+          {allSpaces.length <= 1 && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={styles.tourSpace}>{activeSpace.name}</Text>
+              {isUserSpace && (
+                <View style={styles.userSpaceBadge}>
+                  <Text style={styles.userSpaceBadgeText}>YOUR SPACE</Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
         <TouchableOpacity style={styles.iconBtn}>
           <Feather name="share-2" size={18} color="#fff" />
@@ -107,7 +109,7 @@ export default function TourScreen() {
         </View>
       )}
 
-      <TourViewer space={activeSpace} onPinPress={setActivePin} />
+      <TourViewer key={activeSpace.id} space={activeSpace} onPinPress={setActivePin} />
 
       <View style={[styles.bottomOverlay, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 8 }]}>
         <View style={styles.pinLegend}>
