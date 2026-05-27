@@ -40,6 +40,15 @@ export interface TourSpace {
   dirMode?: 4 | 8 | "panorama";
 }
 
+export type StatSlotOption =
+  | "sde"
+  | "staffCount"
+  | "weeklyRevenue"
+  | "rent"
+  | "ownerHours"
+  | "leaseExpiry"
+  | "none";
+
 export interface Listing {
   id: string;
   businessName: string;
@@ -50,6 +59,8 @@ export interface Listing {
   askingPrice: number;
   weeklyRevenue: number;
   priceDisplay?: "askingPrice" | "weeklyRevenue" | "poa";
+  stat2Display?: StatSlotOption;
+  stat3Display?: StatSlotOption;
   adjustedProfit: number;
   rent: number;
   leaseExpiry: string;

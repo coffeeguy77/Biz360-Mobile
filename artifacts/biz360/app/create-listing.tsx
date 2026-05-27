@@ -71,6 +71,8 @@ interface FormState {
   badges: VerificationBadge[];
   contactPreference: "message" | "call" | "broker_only";
   priceDisplay: "askingPrice" | "weeklyRevenue" | "poa";
+  stat2Display: string;
+  stat3Display: string;
   sellerPhone: string;
   photos: string[];
 }
@@ -81,6 +83,7 @@ const INITIAL_FORM: FormState = {
   rent: "", staffCount: "", ownerHours: "", leaseExpiry: "", leaseOptions: "",
   franchiseStatus: "", trainingPeriod: "", reasonForSale: "", growthOpportunities: "",
   risks: "", badges: [], contactPreference: "message", priceDisplay: "askingPrice",
+  stat2Display: "sde", stat3Display: "staffCount",
   sellerPhone: "", photos: [],
 };
 
@@ -110,6 +113,8 @@ export default function CreateListing() {
           askingPrice:        item.askingPrice        ? String(item.askingPrice)  : "",
           weeklyRevenue:      item.weeklyRevenue      ? String(item.weeklyRevenue): "",
           priceDisplay:       (item.priceDisplay      ?? "askingPrice") as FormState["priceDisplay"],
+          stat2Display:       item.stat2Display       ?? "sde",
+          stat3Display:       item.stat3Display       ?? "staffCount",
           adjustedProfit:     item.adjustedProfit     ? String(item.adjustedProfit): "",
           rent:               item.rent               ? String(item.rent)         : "",
           staffCount:         item.staffCount         ? String(item.staffCount)   : "",
@@ -231,6 +236,8 @@ export default function CreateListing() {
         askingPrice:         parseInt(form.askingPrice.replace(/[^0-9]/g, ""))        || 0,
         weeklyRevenue:       parseInt(form.weeklyRevenue.replace(/[^0-9]/g, ""))      || 0,
         priceDisplay:        form.priceDisplay,
+        stat2Display:        form.stat2Display,
+        stat3Display:        form.stat3Display,
         adjustedProfit:      parseInt(form.adjustedProfit.replace(/[^0-9]/g, ""))     || 0,
         rent:                parseInt(form.rent.replace(/[^0-9]/g, ""))               || 0,
         staffCount:          parseInt(form.staffCount)                                || 0,
@@ -434,6 +441,65 @@ export default function CreateListing() {
                 </Text>
               )}
             </View>
+
+            {/* Stat slot 2 selector */}
+            {(() => {
+              const STAT_OPTS = [
+                { value: "sde",           label: "SDE p.a." },
+                { value: "staffCount",    label: "Staff" },
+                { value: "weeklyRevenue", label: "Weekly Rev." },
+                { value: "rent",          label: "Monthly Rent" },
+                { value: "ownerHours",    label: "Owner Hrs" },
+                { value: "leaseExpiry",   label: "Lease Expiry" },
+                { value: "none",          label: "None" },
+              ];
+              return (
+                <>
+                  <View style={styles.field}>
+                    <Text style={[styles.label, { color: colors.mutedForeground }]}>Card Stat — Slot 2</Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 10, fontFamily: "Inter_400Regular" }}>
+                      Middle stat on your listing card (default: SDE p.a.)
+                    </Text>
+                    <View style={[styles.chipGrid]}>
+                      {STAT_OPTS.map(({ value, label }) => {
+                        const active = form.stat2Display === value;
+                        return (
+                          <TouchableOpacity
+                            key={value}
+                            style={[styles.chip, { backgroundColor: active ? colors.primary : colors.muted }]}
+                            onPress={() => update("stat2Display", value)}
+                          >
+                            <Text style={[styles.chipText, { color: active ? "#fff" : colors.foreground }]}>{label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.field}>
+                    <Text style={[styles.label, { color: colors.mutedForeground }]}>Card Stat — Slot 3</Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 10, fontFamily: "Inter_400Regular" }}>
+                      Right stat on your listing card (default: Staff Count)
+                    </Text>
+                    <View style={[styles.chipGrid]}>
+                      {STAT_OPTS.map(({ value, label }) => {
+                        const active = form.stat3Display === value;
+                        return (
+                          <TouchableOpacity
+                            key={value}
+                            style={[styles.chip, { backgroundColor: active ? colors.primary : colors.muted }]}
+                            onPress={() => update("stat3Display", value)}
+                          >
+                            <Text style={[styles.chipText, { color: active ? "#fff" : colors.foreground }]}>{label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </>
+              );
+            })()}
+
             {textField("adjustedProfit", "Adjusted Profit / SDE ($ p.a.)", "72000",                   true)}
             {textField("rent",           "Monthly Rent ($)",                "4200",                    true)}
             {textField("staffCount",     "Staff Count",                     "4",                       true)}
