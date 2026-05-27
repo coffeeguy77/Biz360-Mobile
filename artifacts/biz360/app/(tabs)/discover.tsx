@@ -17,47 +17,14 @@ import { ListingCard } from "@/components/ListingCard";
 import { FilterSheet, FilterState } from "@/components/FilterSheet";
 import { Listing } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings, PendingListing } from "@/lib/adminStore";
+import { getPendingListings } from "@/lib/adminStore";
+import { pendingToListing } from "@/lib/listingUtils";
+import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
 
 const DEFAULT_FILTERS: FilterState = {
   categories: [], states: [], hasTour: false, verified: false, maxPrice: null,
 };
 
-function pendingToListing(p: PendingListing): Listing {
-  return {
-    id:                  p.listingId,
-    businessName:        p.businessName        ?? "Unnamed Listing",
-    category:            p.category            ?? "",
-    subcategory:         "",
-    state:               p.state               ?? "",
-    suburb:              p.suburb              ?? "",
-    askingPrice:         p.askingPrice         ?? 0,
-    weeklyRevenue:       p.weeklyRevenue       ?? 0,
-    adjustedProfit:      p.adjustedProfit      ?? 0,
-    rent:                p.rent                ?? 0,
-    leaseExpiry:         p.leaseExpiry         ?? "",
-    leaseOptions:        p.leaseOptions        ?? "",
-    staffCount:          p.staffCount          ?? 0,
-    ownerHours:          p.ownerHours          ?? 0,
-    reasonForSale:       p.reasonForSale       ?? "",
-    franchiseStatus:     p.franchiseStatus     ?? "",
-    trainingPeriod:      p.trainingPeriod      ?? "",
-    growthOpportunities: p.growthOpportunities ?? "",
-    risks:               p.risks               ?? "",
-    verified:            false,
-    badges:              [],
-    hasTour:             false,
-    confidential:        p.confidential        ?? false,
-    contactPreference:   "message",
-    sellerPhone:         p.sellerPhone,
-    heroColor:           p.heroColor           ?? "#2563EB",
-    description:         p.description         ?? "",
-    imageUrl:            p.photos?.[0],
-    savedCount:          0,
-    viewCount:           0,
-    tourStarts:          0,
-  };
-}
 
 export default function DiscoverScreen() {
   const colors = useColors();
@@ -72,12 +39,13 @@ export default function DiscoverScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      getPendingListings().then((all) => {
+      Promise.all([getPendingListings(), getSavedIds()]).then(([all, ids]) => {
         if (!active) return;
         const approved = all
           .filter((p) => p.status === "approved")
           .map(pendingToListing);
         setListings(approved);
+        setSavedIds(ids);
       });
       return () => { active = false; };
     }, []),
@@ -99,10 +67,9 @@ export default function DiscoverScreen() {
     });
   }, [search, filters, hiddenIds, listings]);
 
-  const toggleSave = (id: string) => {
-    setSavedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+  const toggleSave = async (id: string) => {
+    const next = await persistToggleSaved(id);
+    setSavedIds(next);
   };
 
   const handleLongPress = (id: string) => {

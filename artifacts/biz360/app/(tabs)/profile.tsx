@@ -1,29 +1,52 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
-import React from "react";
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
+import {
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { getSavedIds } from "@/lib/savedStore";
 
-const MENU_ITEMS = [
-  { icon: "bookmark",    label: "Saved Listings",    sub: "2 saved"          },
-  { icon: "bell",        label: "Alerts",             sub: "Manage search alerts" },
-  { icon: "file-text",   label: "Document Requests",  sub: "Pending documents" },
-  { icon: "shield",      label: "NDA Requests",       sub: "3 signed NDAs"    },
-  { icon: "settings",    label: "Account Settings",   sub: "Profile, security" },
-  { icon: "help-circle", label: "Help & Support",     sub: "FAQ, contact us"  },
+const FAQ = [
+  { q: "How do I contact a seller?", a: "Tap 'Message Seller' on any listing detail page." },
+  { q: "Are the financials verified?", a: "Listings with a Verified badge have had their financials reviewed by our team or a licensed accountant." },
+  { q: "How do NDAs work?", a: "Some listings require an NDA before viewing financials. You'll be prompted when you request confidential documents." },
+  { q: "What is SDE?", a: "Seller's Discretionary Earnings — the business's profit before owner's salary, depreciation, and one-off expenses." },
+  { q: "Can I get a refund?", a: "Contact support at support@biz360.com.au for billing queries." },
 ];
 
+type Section = "alerts" | "documents" | "ndas" | "settings" | "help" | null;
+
 export default function ProfileScreen() {
-  const colors   = useColors();
-  const insets   = useSafeAreaInsets();
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
   const { user, realUser, restoreReal, logout } = useAuth();
 
-  // A demo session is active when there's a phone-verified real user stored
-  // but the current session is a different (demo) account
+  const [savedCount,    setSavedCount]    = useState(0);
+  const [expanded,      setExpanded]      = useState<Section>(null);
+  const [expandedFaq,   setExpandedFaq]   = useState<number | null>(null);
+
   const isDemo = realUser && user?.id !== realUser.id;
+
+  useFocusEffect(
+    useCallback(() => {
+      getSavedIds().then((ids) => setSavedCount(ids.length));
+    }, []),
+  );
+
+  const toggle = (section: Section) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setExpanded((prev) => (prev === section ? null : section));
+  };
 
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -36,18 +59,28 @@ export default function ProfileScreen() {
     await restoreReal();
   };
 
+  const initials = user?.name
+    ?.split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() ?? "?";
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80) },
+          {
+            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12,
+            paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80),
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.title, { color: colors.foreground }]}>Profile</Text>
 
-        {/* ── Demo session banner ─────────────────────────────────────── */}
+        {/* ── Demo session banner ── */}
         {isDemo && (
           <TouchableOpacity
             style={[styles.demoBanner, { backgroundColor: "#F59E0B18", borderColor: "#F59E0B40" }]}
@@ -67,27 +100,31 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         )}
 
-        {/* ── User card ───────────────────────────────────────────────── */}
+        {/* ── User card ── */}
         <View style={[styles.userCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.avatar, { backgroundColor: isDemo ? "#F59E0B" : colors.primary }]}>
-            <Text style={styles.avatarText}>{user?.name?.charAt(0) ?? "?"}</Text>
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={[styles.userName, { color: colors.foreground }]}>{user?.name}</Text>
-            <Text style={[styles.userEmail, { color: colors.mutedForeground }]}>{user?.email}</Text>
+            <Text style={[styles.userName, { color: colors.foreground }]}>{user?.name ?? "—"}</Text>
+            <Text style={[styles.userEmail, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {user?.email ?? ""}
+            </Text>
             <View style={[styles.rolePill, { backgroundColor: (isDemo ? "#F59E0B" : colors.primary) + "20" }]}>
               <Text style={[styles.roleText, { color: isDemo ? "#F59E0B" : colors.primary }]}>
                 {isDemo ? "Demo · " : ""}{user?.role?.charAt(0).toUpperCase()}{user?.role?.slice(1)} Account
               </Text>
             </View>
           </View>
-          <TouchableOpacity>
-            <Feather name="edit-2" size={18} color={colors.mutedForeground} />
-          </TouchableOpacity>
         </View>
 
+        {/* ── Stats ── */}
         <View style={styles.statsRow}>
-          {[["2", "Saved"], ["3", "NDAs"], ["12", "Views"]].map(([val, lbl]) => (
+          {[
+            [String(savedCount), "Saved"],
+            ["0",                "NDAs"],
+            ["0",                "Views"],
+          ].map(([val, lbl]) => (
             <View key={lbl} style={[styles.statBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.statVal, { color: colors.foreground }]}>{val}</Text>
               <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{lbl}</Text>
@@ -95,28 +132,189 @@ export default function ProfileScreen() {
           ))}
         </View>
 
+        {/* ── Menu sections ── */}
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {MENU_ITEMS.map((item, idx) => (
-            <TouchableOpacity
-              key={item.label}
-              style={[
-                styles.menuItem,
-                idx < MENU_ITEMS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-              ]}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
-                <Feather name={item.icon as any} size={16} color={colors.primary} />
+
+          {/* Saved Listings */}
+          <TouchableOpacity
+            style={[styles.menuRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/saved" as any); }}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
+              <Feather name="bookmark" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={[styles.menuLabel, { color: colors.foreground }]}>Saved Listings</Text>
+              <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>
+                {savedCount > 0 ? `${savedCount} saved` : "No saved listings yet"}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+
+          {/* Alerts */}
+          <TouchableOpacity
+            style={[styles.menuRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+            onPress={() => toggle("alerts")}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
+              <Feather name="bell" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={[styles.menuLabel, { color: colors.foreground }]}>Search Alerts</Text>
+              <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>Get notified of new matches</Text>
+            </View>
+            <Feather name={expanded === "alerts" ? "chevron-down" : "chevron-right"} size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          {expanded === "alerts" && (
+            <View style={[styles.expansion, { borderBottomColor: colors.border }]}>
+              <View style={styles.emptyState}>
+                <Feather name="bell-off" size={28} color={colors.mutedForeground} />
+                <Text style={[styles.emptyStateTitle, { color: colors.foreground }]}>No active alerts</Text>
+                <Text style={[styles.emptyStateSub, { color: colors.mutedForeground }]}>
+                  Set up a search alert and we'll notify you when new listings match your criteria.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.ctaBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => Alert.alert("Coming Soon", "Search alerts will be available in the next update.")}
+                >
+                  <Feather name="plus" size={14} color="#fff" />
+                  <Text style={styles.ctaBtnText}>Set Up Alert</Text>
+                </TouchableOpacity>
               </View>
-              <View style={styles.menuText}>
-                <Text style={[styles.menuLabel, { color: colors.foreground }]}>{item.label}</Text>
-                <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>{item.sub}</Text>
+            </View>
+          )}
+
+          {/* Document Requests */}
+          <TouchableOpacity
+            style={[styles.menuRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+            onPress={() => toggle("documents")}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
+              <Feather name="file-text" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={[styles.menuLabel, { color: colors.foreground }]}>Document Requests</Text>
+              <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>Information memoranda, financials</Text>
+            </View>
+            <Feather name={expanded === "documents" ? "chevron-down" : "chevron-right"} size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          {expanded === "documents" && (
+            <View style={[styles.expansion, { borderBottomColor: colors.border }]}>
+              <View style={styles.emptyState}>
+                <Feather name="file" size={28} color={colors.mutedForeground} />
+                <Text style={[styles.emptyStateTitle, { color: colors.foreground }]}>No document requests</Text>
+                <Text style={[styles.emptyStateSub, { color: colors.mutedForeground }]}>
+                  When you request an information memorandum or financial documents from a listing, they'll appear here.
+                </Text>
               </View>
-              <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          ))}
+            </View>
+          )}
+
+          {/* NDA Requests */}
+          <TouchableOpacity
+            style={[styles.menuRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+            onPress={() => toggle("ndas")}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
+              <Feather name="shield" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={[styles.menuLabel, { color: colors.foreground }]}>NDA Requests</Text>
+              <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>Non-disclosure agreements</Text>
+            </View>
+            <Feather name={expanded === "ndas" ? "chevron-down" : "chevron-right"} size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          {expanded === "ndas" && (
+            <View style={[styles.expansion, { borderBottomColor: colors.border }]}>
+              <View style={styles.emptyState}>
+                <Feather name="lock" size={28} color={colors.mutedForeground} />
+                <Text style={[styles.emptyStateTitle, { color: colors.foreground }]}>No NDAs signed</Text>
+                <Text style={[styles.emptyStateSub, { color: colors.mutedForeground }]}>
+                  Some sellers require an NDA before sharing confidential information. Any you've signed will appear here.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Account Settings */}
+          <TouchableOpacity
+            style={[styles.menuRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+            onPress={() => toggle("settings")}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
+              <Feather name="settings" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={[styles.menuLabel, { color: colors.foreground }]}>Account Settings</Text>
+              <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>Profile, notifications, security</Text>
+            </View>
+            <Feather name={expanded === "settings" ? "chevron-down" : "chevron-right"} size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          {expanded === "settings" && (
+            <View style={[styles.expansion, { borderBottomColor: colors.border }]}>
+              <View style={styles.settingsSection}>
+                <SettingsRow label="Name"  value={user?.name  ?? "—"} colors={colors} />
+                <SettingsRow label="Phone" value={user?.email ?? "—"} colors={colors} />
+                <SettingsRow label="Role"  value={user?.role  ?? "—"} colors={colors} last />
+              </View>
+              <TouchableOpacity
+                style={[styles.ctaBtn, { backgroundColor: colors.muted, marginTop: 12 }]}
+                onPress={() => Alert.alert("Coming Soon", "Profile editing will be available in the next update.")}
+              >
+                <Feather name="edit-2" size={14} color={colors.foreground} />
+                <Text style={[styles.ctaBtnText, { color: colors.foreground }]}>Edit Profile</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Help & Support */}
+          <TouchableOpacity
+            style={styles.menuRow}
+            onPress={() => toggle("help")}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
+              <Feather name="help-circle" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={[styles.menuLabel, { color: colors.foreground }]}>Help & Support</Text>
+              <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>FAQ, contact us</Text>
+            </View>
+            <Feather name={expanded === "help" ? "chevron-down" : "chevron-right"} size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          {expanded === "help" && (
+            <View style={styles.expansion}>
+              {FAQ.map((item, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.faqRow, { borderTopColor: colors.border }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setExpandedFaq(expandedFaq === idx ? null : idx); }}
+                >
+                  <View style={styles.faqQ}>
+                    <Text style={[styles.faqQuestion, { color: colors.foreground }]}>{item.q}</Text>
+                    <Feather
+                      name={expandedFaq === idx ? "chevron-up" : "chevron-down"}
+                      size={14}
+                      color={colors.mutedForeground}
+                    />
+                  </View>
+                  {expandedFaq === idx && (
+                    <Text style={[styles.faqAnswer, { color: colors.mutedForeground }]}>{item.a}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.ctaBtn, { backgroundColor: colors.muted, margin: 14, marginTop: 4 }]}
+                onPress={() => Alert.alert("Contact Support", "Email us at support@biz360.com.au")}
+              >
+                <Feather name="mail" size={14} color={colors.foreground} />
+                <Text style={[styles.ctaBtnText, { color: colors.foreground }]}>Contact Support</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
-        {/* ── Switch role (for testing) ────────────────────────────────── */}
+        {/* ── Switch demo role ── */}
         <TouchableOpacity
           style={[styles.switchRole, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => router.replace("/(auth)/welcome" as any)}
@@ -127,16 +325,19 @@ export default function ProfileScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* ── Real user quick-restore ──────────────────────────────────── */}
+        {/* ── Real user badge ── */}
         {realUser && !isDemo && (
           <View style={[styles.realUserBadge, { backgroundColor: colors.card, borderColor: "#16A34A40" }]}>
             <Feather name="check-circle" size={14} color="#16A34A" />
             <Text style={[styles.realUserText, { color: colors.mutedForeground }]}>
-              Signed in as <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>{realUser.name}</Text> · {realUser.email}
+              Signed in as{" "}
+              <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>{realUser.name}</Text>
+              {" · "}{realUser.email}
             </Text>
           </View>
         )}
 
+        {/* ── Sign out ── */}
         <TouchableOpacity style={[styles.logoutBtn, { borderColor: colors.border }]} onPress={handleLogout}>
           <Feather name="log-out" size={16} color="#EF4444" />
           <Text style={styles.logoutText}>Sign Out</Text>
@@ -146,38 +347,61 @@ export default function ProfileScreen() {
   );
 }
 
+function SettingsRow({ label, value, colors, last }: { label: string; value: string; colors: any; last?: boolean }) {
+  return (
+    <View style={[styles.settingsRow, !last && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+      <Text style={[styles.settingsLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[styles.settingsValue, { color: colors.foreground }]}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container:          { flex: 1 },
-  scroll:             { paddingHorizontal: 16, gap: 16 },
-  title:              { fontSize: 26, fontFamily: "Inter_700Bold" },
-  demoBanner:         { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14, borderRadius: 14, borderWidth: 1, gap: 10 },
-  demoBannerLeft:     { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
-  demoBannerTitle:    { color: "#F59E0B", fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  demoBannerSub:      { color: "#92400E", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  demoBannerBtn:      { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  demoBannerBtnText:  { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
-  userCard:           { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 16, borderWidth: 1 },
-  avatar:             { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
-  avatarText:         { color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold" },
-  userInfo:           { flex: 1, gap: 4 },
-  userName:           { fontSize: 17, fontFamily: "Inter_600SemiBold" },
-  userEmail:          { fontSize: 13, fontFamily: "Inter_400Regular" },
-  rolePill:           { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
-  roleText:           { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  statsRow:           { flexDirection: "row", gap: 10 },
-  statBox:            { flex: 1, padding: 14, borderRadius: 12, alignItems: "center", borderWidth: 1 },
-  statVal:            { fontSize: 22, fontFamily: "Inter_700Bold" },
-  statLbl:            { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  menuCard:           { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  menuItem:           { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  menuIcon:           { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  menuText:           { flex: 1 },
-  menuLabel:          { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  menuSub:            { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  switchRole:         { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
-  switchRoleText:     { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  realUserBadge:      { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
-  realUserText:       { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1 },
-  logoutBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
-  logoutText:         { color: "#EF4444", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  container:        { flex: 1 },
+  scroll:           { paddingHorizontal: 16, gap: 16 },
+  title:            { fontSize: 26, fontFamily: "Inter_700Bold" },
+  demoBanner:       { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14, borderRadius: 14, borderWidth: 1, gap: 10 },
+  demoBannerLeft:   { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  demoBannerTitle:  { color: "#F59E0B", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  demoBannerSub:    { color: "#92400E", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  demoBannerBtn:    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  demoBannerBtnText:{ color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
+  userCard:         { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 16, borderWidth: 1 },
+  avatar:           { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
+  avatarText:       { color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" },
+  userInfo:         { flex: 1, gap: 4 },
+  userName:         { fontSize: 17, fontFamily: "Inter_600SemiBold" },
+  userEmail:        { fontSize: 13, fontFamily: "Inter_400Regular" },
+  rolePill:         { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
+  roleText:         { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  statsRow:         { flexDirection: "row", gap: 10 },
+  statBox:          { flex: 1, padding: 14, borderRadius: 12, alignItems: "center", borderWidth: 1 },
+  statVal:          { fontSize: 22, fontFamily: "Inter_700Bold" },
+  statLbl:          { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  menuCard:         { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  menuRow:          { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  menuIcon:         { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  menuText:         { flex: 1 },
+  menuLabel:        { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  menuSub:          { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  expansion:        { borderTopWidth: 1 },
+  emptyState:       { alignItems: "center", gap: 8, padding: 24, paddingTop: 20 },
+  emptyStateTitle:  { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  emptyStateSub:    { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 18, opacity: 0.8 },
+  ctaBtn:           { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
+  ctaBtnText:       { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  settingsSection:  { margin: 14, borderRadius: 10, overflow: "hidden" },
+  settingsRow:      { flexDirection: "row", alignItems: "center", paddingVertical: 10, gap: 12 },
+  settingsLabel:    { fontSize: 13, fontFamily: "Inter_400Regular", width: 60 },
+  settingsValue:    { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  faqRow:           { borderTopWidth: 1, paddingHorizontal: 14, paddingVertical: 12 },
+  faqQ:             { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  faqQuestion:      { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold", lineHeight: 18 },
+  faqAnswer:        { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 6, lineHeight: 18, opacity: 0.85 },
+  switchRole:       { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
+  switchRoleText:   { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  realUserBadge:    { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  realUserText:     { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1 },
+  logoutBtn:        { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
+  logoutText:       { color: "#EF4444", fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });
