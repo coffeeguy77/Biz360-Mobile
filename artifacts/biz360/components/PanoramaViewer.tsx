@@ -64,7 +64,7 @@ function buildSinglePanoHtml(
   <script>
     var PINS = ${JSON.stringify(hotspots)};
     function createPin(container, args) {
-      container.style.cssText = 'background:'+args.color+';width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.3);cursor:pointer;user-select:none;transform:translateY(-50%);position:relative;flex-shrink:0';
+      container.style.cssText = 'background:'+args.color+';width:38px;height:38px;border-radius:50%;position:relative;display:inline-flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.3);cursor:pointer;user-select:none;transform:translateY(-50%);flex-shrink:0';
       container.innerHTML = args.icon+(args.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">&#128274;</span>':'');
       ['touchend','click'].forEach(function(ev){container.addEventListener(ev,function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));});});
     }
@@ -172,7 +172,7 @@ var pinEls=PINS.map(function(p){
   var el=document.createElement('div');
   el.className='pin';
   el.style.background=p.color;
-  el.innerHTML=p.icon+(p.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">\uD83D\uDD12</span>':'');el.style.position='relative';
+  el.innerHTML=p.icon+(p.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">\uD83D\uDD12</span>':'');
   el.addEventListener('touchend',function(e){
     e.stopPropagation();e.preventDefault();
     if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));
@@ -307,7 +307,7 @@ var pinEls=PINS.map(function(p){
   var el=document.createElement('div');
   el.className='pin';
   el.style.background=p.color;
-  el.innerHTML=p.icon+(p.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">\uD83D\uDD12</span>':'');el.style.position='relative';
+  el.innerHTML=p.icon+(p.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">\uD83D\uDD12</span>':'');
   el.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));});
   el.addEventListener('click',function(e){e.stopPropagation();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));});
   document.body.appendChild(el);

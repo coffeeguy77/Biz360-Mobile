@@ -113,6 +113,9 @@ export default function ToursScreen() {
   const [saveStatus, setSaveStatus] = useState("");
 
   const draggingPinIdRef = useRef<string | null>(null);
+  const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const editingSpaceIdRef = useRef<string | null>(null);
+  useEffect(() => { editingSpaceIdRef.current = editingSpaceId; }, [editingSpaceId]);
 
   const activeDirections = draftSpace.dirMode === 4 ? DIRS_4 : draftSpace.dirMode === 8 ? DIRS_8 : [];
 
@@ -483,58 +486,7 @@ export default function ToursScreen() {
                   Upload the stitched panorama from your Insta360 app or camera roll. Pinch to zoom while placing pins.
                 </Text>
 
-                {pinPlaceMode && draftSpace.panoramaUri ? (
-                  /* ── Tap-to-place mode ── */
-                  <View
-                    style={[styles.panoPlaceSlot, { borderColor: colors.primary }]}
-                    onLayout={(e) => setPanoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
-                  >
-                    <Image source={{ uri: draftSpace.panoramaUri }} style={styles.panoThumb} />
-                    {/* Existing pin dots */}
-                    {draftSpace.pins.filter((p) => p.x != null).map((pin) => {
-                      const meta = ALL_PIN_TYPES.find((m) => m.type === pin.type) ?? ALL_PIN_TYPES[0];
-                      return (
-                        <View
-                          key={pin.id}
-                          style={[styles.pinDotOnPano, {
-                            left: pin.x! * panoLayout.width - 8,
-                            top: (pin.y ?? 0.5) * panoLayout.height - 8,
-                            backgroundColor: meta.color,
-                          }]}
-                        >
-                          <Feather name={meta.icon as any} size={8} color="#fff" />
-                        </View>
-                      );
-                    })}
-                    {/* Tap capture layer */}
-                    <TouchableOpacity
-                      style={StyleSheet.absoluteFill}
-                      activeOpacity={0.9}
-                      onPress={(e) => {
-                        const nx = parseFloat((e.nativeEvent.locationX / panoLayout.width).toFixed(3));
-                        const ny = parseFloat((e.nativeEvent.locationY / panoLayout.height).toFixed(3));
-                        setDraftPin((p) => ({ ...p, x: nx, y: ny }));
-                        setPinPlaceMode(false);
-                        setConfirmedPlacement({ x: nx, y: ny });
-                        setTimeout(() => {
-                          setConfirmedPlacement(null);
-                          setShowPinModal(true);
-                        }, 600);
-                      }}
-                    >
-                      <View style={styles.placeModeOverlay}>
-                        <View style={styles.placeModeChip}>
-                          <Feather name="crosshair" size={14} color="#fff" />
-                          <Text style={styles.placeModeText}>Tap to place pin</Text>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                    {/* Cancel placement */}
-                    <TouchableOpacity style={styles.cancelPlacementBtn} onPress={() => setPinPlaceMode(false)}>
-                      <Feather name="x" size={10} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ) : draftSpace.panoramaUri ? (
+                {draftSpace.panoramaUri ? (
                   /* ── Panorama uploaded — draggable pins ── */
                   <View
                     style={[styles.panoUploadSlot, { borderColor: "#7C3AED", borderStyle: "solid" }]}
@@ -564,12 +516,32 @@ export default function ToursScreen() {
                         const { locationX, locationY } = e.nativeEvent;
                         const nx = Math.max(0.01, Math.min(0.99, locationX / panoLayout.width));
                         const ny = Math.max(0.01, Math.min(0.99, locationY / panoLayout.height));
+                        dragPositionRef.current = { x: nx, y: ny };
                         setDraftSpace((prev) => ({
                           ...prev,
                           pins: prev.pins.map((p) => p.id === draggingPinIdRef.current ? { ...p, x: nx, y: ny } : p),
                         }));
                       }}
-                      onResponderRelease={() => { draggingPinIdRef.current = null; }}
+                      onResponderRelease={() => {
+                        const wasDragging = draggingPinIdRef.current;
+                        const finalPos = dragPositionRef.current;
+                        draggingPinIdRef.current = null;
+                        dragPositionRef.current = null;
+                        const spaceId = editingSpaceIdRef.current;
+                        if (wasDragging && finalPos && spaceId) {
+                          setCreatedSpaces((prev) => prev.map((s) => {
+                            if (s.id !== spaceId) return s;
+                            return {
+                              ...s,
+                              pins: s.pins.map((p) =>
+                                p.id === wasDragging
+                                  ? { ...p, position: { x: finalPos.x, y: finalPos.y } }
+                                  : p
+                              ),
+                            };
+                          }));
+                        }
+                      }}
                     >
                       {/* Pin dots */}
                       {draftSpace.pins.filter((p) => p.x != null).map((pin) => {
@@ -730,6 +702,80 @@ export default function ToursScreen() {
               </View>
             )}
           </ScrollView>
+
+          {/* ── Full-screen pin placement overlay ── */}
+          {pinPlaceMode && draftSpace.panoramaUri && (
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: "#000", zIndex: 200 }]}
+              onLayout={(e) => setPanoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+            >
+              <Image
+                source={{ uri: draftSpace.panoramaUri }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="stretch"
+              />
+              {/* Other pins (faded) */}
+              {draftSpace.pins.filter((p) => p.x != null && p.id !== draftPin.id).map((pin) => {
+                const meta = ALL_PIN_TYPES.find((m) => m.type === pin.type) ?? ALL_PIN_TYPES[0];
+                return (
+                  <View key={pin.id} style={[styles.pinDotOnPano, {
+                    left: pin.x! * panoLayout.width - 8,
+                    top: (pin.y ?? 0.5) * panoLayout.height - 8,
+                    backgroundColor: meta.color, opacity: 0.5,
+                  }]}>
+                    <Feather name={meta.icon as any} size={8} color="#fff" />
+                  </View>
+                );
+              })}
+              {/* Current pin dot if repositioning */}
+              {draftPin.x != null && (
+                <View style={[styles.pinDotOnPano, {
+                  left: draftPin.x * panoLayout.width - 10,
+                  top: (draftPin.y ?? 0.5) * panoLayout.height - 10,
+                  width: 20, height: 20, borderRadius: 10,
+                  backgroundColor: selectedPinMeta.color,
+                }]}>
+                  <Feather name={selectedPinMeta.icon as any} size={10} color="#fff" />
+                </View>
+              )}
+              {/* Confirmed placement flash */}
+              {confirmedPlacement && (
+                <View style={[styles.confirmDot, {
+                  left: confirmedPlacement.x * panoLayout.width - 16,
+                  top: confirmedPlacement.y * panoLayout.height - 16,
+                }]} />
+              )}
+              {/* Tap capture layer — must be AFTER pin dots */}
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                activeOpacity={1}
+                onPress={(e) => {
+                  const nx = parseFloat((e.nativeEvent.locationX / panoLayout.width).toFixed(3));
+                  const ny = parseFloat((e.nativeEvent.locationY / panoLayout.height).toFixed(3));
+                  setDraftPin((p) => ({ ...p, x: nx, y: ny }));
+                  setPinPlaceMode(false);
+                  setConfirmedPlacement({ x: nx, y: ny });
+                  setTimeout(() => {
+                    setConfirmedPlacement(null);
+                    setShowPinModal(true);
+                  }, 600);
+                }}
+              />
+              {/* Top bar */}
+              <View style={[styles.placementBar, { paddingTop: insets.top + 12 }]}
+                pointerEvents="box-none"
+              >
+                <TouchableOpacity style={styles.placementCancel} onPress={() => setPinPlaceMode(false)}>
+                  <Feather name="x" size={18} color="#fff" />
+                </TouchableOpacity>
+                <View style={styles.placeModeChip}>
+                  <Feather name="crosshair" size={14} color="#fff" />
+                  <Text style={styles.placeModeText}>Tap to place pin</Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+            </View>
+          )}
 
           {/* ── Pin editor overlay ── */}
           {showPinModal && (
@@ -924,10 +970,10 @@ const styles = StyleSheet.create({
   changePanoBtnText: { color: "rgba(255,255,255,0.8)", fontSize: 10, fontFamily: "Inter_600SemiBold" },
   dragHint: { position: "absolute", bottom: 10, right: 10, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
   dragHintText: { color: "rgba(255,255,255,0.75)", fontSize: 10, fontFamily: "Inter_500Medium" },
-  placeModeOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "flex-end", paddingBottom: 10 },
-  cancelPlacementBtn: { position: "absolute", top: 8, left: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
   placeModeChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(59,130,246,0.9)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   placeModeText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  placementBar: { position: "absolute", top: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, backgroundColor: "rgba(0,0,0,0.55)" },
+  placementCancel: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.15)" },
   pinDotOnPano: { position: "absolute", width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: "#fff", alignItems: "center", justifyContent: "center" },
   confirmDot: { position: "absolute", width: 32, height: 32, borderRadius: 16, borderWidth: 3, borderColor: "#3B82F6", backgroundColor: "rgba(59,130,246,0.3)" },
   photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
