@@ -68,7 +68,7 @@ export default function SellerListings() {
 
           const heroColor = demo?.heroColor ?? item.heroColor ?? "#2563EB";
           const name      = demo?.businessName ?? item.businessName ?? "Unnamed Listing";
-          const price     = demo?.askingPrice  ?? item.askingPrice  ?? 0;
+          const price     = demo?.askingPrice  ?? item.askingPrice;
           const suburb    = demo?.suburb       ?? item.suburb       ?? "";
           const state     = demo?.state        ?? item.state        ?? "";
           const category  = demo?.category     ?? item.category     ?? "";
@@ -80,7 +80,7 @@ export default function SellerListings() {
                   <Feather name={sc.icon as any} size={10} color="#fff" />
                   <Text style={styles.statusPillText}>{sc.label}</Text>
                 </View>
-                <Text style={styles.heroPrice}>{price > 0 ? formatPrice(price) : "Price TBC"}</Text>
+                <Text style={styles.heroPrice}>{price && price > 0 ? formatPrice(price) : "Price TBC"}</Text>
               </View>
 
               <View style={styles.cardBody}>
@@ -123,33 +123,35 @@ export default function SellerListings() {
                   </View>
                 )}
 
-                {/* Action buttons — active listings with a DEMO record */}
-                {item.status === "approved" && demo && (
+                {/* Action buttons — all approved listings get View; DEMO listings also get Tour */}
+                {item.status === "approved" && (
                   <View style={styles.actionRow}>
                     <TouchableOpacity
                       style={[styles.actionBtn, { backgroundColor: colors.muted }]}
-                      onPress={() => router.push(`/listing/${demo.id}` as any)}
+                      onPress={() => router.push(`/listing/${item.listingId}` as any)}
                     >
                       <Feather name="eye" size={13} color={colors.foreground} />
                       <Text style={[styles.actionBtnText, { color: colors.foreground }]}>View</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => router.push(`/tour/${demo.id}` as any)}
-                    >
-                      <Feather name="rotate-ccw" size={13} color="#fff" />
-                      <Text style={[styles.actionBtnText, { color: "#fff" }]}>View Tour</Text>
-                    </TouchableOpacity>
+                    {demo && (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => router.push(`/tour/${demo.id}` as any)}
+                      >
+                        <Feather name="rotate-ccw" size={13} color="#fff" />
+                        <Text style={[styles.actionBtnText, { color: "#fff" }]}>View Tour</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
               </View>
             </View>
           );
 
-          // Tappable wrapper only for approved DEMO listings
-          if (demo && item.status === "approved") {
+          // All approved listings are tappable (non-DEMO uses pending store fallback in /listing/[id])
+          if (item.status === "approved") {
             return (
-              <TouchableOpacity onPress={() => router.push(`/listing/${demo.id}` as any)}>
+              <TouchableOpacity onPress={() => router.push(`/listing/${item.listingId}` as any)}>
                 {cardContent}
               </TouchableOpacity>
             );
