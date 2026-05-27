@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DEMO_USERS, useAuth } from "@/context/AuthContext";
 import type { UserRole } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { apiGet } from "@/lib/apiStore";
+import { getPendingListings, getUsers } from "@/lib/adminStore";
 
 const ROLES: { key: UserRole; label: string; subtitle: string; icon: string }[] = [
   { key: "buyer", label: "Buyer", subtitle: "Browse & explore businesses for sale", icon: "search" },
@@ -22,12 +24,53 @@ const ROLES: { key: UserRole; label: string; subtitle: string; icon: string }[] 
   { key: "admin", label: "Admin", subtitle: "Platform administration", icon: "shield" },
 ];
 
+interface LiveStats {
+  listings: number;
+  tourSpaces: number;
+  members: number;
+}
+
 export default function WelcomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const [selected, setSelected] = useState<UserRole>("buyer");
   const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState<LiveStats | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [allListings, allUsers] = await Promise.all([
+          getPendingListings(),
+          getUsers(),
+        ]);
+        const approved = allListings.filter((l) => l.status === "approved");
+
+        // Fetch tour spaces for each approved listing in parallel
+        const spaceCounts = await Promise.all(
+          approved.map((l) =>
+            apiGet<{ id: string }[]>(`biz360_tour_spaces_v1_${l.listingId}`)
+              .then((spaces) => (spaces ?? []).length)
+              .catch(() => 0),
+          ),
+        );
+        const totalSpaces = spaceCounts.reduce((a, b) => a + b, 0);
+
+        if (!cancelled) {
+          setStats({
+            listings:   approved.length,
+            tourSpaces: totalSpaces,
+            members:    allUsers.length,
+          });
+        }
+      } catch {
+        // non-critical — keep null (shows "—")
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleDemoLogin = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -66,7 +109,11 @@ export default function WelcomeScreen() {
             verified documents and direct seller messaging.
           </Text>
           <View style={styles.statsRow}>
-            {[["5", "Listings"], ["360°", "Tours"], ["12", "Verified Docs"]].map(([val, lbl]) => (
+            {([
+              [stats ? String(stats.listings)   : "—", "Listings"],
+              [stats ? String(stats.tourSpaces) : "—", "Tour Spaces"],
+              [stats ? String(stats.members)    : "—", "Members"],
+            ] as [string, string][]).map(([val, lbl]) => (
               <View key={lbl} style={styles.stat}>
                 <Text style={styles.statVal}>{val}</Text>
                 <Text style={styles.statLbl}>{lbl}</Text>
