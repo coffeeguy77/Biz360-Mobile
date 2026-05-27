@@ -9,7 +9,41 @@ export interface AdminUser {
   role: string;
   status: "active" | "suspended";
   joined: string;
+  plan?: string;
 }
+
+export const SELLER_PLANS = [
+  "Seller Starter",
+  "Seller Tour Listing",
+  "Seller Pro",
+  "Seller Premium Exit",
+] as const;
+
+export const BROKER_PLANS = [
+  "Broker Lite",
+  "Broker Growth",
+  "Broker Pro",
+] as const;
+
+export const PLAN_PRICES: Record<string, number> = {
+  "Seller Starter":      30,
+  "Seller Tour Listing": 100,
+  "Seller Pro":          170,
+  "Seller Premium Exit": 249,
+  "Broker Lite":         149,
+  "Broker Growth":       249,
+  "Broker Pro":          499,
+};
+
+export const PLAN_ORDER = [
+  "Seller Starter",
+  "Seller Tour Listing",
+  "Seller Pro",
+  "Seller Premium Exit",
+  "Broker Lite",
+  "Broker Growth",
+  "Broker Pro",
+];
 
 export interface AdminBroker {
   id: string;
@@ -91,10 +125,10 @@ export function randomHeroColor() {
 function defaultUsers(): AdminUser[] {
   return [
     { id: "u1", name: "Alex Chen",        email: "alex@example.com",        role: "buyer",  status: "active",    joined: "Jan 2024" },
-    { id: "u2", name: "Sarah Mitchell",   email: "sarah@example.com",       role: "seller", status: "active",    joined: "Mar 2024" },
+    { id: "u2", name: "Sarah Mitchell",   email: "sarah@example.com",       role: "seller", status: "active",    joined: "Mar 2024", plan: "Seller Pro"     },
     { id: "u3", name: "James Harrington", email: "james@premiumbiz.com.au", role: "broker", status: "active",    joined: "Feb 2024" },
     { id: "u4", name: "David Park",       email: "david@example.com",       role: "buyer",  status: "active",    joined: "Apr 2024" },
-    { id: "u5", name: "Priya Sharma",     email: "priya@example.com",       role: "seller", status: "active",    joined: "Apr 2024" },
+    { id: "u5", name: "Priya Sharma",     email: "priya@example.com",       role: "seller", status: "active",    joined: "Apr 2024", plan: "Seller Starter" },
     { id: "u6", name: "Unknown User",     email: "spam@example.com",        role: "buyer",  status: "suspended", joined: "May 2024" },
   ];
 }
@@ -152,6 +186,12 @@ async function load<T>(key: string, defaults: () => T): Promise<T> {
 async function save<T>(key: string, data: T): Promise<void> {
   await apiSet(key, data);
 }
+
+const FEATURED_REV_KEY = "biz360_admin_featured_revenue";
+export const getFeaturedRevenue  = async (): Promise<number> => {
+  try { const v = await apiGet<number>(FEATURED_REV_KEY); return v ?? 0; } catch { return 0; }
+};
+export const saveFeaturedRevenue = (v: number) => apiSet(FEATURED_REV_KEY, v);
 
 export const getUsers            = () => load(K.users,      defaultUsers);
 export const saveUsers           = (d: AdminUser[])      => save(K.users,      d);

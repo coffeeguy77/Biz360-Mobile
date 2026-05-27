@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,7 +16,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { AdminUser, useAdminUsers } from "@/lib/adminStore";
+import {
+  AdminUser,
+  BROKER_PLANS,
+  PLAN_PRICES,
+  SELLER_PLANS,
+  useAdminUsers,
+} from "@/lib/adminStore";
 
 const ROLE_COLORS: Record<string, string> = {
   buyer: "#3B82F6", seller: "#8B5CF6", broker: "#F59E0B", admin: "#EF4444",
@@ -34,6 +41,12 @@ function today() {
   return new Date().toLocaleDateString("en-AU", { month: "short", year: "numeric" });
 }
 
+function defaultPlanFor(role: Role): string | undefined {
+  if (role === "seller") return "Seller Starter";
+  if (role === "broker") return "Broker Lite";
+  return undefined;
+}
+
 export default function AdminUsers() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -43,13 +56,19 @@ export default function AdminUsers() {
   const [newName, setNewName]   = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole]   = useState<Role>("buyer");
+  const [newPlan, setNewPlan]   = useState<string | undefined>(undefined);
   const [nameErr, setNameErr]   = useState(false);
   const [emailErr, setEmailErr] = useState(false);
 
   const openAdd = () => {
-    setNewName(""); setNewEmail(""); setNewRole("buyer");
+    setNewName(""); setNewEmail(""); setNewRole("buyer"); setNewPlan(undefined);
     setNameErr(false); setEmailErr(false);
     setShowAdd(true);
+  };
+
+  const handleRoleChange = (r: Role) => {
+    setNewRole(r);
+    setNewPlan(defaultPlanFor(r));
   };
 
   const addUser = () => {
@@ -67,6 +86,7 @@ export default function AdminUsers() {
       role:   newRole,
       status: "active",
       joined: today(),
+      plan:   newPlan,
     };
     setUsers((prev) => [user, ...prev]);
     setShowAdd(false);
@@ -143,6 +163,12 @@ export default function AdminUsers() {
   const suspendedCount = users.filter((u) => u.status === "suspended").length;
   const hasDemoUsers   = users.some((u) => DEMO_IDS.includes(u.id));
 
+  const planOptions = newRole === "seller"
+    ? [...SELLER_PLANS]
+    : newRole === "broker"
+    ? [...BROKER_PLANS]
+    : [];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* ─── Header ─────────────────────────────────────────────────────── */}
@@ -216,6 +242,11 @@ export default function AdminUsers() {
                       {item.status}
                     </Text>
                   </View>
+                  {item.plan && (
+                    <View style={[styles.tag, { backgroundColor: "#6B728020" }]}>
+                      <Text style={[styles.tagText, { color: colors.mutedForeground }]}>{item.plan}</Text>
+                    </View>
+                  )}
                   <Text style={[styles.joined, { color: colors.mutedForeground }]}>Joined {item.joined}</Text>
                 </View>
               </View>
@@ -241,7 +272,6 @@ export default function AdminUsers() {
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowAdd(false)} />
 
           <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
-            {/* Sheet handle */}
             <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
 
             <View style={styles.sheetHeader}>
@@ -251,77 +281,115 @@ export default function AdminUsers() {
               </TouchableOpacity>
             </View>
 
-            {/* Name */}
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>Full Name</Text>
-            <View style={[
-              styles.inputWrap,
-              { backgroundColor: colors.background, borderColor: nameErr ? "#EF4444" : colors.border },
-            ]}>
-              <Feather name="user" size={15} color={nameErr ? "#EF4444" : colors.mutedForeground} />
-              <TextInput
-                style={[styles.input, { color: colors.foreground }]}
-                placeholder="e.g. Jane Smith"
-                placeholderTextColor={colors.mutedForeground}
-                value={newName}
-                onChangeText={(t) => { setNewName(t); setNameErr(false); }}
-                autoCapitalize="words"
-              />
-            </View>
-            {nameErr && <Text style={styles.errText}>Name is required</Text>}
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Name */}
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Full Name</Text>
+              <View style={[
+                styles.inputWrap,
+                { backgroundColor: colors.background, borderColor: nameErr ? "#EF4444" : colors.border },
+              ]}>
+                <Feather name="user" size={15} color={nameErr ? "#EF4444" : colors.mutedForeground} />
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  placeholder="e.g. Jane Smith"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={newName}
+                  onChangeText={(t) => { setNewName(t); setNameErr(false); }}
+                  autoCapitalize="words"
+                />
+              </View>
+              {nameErr && <Text style={styles.errText}>Name is required</Text>}
 
-            {/* Email */}
-            <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 14 }]}>Email Address</Text>
-            <View style={[
-              styles.inputWrap,
-              { backgroundColor: colors.background, borderColor: emailErr ? "#EF4444" : colors.border },
-            ]}>
-              <Feather name="mail" size={15} color={emailErr ? "#EF4444" : colors.mutedForeground} />
-              <TextInput
-                style={[styles.input, { color: colors.foreground }]}
-                placeholder="e.g. jane@example.com"
-                placeholderTextColor={colors.mutedForeground}
-                value={newEmail}
-                onChangeText={(t) => { setNewEmail(t); setEmailErr(false); }}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-            {emailErr && <Text style={styles.errText}>Enter a valid email</Text>}
+              {/* Email */}
+              <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 14 }]}>Email Address</Text>
+              <View style={[
+                styles.inputWrap,
+                { backgroundColor: colors.background, borderColor: emailErr ? "#EF4444" : colors.border },
+              ]}>
+                <Feather name="mail" size={15} color={emailErr ? "#EF4444" : colors.mutedForeground} />
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  placeholder="e.g. jane@example.com"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={newEmail}
+                  onChangeText={(t) => { setNewEmail(t); setEmailErr(false); }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+              {emailErr && <Text style={styles.errText}>Enter a valid email</Text>}
 
-            {/* Role */}
-            <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 14 }]}>Role</Text>
-            <View style={styles.roleRow}>
-              {ROLES.map((r) => {
-                const active = newRole === r;
-                const c      = ROLE_COLORS[r];
-                return (
-                  <TouchableOpacity
-                    key={r}
-                    style={[
-                      styles.roleBtn,
-                      {
-                        backgroundColor: active ? c + "22" : colors.background,
-                        borderColor:     active ? c        : colors.border,
-                      },
-                    ]}
-                    onPress={() => setNewRole(r)}
-                  >
-                    <Text style={[styles.roleBtnText, { color: active ? c : colors.mutedForeground }]}>
-                      {r.charAt(0).toUpperCase() + r.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+              {/* Role */}
+              <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 14 }]}>Role</Text>
+              <View style={styles.roleRow}>
+                {ROLES.map((r) => {
+                  const active = newRole === r;
+                  const c      = ROLE_COLORS[r];
+                  return (
+                    <TouchableOpacity
+                      key={r}
+                      style={[
+                        styles.roleBtn,
+                        {
+                          backgroundColor: active ? c + "22" : colors.background,
+                          borderColor:     active ? c        : colors.border,
+                        },
+                      ]}
+                      onPress={() => handleRoleChange(r)}
+                    >
+                      <Text style={[styles.roleBtnText, { color: active ? c : colors.mutedForeground }]}>
+                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-            {/* Submit */}
-            <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: colors.primary, marginTop: 24 }]}
-              onPress={addUser}
-            >
-              <Feather name="user-plus" size={16} color="#fff" />
-              <Text style={styles.submitText}>Create User</Text>
-            </TouchableOpacity>
+              {/* Plan — only for seller / broker */}
+              {planOptions.length > 0 && (
+                <>
+                  <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 14 }]}>
+                    Subscription Plan
+                  </Text>
+                  <View style={styles.planList}>
+                    {planOptions.map((p) => {
+                      const active = newPlan === p;
+                      const price  = PLAN_PRICES[p];
+                      return (
+                        <TouchableOpacity
+                          key={p}
+                          style={[
+                            styles.planOption,
+                            {
+                              backgroundColor: active ? colors.primary + "18" : colors.background,
+                              borderColor:     active ? colors.primary        : colors.border,
+                            },
+                          ]}
+                          onPress={() => setNewPlan(p)}
+                        >
+                          <View style={[styles.planRadio, { borderColor: active ? colors.primary : colors.border }]}>
+                            {active && <View style={[styles.planRadioDot, { backgroundColor: colors.primary }]} />}
+                          </View>
+                          <Text style={[styles.planOptionName, { color: colors.foreground }]}>{p}</Text>
+                          <Text style={[styles.planOptionPrice, { color: colors.mutedForeground }]}>
+                            ${price}/mo
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              {/* Submit */}
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: colors.primary, marginTop: 24, marginBottom: 8 }]}
+                onPress={addUser}
+              >
+                <Feather name="user-plus" size={16} color="#fff" />
+                <Text style={styles.submitText}>Create User</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -358,7 +426,7 @@ const styles = StyleSheet.create({
   emptyText:      { fontSize: 14, fontFamily: "Inter_400Regular" },
   modalOverlay:   { flex: 1, justifyContent: "flex-end" },
   modalBackdrop:  { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
-  sheet:          { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12, gap: 0 },
+  sheet:          { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12, maxHeight: "90%", gap: 0 },
   sheetHandle:    { width: 40, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 16 },
   sheetHeader:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   sheetTitle:     { fontSize: 18, fontFamily: "Inter_700Bold" },
@@ -369,6 +437,12 @@ const styles = StyleSheet.create({
   roleRow:        { flexDirection: "row", gap: 8 },
   roleBtn:        { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
   roleBtnText:    { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  planList:       { gap: 8 },
+  planOption:     { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+  planRadio:      { width: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  planRadioDot:   { width: 8, height: 8, borderRadius: 4 },
+  planOptionName: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+  planOptionPrice:{ fontSize: 13, fontFamily: "Inter_600SemiBold" },
   submitBtn:      { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14 },
   submitText:     { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 });

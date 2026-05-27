@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import type { UserRole } from "@/context/AuthContext";
+import { getUsers, saveUsers } from "@/lib/adminStore";
+import type { AdminUser } from "@/lib/adminStore";
 
 const domain   = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}/api` : "/api";
@@ -25,6 +27,12 @@ function maskPhone(phone: string): string {
   return phone.slice(0, 4) + " ••• " + phone.slice(-3);
 }
 
+function defaultPlanForRole(role: string): string | undefined {
+  if (role === "seller") return "Seller Starter";
+  if (role === "broker") return "Broker Lite";
+  return undefined;
+}
+
 export default function VerifyPhoneScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
@@ -32,12 +40,11 @@ export default function VerifyPhoneScreen() {
 
   const [digits,    setDigits]    = useState<string[]>(Array(CODE_LEN).fill(""));
   const [verifying, setVerifying] = useState(false);
-  const [resending,  setResending]  = useState(false);
+  const [resending, setResending] = useState(false);
   const [error,     setError]     = useState("");
   const [countdown, setCountdown] = useState(30);
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
-  // Countdown timer for resend
   useEffect(() => {
     if (countdown <= 0) return;
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
@@ -53,7 +60,6 @@ export default function VerifyPhoneScreen() {
     if (digit && idx < CODE_LEN - 1) {
       inputRefs.current[idx + 1]?.focus();
     }
-    // Auto-verify when last digit entered
     if (digit && idx === CODE_LEN - 1) {
       const code = [...next].join("");
       if (code.length === CODE_LEN) verify(code);
@@ -63,13 +69,35 @@ export default function VerifyPhoneScreen() {
   const handleKeyPress = (idx: number, key: string) => {
     if (key === "Backspace") {
       if (digits[idx] === "" && idx > 0) {
-        const next  = [...digits];
+        const next    = [...digits];
         next[idx - 1] = "";
         setDigits(next);
         inputRefs.current[idx - 1]?.focus();
       }
     }
   };
+
+  // After OTP approval, upsert this user into the admin users list so revenue stats reflect them
+  async function registerInAdminStore(userId: string) {
+    try {
+      const existing = await getUsers();
+      const already  = existing.some((u) => u.email === phone || u.id === userId);
+      if (!already) {
+        const adminUser: AdminUser = {
+          id:     userId,
+          name:   name ?? "User",
+          email:  phone ?? "",
+          role:   role ?? "buyer",
+          status: "active",
+          joined: new Date().toLocaleDateString("en-AU", { month: "short", year: "numeric" }),
+          plan:   defaultPlanForRole(role ?? ""),
+        };
+        await saveUsers([adminUser, ...existing]);
+      }
+    } catch {
+      // Non-critical — don't block login if this fails
+    }
+  }
 
   const verify = async (codeOverride?: string) => {
     const code = codeOverride ?? digits.join("");
@@ -97,8 +125,13 @@ export default function VerifyPhoneScreen() {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const userId = `u-${phone?.replace(/\D/g, "")}-${Date.now()}`;
+
+      // Register in admin store (non-blocking)
+      registerInAdminStore(userId);
+
       await login({
-        id:    `u-${phone.replace(/\D/g, "")}-${Date.now()}`,
+        id:    userId,
         name:  name ?? "User",
         email: phone ?? "",
         role:  (role as UserRole) ?? "buyer",
@@ -139,7 +172,6 @@ export default function VerifyPhoneScreen() {
         <Feather name="arrow-left" size={22} color="#fff" />
       </TouchableOpacity>
 
-      {/* Icon */}
       <View style={styles.iconWrap}>
         <Feather name="message-square" size={32} color="#3B82F6" />
       </View>
@@ -150,7 +182,6 @@ export default function VerifyPhoneScreen() {
         <Text style={styles.phoneHighlight}>{maskPhone(phone ?? "")}</Text>
       </Text>
 
-      {/* OTP boxes */}
       <View style={styles.codeRow}>
         {digits.map((d, idx) => (
           <TextInput
@@ -180,7 +211,6 @@ export default function VerifyPhoneScreen() {
         </View>
       ) : null}
 
-      {/* Verify button */}
       <TouchableOpacity
         style={[styles.verifyBtn, { opacity: verifying || filled < CODE_LEN ? 0.6 : 1 }]}
         onPress={() => verify()}
@@ -196,7 +226,6 @@ export default function VerifyPhoneScreen() {
         )}
       </TouchableOpacity>
 
-      {/* Resend */}
       <View style={styles.resendRow}>
         <Text style={styles.resendLabel}>Didn't receive it? </Text>
         <TouchableOpacity onPress={resend} disabled={countdown > 0 || resending}>
