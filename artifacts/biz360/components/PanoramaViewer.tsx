@@ -581,10 +581,20 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
   }
 
   // ── Build HTML ──
-  // ALL panoramas (local file:// or remote https://) → flat pan viewer.
-  // No Pannellum / no spherical projection — looks identical to the Insta360 app's
-  // flat view. file:// URIs are loaded directly via allowFileAccess on the WebView.
+  // ALL panoramas → flat pan viewer (no Pannellum / spherical projection).
+  // For local file:// URIs, iOS WebKit requires:
+  //   baseUrl  = the directory containing the file  (e.g. file:///…/tmp/)
+  //   allowingReadAccessToURL = same directory
+  // Without this, <img src="file:///…"> is blocked even with allowFileAccess.
   let html: string;
+
+  // Directory that contains the panorama file (trailing slash required by iOS).
+  // For remote https:// URLs this stays undefined and has no effect.
+  const localPanoDir: string | undefined =
+    isLocalPano && space.panoramaUrl
+      ? space.panoramaUrl.substring(0, space.panoramaUrl.lastIndexOf("/") + 1)
+      : undefined;
+
   if (space.panoramaUrl) {
     html = buildFlatPanoHtml(space.panoramaUrl, space.pins);
   } else {
@@ -595,7 +605,7 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
     <View style={styles.container}>
       <WebView
         ref={webRef}
-        source={{ html, baseUrl: isLocalPano ? "file:///" : undefined }}
+        source={{ html, baseUrl: localPanoDir ?? "about:blank" }}
         style={styles.webView}
         originWhitelist={["*", "file://*"]}
         javaScriptEnabled
@@ -609,6 +619,7 @@ export function PanoramaViewer({ space, onPinPress }: Props) {
         mediaPlaybackRequiresUserAction={false}
         allowFileAccess
         allowUniversalAccessFromFileURLs
+        allowingReadAccessToURL={localPanoDir}
         startInLoadingState
         renderLoading={() => (
           <View style={styles.loadingOverlay}>
