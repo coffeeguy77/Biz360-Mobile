@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { formatThreadTime, Thread, useThreadList } from "@/lib/messageStore";
 
@@ -75,9 +76,11 @@ function ThreadRow({
 export default function MessagesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { threads, loading, remove } = useThreadList();
 
-  const totalUnread = threads.reduce((sum, t) => sum + (t.unreadBuyer ?? 0), 0);
+  const myThreads   = threads.filter((t) => !t.buyerId || t.buyerId === user?.id);
+  const totalUnread = myThreads.reduce((sum, t) => sum + (t.unreadBuyer ?? 0), 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -96,7 +99,7 @@ export default function MessagesScreen() {
         </View>
       ) : (
         <FlatList
-          data={threads}
+          data={myThreads}
           keyExtractor={(i) => i.id}
           renderItem={({ item }) => (
             <ThreadRow

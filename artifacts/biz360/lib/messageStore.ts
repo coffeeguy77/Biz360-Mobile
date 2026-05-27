@@ -16,6 +16,7 @@ export interface Thread {
   listingName: string;
   sellerName: string;
   buyerName: string;
+  buyerId?: string;
   messages: StoredMessage[];
   updatedAt: number;
   unreadBuyer: number;
@@ -63,6 +64,7 @@ export interface NewThreadMeta {
   listingName: string;
   sellerName: string;
   buyerName: string;
+  buyerId?: string;
 }
 
 export async function sendMessage(
@@ -80,6 +82,7 @@ export async function sendMessage(
       listingName: meta?.listingName ?? "Listing",
       sellerName: meta?.sellerName ?? "Seller",
       buyerName: meta?.buyerName ?? "Buyer",
+      buyerId: meta?.buyerId ?? "",
       messages: [],
       updatedAt: Date.now(),
       unreadBuyer: 0,

@@ -15,7 +15,7 @@ function NativeLayout() {
       <NativeTabs.Trigger name="listings"><Icon sf={{ default: "doc.badge.clock", selected: "doc.badge.clock.fill" }} /><Label>Listings</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="users"><Icon sf={{ default: "person.2", selected: "person.2.fill" }} /><Label>Users</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="brokers"><Icon sf={{ default: "briefcase", selected: "briefcase.fill" }} /><Label>Brokers</Label></NativeTabs.Trigger>
-      <NativeTabs.Trigger name="reports"><Icon sf={{ default: "flag", selected: "flag.fill" }} /><Label>Reports</Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="messages"><Icon sf={{ default: "message", selected: "message.fill" }} /><Label>Messages</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="revenue"><Icon sf={{ default: "dollarsign.circle", selected: "dollarsign.circle.fill" }} /><Label>Revenue</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="categories"><Icon sf={{ default: "tag", selected: "tag.fill" }} /><Label>Categories</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings"><Icon sf={{ default: "slider.horizontal.3", selected: "slider.horizontal.3" }} /><Label>Settings</Label></NativeTabs.Trigger>
@@ -44,7 +44,7 @@ function ClassicLayout() {
       <Tabs.Screen name="listings" options={{ title: "Listings", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="doc.badge.clock" tintColor={color} size={24} /> : <Feather name="clock" size={22} color={color} /> }} />
       <Tabs.Screen name="users" options={{ title: "Users", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.2" tintColor={color} size={24} /> : <Feather name="users" size={22} color={color} /> }} />
       <Tabs.Screen name="brokers" options={{ title: "Brokers", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="briefcase" tintColor={color} size={24} /> : <Feather name="briefcase" size={22} color={color} /> }} />
-      <Tabs.Screen name="reports" options={{ title: "Reports", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="flag" tintColor={color} size={24} /> : <Feather name="flag" size={22} color={color} /> }} />
+      <Tabs.Screen name="messages" options={{ title: "Messages", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="message" tintColor={color} size={24} /> : <Feather name="message-circle" size={22} color={color} /> }} />
       <Tabs.Screen name="revenue" options={{ title: "Revenue", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="dollarsign.circle" tintColor={color} size={24} /> : <Feather name="dollar-sign" size={22} color={color} /> }} />
       <Tabs.Screen name="categories" options={{ title: "Categories", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="tag" tintColor={color} size={24} /> : <Feather name="tag" size={22} color={color} /> }} />
       <Tabs.Screen name="settings"   options={{ title: "Settings",   tabBarIcon: ({ color }) => isIOS ? <SymbolView name="slider.horizontal.3" tintColor={color} size={24} /> : <Feather name="sliders" size={22} color={color} /> }} />

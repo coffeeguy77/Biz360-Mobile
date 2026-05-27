@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -178,6 +179,24 @@ export default function AdminCleanupSettings() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* ── Quick Links ─────────────────────────────────────────────── */}
+          <View style={[sStyles.card, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 20 }]}>
+            <TouchableOpacity
+              style={sStyles.quickRow}
+              onPress={() => router.push("/(admin)/reports" as any)}
+              activeOpacity={0.7}
+            >
+              <View style={[sStyles.quickIcon, { backgroundColor: "#EF444418" }]}>
+                <Feather name="flag" size={18} color="#EF4444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[sStyles.quickLabel, { color: colors.foreground }]}>Reports</Text>
+                <Text style={[sStyles.quickHint, { color: colors.mutedForeground }]}>Review flagged listings and user reports</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+
           {/* ── Retention Periods ───────────────────────────────────────── */}
           <SectionHeader
             title="Retention Periods"
@@ -387,4 +406,8 @@ const sStyles = StyleSheet.create({
   cleanupBtnText:{ fontSize: 15, fontFamily: "Inter_600SemiBold" },
   resultCard:    { marginTop: 12, flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12, borderRadius: 10, borderWidth: 1 },
   resultText:    { fontSize: 13, fontFamily: "Inter_500Medium", flex: 1, lineHeight: 19 },
+  quickRow:      { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  quickIcon:     { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  quickLabel:    { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  quickHint:     { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
 });

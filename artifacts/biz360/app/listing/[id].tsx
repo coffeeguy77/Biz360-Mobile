@@ -219,7 +219,7 @@ export default function ListingDetailScreen() {
   const handleMessage = (threadId: string, listingName: string, sellerName: string, listingId?: string) => {
     if (id) trackEvent(id, "message", buyerId);
     const lid = listingId ?? threadId;
-    router.push(`/thread/${threadId}?listingName=${encodeURIComponent(listingName)}&sellerName=${encodeURIComponent(sellerName)}&listingId=${encodeURIComponent(lid)}` as any);
+    router.push(`/thread/${threadId}?listingName=${encodeURIComponent(listingName)}&sellerName=${encodeURIComponent(sellerName)}&listingId=${encodeURIComponent(lid)}&buyerId=${encodeURIComponent(buyerId)}` as any);
   };
 
   const handleNDA = () => {

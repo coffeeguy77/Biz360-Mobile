@@ -25,12 +25,13 @@ import {
 } from "@/lib/messageStore";
 
 export default function ThreadScreen() {
-  const { id, listingName, sellerName, buyerName, listingId: listingIdParam } = useLocalSearchParams<{
+  const { id, listingName, sellerName, buyerName, listingId: listingIdParam, buyerId: buyerIdParam } = useLocalSearchParams<{
     id: string;
     listingName?: string;
     sellerName?: string;
     buyerName?: string;
     listingId?: string;
+    buyerId?: string;
   }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -47,10 +48,13 @@ export default function ThreadScreen() {
     listingId: thread?.listingId || (listingIdParam ? decodeURIComponent(listingIdParam) : "") || id,
     listingName: thread?.listingName ?? decodeURIComponent(listingName ?? "Listing"),
     sellerName: thread?.sellerName ?? decodeURIComponent(sellerName ?? "Seller"),
-    buyerName: thread?.buyerName ?? (buyerName ? decodeURIComponent(buyerName) : user?.name ?? "Buyer"),
+    buyerName: thread?.buyerName ?? (buyerName ? decodeURIComponent(buyerName) : user?.displayName ?? user?.name ?? "Buyer"),
+    buyerId: thread?.buyerId || (buyerIdParam ? decodeURIComponent(buyerIdParam) : ""),
   };
 
-  const counterName = role === "buyer" ? meta.sellerName : meta.buyerName;
+  const rawCounter  = role === "buyer" ? meta.sellerName : meta.buyerName;
+  const isRawId     = /^u-\d|^\+?61\d{7,}/.test(rawCounter ?? "");
+  const counterName = isRawId || !rawCounter ? "Agent" : rawCounter;
   const listingLabel = meta.listingName;
 
   useEffect(() => {
@@ -157,7 +161,7 @@ export default function ThreadScreen() {
         <View style={[styles.inputBar, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 8 }]}>
           <TextInput
             style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-            placeholder={`Message ${counterName}…`}
+            placeholder="Message agent…"
             placeholderTextColor={colors.mutedForeground}
             value={input}
             onChangeText={setInput}
