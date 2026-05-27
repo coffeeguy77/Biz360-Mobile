@@ -1,7 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -56,21 +55,21 @@ export default function AdminCleanupSettings() {
   const [inactDays, setInactDays] = useState(String(DEFAULT_CLEANUP_SETTINGS.inactivityDays));
   const [manualId,  setManualId]  = useState("");
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      setLoading(true);
-      Promise.all([getCleanupSettings(), getUsers()]).then(([s, u]) => {
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([getCleanupSettings(), getUsers()])
+      .then(([s, u]) => {
         if (!active) return;
         setSettings(s);
         setSoldDays(String(s.soldRetentionDays));
         setInactDays(String(s.inactivityDays));
         setAllUsers(u);
         setLoading(false);
-      });
-      return () => { active = false; };
-    }, []),
-  );
+      })
+      .catch(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   const toggleWhitelist = (uid: string) => {
     setSettings((prev) => ({

@@ -1,5 +1,4 @@
-import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiGet, apiSet } from "./apiStore";
 
 export interface AdminUser {
@@ -229,14 +228,18 @@ function usePersistedList<T>(
   const [data, setDataState] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      setLoading(true);
-      fetchFn().then((d) => { if (active) { setDataState(d); setLoading(false); } });
-      return () => { active = false; };
-    }, []),
-  );
+  // useEffect guarantees a load on every mount, including tabs hidden behind
+  // the NativeTabs "More" overflow where useFocusEffect can fire too late.
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetchFn()
+      .then((d) => { if (active) { setDataState(d); setLoading(false); } })
+      .catch(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  // fetchFn is a stable module-level reference — [] is intentional.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setData = (updated: T[] | ((prev: T[]) => T[])) => {
     setDataState((prev) => {

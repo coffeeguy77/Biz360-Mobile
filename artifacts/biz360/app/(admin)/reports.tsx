@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
-import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAdminReports } from "@/lib/adminStore";
@@ -20,7 +20,7 @@ function formatAge(ts: number): string {
 export default function AdminReports() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { data: reports, setData: setReports } = useAdminReports();
+  const { data: reports, setData: setReports, loading } = useAdminReports();
   const [filter, setFilter] = useState<Filter>("open");
 
   const visible = filter === "open" ? reports.filter((r) => r.status === "open") : reports;
@@ -42,6 +42,22 @@ export default function AdminReports() {
       },
     ]);
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
+          <View>
+            <Text style={[styles.title, { color: colors.foreground }]}>Reports</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Loading…</Text>
+          </View>
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

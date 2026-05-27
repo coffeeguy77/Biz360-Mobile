@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -98,20 +97,20 @@ export default function AdminRevenue() {
   const [editing, setEditing] = useState(false);
   const [editVal, setEditVal] = useState("");
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      setLoading(true);
-      Promise.all([getUsers(), getBrokers(), getFeaturedRevenue()]).then(([u, b, f]) => {
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([getUsers(), getBrokers(), getFeaturedRevenue()])
+      .then(([u, b, f]) => {
         if (!active) return;
         setUsers(u);
         setBrokers(b);
         setFeatRev(f);
         setLoading(false);
-      });
-      return () => { active = false; };
-    }, []),
-  );
+      })
+      .catch(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   const stats = computeStats(users, brokers, featRev);
 
