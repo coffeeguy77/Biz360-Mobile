@@ -1,0 +1,1 @@
+- [API KV Store](api-kv-store.md) — AsyncStorage replaced by shared PostgreSQL-backed KV endpoint; stores now consistent across all devices

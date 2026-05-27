@@ -1,6 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
+import { apiGet, apiSet } from "./apiStore";
 
 const STORAGE_KEY = "biz360_threads_v2";
 
@@ -75,16 +75,15 @@ function defaultThreadMap(): Record<string, Thread> {
 
 async function readMap(): Promise<Record<string, Thread>> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, Thread>;
+    const data = await apiGet<Record<string, Thread>>(STORAGE_KEY);
+    return data ?? {};
   } catch {
     return {};
   }
 }
 
 async function writeMap(map: Record<string, Thread>): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  await apiSet(STORAGE_KEY, map);
 }
 
 export async function getThreads(): Promise<Thread[]> {

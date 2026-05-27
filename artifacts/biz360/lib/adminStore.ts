@@ -1,6 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
+import { apiGet, apiSet } from "./apiStore";
 
 export interface AdminUser {
   id: string;
@@ -47,7 +47,6 @@ export interface PendingListing {
   status: "pending" | "approved" | "rejected";
   submittedBy: string;
   submittedByRole: string;
-  // Inline data for user-created listings (not in DEMO_LISTINGS)
   businessName?: string;
   suburb?: string;
   state?: string;
@@ -79,7 +78,6 @@ const K = {
   brokers:    "biz360_admin_brokers",
   reports:    "biz360_admin_reports",
   categories: "biz360_admin_categories",
-  // v2: fixes seed data so broker/seller demo listings match what each role actually sees
   pending:    "biz360_admin_pending_v2",
 };
 
@@ -135,12 +133,9 @@ function defaultCategories(): AdminCategory[] {
 function defaultPending(): PendingListing[] {
   const now = Date.now();
   return [
-    // ── Broker's two live listings (already approved, matching broker listings screen) ──
     { id: "p-gym",        listingId: "listing-gym-001",        submittedAt: now - 30*86400000, status: "approved", submittedBy: "broker-001", submittedByRole: "broker" },
     { id: "p-restaurant", listingId: "listing-restaurant-001", submittedAt: now - 28*86400000, status: "approved", submittedBy: "broker-001", submittedByRole: "broker" },
-    // ── Seller's live listing (already approved, matching seller listings screen) ──
     { id: "p-cafe",       listingId: "listing-cafe-001",       submittedAt: now - 20*86400000, status: "approved", submittedBy: "seller-001", submittedByRole: "seller" },
-    // ── One pending submission for admin to review ──
     { id: "p-salon",      listingId: "listing-salon-001",      submittedAt: now - 2*3600000,   status: "pending",  submittedBy: "broker-001", submittedByRole: "broker" },
   ];
 }
@@ -149,13 +144,13 @@ function defaultPending(): PendingListing[] {
 
 async function load<T>(key: string, defaults: () => T): Promise<T> {
   try {
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : defaults();
+    const data = await apiGet<T>(key);
+    return data ?? defaults();
   } catch { return defaults(); }
 }
 
 async function save<T>(key: string, data: T): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(data));
+  await apiSet(key, data);
 }
 
 export const getUsers            = () => load(K.users,      defaultUsers);

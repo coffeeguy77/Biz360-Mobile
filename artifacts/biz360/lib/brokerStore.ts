@@ -1,6 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
+import { apiGet, apiSet } from "./apiStore";
 
 // ─── Leads ───────────────────────────────────────────────────────────────────
 
@@ -35,13 +35,13 @@ function defaultLeads(): Lead[] {
 
 export async function getLeads(): Promise<Lead[]> {
   try {
-    const raw = await AsyncStorage.getItem(LEADS_KEY);
-    return raw ? (JSON.parse(raw) as Lead[]) : defaultLeads();
+    const data = await apiGet<Lead[]>(LEADS_KEY);
+    return data ?? defaultLeads();
   } catch { return defaultLeads(); }
 }
 
 export async function saveLeads(leads: Lead[]): Promise<void> {
-  await AsyncStorage.setItem(LEADS_KEY, JSON.stringify(leads));
+  await apiSet(LEADS_KEY, leads);
 }
 
 export async function updateLead(id: string, updates: Partial<Lead>): Promise<Lead[]> {
@@ -104,13 +104,13 @@ export function pickMemberColor(index: number): string {
 
 export async function getTeamMembers(): Promise<TeamMember[]> {
   try {
-    const raw = await AsyncStorage.getItem(TEAM_KEY);
-    return raw ? (JSON.parse(raw) as TeamMember[]) : defaultTeam();
+    const data = await apiGet<TeamMember[]>(TEAM_KEY);
+    return data ?? defaultTeam();
   } catch { return defaultTeam(); }
 }
 
 export async function saveTeamMembers(members: TeamMember[]): Promise<void> {
-  await AsyncStorage.setItem(TEAM_KEY, JSON.stringify(members));
+  await apiSet(TEAM_KEY, members);
 }
 
 export function useTeamMembers() {
