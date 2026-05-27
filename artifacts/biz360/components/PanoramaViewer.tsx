@@ -64,8 +64,8 @@ function buildSinglePanoHtml(
   <script>
     var PINS = ${JSON.stringify(hotspots)};
     function createPin(container, args) {
-      container.style.cssText = 'background:'+args.color+';border-radius:20px;padding:6px 12px;color:#fff;font-size:12px;font-weight:700;font-family:-apple-system,system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:1.5px solid rgba(255,255,255,0.25);display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none;transform:translateY(-50%)';
-      container.innerHTML = (args.locked?'<span style="font-size:10px">&#128274;</span> ':'')+args.icon+' '+args.label;
+      container.style.cssText = 'background:'+args.color+';width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.3);cursor:pointer;user-select:none;transform:translateY(-50%);position:relative;flex-shrink:0';
+      container.innerHTML = args.icon+(args.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">&#128274;</span>':'');
       ['touchend','click'].forEach(function(ev){container.addEventListener(ev,function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));});});
     }
     pannellum.viewer('pano',{
@@ -101,7 +101,7 @@ function buildFlatPanoHtml(panoSrc: string, pins: TourPin[]): string {
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}
 #outer{width:100vw;height:100vh;overflow:hidden;background-repeat:repeat-x;background-position:0 0;background-size:auto 100vh}
-.pin{position:fixed;transform:translate(-50%,-50%);border-radius:20px;padding:6px 12px;color:#fff;font:700 12px -apple-system,system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:1.5px solid rgba(255,255,255,0.25);display:flex;align-items:center;gap:5px;cursor:pointer;pointer-events:auto;user-select:none;-webkit-user-select:none;z-index:10}
+.pin{position:fixed;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;pointer-events:auto;user-select:none;-webkit-user-select:none;z-index:10}
 #hint{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.7);padding:5px 16px;border-radius:20px;font:13px -apple-system,system-ui,sans-serif;pointer-events:none;z-index:10;opacity:1;transition:opacity 1s}
 </style>
 </head><body>
@@ -172,7 +172,7 @@ var pinEls=PINS.map(function(p){
   var el=document.createElement('div');
   el.className='pin';
   el.style.background=p.color;
-  el.innerHTML=(p.locked?'<span style="font-size:10px">\uD83D\uDD12</span> ':'')+p.icon+' '+p.title;
+  el.innerHTML=p.icon+(p.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">\uD83D\uDD12</span>':'');el.style.position='relative';
   el.addEventListener('touchend',function(e){
     e.stopPropagation();e.preventDefault();
     if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));
@@ -279,7 +279,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 #dots{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);display:flex;gap:7px;pointer-events:none;z-index:10}
 .dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.3);transition:background .2s,transform .2s}
 .dot.on{background:#3B82F6;transform:scale(1.5)}
-.pin{position:fixed;transform:translate(-50%,-50%);border-radius:20px;padding:6px 12px;color:#fff;font:700 12px -apple-system,system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:1.5px solid rgba(255,255,255,0.25);display:flex;align-items:center;gap:5px;cursor:pointer;pointer-events:auto;user-select:none;-webkit-user-select:none;z-index:10}
+.pin{position:fixed;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;pointer-events:auto;user-select:none;-webkit-user-select:none;z-index:10}
 </style>
 </head><body>
 <div id="outer"><div id="wrap"><div id="strip"></div></div></div>
@@ -307,7 +307,7 @@ var pinEls=PINS.map(function(p){
   var el=document.createElement('div');
   el.className='pin';
   el.style.background=p.color;
-  el.innerHTML=(p.locked?'<span style="font-size:10px">\uD83D\uDD12</span> ':'')+p.icon+' '+p.title;
+  el.innerHTML=p.icon+(p.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">\uD83D\uDD12</span>':'');el.style.position='relative';
   el.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));});
   el.addEventListener('click',function(e){e.stopPropagation();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:p.id}));});
   document.body.appendChild(el);

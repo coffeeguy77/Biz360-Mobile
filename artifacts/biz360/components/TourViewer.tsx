@@ -227,13 +227,14 @@ function DirectionalStrip({ space, onPinPress }: Props) {
               key={pin.id}
               style={[styles.pin, { left: px, top: py, backgroundColor: cfg.color }]}
               onPress={() => onPinPress(pin)}
-              activeOpacity={0.85}
+              activeOpacity={0.8}
             >
-              {pin.requiresNDA && <Feather name="lock" size={9} color="rgba(255,255,255,0.85)" />}
-              <Feather name={cfg.icon as any} size={13} color="#fff" />
-              <Text style={styles.pinLabel} numberOfLines={1}>
-                {pin.title.split(" ").slice(0, 3).join(" ")}
-              </Text>
+              <Feather name={cfg.icon as any} size={16} color="#fff" />
+              {pin.requiresNDA && (
+                <View style={styles.pinLock}>
+                  <Feather name="lock" size={7} color="#fff" />
+                </View>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -362,12 +363,17 @@ const styles = StyleSheet.create({
   },
   countText: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Inter_600SemiBold" },
   pin: {
-    position: "absolute", flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20,
+    position: "absolute", width: 38, height: 38, borderRadius: 19,
+    alignItems: "center", justifyContent: "center",
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5, shadowRadius: 6, elevation: 6, maxWidth: 175,
+    shadowOpacity: 0.55, shadowRadius: 6, elevation: 8,
+    borderWidth: 2, borderColor: "rgba(255,255,255,0.3)",
   },
-  pinLabel: { color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  pinLock: {
+    position: "absolute", top: -3, right: -3,
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center",
+  },
   hint: {
     position: "absolute", bottom: 72, alignSelf: "center",
     flexDirection: "row", alignItems: "center", gap: 6,
