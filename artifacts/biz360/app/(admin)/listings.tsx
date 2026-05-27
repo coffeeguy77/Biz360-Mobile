@@ -299,20 +299,13 @@ export default function AdminListings() {
 
                 {tab === "pending" && (
                   <View style={styles.actions}>
-                    {d.demoId ? (
-                      <TouchableOpacity
-                        style={[styles.previewBtn, { borderColor: colors.border }]}
-                        onPress={() => router.push(`/listing/${d.demoId}` as any)}
-                      >
-                        <Feather name="eye" size={14} color={colors.foreground} />
-                        <Text style={[styles.previewText, { color: colors.foreground }]}>Preview</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={[styles.previewBtn, { borderColor: colors.border, opacity: 0.4 }]}>
-                        <Feather name="eye-off" size={14} color={colors.mutedForeground} />
-                        <Text style={[styles.previewText, { color: colors.mutedForeground }]}>No Preview</Text>
-                      </View>
-                    )}
+                    <TouchableOpacity
+                      style={[styles.previewBtn, { borderColor: colors.border }]}
+                      onPress={() => router.push(`/listing/${d.demoId ?? item.listingId}` as any)}
+                    >
+                      <Feather name="eye" size={14} color={colors.foreground} />
+                      <Text style={[styles.previewText, { color: colors.foreground }]}>Preview</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.rejectBtn, { borderColor: "#EF4444" }]}
                       onPress={() => reject(item.id, d.businessName)}
@@ -332,20 +325,13 @@ export default function AdminListings() {
 
                 {tab === "active" && (
                   <View style={styles.actions}>
-                    {d.demoId ? (
-                      <TouchableOpacity
-                        style={[styles.previewBtn, { borderColor: colors.border }]}
-                        onPress={() => router.push(`/listing/${d.demoId}` as any)}
-                      >
-                        <Feather name="eye" size={14} color={colors.foreground} />
-                        <Text style={[styles.previewText, { color: colors.foreground }]}>View</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={[styles.previewBtn, { borderColor: colors.border, opacity: 0.4 }]}>
-                        <Feather name="eye-off" size={14} color={colors.mutedForeground} />
-                        <Text style={[styles.previewText, { color: colors.mutedForeground }]}>No Preview</Text>
-                      </View>
-                    )}
+                    <TouchableOpacity
+                      style={[styles.previewBtn, { borderColor: colors.border }]}
+                      onPress={() => router.push(`/listing/${d.demoId ?? item.listingId}` as any)}
+                    >
+                      <Feather name="eye" size={14} color={colors.foreground} />
+                      <Text style={[styles.previewText, { color: colors.foreground }]}>View</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.soldBtn}
                       onPress={() => markSold(item, d.businessName)}
