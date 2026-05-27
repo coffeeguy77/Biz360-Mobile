@@ -55,8 +55,9 @@ interface DraftPin {
 
 interface DraftSpace {
   name: string;
-  dirMode: 4 | 8;
+  dirMode: 4 | 8 | "panorama";
   photos: Record<string, string>;
+  panoramaUri?: string;
   pins: DraftPin[];
 }
 
@@ -101,7 +102,7 @@ export default function ToursScreen() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [draftPin, setDraftPin] = useState<DraftPin>(EMPTY_PIN);
 
-  const activeDirections = draftSpace.dirMode === 4 ? DIRS_4 : DIRS_8;
+  const activeDirections = draftSpace.dirMode === 4 ? DIRS_4 : draftSpace.dirMode === 8 ? DIRS_8 : [];
 
   const pickPhoto = async (dir: string) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -125,6 +126,22 @@ export default function ToursScreen() {
       const { [dir]: _, ...rest } = prev.photos;
       return { ...prev, photos: rest };
     });
+  };
+
+  const pickPanorama = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo library access to add a panorama to your tour.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      quality: 1,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setDraftSpace((prev) => ({ ...prev, panoramaUri: result.assets[0].uri }));
+    }
   };
 
   const pickPinMedia = async () => {
@@ -160,86 +177,76 @@ export default function ToursScreen() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
 
-  const STITCH_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}:8080/api/stitch`;
-
   const handleSaveSpace = async () => {
     if (!draftSpace.name.trim()) { Alert.alert("Name required", "Please enter a name for this tour space."); return; }
-    const photoCount = Object.keys(draftSpace.photos).length;
-    if (photoCount === 0) { Alert.alert("Photos required", `Please add at least 1 of the ${draftSpace.dirMode} directional photos before saving.`); return; }
+
+    if (draftSpace.dirMode === "panorama") {
+      if (!draftSpace.panoramaUri) { Alert.alert("Photo required", "Please choose a panorama photo before saving."); return; }
+    } else {
+      const photoCount = Object.keys(draftSpace.photos).length;
+      if (photoCount === 0) { Alert.alert("Photos required", `Please add at least 1 of the ${draftSpace.dirMode} directional photos before saving.`); return; }
+    }
 
     setSaving(true);
-    setSaveStatus("Copying photos…");
     try {
-      // Step 1: Copy all photos to documents directory for persistence
-      const destDir = (FileSystem.documentDirectory ?? "") + "biz360_tour_photos/";
-      await FileSystem.makeDirectoryAsync(destDir, { intermediates: true }).catch(() => {});
+      const docDir = FileSystem.documentDirectory ?? "";
 
-      const dirs = draftSpace.dirMode === 8 ? DIRS_8 : DIRS_4;
-      const photoArray: string[] = [];
-      for (const dir of dirs) {
-        const uri = draftSpace.photos[dir];
-        if (!uri) continue;
+      if (draftSpace.dirMode === "panorama") {
+        // ── Panorama mode: copy single file and store as panoramaUrl ──
+        setSaveStatus("Saving panorama…");
+        const panoDir = docDir + "biz360_tour_panos/";
+        await FileSystem.makeDirectoryAsync(panoDir, { intermediates: true }).catch(() => {});
+        const spaceId = `space-pano-${Date.now()}`;
+        const uri = draftSpace.panoramaUri!;
+        const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
+        const dest = panoDir + spaceId + "." + ext;
         if (uri.startsWith("file://")) {
-          const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
-          const filename = `${Date.now()}_${dir.replace(/\s/g, "_")}.${ext}`;
-          const dest = destDir + filename;
           await FileSystem.copyAsync({ from: uri, to: dest });
-          photoArray.push(dest);
-        } else {
-          photoArray.push(uri);
         }
-      }
+        const panoramaUrl = uri.startsWith("file://") ? dest : uri;
 
-      // Step 2: Upload photos to the stitching API
-      let panoramaUrl: string | undefined;
-      setSaveStatus("Stitching panorama… (30–60 sec)");
-      try {
-        const form = new FormData();
-        photoArray.forEach((uri, i) => {
-          form.append("photos", { uri, name: `photo_${i}.jpg`, type: "image/jpeg" } as unknown as Blob);
-        });
-        const res = await fetch(STITCH_URL, { method: "POST", body: form });
-        if (res.ok) {
-          const data: { panorama?: string; haov?: number; vaov?: number } = await res.json();
-          if (data.panorama) {
-            // Step 3: Write stitched panorama to documents directory
-            const panoDir = (FileSystem.documentDirectory ?? "") + "biz360_tour_panos/";
-            await FileSystem.makeDirectoryAsync(panoDir, { intermediates: true }).catch(() => {});
-            const spaceId = `space-user-${Date.now()}`;
-            const panoPath = panoDir + spaceId + ".jpg";
-            await FileSystem.writeAsStringAsync(panoPath, data.panorama, { encoding: "base64" });
-            panoramaUrl = panoPath;
+        const tourPins = buildTourPins(draftSpace.pins);
+        const newSpace: TourSpace = {
+          id: spaceId,
+          name: draftSpace.name.trim(),
+          photos: [],
+          pins: tourPins,
+          panoramaUrl,
+          panoramaStartYaw: 0,
+        };
+        setCreatedSpaces((prev) => [...prev, newSpace]);
+      } else {
+        // ── Directional mode (4 or 8): copy photos, save as flat strip ──
+        setSaveStatus("Copying photos…");
+        const destDir = docDir + "biz360_tour_photos/";
+        await FileSystem.makeDirectoryAsync(destDir, { intermediates: true }).catch(() => {});
+
+        const dirs = draftSpace.dirMode === 8 ? DIRS_8 : DIRS_4;
+        const photoArray: string[] = [];
+        for (const dir of dirs) {
+          const uri = draftSpace.photos[dir];
+          if (!uri) continue;
+          if (uri.startsWith("file://")) {
+            const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
+            const filename = `${Date.now()}_${dir.replace(/\s/g, "_")}.${ext}`;
+            const dest = destDir + filename;
+            await FileSystem.copyAsync({ from: uri, to: dest });
+            photoArray.push(dest);
+          } else {
+            photoArray.push(uri);
           }
-        } else {
-          const body = await res.text().catch(() => "");
-          console.warn("Stitch API error:", res.status, body);
         }
-      } catch (stitchErr) {
-        // Non-fatal — save with flat strip fallback
-        console.warn("Stitching failed, saving as flat tour:", stitchErr);
+
+        const tourPins = buildTourPins(draftSpace.pins);
+        const newSpace: TourSpace = {
+          id: `space-user-${Date.now()}`,
+          name: draftSpace.name.trim(),
+          photos: photoArray,
+          pins: tourPins,
+        };
+        setCreatedSpaces((prev) => [...prev, newSpace]);
       }
 
-      const tourPins: TourPin[] = draftSpace.pins.map((dp, i) => ({
-        id: dp.id,
-        type: dp.type,
-        title: dp.title,
-        description: dp.description,
-        requiresNDA: dp.requiresNDA,
-        position: {
-          x: parseFloat(((i + 0.5) / Math.max(draftSpace.pins.length, 1)).toFixed(2)),
-          y: 0.4 + (i % 3) * 0.1,
-        },
-      }));
-
-      const newSpace: TourSpace = {
-        id: panoramaUrl ? panoramaUrl.split("/").pop()!.replace(".jpg", "") : `space-user-${Date.now()}`,
-        name: draftSpace.name.trim(),
-        photos: photoArray,
-        pins: tourPins,
-        ...(panoramaUrl ? { panoramaUrl, panoramaStartYaw: 0 } : {}),
-      };
-
-      setCreatedSpaces((prev) => [...prev, newSpace]);
       setShowSpaceModal(false);
       setDraftSpace(EMPTY_SPACE);
     } catch (err) {
@@ -250,13 +257,32 @@ export default function ToursScreen() {
     }
   };
 
-  const switchDirMode = (mode: 4 | 8) => {
+  function buildTourPins(draftPins: DraftPin[]): TourPin[] {
+    return draftPins.map((dp, i) => ({
+      id: dp.id,
+      type: dp.type,
+      title: dp.title,
+      description: dp.description,
+      requiresNDA: dp.requiresNDA,
+      position: {
+        x: parseFloat(((i + 0.5) / Math.max(draftPins.length, 1)).toFixed(2)),
+        y: 0.4 + (i % 3) * 0.1,
+      },
+    }));
+  }
+
+  const switchDirMode = (mode: 4 | 8 | "panorama") => {
+    const messages: Record<string, string> = {
+      "4": "Reduce to 4 cardinal directions (Front/Right/Back/Left). Any existing photos will be cleared.",
+      "8": "This adds 4 diagonal angles (Front-Right, Back-Right, Back-Left, Front-Left) for a more immersive swipe tour. Any existing photos will be cleared.",
+      "panorama": "Upload a single pre-made 360° panorama photo from your camera roll. Perfect for Insta360 and other panoramic cameras.",
+    };
     Alert.alert(
-      `Switch to ${mode}-direction mode`,
-      mode === 8 ? "This adds 4 diagonal angles (Front-Right, Back-Right, Back-Left, Front-Left) for a more immersive tour." : "Reduce to 4 cardinal directions. Any diagonal photos will be removed.",
+      mode === "panorama" ? "Switch to 360° Photo" : `Switch to ${mode}-Direction`,
+      messages[String(mode)],
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Switch", onPress: () => setDraftSpace((prev) => ({ ...prev, dirMode: mode, photos: {} })) },
+        { text: "Switch", onPress: () => setDraftSpace((prev) => ({ ...prev, dirMode: mode, photos: {}, panoramaUri: undefined })) },
       ]
     );
   };
@@ -313,7 +339,9 @@ export default function ToursScreen() {
                         </View>
                       )}
                     </View>
-                    <Text style={[styles.spaceMeta, { color: colors.mutedForeground }]}>{space.photos.length} photos · {space.pins.length} pins</Text>
+                    <Text style={[styles.spaceMeta, { color: colors.mutedForeground }]}>
+                      {space.panoramaUrl && space.photos.length === 0 ? "360° panorama" : `${space.photos.length} photos`} · {space.pins.length} pins
+                    </Text>
                   </View>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                     <TouchableOpacity onPress={() => {
@@ -373,57 +401,110 @@ export default function ToursScreen() {
             />
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PHOTO MODE</Text>
-            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Choose how many directional shots to capture for this space.</Text>
+            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Choose how buyers experience this space in the tour.</Text>
             <View style={styles.modeRow}>
-              {([4, 8] as const).map((mode) => (
-                <TouchableOpacity
-                  key={mode}
-                  style={[styles.modeChip, { backgroundColor: draftSpace.dirMode === mode ? colors.primary : colors.card, borderColor: draftSpace.dirMode === mode ? colors.primary : colors.border }]}
-                  onPress={() => draftSpace.dirMode !== mode ? switchDirMode(mode) : undefined}
-                >
-                  <Feather name="compass" size={14} color={draftSpace.dirMode === mode ? "#fff" : colors.mutedForeground} />
-                  <Text style={[styles.modeLabel, { color: draftSpace.dirMode === mode ? "#fff" : colors.foreground }]}>{mode}-Direction</Text>
-                  <Text style={[styles.modeHint, { color: draftSpace.dirMode === mode ? "rgba(255,255,255,0.7)" : colors.mutedForeground }]}>
-                    {mode === 4 ? "Front/Right/Back/Left" : "+ Diagonals"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
-              DIRECTIONAL PHOTOS ({Object.keys(draftSpace.photos).length}/{draftSpace.dirMode})
-            </Text>
-            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Tap each slot to add a photo from your library. Buyers swipe through these in the tour.</Text>
-            <View style={styles.photoGrid}>
-              {activeDirections.map((dir) => {
-                const uri = draftSpace.photos[dir];
+              {([4, 8] as const).map((mode) => {
+                const active = draftSpace.dirMode === mode;
                 return (
-                  <View key={dir} style={[styles.photoSlotWrapper, { width: draftSpace.dirMode === 8 ? "23%" : "30%" }]}>
-                    <TouchableOpacity
-                      style={[styles.photoSlot, { backgroundColor: uri ? "transparent" : colors.card, borderColor: uri ? colors.primary : colors.border }]}
-                      onPress={() => pickPhoto(dir)}
-                    >
-                      {uri ? (
-                        <Image source={{ uri }} style={styles.photoThumb} />
-                      ) : (
-                        <>
-                          <Feather name="camera" size={draftSpace.dirMode === 8 ? 16 : 20} color={colors.mutedForeground} />
-                          <Text style={[styles.photoLabel, { color: colors.mutedForeground, fontSize: draftSpace.dirMode === 8 ? 9 : 11 }]}>{dir}</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    {uri && (
-                      <>
-                        <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(dir)}>
-                          <Feather name="x" size={10} color="#fff" />
-                        </TouchableOpacity>
-                        <Text style={[styles.photoLabelUnder, { color: colors.primary, fontSize: 9 }]}>{dir}</Text>
-                      </>
-                    )}
-                  </View>
+                  <TouchableOpacity
+                    key={mode}
+                    style={[styles.modeChip, { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border }]}
+                    onPress={() => !active ? switchDirMode(mode) : undefined}
+                  >
+                    <Feather name="compass" size={14} color={active ? "#fff" : colors.mutedForeground} />
+                    <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>{mode}-Direction</Text>
+                    <Text style={[styles.modeHint, { color: active ? "rgba(255,255,255,0.7)" : colors.mutedForeground }]}>
+                      {mode === 4 ? "Front/Right/Back/Left" : "+ Diagonals"}
+                    </Text>
+                  </TouchableOpacity>
                 );
               })}
+              {/* 360° panorama button */}
+              {(() => {
+                const active = draftSpace.dirMode === "panorama";
+                return (
+                  <TouchableOpacity
+                    style={[styles.modeChip, { backgroundColor: active ? "#7C3AED" : colors.card, borderColor: active ? "#7C3AED" : colors.border }]}
+                    onPress={() => !active ? switchDirMode("panorama") : undefined}
+                  >
+                    <Text style={{ fontSize: 14 }}>🔮</Text>
+                    <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>360°</Text>
+                    <Text style={[styles.modeHint, { color: active ? "rgba(255,255,255,0.7)" : colors.mutedForeground }]}>
+                      Insta360 / Panoramic
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
+
+            {draftSpace.dirMode === "panorama" ? (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PANORAMA PHOTO</Text>
+                <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Upload the stitched panorama from your Insta360 app or camera roll. The full image will be shown as a flat pannable viewer — no re-processing.</Text>
+                <TouchableOpacity
+                  style={[styles.panoUploadSlot, { backgroundColor: draftSpace.panoramaUri ? "transparent" : colors.card, borderColor: draftSpace.panoramaUri ? "#7C3AED" : colors.border }]}
+                  onPress={pickPanorama}
+                >
+                  {draftSpace.panoramaUri ? (
+                    <>
+                      <Image source={{ uri: draftSpace.panoramaUri }} style={styles.panoThumb} />
+                      <TouchableOpacity
+                        style={[styles.removePhotoBtn, { top: 8, right: 8 }]}
+                        onPress={() => setDraftSpace((p) => ({ ...p, panoramaUri: undefined }))}
+                      >
+                        <Feather name="x" size={10} color="#fff" />
+                      </TouchableOpacity>
+                      <View style={styles.panoReadyBadge}>
+                        <Text style={styles.panoReadyText}>✓ Panorama ready</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={{ fontSize: 28 }}>🔮</Text>
+                      <Text style={[styles.modeLabel, { color: colors.foreground }]}>Tap to choose panorama</Text>
+                      <Text style={[styles.modeHint, { color: colors.mutedForeground, textAlign: "center" }]}>Select the panorama exported from Insta360 or any 360° camera app</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+                  DIRECTIONAL PHOTOS ({Object.keys(draftSpace.photos).length}/{draftSpace.dirMode})
+                </Text>
+                <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Tap each slot to add a photo from your library. Buyers swipe through these in the tour.</Text>
+                <View style={styles.photoGrid}>
+                  {activeDirections.map((dir) => {
+                    const uri = draftSpace.photos[dir];
+                    return (
+                      <View key={dir} style={[styles.photoSlotWrapper, { width: draftSpace.dirMode === 8 ? "23%" : "30%" }]}>
+                        <TouchableOpacity
+                          style={[styles.photoSlot, { backgroundColor: uri ? "transparent" : colors.card, borderColor: uri ? colors.primary : colors.border }]}
+                          onPress={() => pickPhoto(dir)}
+                        >
+                          {uri ? (
+                            <Image source={{ uri }} style={styles.photoThumb} />
+                          ) : (
+                            <>
+                              <Feather name="camera" size={draftSpace.dirMode === 8 ? 16 : 20} color={colors.mutedForeground} />
+                              <Text style={[styles.photoLabel, { color: colors.mutedForeground, fontSize: draftSpace.dirMode === 8 ? 9 : 11 }]}>{dir}</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                        {uri && (
+                          <>
+                            <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(dir)}>
+                              <Feather name="x" size={10} color="#fff" />
+                            </TouchableOpacity>
+                            <Text style={[styles.photoLabelUnder, { color: colors.primary, fontSize: 9 }]}>{dir}</Text>
+                          </>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            )}
 
             <View style={styles.pinSectionHeader}>
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>INFO PINS ({draftSpace.pins.length})</Text>
@@ -623,6 +704,10 @@ const styles = StyleSheet.create({
   modeChip: { flex: 1, padding: 14, borderRadius: 14, borderWidth: 1.5, gap: 4 },
   modeLabel: { fontSize: 14, fontFamily: "Inter_700Bold" },
   modeHint: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  panoUploadSlot: { width: "100%", height: 160, borderRadius: 16, borderWidth: 2, borderStyle: "dashed", alignItems: "center", justifyContent: "center", gap: 8, overflow: "hidden", marginTop: 4 },
+  panoThumb: { width: "100%", height: "100%", resizeMode: "cover" },
+  panoReadyBadge: { position: "absolute", bottom: 10, left: 10, backgroundColor: "rgba(124,58,237,0.85)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
+  panoReadyText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
   photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   photoSlotWrapper: { alignItems: "center", gap: 4 },
   photoSlot: { width: "100%", aspectRatio: 1, borderRadius: 12, borderWidth: 1.5, alignItems: "center", justifyContent: "center", gap: 4, overflow: "hidden" },
