@@ -1,20 +1,36 @@
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React from "react";
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import * as Haptics from "expo-haptics";
+import { useFocusEffect, router } from "expo-router";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { formatThreadTime, Thread, useThreadList } from "@/lib/messageStore";
+import { getPendingListings } from "@/lib/adminStore";
+import { deleteThread, formatThreadTime, Thread, useThreadList } from "@/lib/messageStore";
 
 function initials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function ThreadRow({ item, colors }: { item: Thread; colors: ReturnType<typeof useColors> }) {
-  const last = item.messages[item.messages.length - 1];
+function ThreadRow({
+  item, colors, onDelete,
+}: {
+  item: Thread;
+  colors: ReturnType<typeof useColors>;
+  onDelete: () => void;
+}) {
+  const last    = item.messages[item.messages.length - 1];
   const preview = last ? last.text : "No messages yet";
-  const timeLabel = item.updatedAt ? formatThreadTime(item.updatedAt) : "";
-  const unread = item.unreadSeller ?? 0;
+  const unread  = item.unreadSeller ?? 0;
+
+  const handleDelete = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert("Delete Conversation", `Remove the conversation about "${item.listingName}"?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: onDelete },
+    ]);
+  };
 
   return (
     <TouchableOpacity
@@ -28,10 +44,13 @@ function ThreadRow({ item, colors }: { item: Thread; colors: ReturnType<typeof u
       <View style={styles.info}>
         <View style={styles.topRow}>
           <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={1}>{item.buyerName}</Text>
-          <Text style={[styles.time, { color: colors.mutedForeground }]}>{timeLabel}</Text>
+          <Text style={[styles.time, { color: colors.mutedForeground }]}>{formatThreadTime(item.updatedAt)}</Text>
         </View>
         <Text style={[styles.listing, { color: colors.primary }]} numberOfLines={1}>{item.listingName}</Text>
-        <Text style={[styles.preview, { color: unread > 0 ? colors.foreground : colors.mutedForeground, fontFamily: unread > 0 ? "Inter_600SemiBold" : "Inter_400Regular" }]} numberOfLines={1}>
+        <Text
+          style={[styles.preview, { color: unread > 0 ? colors.foreground : colors.mutedForeground, fontFamily: unread > 0 ? "Inter_600SemiBold" : "Inter_400Regular" }]}
+          numberOfLines={1}
+        >
           {last?.from === "seller" ? `You: ${preview}` : preview}
         </Text>
       </View>
@@ -40,6 +59,13 @@ function ThreadRow({ item, colors }: { item: Thread; colors: ReturnType<typeof u
           <Text style={styles.unreadText}>{unread}</Text>
         </View>
       )}
+      <TouchableOpacity
+        style={styles.trashBtn}
+        onPress={handleDelete}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Feather name="trash-2" size={15} color={colors.mutedForeground} />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
@@ -47,9 +73,21 @@ function ThreadRow({ item, colors }: { item: Thread; colors: ReturnType<typeof u
 export default function SellerMessages() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { threads, loading } = useThreadList();
+  const { user } = useAuth();
+  const { threads, loading, remove } = useThreadList();
+  const [myListingIds, setMyListingIds] = useState<string[]>([]);
 
-  const totalUnread = threads.reduce((sum, t) => sum + (t.unreadSeller ?? 0), 0);
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      getPendingListings().then((all) => {
+        setMyListingIds(all.filter((p) => p.submittedBy === user.id).map((p) => p.listingId));
+      });
+    }, [user?.id]),
+  );
+
+  const myThreads    = threads.filter((t) => myListingIds.includes(t.listingId));
+  const totalUnread  = myThreads.reduce((sum, t) => sum + (t.unreadSeller ?? 0), 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -68,12 +106,14 @@ export default function SellerMessages() {
         </View>
       ) : (
         <FlatList
-          data={threads}
+          data={myThreads}
           keyExtractor={(i) => i.id}
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80) }]}
           scrollEnabled
           showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => <ThreadRow item={item} colors={colors} />}
+          renderItem={({ item }) => (
+            <ThreadRow item={item} colors={colors} onDelete={() => remove(item.id)} />
+          )}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name="message-circle" size={44} color={colors.mutedForeground} />
@@ -91,24 +131,25 @@ export default function SellerMessages() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
-  title: { fontSize: 26, fontFamily: "Inter_700Bold" },
-  badge: { backgroundColor: "#16A34A", borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
+  header:    { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  title:     { fontSize: 26, fontFamily: "Inter_700Bold" },
+  badge:     { backgroundColor: "#16A34A", borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  list: {},
-  thread: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
-  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  info: { flex: 1, gap: 2 },
-  topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  name: { fontSize: 15, fontFamily: "Inter_600SemiBold", flex: 1 },
-  time: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  listing: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  preview: { fontSize: 13, lineHeight: 18 },
-  unread: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  unreadText: { color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
-  empty: { alignItems: "center", paddingTop: 80, paddingHorizontal: 32, gap: 10 },
-  emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
+  center:    { flex: 1, alignItems: "center", justifyContent: "center" },
+  list:      {},
+  thread:    { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
+  avatar:    { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
+  avatarText:{ fontSize: 15, fontFamily: "Inter_700Bold" },
+  info:      { flex: 1, gap: 2 },
+  topRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  name:      { fontSize: 15, fontFamily: "Inter_600SemiBold", flex: 1 },
+  time:      { fontSize: 12, fontFamily: "Inter_400Regular" },
+  listing:   { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  preview:   { fontSize: 13, lineHeight: 18 },
+  unread:    { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  unreadText:{ color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
+  trashBtn:  { padding: 4, marginLeft: 4 },
+  empty:     { alignItems: "center", paddingTop: 80, paddingHorizontal: 32, gap: 10 },
+  emptyTitle:{ fontSize: 18, fontFamily: "Inter_600SemiBold" },
   emptyHint: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, marginTop: 4 },
 });
