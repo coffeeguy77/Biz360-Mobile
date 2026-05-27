@@ -1,71 +1,143 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
 import { router } from "expo-router";
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
+import { getPendingListings, PendingListing } from "@/lib/adminStore";
 
-const MY_LISTINGS = [DEMO_LISTINGS[0]];
+const DEMO_SELLER_LISTING = DEMO_LISTINGS[0];
+
+const STATUS_CONFIG = {
+  pending:  { label: "Pending Review", color: "#F59E0B", icon: "clock"       },
+  approved: { label: "Active",         color: "#16A34A", icon: "check-circle" },
+  rejected: { label: "Rejected",       color: "#EF4444", icon: "x-circle"     },
+} as const;
 
 export default function SellerListings() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const [userListings, setUserListings] = useState<PendingListing[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getPendingListings().then((all) => {
+        setUserListings(all.filter((p) => p.submittedBy === user?.id));
+      });
+    }, [user?.id]),
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>My Listings</Text>
-        <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => router.push("/create-listing" as any)}>
+        <TouchableOpacity
+          style={[styles.addBtn, { backgroundColor: colors.primary }]}
+          onPress={() => router.push("/create-listing" as any)}
+        >
           <Feather name="plus" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
 
       <FlatList
-        data={MY_LISTINGS}
-        keyExtractor={(i) => i.id}
+        data={[null, ...userListings] as (null | PendingListing)[]}
+        keyExtractor={(_, i) => String(i)}
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 84 : 80) }]}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push(`/listing/${item.id}` as any)}
-          >
-            <View style={[styles.cardHero, { backgroundColor: item.heroColor }]}>
-              <View style={[styles.statusPill, { backgroundColor: "#16A34A" }]}>
-                <Feather name="check-circle" size={10} color="#fff" />
-                <Text style={styles.statusText}>Active</Text>
-              </View>
-              <Text style={styles.heroPrice}>{formatPrice(item.askingPrice)}</Text>
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={[styles.cardName, { color: colors.foreground }]}>{item.businessName}</Text>
-              <Text style={[styles.cardMeta, { color: colors.mutedForeground }]}>{item.suburb}, {item.state} · {item.category}</Text>
-              <View style={styles.metricsRow}>
-                {[
-                  { label: "Views", val: item.viewCount },
-                  { label: "Tour starts", val: item.tourStarts },
-                  { label: "Saved", val: item.savedCount },
-                ].map(({ label, val }) => (
-                  <View key={label} style={styles.metric}>
-                    <Text style={[styles.metricVal, { color: colors.primary }]}>{val}</Text>
-                    <Text style={[styles.metricLbl, { color: colors.mutedForeground }]}>{label}</Text>
+        renderItem={({ item }) => {
+          // ── Demo listing (always "Active") ──
+          if (item === null) {
+            return (
+              <TouchableOpacity
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => router.push(`/listing/${DEMO_SELLER_LISTING.id}` as any)}
+              >
+                <View style={[styles.cardHero, { backgroundColor: DEMO_SELLER_LISTING.heroColor }]}>
+                  <View style={[styles.statusPill, { backgroundColor: "#16A34A" }]}>
+                    <Feather name="check-circle" size={10} color="#fff" />
+                    <Text style={styles.statusText}>Active</Text>
                   </View>
-                ))}
+                  <Text style={styles.heroPrice}>{formatPrice(DEMO_SELLER_LISTING.askingPrice)}</Text>
+                </View>
+                <View style={styles.cardBody}>
+                  <Text style={[styles.cardName, { color: colors.foreground }]}>{DEMO_SELLER_LISTING.businessName}</Text>
+                  <Text style={[styles.cardMeta, { color: colors.mutedForeground }]}>
+                    {DEMO_SELLER_LISTING.suburb}, {DEMO_SELLER_LISTING.state} · {DEMO_SELLER_LISTING.category}
+                  </Text>
+                  <View style={styles.metricsRow}>
+                    {[
+                      { label: "Views",       val: DEMO_SELLER_LISTING.viewCount  },
+                      { label: "Tour starts", val: DEMO_SELLER_LISTING.tourStarts },
+                      { label: "Saved",       val: DEMO_SELLER_LISTING.savedCount },
+                    ].map(({ label, val }) => (
+                      <View key={label} style={styles.metric}>
+                        <Text style={[styles.metricVal, { color: colors.primary }]}>{val}</Text>
+                        <Text style={[styles.metricLbl, { color: colors.mutedForeground }]}>{label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.muted }]}>
+                      <Feather name="edit-2" size={14} color={colors.foreground} />
+                      <Text style={[styles.actionBtnText, { color: colors.foreground }]}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+                      onPress={() => router.push(`/tour/${DEMO_SELLER_LISTING.id}` as any)}
+                    >
+                      <Feather name="rotate-ccw" size={14} color="#fff" />
+                      <Text style={[styles.actionBtnText, { color: "#fff" }]}>View Tour</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }
+
+          // ── User-submitted listing ──
+          const sc = STATUS_CONFIG[item.status];
+          return (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: item.status === "rejected" ? "#EF444440" : colors.border }]}>
+              <View style={[styles.cardHero, { backgroundColor: item.heroColor ?? "#2563EB" }]}>
+                <View style={[styles.statusPill, { backgroundColor: sc.color }]}>
+                  <Feather name={sc.icon as any} size={10} color="#fff" />
+                  <Text style={styles.statusText}>{sc.label}</Text>
+                </View>
+                <Text style={styles.heroPrice}>
+                  {item.askingPrice && item.askingPrice > 0
+                    ? formatPrice(item.askingPrice)
+                    : "Price TBC"}
+                </Text>
               </View>
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.muted }]}>
-                  <Feather name="edit-2" size={14} color={colors.foreground} />
-                  <Text style={[styles.actionBtnText, { color: colors.foreground }]}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={() => router.push(`/tour/${item.id}` as any)}>
-                  <Feather name="rotate-ccw" size={14} color="#fff" />
-                  <Text style={[styles.actionBtnText, { color: "#fff" }]}>View Tour</Text>
-                </TouchableOpacity>
+              <View style={styles.cardBody}>
+                <Text style={[styles.cardName, { color: colors.foreground }]}>{item.businessName}</Text>
+                <Text style={[styles.cardMeta, { color: colors.mutedForeground }]}>
+                  {item.suburb}{item.state ? `, ${item.state}` : ""} · {item.category}
+                </Text>
+                {item.status === "pending" && (
+                  <View style={[styles.pendingNote, { backgroundColor: "#F59E0B12", borderColor: "#F59E0B30" }]}>
+                    <Feather name="info" size={12} color="#F59E0B" />
+                    <Text style={[styles.pendingNoteText, { color: "#F59E0B" }]}>
+                      Under review by admin. Approval typically within 1 business day.
+                    </Text>
+                  </View>
+                )}
+                {item.status === "rejected" && (
+                  <View style={[styles.pendingNote, { backgroundColor: "#EF444412", borderColor: "#EF444430" }]}>
+                    <Feather name="alert-circle" size={12} color="#EF4444" />
+                    <Text style={[styles.pendingNoteText, { color: "#EF4444" }]}>
+                      This listing was not approved. Contact support or revise and resubmit.
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
-          </TouchableOpacity>
-        )}
+          );
+        }}
       />
     </View>
   );
@@ -92,4 +164,6 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: "row", gap: 8 },
   actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
   actionBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  pendingNote: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1 },
+  pendingNoteText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
 });
