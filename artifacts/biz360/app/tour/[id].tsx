@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinSheet } from "@/components/PinSheet";
@@ -10,6 +10,21 @@ import { useColors } from "@/hooks/useColors";
 import { apiGet } from "@/lib/apiStore";
 import { trackEvent } from "@/lib/analyticsStore";
 import { useAuth } from "@/context/AuthContext";
+
+const PIN_DISPLAY: Record<string, { color: string; label: string }> = {
+  equipment:   { color: "#F59E0B", label: "Equipment" },
+  revenue:     { color: "#16A34A", label: "Revenue" },
+  cogs:        { color: "#EF4444", label: "COGS" },
+  workflow:    { color: "#8B5CF6", label: "Workflow" },
+  staffing:    { color: "#3B82F6", label: "Staffing" },
+  lease:       { color: "#F97316", label: "Lease" },
+  risk:        { color: "#EF4444", label: "Risk" },
+  opportunity: { color: "#16A34A", label: "Opportunity" },
+  narration:   { color: "#EC4899", label: "Narration" },
+  inspection:  { color: "#06B6D4", label: "Inspection" },
+  highlight:   { color: "#F59E0B", label: "Highlight" },
+  document:    { color: "#6366F1", label: "Document" },
+};
 
 export default function TourScreen() {
   const { id, startSpace } = useLocalSearchParams<{ id: string; startSpace?: string }>();
@@ -24,6 +39,7 @@ export default function TourScreen() {
   const tourTrackedRef = useRef(false);
   const [activeSpaceIdx, setActiveSpaceIdx] = useState(startSpace ? parseInt(startSpace, 10) : 0);
   const [activePin,      setActivePin]      = useState<TourPin | null>(null);
+  const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -33,7 +49,6 @@ export default function TourScreen() {
     });
   }, [id]);
 
-  // Track tour start once loading is done and spaces exist
   useEffect(() => {
     if (kvLoading || tourTrackedRef.current || !id) return;
     const spaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...kvSpaces];
@@ -44,7 +59,6 @@ export default function TourScreen() {
 
   const allSpaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...kvSpaces];
 
-  // Wait for async fetch before showing "no tour" — avoids false negative on first render
   if (kvLoading && !listing) {
     return (
       <View style={[styles.center, { backgroundColor: "#071221" }]}>
@@ -78,10 +92,23 @@ export default function TourScreen() {
     );
   }
 
-  const safeIdx = Math.min(activeSpaceIdx, allSpaces.length - 1);
+  const safeIdx    = Math.min(activeSpaceIdx, allSpaces.length - 1);
   const activeSpace = allSpaces[safeIdx];
-  const demoCount = listing?.tourSpaces?.length ?? 0;
+  const demoCount  = listing?.tourSpaces?.length ?? 0;
   const isUserSpace = safeIdx >= demoCount;
+
+  const uniquePinTypes = useMemo(() => {
+    const seen = new Set<string>();
+    const types: string[] = [];
+    for (const p of activeSpace.pins) {
+      if (!seen.has(p.type)) { seen.add(p.type); types.push(p.type); }
+    }
+    return types;
+  }, [activeSpace.pins]);
+
+  const shownTypes  = uniquePinTypes.slice(0, 3);
+  const shownPinCount = shownTypes.reduce((sum, t) => sum + activeSpace.pins.filter((p) => p.type === t).length, 0);
+  const extraCount  = activeSpace.pins.length - shownPinCount;
 
   return (
     <View style={styles.container}>
@@ -123,7 +150,7 @@ export default function TourScreen() {
                         : "rgba(255,255,255,0.1)",
                   },
                 ]}
-                onPress={() => setActiveSpaceIdx(idx)}
+                onPress={() => { setActiveSpaceIdx(idx); setFocusPin(null); }}
               >
                 <Text style={[styles.spaceTabText, { color: idx === safeIdx ? "#fff" : "rgba(255,255,255,0.6)" }]}>
                   {space.name}
@@ -134,23 +161,38 @@ export default function TourScreen() {
         </View>
       )}
 
-      <TourViewer key={activeSpace.id} space={activeSpace} onPinPress={setActivePin} />
+      <TourViewer
+        key={activeSpace.id}
+        space={activeSpace}
+        onPinPress={setActivePin}
+        focusPin={focusPin}
+        onFocusPinHandled={() => setFocusPin(null)}
+      />
 
-      <View style={[styles.bottomOverlay, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 8 }]}>
-        <View style={styles.pinLegend}>
-          {[
-            { color: "#F59E0B", label: "Equipment" },
-            { color: "#16A34A", label: "Revenue" },
-            { color: "#3B82F6", label: "Staffing" },
-          ].map(({ color, label }) => (
-            <View key={label} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: color }]} />
-              <Text style={styles.legendText}>{label}</Text>
-            </View>
-          ))}
-          <Text style={styles.legendMore}>+{Math.max(0, activeSpace.pins.length ?? 0)} pins</Text>
+      {activeSpace.pins.length > 0 && (
+        <View style={[styles.bottomOverlay, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 8 }]}>
+          <View style={styles.pinLegend}>
+            {shownTypes.map((type) => {
+              const cfg = PIN_DISPLAY[type] ?? { color: "#3B82F6", label: type };
+              const firstPin = activeSpace.pins.find((p) => p.type === type)!;
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={styles.legendItem}
+                  onPress={() => setFocusPin(firstPin)}
+                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: cfg.color }]} />
+                  <Text style={styles.legendText}>{cfg.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            {extraCount > 0 && (
+              <Text style={styles.legendMore}>+{extraCount} more</Text>
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
       <PinSheet pin={activePin} onClose={() => setActivePin(null)} />
     </View>

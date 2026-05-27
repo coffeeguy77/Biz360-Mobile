@@ -490,9 +490,11 @@ render();
 interface Props {
   space: TourSpace;
   onPinPress: (pin: TourPin) => void;
+  focusPin?: TourPin | null;
+  onFocusPinHandled?: () => void;
 }
 
-export function PanoramaViewer({ space, onPinPress }: Props) {
+export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
   const webRef = useRef<WebView>(null);
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
