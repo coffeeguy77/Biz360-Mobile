@@ -38,6 +38,44 @@ router.put("/biz360/kv/:key", async (req, res): Promise<void> => {
   }
 });
 
+// ─── Tour image upload / serve ────────────────────────────────────────────────
+// POST /biz360/img  { key, data (base64), mimeType }  → stores in KV, returns { url }
+// GET  /biz360/img/:key                               → streams image bytes
+
+router.post("/biz360/img", async (req, res): Promise<void> => {
+  const { key, data, mimeType } = req.body as { key?: string; data?: string; mimeType?: string };
+  if (!key || !data) { res.status(400).json({ error: "key and data required" }); return; }
+  const kvKey = `biz360_img_${key}`;
+  try {
+    await db
+      .insert(kvStore)
+      .values({ key: kvKey, value: { data, mimeType: mimeType ?? "image/jpeg" } })
+      .onConflictDoUpdate({
+        target: kvStore.key,
+        set: { value: { data, mimeType: mimeType ?? "image/jpeg" }, updatedAt: new Date() },
+      });
+    res.json({ url: `/api/biz360/img/${key}` });
+  } catch {
+    res.status(500).json({ error: "DB error" });
+  }
+});
+
+router.get("/biz360/img/:key", async (req, res): Promise<void> => {
+  const { key } = req.params;
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, `biz360_img_${key}`));
+    const val = rows[0]?.value as { data: string; mimeType: string } | undefined;
+    if (!val?.data) { res.status(404).json({ error: "Not found" }); return; }
+    const buf = Buffer.from(val.data, "base64");
+    res.set("Content-Type", val.mimeType ?? "image/jpeg");
+    res.set("Cache-Control", "public, max-age=31536000, immutable");
+    res.set("Access-Control-Allow-Origin", "*");
+    res.send(buf);
+  } catch {
+    res.status(500).json({ error: "DB error" });
+  }
+});
+
 // ─── Twilio Verify — phone OTP ─────────────────────────────────────────────────
 
 function getTwilioClient() {

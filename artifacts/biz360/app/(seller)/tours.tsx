@@ -80,6 +80,41 @@ const VISIBILITY_OPTIONS: { val: Visibility; label: string; hint: string; icon: 
   { val: "approved_only", label: "Approved Only", hint: "Only seller-approved buyers",          icon: "shield", color: "#3B82F6" },
 ];
 
+// ─── Image upload helper ──────────────────────────────────────────────────────
+// Reads a local file:// URI as base64 and POSTs it to the API server.
+// Returns the resulting https:// URL. Returns the original URI on failure.
+
+async function uploadTourPhoto(
+  uri: string,
+  key: string,
+  onStatus: (s: string) => void,
+): Promise<string> {
+  if (uri.startsWith("http")) return uri; // already a server URL
+  const domain  = process.env.EXPO_PUBLIC_DOMAIN;
+  const apiBase = domain ? `https://${domain}/api` : "/api";
+  onStatus("Uploading photo…");
+  try {
+    const base64   = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    const ext      = uri.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "jpg";
+    const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+    const controller = new AbortController();
+    const timer      = setTimeout(() => controller.abort(), 120_000); // 2 min for large files
+    const res = await fetch(`${apiBase}/biz360/img`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ key, data: base64, mimeType }),
+      signal:  controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    const json = await res.json() as { url: string };
+    const serverBase = domain ? `https://${domain}` : "";
+    return `${serverBase}${json.url}`;
+  } catch {
+    return uri; // graceful fallback to local path
+  }
+}
+
 // ─── KV helpers ───────────────────────────────────────────────────────────────
 
 async function getTourSpaces(listingId: string): Promise<TourSpace[]> {
@@ -305,59 +340,45 @@ export default function ToursScreen() {
     }
 
     setSaving(true);
-    const isEditing   = editingSpaceId !== null;
-    const alreadySaved = (uri: string) => uri.includes("biz360_tour_");
+    const isEditing  = editingSpaceId !== null;
+    const spaceIdNow = isEditing ? editingSpaceId! : `space-${Date.now()}`;
+    const listingKey = selectedId ?? spaceIdNow;
 
     try {
-      const docDir = FileSystem.documentDirectory ?? "";
-
       if (draftSpace.dirMode === "panorama") {
-        setSaveStatus("Saving panorama…");
+        setSaveStatus("Uploading panorama…");
         const uri = draftSpace.panoramaUri!;
-        let panoramaUrl = uri;
-        if (!alreadySaved(uri)) {
-          const panoDir = docDir + "biz360_tour_panos/";
-          await FileSystem.makeDirectoryAsync(panoDir, { intermediates: true }).catch(() => {});
-          const ext  = uri.split(".").pop()?.split("?")[0] ?? "jpg";
-          const dest = panoDir + `pano-${Date.now()}.` + ext;
-          if (uri.startsWith("file://")) await FileSystem.copyAsync({ from: uri, to: dest });
-          panoramaUrl = uri.startsWith("file://") ? dest : uri;
-        }
-        const tourPins = buildTourPins(draftSpace.pins);
+        const imgKey      = `${listingKey}_pano_${Date.now()}`;
+        const panoramaUrl = await uploadTourPhoto(uri, imgKey, setSaveStatus);
+        const tourPins    = buildTourPins(draftSpace.pins);
         const savedSpace: TourSpace = {
-          id:          isEditing ? editingSpaceId! : `space-pano-${Date.now()}`,
-          name:        draftSpace.name.trim(), photos: [], pins: tourPins,
+          id:   spaceIdNow,
+          name: draftSpace.name.trim(), photos: [], pins: tourPins,
           panoramaUrl, panoramaStartYaw: 0, dirMode: "panorama",
         };
         setAllSpaces((prev) => isEditing ? prev.map((s) => s.id === editingSpaceId ? savedSpace : s) : [...prev, savedSpace]);
       } else {
-        setSaveStatus("Copying photos…");
-        const destDir = docDir + "biz360_tour_photos/";
-        await FileSystem.makeDirectoryAsync(destDir, { intermediates: true }).catch(() => {});
-        const dirs       = draftSpace.dirMode === 8 ? DIRS_8 : DIRS_4;
+        const dirs        = draftSpace.dirMode === 8 ? DIRS_8 : DIRS_4;
         const photoArray: string[] = [];
+        let photoIdx = 0;
         for (const dir of dirs) {
           const uri = draftSpace.photos[dir];
           if (!uri) continue;
-          if (alreadySaved(uri) || !uri.startsWith("file://")) {
-            photoArray.push(uri);
-          } else {
-            const ext  = uri.split(".").pop()?.split("?")[0] ?? "jpg";
-            const dest = destDir + `${Date.now()}_${dir.replace(/\s/g, "_")}.${ext}`;
-            await FileSystem.copyAsync({ from: uri, to: dest });
-            photoArray.push(dest);
-          }
+          setSaveStatus(`Uploading photo ${++photoIdx}…`);
+          const imgKey     = `${listingKey}_${dir.replace(/\s/g, "_")}_${Date.now()}`;
+          const uploadedUrl = await uploadTourPhoto(uri, imgKey, setSaveStatus);
+          photoArray.push(uploadedUrl);
         }
         const tourPins = buildTourPins(draftSpace.pins);
         const savedSpace: TourSpace = {
-          id:    isEditing ? editingSpaceId! : `space-user-${Date.now()}`,
-          name:  draftSpace.name.trim(), photos: photoArray, pins: tourPins, dirMode: draftSpace.dirMode,
+          id:   spaceIdNow,
+          name: draftSpace.name.trim(), photos: photoArray, pins: tourPins, dirMode: draftSpace.dirMode,
         };
         setAllSpaces((prev) => isEditing ? prev.map((s) => s.id === editingSpaceId ? savedSpace : s) : [...prev, savedSpace]);
       }
       closeSpaceModal();
     } catch {
-      Alert.alert("Save failed", "Could not save photos. Please try again.");
+      Alert.alert("Save failed", "Could not upload photos. Check your connection and try again.");
     } finally {
       setSaving(false);
       setSaveStatus("");
