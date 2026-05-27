@@ -72,7 +72,7 @@ function buildSinglePanoHtml(
       type:'equirectangular', panorama:'${panoramaUrl}',
       haov:${haov}, vaov:${vaov},
       autoLoad:true, showControls:false, compass:false,
-      yaw:${startYaw}, pitch:0, hfov:Math.min(100,${haov}*0.7), minHfov:40, maxHfov:Math.min(150,${haov}),
+      yaw:${startYaw}, pitch:0, hfov:Math.min(80,${haov}*0.55), minHfov:30, maxHfov:Math.min(130,${haov}),
       mouseZoom:true, touchPanSpeedCoeffFactor:1.5, showFullscreenCtrl:false,
       hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked}};})
     });
@@ -130,11 +130,11 @@ outer.style.backgroundImage="url('${panoSrc}')";
 
 function applyTransform(){
   var totalW=imgW*sc;
-  outer.style.backgroundSize=totalW+'px '+(VH*sc)+'px';
-  outer.style.backgroundPosition=bgX+'px '+ty+'px';
+  outer.style.backgroundSize=totalW+'px '+(VH*sc*1.2)+'px';
+  outer.style.backgroundPosition=bgX+'px '+(ty-VH*sc*0.1)+'px';
 }
 
-function clampTy(y,s){return Math.max(VH*(1-s),Math.min(0,y));}
+function clampTy(y,s){return Math.max(VH*(1-s*1.1),Math.min(VH*s*0.1,y));}
 
 function updatePins(){
   var totalW=imgW*sc;
@@ -274,7 +274,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 #outer{position:relative;width:100vw;height:100vh;overflow:hidden}
 #wrap{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
 #strip{display:flex;height:100vh}
-.photo{flex-shrink:0;width:100vw;height:100vh;object-fit:cover;pointer-events:none;user-select:none;-webkit-user-select:none;display:block}
+.frame{flex-shrink:0;width:100vw;height:100vh;overflow:hidden;position:relative}
+.photo{position:absolute;top:-10%;left:-5%;width:110%;height:120%;object-fit:cover;pointer-events:none;user-select:none;-webkit-user-select:none}
 #lbl{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:#fff;padding:6px 20px;border-radius:22px;font:700 14px -apple-system,system-ui,sans-serif;pointer-events:none;white-space:nowrap;z-index:10}
 #dots{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);display:flex;gap:7px;pointer-events:none;z-index:10}
 .dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.3);transition:background .2s,transform .2s}
@@ -292,9 +293,10 @@ var VW=window.innerWidth,VH=window.innerHeight;
 // Build strip: 3 sets for seamless wrap
 var strip=document.getElementById('strip');
 for(var r=0;r<3;r++) for(var i=0;i<N;i++){
+  var fr=document.createElement('div');fr.className='frame';
   var img=document.createElement('img');
   img.className='photo'; img.src=PHOTOS[i]; img.draggable=false;
-  strip.appendChild(img);
+  fr.appendChild(img);strip.appendChild(fr);
 }
 
 // Dots
