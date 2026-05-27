@@ -1,12 +1,82 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert, ActivityIndicator, Modal, Platform, Pressable,
+  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { getUsers, PendingListing, getPendingListings, saveUsers } from "@/lib/adminStore";
 import { aggregateAnalytics, getMultiAnalytics, ListingAnalytics } from "@/lib/analyticsStore";
+
+// ─── Plan definitions ──────────────────────────────────────────────────────────
+
+interface Plan {
+  id:       "free" | "pro" | "business";
+  name:     string;
+  price:    string;
+  period:   string;
+  badge?:   string;
+  color:    string;
+  features: string[];
+  cta:      string;
+}
+
+const PLANS: Plan[] = [
+  {
+    id:      "free",
+    name:    "Free",
+    price:   "$0",
+    period:  "forever",
+    color:   "#4B5563",
+    cta:     "Current Plan",
+    features: [
+      "1 active listing",
+      "Basic buyer analytics",
+      "Up to 5 photos per listing",
+      "Standard search placement",
+      "Community support",
+    ],
+  },
+  {
+    id:      "pro",
+    name:    "Pro",
+    price:   "$49",
+    period:  "/ month",
+    badge:   "MOST POPULAR",
+    color:   "#3B82F6",
+    cta:     "Upgrade to Pro",
+    features: [
+      "Up to 3 active listings",
+      "Full buyer analytics & insights",
+      "Unlimited photos + 360° tours",
+      "Priority search placement",
+      "Buyer lead notifications",
+      "Email & chat support",
+    ],
+  },
+  {
+    id:      "business",
+    name:    "Business",
+    price:   "$149",
+    period:  "/ month",
+    color:   "#8B5CF6",
+    cta:     "Upgrade to Business",
+    features: [
+      "Unlimited active listings",
+      "Advanced analytics & lead scoring",
+      "Dedicated account manager",
+      "Featured homepage placement",
+      "Branded PDF reports",
+      "Priority broker matching",
+      "White-label buyer portal",
+    ],
+  },
+];
+
+// ─── Stat config ───────────────────────────────────────────────────────────────
 
 const STAT_ICONS: Record<string, string> = {
   "Listing Views":  "eye",
@@ -26,15 +96,148 @@ const STAT_COLORS: Record<string, string> = {
   "Saved Count":    "#6366F1",
 };
 
+// ─── Upgrade Modal ─────────────────────────────────────────────────────────────
+
+function UpgradeModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [selected, setSelected] = useState<Plan["id"]>("pro");
+
+  const handleSelect = (plan: Plan) => {
+    if (plan.id === "free") return; // already on free
+    setSelected(plan.id);
+    Alert.alert(
+      `Upgrade to ${plan.name}`,
+      `You'll be charged ${plan.price}/month. This is a demo — no actual payment will be processed.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm Upgrade",
+          onPress: () => {
+            onClose();
+            Alert.alert("Plan Upgraded! 🎉", `You're now on the ${plan.name} plan. Enjoy your new features!`);
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={onClose} />
+      <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
+        {/* Handle bar */}
+        <View style={styles.modalHandle} />
+
+        {/* Header */}
+        <View style={styles.modalHeader}>
+          <View>
+            <Text style={styles.modalTitle}>Choose Your Plan</Text>
+            <Text style={styles.modalSub}>Unlock more listings, analytics & support</Text>
+          </View>
+          <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+            <Feather name="x" size={18} color="rgba(255,255,255,0.6)" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Plan cards */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.plansRow}
+          decelerationRate="fast"
+          snapToInterval={PLAN_CARD_W + 12}
+          snapToAlignment="start"
+        >
+          {PLANS.map((plan) => {
+            const isActive = plan.id === "free";
+            const isSelected = plan.id === selected && plan.id !== "free";
+            return (
+              <TouchableOpacity
+                key={plan.id}
+                style={[
+                  styles.planCard,
+                  { borderColor: isSelected ? plan.color : isActive ? "#374151" : "#1E3A5C" },
+                  isSelected && { backgroundColor: plan.color + "14" },
+                ]}
+                onPress={() => handleSelect(plan)}
+                activeOpacity={isActive ? 1 : 0.8}
+              >
+                {/* Badge */}
+                {plan.badge ? (
+                  <View style={[styles.planBadge, { backgroundColor: plan.color }]}>
+                    <Text style={styles.planBadgeText}>{plan.badge}</Text>
+                  </View>
+                ) : isActive ? (
+                  <View style={[styles.planBadge, { backgroundColor: "#374151" }]}>
+                    <Text style={styles.planBadgeText}>CURRENT PLAN</Text>
+                  </View>
+                ) : null}
+
+                {/* Name + price */}
+                <Text style={[styles.planName, { color: isActive ? "#9CA3AF" : "#fff" }]}>{plan.name}</Text>
+                <View style={styles.planPriceRow}>
+                  <Text style={[styles.planPrice, { color: isActive ? "#9CA3AF" : plan.color }]}>{plan.price}</Text>
+                  <Text style={[styles.planPeriod, { color: "#6B7280" }]}>{plan.period}</Text>
+                </View>
+
+                {/* Divider */}
+                <View style={[styles.planDivider, { backgroundColor: isActive ? "#374151" : "#1E3A5C" }]} />
+
+                {/* Features */}
+                {plan.features.map((f) => (
+                  <View key={f} style={styles.featureRow}>
+                    <Feather name="check" size={12} color={isActive ? "#6B7280" : plan.color} />
+                    <Text style={[styles.featureText, { color: isActive ? "#6B7280" : "#D1D5DB" }]}>{f}</Text>
+                  </View>
+                ))}
+
+                {/* CTA */}
+                <TouchableOpacity
+                  style={[
+                    styles.planCta,
+                    {
+                      backgroundColor: isActive ? "#374151" : plan.color,
+                      marginTop: "auto" as any,
+                    },
+                  ]}
+                  onPress={() => handleSelect(plan)}
+                  disabled={isActive}
+                >
+                  <Text style={[styles.planCtaText, { color: isActive ? "#6B7280" : "#fff" }]}>
+                    {plan.cta}
+                  </Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Footer note */}
+        <Text style={styles.modalFooter}>Cancel anytime · No contracts · GST included</Text>
+      </View>
+    </Modal>
+  );
+}
+
+const PLAN_CARD_W = 220;
+
+// ─── Dashboard ─────────────────────────────────────────────────────────────────
+
 export default function SellerDashboard() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const { user, logout } = useAuth();
 
-  const [listings,       setListings]       = useState<PendingListing[]>([]);
-  const [analytics,      setAnalytics]      = useState<ListingAnalytics | null>(null);
+  const [listings,          setListings]          = useState<PendingListing[]>([]);
+  const [analytics,         setAnalytics]         = useState<ListingAnalytics | null>(null);
   const [featuredAnalytics, setFeaturedAnalytics] = useState<ListingAnalytics | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsLoading,  setAnalyticsLoading]  = useState(true);
+  const [upgradeVisible,    setUpgradeVisible]    = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,10 +258,8 @@ export default function SellerDashboard() {
         const ids = mine.map((p) => p.listingId);
         const map = await getMultiAnalytics(ids);
 
-        // Aggregate across all listings
         setAnalytics(aggregateAnalytics(Object.values(map)));
 
-        // Featured listing analytics (first approved, else first listing)
         const featured = mine.find((l) => l.status === "approved") ?? mine[0];
         setFeaturedAnalytics(map[featured.listingId] ?? null);
 
@@ -85,10 +286,7 @@ export default function SellerDashboard() {
 
   const showAccountMenu = () => {
     Alert.alert(user?.name ?? "Account", user?.email ?? "", [
-      {
-        text: "Switch Account",
-        onPress: () => router.replace("/(auth)/welcome" as any),
-      },
+      { text: "Switch Account",     onPress: () => router.replace("/(auth)/welcome" as any) },
       {
         text: "Delete Account & Data",
         style: "destructive",
@@ -139,9 +337,13 @@ export default function SellerDashboard() {
             <Text style={[styles.name, { color: colors.foreground }]}>{user?.name?.split(" ")[0]}</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-            <TouchableOpacity style={[styles.upgradePill, { backgroundColor: colors.accent + "20" }]}>
-              <Feather name="star" size={12} color={colors.accent} />
-              <Text style={[styles.upgradeText, { color: colors.accent }]}>Upgrade</Text>
+            <TouchableOpacity
+              style={[styles.upgradePill, { backgroundColor: "#16A34A20" }]}
+              onPress={() => setUpgradeVisible(true)}
+              activeOpacity={0.75}
+            >
+              <Feather name="zap" size={12} color="#16A34A" />
+              <Text style={[styles.upgradeText, { color: "#16A34A" }]}>Upgrade</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -190,7 +392,6 @@ export default function SellerDashboard() {
             </TouchableOpacity>
           </View>
         ) : (
-          /* ── No listing yet ── */
           <View style={[styles.noListingCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
             <Feather name="plus-circle" size={24} color="#3B82F6" />
             <View style={{ flex: 1 }}>
@@ -213,7 +414,7 @@ export default function SellerDashboard() {
         </View>
         <View style={styles.statsGrid}>
           {Object.entries(STAT_ICONS).map(([label, icon]) => {
-            const val = statValue(label);
+            const val    = statValue(label);
             const isLive = !analyticsLoading && analytics !== null;
             return (
               <View key={label} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -222,7 +423,7 @@ export default function SellerDashboard() {
                 </View>
                 <Text style={[styles.statVal, { color: colors.foreground }]}>{val}</Text>
                 <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{label}</Text>
-                <Text style={[styles.statChange, { color: isLive ? colors.accent : colors.mutedForeground }]}>
+                <Text style={[styles.statChange, { color: isLive ? "#16A34A" : colors.mutedForeground }]}>
                   {isLive ? "all time" : "loading…"}
                 </Text>
               </View>
@@ -239,6 +440,9 @@ export default function SellerDashboard() {
           <Text style={styles.createBtnText}>Create New Listing</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ── Upgrade modal ── */}
+      <UpgradeModal visible={upgradeVisible} onClose={() => setUpgradeVisible(false)} />
     </View>
   );
 }
@@ -277,4 +481,46 @@ const styles = StyleSheet.create({
   statChange:       { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   createBtn:        { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14 },
   createBtnText:    { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+
+  // ── Modal ──
+  modalBackdrop:    { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.65)" },
+  modalSheet: {
+    position:        "absolute",
+    bottom:          0,
+    left:            0,
+    right:           0,
+    backgroundColor: "#0D1F38",
+    borderTopLeftRadius:  28,
+    borderTopRightRadius: 28,
+    paddingTop:      12,
+    borderTopWidth:  1,
+    borderColor:     "#1E3A5C",
+  },
+  modalHandle:   { width: 40, height: 4, borderRadius: 2, backgroundColor: "#2D4A6A", alignSelf: "center", marginBottom: 16 },
+  modalHeader:   { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 20, marginBottom: 20 },
+  modalTitle:    { color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" },
+  modalSub:      { color: "#8B9CB8", fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 3 },
+  modalClose:    { width: 32, height: 32, borderRadius: 16, backgroundColor: "#1E3A5C", alignItems: "center", justifyContent: "center" },
+  plansRow:      { paddingHorizontal: 20, gap: 12, paddingBottom: 8 },
+  planCard: {
+    width:           PLAN_CARD_W,
+    backgroundColor: "#0F2040",
+    borderRadius:    18,
+    borderWidth:     1.5,
+    padding:         18,
+    gap:             8,
+    minHeight:       340,
+  },
+  planBadge:     { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  planBadgeText: { color: "#fff", fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.8 },
+  planName:      { fontSize: 18, fontFamily: "Inter_700Bold", marginTop: 4 },
+  planPriceRow:  { flexDirection: "row", alignItems: "baseline", gap: 4 },
+  planPrice:     { fontSize: 28, fontFamily: "Inter_700Bold" },
+  planPeriod:    { fontSize: 13, fontFamily: "Inter_400Regular" },
+  planDivider:   { height: 1, marginVertical: 4 },
+  featureRow:    { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  featureText:   { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1, lineHeight: 18 },
+  planCta:       { paddingVertical: 12, borderRadius: 12, alignItems: "center", marginTop: 12 },
+  planCtaText:   { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  modalFooter:   { textAlign: "center", color: "#4B5563", fontSize: 11, fontFamily: "Inter_400Regular", paddingVertical: 12, paddingHorizontal: 20 },
 });
