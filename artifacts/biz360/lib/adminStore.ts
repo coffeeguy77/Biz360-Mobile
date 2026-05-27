@@ -165,13 +165,7 @@ function defaultCategories(): AdminCategory[] {
 }
 
 function defaultPending(): PendingListing[] {
-  const now = Date.now();
-  return [
-    { id: "p-gym",        listingId: "listing-gym-001",        submittedAt: now - 30*86400000, status: "approved", submittedBy: "broker-001", submittedByRole: "broker" },
-    { id: "p-restaurant", listingId: "listing-restaurant-001", submittedAt: now - 28*86400000, status: "approved", submittedBy: "broker-001", submittedByRole: "broker" },
-    { id: "p-cafe",       listingId: "listing-cafe-001",       submittedAt: now - 20*86400000, status: "approved", submittedBy: "seller-001", submittedByRole: "seller" },
-    { id: "p-salon",      listingId: "listing-salon-001",      submittedAt: now - 2*3600000,   status: "pending",  submittedBy: "broker-001", submittedByRole: "broker" },
-  ];
+  return [];
 }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────

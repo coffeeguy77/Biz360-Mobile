@@ -125,7 +125,11 @@ export default function VerifyPhoneScreen() {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const userId = `u-${phone?.replace(/\D/g, "")}-${Date.now()}`;
+
+      // Stable ID: reuse existing user's ID for this phone, or derive one from phone only
+      const allUsers   = await getUsers().catch(() => [] as AdminUser[]);
+      const prevUser   = allUsers.find((u) => u.email === phone);
+      const userId     = prevUser?.id ?? `u-${phone?.replace(/\D/g, "")}`;
 
       // Register in admin store (non-blocking)
       registerInAdminStore(userId);
