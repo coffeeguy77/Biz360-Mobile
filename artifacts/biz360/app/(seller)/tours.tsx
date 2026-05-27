@@ -499,7 +499,7 @@ export default function ToursScreen() {
                     </TouchableOpacity>
                     {/* Cancel placement */}
                     <TouchableOpacity
-                      style={[styles.removePhotoBtn, { top: 8, left: 8, right: undefined }]}
+                      style={styles.cancelPlacementBtn}
                       onPress={() => setPinPlaceMode(false)}
                     >
                       <Feather name="x" size={10} color="#fff" />
@@ -783,7 +783,8 @@ const styles = StyleSheet.create({
   panoThumb: { width: "100%", height: "100%", resizeMode: "cover" },
   panoReadyBadge: { position: "absolute", bottom: 10, left: 10, backgroundColor: "rgba(124,58,237,0.85)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
   panoReadyText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  placeModeOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "flex-end", paddingBottom: 10 },
+  placeModeOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "flex-end", paddingBottom: 10 },
+  cancelPlacementBtn: { position: "absolute", top: 8, left: 8, width: 18, height: 18, borderRadius: 9, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
   placeModeChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(59,130,246,0.85)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   placeModeText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
   pinDotOnPano: { position: "absolute", width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: "#fff" },
