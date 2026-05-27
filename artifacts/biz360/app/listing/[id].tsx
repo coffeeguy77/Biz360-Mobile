@@ -1,13 +1,16 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VerificationBadges } from "@/components/VerificationBadge";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing } from "@/lib/adminStore";
+import { trackEvent } from "@/lib/analyticsStore";
+import { useAuth } from "@/context/AuthContext";
+import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -20,9 +23,13 @@ function safeFormatPrice(price: number | undefined | null): string {
 
 export default function ListingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const { user } = useAuth();
+  const buyerId  = user?.id ?? "guest";
+
   const [isSaved, setIsSaved] = useState(false);
+  const viewFiredRef = useRef(false);
 
   // 1. Try DEMO_LISTINGS first (synchronous)
   const demoListing = DEMO_LISTINGS.find((l) => l.id === id);
@@ -39,6 +46,21 @@ export default function ListingDetailScreen() {
       setPendingItem(match ?? null);
     });
   }, [id, demoListing]);
+
+  // Restore saved state from persistent store on mount
+  useEffect(() => {
+    if (!id) return;
+    getSavedIds().then((ids) => setIsSaved(ids.includes(id)));
+  }, [id]);
+
+  // Track listing view — fires once when a KV listing resolves
+  useEffect(() => {
+    if (!id || viewFiredRef.current) return;
+    if (!demoListing && pendingItem === undefined) return; // still loading
+    if (!pendingItem) return; // skip demo listings (no real seller to show data to)
+    viewFiredRef.current = true;
+    trackEvent(id, "view", buyerId);
+  }, [id, demoListing, pendingItem, buyerId]);
 
   // ── Loading state (only while pending store resolves) ──────────────────────
   if (!demoListing && pendingItem === undefined) {
@@ -64,16 +86,27 @@ export default function ListingDetailScreen() {
 
   // ── Shared interaction handlers ─────────────────────────────────────────────
   const handleSave = () => {
+    if (!id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsSaved((p) => !p);
+    persistToggleSaved(id).then((newIds) => {
+      const nowSaved = newIds.includes(id);
+      setIsSaved(nowSaved);
+      trackEvent(id, nowSaved ? "save" : "unsave", buyerId);
+    });
   };
 
   const handleCall = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (id) trackEvent(id, "call", buyerId);
     Alert.alert("Click-to-Call", "This call will be tracked as a lead. Proceed?", [
       { text: "Cancel" },
       { text: "Call Now", onPress: () => Linking.openURL("tel:+61400000000") },
     ]);
+  };
+
+  const handleMessage = (threadId: string, listingName: string, sellerName: string) => {
+    if (id) trackEvent(id, "message", buyerId);
+    router.push(`/thread/${threadId}?listingName=${encodeURIComponent(listingName)}&sellerName=${encodeURIComponent(sellerName)}` as any);
   };
 
   const handleNDA = () => {
@@ -208,7 +241,7 @@ export default function ListingDetailScreen() {
             )}
             <TouchableOpacity
               style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
-              onPress={() => router.push(`/thread/listing-${listing.id}?listingName=${encodeURIComponent(listing.businessName)}&sellerName=Sarah+Mitchell` as any)}
+              onPress={() => handleMessage(`listing-${listing.id}`, listing.businessName, "Sarah Mitchell")}
             >
               <Feather name="message-circle" size={18} color="#fff" />
               <Text style={styles.footerPrimaryText}>{listing.contactPreference === "broker_only" ? "Contact Broker" : "Message Seller"}</Text>
@@ -367,7 +400,7 @@ export default function ListingDetailScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
-            onPress={() => router.push(`/thread/${item.listingId}?listingName=${encodeURIComponent(businessName)}&sellerName=${encodeURIComponent(item.submittedBy)}` as any)}
+            onPress={() => handleMessage(item.listingId, businessName, item.submittedBy)}
           >
             <Feather name="message-circle" size={18} color="#fff" />
             <Text style={styles.footerPrimaryText}>Contact Seller</Text>

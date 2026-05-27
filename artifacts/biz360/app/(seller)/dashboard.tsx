@@ -1,11 +1,12 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { getUsers, PendingListing, getPendingListings, saveUsers } from "@/lib/adminStore";
+import { aggregateAnalytics, getMultiAnalytics, ListingAnalytics } from "@/lib/analyticsStore";
 
 const STAT_ICONS: Record<string, string> = {
   "Listing Views":  "eye",
@@ -26,22 +27,61 @@ const STAT_COLORS: Record<string, string> = {
 };
 
 export default function SellerDashboard() {
-  const colors   = useColors();
-  const insets   = useSafeAreaInsets();
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
   const { user, logout } = useAuth();
 
-  const [listings, setListings] = useState<PendingListing[]>([]);
+  const [listings,       setListings]       = useState<PendingListing[]>([]);
+  const [analytics,      setAnalytics]      = useState<ListingAnalytics | null>(null);
+  const [featuredAnalytics, setFeaturedAnalytics] = useState<ListingAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       if (!user?.id) return;
-      getPendingListings().then((all) => {
-        setListings(all.filter((p) => p.submittedBy === user.id));
+      setAnalyticsLoading(true);
+
+      getPendingListings().then(async (all) => {
+        const mine = all.filter((p) => p.submittedBy === user.id);
+        setListings(mine);
+
+        if (mine.length === 0) {
+          setAnalytics(aggregateAnalytics([]));
+          setFeaturedAnalytics(null);
+          setAnalyticsLoading(false);
+          return;
+        }
+
+        const ids = mine.map((p) => p.listingId);
+        const map = await getMultiAnalytics(ids);
+
+        // Aggregate across all listings
+        setAnalytics(aggregateAnalytics(Object.values(map)));
+
+        // Featured listing analytics (first approved, else first listing)
+        const featured = mine.find((l) => l.status === "approved") ?? mine[0];
+        setFeaturedAnalytics(map[featured.listingId] ?? null);
+
+        setAnalyticsLoading(false);
       });
     }, [user?.id]),
   );
 
   const featuredListing = listings.find((l) => l.status === "approved") ?? listings[0];
+
+  const statValue = (label: string): string => {
+    if (analyticsLoading) return "…";
+    if (!analytics) return "0";
+    switch (label) {
+      case "Listing Views":  return String(analytics.views);
+      case "Tour Starts":    return String(analytics.tourStarts);
+      case "Unique Buyers":  return String(analytics.uniqueBuyerIds.length);
+      case "Messages":       return String(analytics.messages);
+      case "Calls Clicked":  return String(analytics.callsClicked);
+      case "Saved Count":    return String(analytics.savedCount);
+      default:               return "0";
+    }
+  };
 
   const showAccountMenu = () => {
     Alert.alert(user?.name ?? "Account", user?.email ?? "", [
@@ -63,7 +103,6 @@ export default function SellerDashboard() {
                 style: "destructive",
                 onPress: async () => {
                   try {
-                    // Remove from admin users KV
                     const allUsers = await getUsers();
                     await saveUsers(allUsers.filter((u) => u.id !== user?.id && u.email !== user?.email));
                   } catch { /* non-critical */ }
@@ -113,7 +152,7 @@ export default function SellerDashboard() {
           </View>
         </View>
 
-        {/* ── Featured listing tour card ── */}
+        {/* ── Featured listing card ── */}
         {featuredListing ? (
           <View style={[styles.tourCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
             <View style={styles.tourCardLeft}>
@@ -126,12 +165,20 @@ export default function SellerDashboard() {
               </Text>
               <View style={styles.tourMetrics}>
                 <View style={styles.tourMetric}>
-                  <Text style={styles.tourMetricVal}>—</Text>
-                  <Text style={styles.tourMetricLbl}>Tour completion</Text>
+                  {analyticsLoading ? (
+                    <ActivityIndicator size="small" color="#3B82F6" />
+                  ) : (
+                    <Text style={styles.tourMetricVal}>{featuredAnalytics?.views ?? 0}</Text>
+                  )}
+                  <Text style={styles.tourMetricLbl}>Total views</Text>
                 </View>
                 <View style={styles.tourMetric}>
-                  <Text style={styles.tourMetricVal}>—</Text>
-                  <Text style={styles.tourMetricLbl}>Avg tour time</Text>
+                  {analyticsLoading ? (
+                    <ActivityIndicator size="small" color="#3B82F6" />
+                  ) : (
+                    <Text style={styles.tourMetricVal}>{featuredAnalytics?.uniqueBuyerIds.length ?? 0}</Text>
+                  )}
+                  <Text style={styles.tourMetricLbl}>Unique buyers</Text>
                 </View>
               </View>
             </View>
@@ -160,18 +207,27 @@ export default function SellerDashboard() {
         )}
 
         {/* ── Performance stats ── */}
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Performance — Last 30 Days</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Performance — Last 30 Days</Text>
+          {analyticsLoading && <ActivityIndicator size="small" color={colors.primary} />}
+        </View>
         <View style={styles.statsGrid}>
-          {Object.entries(STAT_ICONS).map(([label, icon]) => (
-            <View key={label} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.statIcon, { backgroundColor: STAT_COLORS[label] + "18" }]}>
-                <Feather name={icon as any} size={16} color={STAT_COLORS[label]} />
+          {Object.entries(STAT_ICONS).map(([label, icon]) => {
+            const val = statValue(label);
+            const isLive = !analyticsLoading && analytics !== null;
+            return (
+              <View key={label} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={[styles.statIcon, { backgroundColor: STAT_COLORS[label] + "18" }]}>
+                  <Feather name={icon as any} size={16} color={STAT_COLORS[label]} />
+                </View>
+                <Text style={[styles.statVal, { color: colors.foreground }]}>{val}</Text>
+                <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{label}</Text>
+                <Text style={[styles.statChange, { color: isLive ? colors.accent : colors.mutedForeground }]}>
+                  {isLive ? "all time" : "loading…"}
+                </Text>
               </View>
-              <Text style={[styles.statVal, { color: colors.foreground }]}>—</Text>
-              <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{label}</Text>
-              <Text style={[styles.statChange, { color: colors.mutedForeground }]}>live soon</Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         {/* ── Create listing CTA ── */}
@@ -202,7 +258,7 @@ const styles = StyleSheet.create({
   tourCardTitle:    { color: "#fff", fontSize: 17, fontFamily: "Inter_700Bold", lineHeight: 24 },
   tourCardSub:      { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
   tourMetrics:      { flexDirection: "row", gap: 20, marginTop: 8 },
-  tourMetric:       {},
+  tourMetric:       { minHeight: 36, justifyContent: "flex-end" },
   tourMetricVal:    { color: "#3B82F6", fontSize: 20, fontFamily: "Inter_700Bold" },
   tourMetricLbl:    { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
   tourBtn:          { width: 48, height: 48, borderRadius: 24, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" },
@@ -211,7 +267,8 @@ const styles = StyleSheet.create({
   noListingText:    { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   noListingBtn:     { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#2563EB", borderRadius: 12 },
   noListingBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  sectionTitle:     { fontSize: 16, fontFamily: "Inter_700Bold" },
+  sectionHeader:    { flexDirection: "row", alignItems: "center", gap: 10 },
+  sectionTitle:     { fontSize: 16, fontFamily: "Inter_700Bold", flex: 1 },
   statsGrid:        { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   statCard:         { width: "31%", padding: 12, borderRadius: 14, borderWidth: 1, alignItems: "center", gap: 4 },
   statIcon:         { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 2 },

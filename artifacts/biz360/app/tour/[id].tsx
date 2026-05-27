@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinSheet } from "@/components/PinSheet";
@@ -8,14 +8,20 @@ import { TourViewer } from "@/components/TourViewer";
 import { DEMO_LISTINGS, TourPin, TourSpace } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { apiGet } from "@/lib/apiStore";
+import { trackEvent } from "@/lib/analyticsStore";
+import { useAuth } from "@/context/AuthContext";
 
 export default function TourScreen() {
   const { id, startSpace } = useLocalSearchParams<{ id: string; startSpace?: string }>();
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const { user } = useAuth();
+  const buyerId  = user?.id ?? "guest";
+
   const listing = DEMO_LISTINGS.find((l) => l.id === id);
   const [kvSpaces,  setKvSpaces]  = useState<TourSpace[]>([]);
   const [kvLoading, setKvLoading] = useState(true);
+  const tourTrackedRef = useRef(false);
   const [activeSpaceIdx, setActiveSpaceIdx] = useState(startSpace ? parseInt(startSpace, 10) : 0);
   const [activePin,      setActivePin]      = useState<TourPin | null>(null);
 
@@ -26,6 +32,15 @@ export default function TourScreen() {
       setKvLoading(false);
     });
   }, [id]);
+
+  // Track tour start once loading is done and spaces exist
+  useEffect(() => {
+    if (kvLoading || tourTrackedRef.current || !id) return;
+    const spaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...kvSpaces];
+    if (spaces.length === 0) return;
+    tourTrackedRef.current = true;
+    trackEvent(id, "tour_start", buyerId);
+  }, [id, kvLoading, kvSpaces.length, buyerId]);
 
   const allSpaces: TourSpace[] = [...(listing?.tourSpaces ?? []), ...kvSpaces];
 
