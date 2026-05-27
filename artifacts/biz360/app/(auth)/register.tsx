@@ -36,6 +36,7 @@ export default function RegisterScreen() {
     await new Promise((r) => setTimeout(r, 800));
     await login({ id: Date.now().toString(), name, email, role: selectedRole });
     setLoading(false);
+    router.replace("/");
   };
 
   return (
