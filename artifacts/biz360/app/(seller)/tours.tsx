@@ -108,8 +108,8 @@ async function uploadTourPhoto(
     clearTimeout(timer);
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     const json = await res.json() as { url: string };
-    const serverBase = domain ? `https://${domain}` : "";
-    return `${serverBase}${json.url}`;
+    // Cloudinary returns a full https:// URL — use it as-is
+    return json.url;
   } catch {
     return uri; // graceful fallback to local path
   }
