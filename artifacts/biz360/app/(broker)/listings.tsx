@@ -123,6 +123,21 @@ export default function BrokerListings() {
                   </View>
                 )}
 
+                {/* Edit button — user-created pending/rejected listings */}
+                {(item.status === "pending" || item.status === "rejected") && !demo && (
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: colors.primary, flex: 1 }]}
+                      onPress={() => router.push(`/create-listing?editId=${item.id}` as any)}
+                    >
+                      <Feather name="edit-2" size={13} color="#fff" />
+                      <Text style={[styles.actionBtnText, { color: "#fff" }]}>
+                        {item.status === "rejected" ? "Revise & Resubmit" : "Edit Listing"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {/* Action buttons — all approved listings get View; DEMO listings also get Tour */}
                 {item.status === "approved" && (
                   <View style={styles.actionRow}>

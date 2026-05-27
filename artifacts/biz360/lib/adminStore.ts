@@ -55,6 +55,23 @@ export interface PendingListing {
   askingPrice?: number;
   weeklyRevenue?: number;
   heroColor?: string;
+  photos?: string[];
+  description?: string;
+  adjustedProfit?: number;
+  rent?: number;
+  staffCount?: number;
+  ownerHours?: number;
+  leaseExpiry?: string;
+  leaseOptions?: string;
+  franchiseStatus?: string;
+  trainingPeriod?: string;
+  reasonForSale?: string;
+  growthOpportunities?: string;
+  risks?: string;
+  contactPreference?: string;
+  sellerPhone?: string;
+  badges?: string[];
+  confidential?: boolean;
 }
 
 const K = {

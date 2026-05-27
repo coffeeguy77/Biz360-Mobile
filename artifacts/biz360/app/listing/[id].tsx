@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VerificationBadges } from "@/components/VerificationBadge";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
@@ -238,45 +238,82 @@ export default function ListingDetailScreen() {
   // ══════════════════════════════════════════════════════════════════════════════
   // USER-CREATED LISTING VIEW (pending store data only)
   // ══════════════════════════════════════════════════════════════════════════════
-  const item = pendingItem!;
+  const item         = pendingItem!;
   const heroColor    = item.heroColor ?? "#2563EB";
   const businessName = item.businessName ?? "Unnamed Listing";
   const price        = item.askingPrice;
   const revenue      = item.weeklyRevenue;
+  const hasPhotos    = !!(item.photos?.length);
+  const topOffset    = insets.top + (Platform.OS === "web" ? 67 : 0) + 8;
 
-  const infoRows = [
-    item.suburb || item.state ? { label: "Location",       value: [item.suburb, item.state].filter(Boolean).join(", ") } : null,
-    item.category             ? { label: "Category",       value: item.category }                                         : null,
-    price && price > 0        ? { label: "Asking Price",   value: formatPrice(price),       highlight: true }              : null,
-    revenue && revenue > 0    ? { label: "Weekly Revenue", value: `$${revenue.toLocaleString()}` }                         : null,
+  const financialRows = [
+    price    && price    > 0 ? { label: "Asking Price",          value: safeFormatPrice(price),                       highlight: true  } : null,
+    revenue  && revenue  > 0 ? { label: "Weekly Revenue",        value: `$${revenue.toLocaleString()}`                                 } : null,
+    item.adjustedProfit && item.adjustedProfit > 0 ? { label: "Adj. Profit / SDE", value: `$${item.adjustedProfit.toLocaleString()} p.a.`, highlight: true } : null,
+    item.rent           && item.rent > 0           ? { label: "Monthly Rent",       value: `$${item.rent.toLocaleString()}`             } : null,
+    item.staffCount     && item.staffCount > 0     ? { label: "Staff Count",        value: `${item.staffCount} employees`               } : null,
+    item.ownerHours     && item.ownerHours > 0     ? { label: "Owner Hours/week",   value: `${item.ownerHours}h`                        } : null,
+    item.leaseExpiry                               ? { label: "Lease Expiry",       value: item.leaseExpiry                             } : null,
+    item.leaseOptions                              ? { label: "Lease Options",      value: item.leaseOptions                            } : null,
+    item.franchiseStatus                           ? { label: "Franchise Status",   value: item.franchiseStatus                         } : null,
+    item.trainingPeriod                            ? { label: "Training Period",    value: item.trainingPeriod                          } : null,
   ].filter(Boolean) as { label: string; value: string; highlight?: boolean }[];
+
+  const locationMeta = [item.suburb, item.state].filter(Boolean).join(", ");
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 160 }}>
-        <View style={[styles.hero, { backgroundColor: heroColor }]}>
-          <TouchableOpacity style={[styles.backBtn, { top: insets.top + (Platform.OS === "web" ? 67 : 0) + 8 }]} onPress={() => router.back()}>
+
+        {/* ── Hero ── */}
+        <View style={[styles.hero, !hasPhotos && { backgroundColor: heroColor }]}>
+          {hasPhotos && (
+            <Image source={{ uri: item.photos![0] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          )}
+          {hasPhotos && (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.38)" }]} />
+          )}
+          <TouchableOpacity style={[styles.backBtn, { top: topOffset }]} onPress={() => router.back()}>
             <Feather name="arrow-left" size={20} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.saveBtn, { top: insets.top + (Platform.OS === "web" ? 67 : 0) + 8 }]} onPress={handleSave}>
+          <TouchableOpacity style={[styles.saveBtn, { top: topOffset }]} onPress={handleSave}>
             <Feather name="bookmark" size={20} color={isSaved ? "#3B82F6" : "#fff"} />
           </TouchableOpacity>
           <View style={styles.heroContent}>
             <Text style={styles.heroPrice}>{safeFormatPrice(price)}</Text>
             <Text style={styles.heroName}>{businessName}</Text>
-            {(item.suburb || item.state || item.category) && (
+            {(locationMeta || item.category) && (
               <Text style={styles.heroMeta}>
-                {[item.suburb, item.state].filter(Boolean).join(", ")}{item.category ? ` · ${item.category}` : ""}
+                {locationMeta}{item.category ? `${locationMeta ? " · " : ""}${item.category}` : ""}
               </Text>
             )}
           </View>
         </View>
 
+        {/* ── Photo strip (if > 1 photo) ── */}
+        {hasPhotos && item.photos!.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.photoStrip}
+          >
+            {item.photos!.map((uri, idx) => (
+              <Image key={idx} source={{ uri }} style={styles.photoStripThumb} resizeMode="cover" />
+            ))}
+          </ScrollView>
+        )}
+
         <View style={styles.body}>
-          {infoRows.length > 0 && (
+          {/* Description */}
+          {!!item.description && (
+            <Text style={[styles.desc, { color: colors.mutedForeground }]}>{item.description}</Text>
+          )}
+
+          {/* Financials & details */}
+          {financialRows.length > 0 && (
             <View style={[styles.section, { borderTopColor: colors.border }]}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Listing Details</Text>
-              {infoRows.map(({ label, value, highlight }) => (
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Business Details</Text>
+              {financialRows.map(({ label, value, highlight }) => (
                 <View key={label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
                   <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>{label}</Text>
                   <Text style={[styles.detailValue, { color: highlight ? colors.accent : colors.foreground }]}>{value}</Text>
@@ -285,10 +322,39 @@ export default function ListingDetailScreen() {
             </View>
           )}
 
+          {/* Growth opportunities */}
+          {!!item.growthOpportunities && (
+            <View style={[styles.oppCard, { backgroundColor: colors.accent + "12", borderColor: colors.accent + "30" }]}>
+              <Feather name="star" size={16} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardTag, { color: colors.accent }]}>Growth Opportunities</Text>
+                <Text style={[styles.cardText, { color: colors.foreground }]}>{item.growthOpportunities}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Risks */}
+          {!!item.risks && (
+            <View style={[styles.riskCard, { backgroundColor: "#EF444412", borderColor: "#EF444430" }]}>
+              <Feather name="alert-triangle" size={16} color="#EF4444" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardTag, { color: "#EF4444" }]}>Risks / Notes</Text>
+                <Text style={[styles.cardText, { color: colors.foreground }]}>{item.risks}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Badges */}
+          {item.badges && item.badges.length > 0 && (
+            <View style={[styles.section, { borderTopColor: colors.border }]}>
+              <VerificationBadges badges={item.badges as any} />
+            </View>
+          )}
+
           <View style={[styles.infoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="info" size={15} color={colors.primary} />
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-              This listing was submitted directly by the seller. Full financials, lease details, and documents are available on request.
+              Full financials, lease details, and supporting documents are available on request.
             </Text>
           </View>
         </View>
@@ -335,6 +401,8 @@ const styles = StyleSheet.create({
   heroPrice:       { color: "#fff", fontSize: 30, fontFamily: "Inter_700Bold" },
   heroName:        { color: "#fff", fontSize: 18, fontFamily: "Inter_600SemiBold" },
   heroMeta:        { color: "rgba(255,255,255,0.7)", fontSize: 13, fontFamily: "Inter_400Regular" },
+  photoStrip:      { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  photoStripThumb: { width: 120, height: 80, borderRadius: 8 },
   body:            { padding: 16, gap: 16 },
   tourCTA:         { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 14 },
   tourCTATitle:    { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },

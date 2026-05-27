@@ -1,9 +1,12 @@
 import { Feather } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
-import React, { useState } from "react";
+import * as ImagePicker from "expo-image-picker";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -24,13 +27,14 @@ import {
   savePendingListings,
 } from "@/lib/adminStore";
 
-const STEPS = ["Basic Info", "Financials", "Details", "Verification", "Contact & Review"];
+const STEPS = ["Basic Info", "Financials", "Details", "Photos", "Verification", "Contact & Review"];
 const CATEGORIES = [
   "Food & Beverage", "Health & Beauty", "Services", "Health & Fitness",
   "Retail", "Professional Services", "Manufacturing", "Hospitality", "Technology", "Transport",
 ];
 const AU_STATES = ["VIC", "NSW", "QLD", "WA", "SA", "ACT", "TAS", "NT"];
 const FRANCHISE_OPTIONS = ["Independent", "Franchise", "License Agreement", "Cooperative"];
+const MAX_PHOTOS = 8;
 
 const BADGE_META: { badge: VerificationBadge; label: string; desc: string; icon: string }[] = [
   { badge: "identity",        label: "Identity Verified",    desc: "Seller ID confirmed via government document", icon: "user-check"   },
@@ -67,6 +71,7 @@ interface FormState {
   badges: VerificationBadge[];
   contactPreference: "message" | "call" | "broker_only";
   sellerPhone: string;
+  photos: string[];
 }
 
 const INITIAL_FORM: FormState = {
@@ -74,16 +79,54 @@ const INITIAL_FORM: FormState = {
   confidential: false, askingPrice: "", weeklyRevenue: "", adjustedProfit: "",
   rent: "", staffCount: "", ownerHours: "", leaseExpiry: "", leaseOptions: "",
   franchiseStatus: "", trainingPeriod: "", reasonForSale: "", growthOpportunities: "",
-  risks: "", badges: [], contactPreference: "message", sellerPhone: "",
+  risks: "", badges: [], contactPreference: "message", sellerPhone: "", photos: [],
 };
 
 export default function CreateListing() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { editId } = useLocalSearchParams<{ editId?: string }>();
+
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(!!editId);
+
+  useEffect(() => {
+    if (!editId) return;
+    getPendingListings().then((all) => {
+      const item = all.find((p) => p.id === editId);
+      if (item) {
+        setForm({
+          businessName:       item.businessName       ?? "",
+          suburb:             item.suburb             ?? "",
+          state:              item.state              ?? "",
+          category:           item.category           ?? "",
+          description:        item.description        ?? "",
+          confidential:       item.confidential       ?? false,
+          askingPrice:        item.askingPrice        ? String(item.askingPrice)  : "",
+          weeklyRevenue:      item.weeklyRevenue      ? String(item.weeklyRevenue): "",
+          adjustedProfit:     item.adjustedProfit     ? String(item.adjustedProfit): "",
+          rent:               item.rent               ? String(item.rent)         : "",
+          staffCount:         item.staffCount         ? String(item.staffCount)   : "",
+          ownerHours:         item.ownerHours         ? String(item.ownerHours)   : "",
+          leaseExpiry:        item.leaseExpiry        ?? "",
+          leaseOptions:       item.leaseOptions       ?? "",
+          franchiseStatus:    item.franchiseStatus    ?? "",
+          trainingPeriod:     item.trainingPeriod     ?? "",
+          reasonForSale:      item.reasonForSale      ?? "",
+          growthOpportunities:item.growthOpportunities?? "",
+          risks:              item.risks              ?? "",
+          badges:             (item.badges            ?? []) as VerificationBadge[],
+          contactPreference:  (item.contactPreference as any) ?? "message",
+          sellerPhone:        item.sellerPhone        ?? "",
+          photos:             item.photos             ?? [],
+        });
+      }
+      setLoadingEdit(false);
+    });
+  }, [editId]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -95,6 +138,49 @@ export default function CreateListing() {
         ? f.badges.filter((b) => b !== badge)
         : [...f.badges, badge],
     }));
+  };
+
+  const addPhotos = async () => {
+    const remaining = MAX_PHOTOS - form.photos.length;
+    if (remaining <= 0) return;
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow access to your photo library to add listing photos.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.85,
+      selectionLimit: remaining,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    if (Platform.OS === "web") {
+      setForm((f) => ({ ...f, photos: [...f.photos, ...result.assets.map((a) => a.uri)].slice(0, MAX_PHOTOS) }));
+      return;
+    }
+
+    const dir = `${FileSystem.documentDirectory}biz360_listing_photos/`;
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+
+    const saved: string[] = [];
+    for (const asset of result.assets) {
+      const ext = asset.uri.split(".").pop() ?? "jpg";
+      const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const dest = `${dir}${filename}`;
+      await FileSystem.copyAsync({ from: asset.uri, to: dest });
+      saved.push(dest);
+    }
+
+    setForm((f) => ({ ...f, photos: [...f.photos, ...saved].slice(0, MAX_PHOTOS) }));
+  };
+
+  const removePhoto = (idx: number) => {
+    setForm((f) => ({ ...f, photos: f.photos.filter((_, i) => i !== idx) }));
   };
 
   const next = () => {
@@ -116,32 +202,83 @@ export default function CreateListing() {
 
     setSubmitting(true);
     try {
-      const listingId = `user-listing-${Date.now()}`;
-      const newItem: PendingListing = {
-        id: `p-${Date.now()}`,
-        listingId,
-        submittedAt: Date.now(),
-        status: "pending",
-        submittedBy: user?.id ?? "unknown",
-        submittedByRole: user?.role ?? "seller",
-        businessName: form.businessName.trim(),
-        suburb: form.suburb.trim() || "Unknown",
-        state: form.state || "VIC",
-        category: form.category || "Other",
-        askingPrice: parseInt(form.askingPrice.replace(/[^0-9]/g, "")) || 0,
-        weeklyRevenue: parseInt(form.weeklyRevenue.replace(/[^0-9]/g, "")) || 0,
-        heroColor: randomHeroColor(),
+      let savedPhotos = form.photos;
+      if (Platform.OS !== "web" && form.photos.length > 0) {
+        const dir = `${FileSystem.documentDirectory}biz360_listing_photos/`;
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        savedPhotos = await Promise.all(
+          form.photos.map(async (uri) => {
+            if (uri.startsWith(dir)) return uri;
+            const ext = uri.split(".").pop() ?? "jpg";
+            const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+            const dest = `${dir}${filename}`;
+            await FileSystem.copyAsync({ from: uri, to: dest });
+            return dest;
+          }),
+        );
+      }
+
+      const fieldData = {
+        businessName:        form.businessName.trim(),
+        suburb:              form.suburb.trim() || "Unknown",
+        state:               form.state || "VIC",
+        category:            form.category || "Other",
+        description:         form.description.trim(),
+        confidential:        form.confidential,
+        askingPrice:         parseInt(form.askingPrice.replace(/[^0-9]/g, ""))        || 0,
+        weeklyRevenue:       parseInt(form.weeklyRevenue.replace(/[^0-9]/g, ""))      || 0,
+        adjustedProfit:      parseInt(form.adjustedProfit.replace(/[^0-9]/g, ""))     || 0,
+        rent:                parseInt(form.rent.replace(/[^0-9]/g, ""))               || 0,
+        staffCount:          parseInt(form.staffCount)                                || 0,
+        ownerHours:          parseInt(form.ownerHours)                                || 0,
+        leaseExpiry:         form.leaseExpiry.trim(),
+        leaseOptions:        form.leaseOptions.trim(),
+        franchiseStatus:     form.franchiseStatus,
+        trainingPeriod:      form.trainingPeriod.trim(),
+        reasonForSale:       form.reasonForSale.trim(),
+        growthOpportunities: form.growthOpportunities.trim(),
+        risks:               form.risks.trim(),
+        contactPreference:   form.contactPreference,
+        sellerPhone:         form.sellerPhone.trim(),
+        badges:              form.badges,
+        photos:              savedPhotos,
       };
 
       const existing = await getPendingListings();
-      await savePendingListings([...existing, newItem]);
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        "Listing Submitted!",
-        `"${form.businessName.trim()}" has been submitted for admin review. You'll see it in your listings with a Pending badge. Approval typically takes 1 business day.`,
-        [{ text: "Done", onPress: () => router.back() }],
-      );
+      if (editId) {
+        const updated = existing.map((p) =>
+          p.id === editId
+            ? { ...p, ...fieldData, status: "pending" as const, submittedAt: Date.now() }
+            : p,
+        );
+        await savePendingListings(updated);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Listing Updated!",
+          `"${form.businessName.trim()}" has been resubmitted for review.`,
+          [{ text: "Done", onPress: () => router.back() }],
+        );
+      } else {
+        const listingId = `user-listing-${Date.now()}`;
+        const newItem: PendingListing = {
+          id: `p-${Date.now()}`,
+          listingId,
+          submittedAt: Date.now(),
+          status: "pending",
+          submittedBy: user?.id ?? "unknown",
+          submittedByRole: user?.role ?? "seller",
+          heroColor: randomHeroColor(),
+          ...fieldData,
+        };
+        await savePendingListings([...existing, newItem]);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Listing Submitted!",
+          `"${form.businessName.trim()}" has been submitted for admin review. You'll see it in your listings with a Pending badge. Approval typically takes 1 business day.`,
+          [{ text: "Done", onPress: () => router.back() }],
+        );
+      }
     } catch {
       Alert.alert("Error", "Something went wrong saving your listing. Please try again.");
     } finally {
@@ -176,13 +313,23 @@ export default function CreateListing() {
     </View>
   );
 
+  if (loadingEdit) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, alignItems: "center", justifyContent: "center" }]}>
+        <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Loading listing…</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 8, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => router.back()}>
           <Feather name="x" size={22} color={colors.foreground} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Create Listing</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+          {editId ? "Edit Listing" : "Create Listing"}
+        </Text>
         <Text style={[styles.stepIndicator, { color: colors.mutedForeground }]}>{step + 1}/{STEPS.length}</Text>
       </View>
 
@@ -252,14 +399,14 @@ export default function CreateListing() {
         {/* ── Step 1: Financials ── */}
         {step === 1 && (
           <View style={styles.fields}>
-            {textField("askingPrice",    "Asking Price ($)",              "185000", true)}
-            {textField("weeklyRevenue",  "Weekly Revenue ($)",            "18500",  true)}
-            {textField("adjustedProfit", "Adjusted Profit / SDE ($ p.a.)", "72000", true)}
-            {textField("rent",           "Monthly Rent ($)",              "4200",   true)}
-            {textField("staffCount",     "Staff Count",                   "4",      true)}
-            {textField("ownerHours",     "Owner Hours / Week",            "40",     true)}
-            {textField("leaseExpiry",    "Lease Expiry Date",             "e.g. June 2027")}
-            {textField("leaseOptions",   "Lease Renewal Options",         "e.g. 2 × 3-year options")}
+            {textField("askingPrice",    "Asking Price ($)",                "185000",                  true)}
+            {textField("weeklyRevenue",  "Weekly Revenue ($)",              "18500",                   true)}
+            {textField("adjustedProfit", "Adjusted Profit / SDE ($ p.a.)", "72000",                   true)}
+            {textField("rent",           "Monthly Rent ($)",                "4200",                    true)}
+            {textField("staffCount",     "Staff Count",                     "4",                       true)}
+            {textField("ownerHours",     "Owner Hours / Week",              "40",                      true)}
+            {textField("leaseExpiry",    "Lease Expiry Date",               "e.g. June 2027"               )}
+            {textField("leaseOptions",   "Lease Renewal Options",           "e.g. 2 × 3-year options"      )}
           </View>
         )}
 
@@ -280,15 +427,66 @@ export default function CreateListing() {
                 ))}
               </View>
             </View>
-            {textField("trainingPeriod",       "Training Period",        "e.g. 4 weeks included")}
-            {textField("reasonForSale",        "Reason for Sale",        "e.g. Relocating interstate, retirement…",              false, true)}
-            {textField("growthOpportunities",  "Growth Opportunities",   "What could a new owner do to grow revenue?",           false, true)}
-            {textField("risks",                "Risks / Disclosures",    "Any risks or issues a buyer should know about…",       false, true)}
+            {textField("trainingPeriod",       "Training Period",        "e.g. 4 weeks included"                              )}
+            {textField("reasonForSale",        "Reason for Sale",        "e.g. Relocating interstate, retirement…",    false, true)}
+            {textField("growthOpportunities",  "Growth Opportunities",   "What could a new owner do to grow revenue?", false, true)}
+            {textField("risks",                "Risks / Disclosures",    "Any risks or issues a buyer should know…",   false, true)}
           </View>
         )}
 
-        {/* ── Step 3: Verification Badges ── */}
+        {/* ── Step 3: Photos ── */}
         {step === 3 && (
+          <View style={styles.fields}>
+            <View style={[styles.badgeInfoCard, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
+              <Feather name="camera" size={16} color={colors.primary} />
+              <Text style={[styles.badgeInfoText, { color: colors.foreground }]}>
+                Add up to {MAX_PHOTOS} photos. The first photo becomes the hero image shown in search results. Listings with photos get 3× more buyer enquiries.
+              </Text>
+            </View>
+
+            <View style={styles.photoGrid}>
+              {form.photos.map((uri, idx) => (
+                <View key={`${uri}-${idx}`} style={styles.photoCell}>
+                  <Image source={{ uri }} style={styles.photoThumb} resizeMode="cover" />
+                  <TouchableOpacity style={styles.photoRemoveBtn} onPress={() => removePhoto(idx)}>
+                    <Feather name="x" size={11} color="#fff" />
+                  </TouchableOpacity>
+                  {idx === 0 && (
+                    <View style={styles.heroBadge}>
+                      <Text style={styles.heroBadgeText}>HERO</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+              {form.photos.length < MAX_PHOTOS && (
+                <TouchableOpacity
+                  style={[styles.photoAddCell, { borderColor: colors.border, backgroundColor: colors.card }]}
+                  onPress={addPhotos}
+                >
+                  <Feather name="camera" size={22} color={colors.mutedForeground} />
+                  <Text style={[styles.photoAddLabel, { color: colors.mutedForeground }]}>
+                    {form.photos.length === 0 ? "Add Photos" : "Add More"}
+                  </Text>
+                  <Text style={[styles.photoCount, { color: colors.border }]}>
+                    {form.photos.length}/{MAX_PHOTOS}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {form.photos.length === 0 && (
+              <View style={[styles.photoHintCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Feather name="image" size={14} color={colors.mutedForeground} />
+                <Text style={[styles.photoHintText, { color: colors.mutedForeground }]}>
+                  Photos are optional but strongly recommended. Interior shots, signage, equipment and foot traffic areas perform best.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ── Step 4: Verification Badges ── */}
+        {step === 4 && (
           <View style={styles.fields}>
             <View style={[styles.badgeInfoCard, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
               <Feather name="shield" size={16} color={colors.primary} />
@@ -324,14 +522,14 @@ export default function CreateListing() {
           </View>
         )}
 
-        {/* ── Step 4: Contact & Review ── */}
-        {step === 4 && (
+        {/* ── Step 5: Contact & Review ── */}
+        {step === 5 && (
           <View style={styles.fields}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>Contact Preference</Text>
             {[
-              { val: "message",     label: "Message Only",    icon: "message-circle", hint: "Buyers contact via in-app message"         },
-              { val: "call",        label: "Message + Call",  icon: "phone",          hint: "Buyers can message or click-to-call"        },
-              { val: "broker_only", label: "Broker Only",     icon: "shield",         hint: "All enquiries routed through broker"        },
+              { val: "message",     label: "Message Only",    icon: "message-circle", hint: "Buyers contact via in-app message"      },
+              { val: "call",        label: "Message + Call",  icon: "phone",          hint: "Buyers can message or click-to-call"     },
+              { val: "broker_only", label: "Broker Only",     icon: "shield",         hint: "All enquiries routed through broker"     },
             ].map(({ val, label, icon, hint }) => (
               <TouchableOpacity
                 key={val}
@@ -355,12 +553,13 @@ export default function CreateListing() {
                 { label: "Business",      value: form.businessName    || "—" },
                 { label: "Category",      value: form.category        || "—" },
                 { label: "Location",      value: `${form.suburb || "—"}, ${form.state || "—"}` },
-                { label: "Asking Price",  value: form.askingPrice  ? `$${parseInt(form.askingPrice).toLocaleString()}`  : "—" },
+                { label: "Asking Price",  value: form.askingPrice  ? `$${parseInt(form.askingPrice).toLocaleString()}`   : "—" },
                 { label: "Weekly Rev.",   value: form.weeklyRevenue ? `$${parseInt(form.weeklyRevenue).toLocaleString()}` : "—" },
                 { label: "Adj. Profit",   value: form.adjustedProfit ? `$${parseInt(form.adjustedProfit).toLocaleString()} p.a.` : "—" },
                 { label: "Lease Expiry",  value: form.leaseExpiry     || "—" },
                 { label: "Franchise",     value: form.franchiseStatus || "—" },
                 { label: "Training",      value: form.trainingPeriod  || "—" },
+                { label: "Photos",        value: `${form.photos.length} added` },
                 { label: "Contact",       value: form.contactPreference },
                 { label: "Confidential",  value: form.confidential ? "Yes" : "No" },
                 { label: "Badges",        value: form.badges.length > 0 ? `${form.badges.length} selected` : "None" },
@@ -375,7 +574,10 @@ export default function CreateListing() {
             <View style={[styles.infoBox, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
               <Feather name="info" size={16} color={colors.primary} />
               <Text style={[styles.infoText, { color: colors.foreground }]}>
-                Your listing will be reviewed by the Biz360 team before going live. Once submitted it will appear in your listings with a "Pending" status.
+                {editId
+                  ? "Your updated listing will be re-reviewed before going live. Status will reset to Pending."
+                  : "Your listing will be reviewed by the Biz360 team before going live. Once submitted it will appear in your listings with a Pending status."
+                }
               </Text>
             </View>
           </View>
@@ -394,7 +596,13 @@ export default function CreateListing() {
           disabled={submitting}
         >
           <Text style={styles.nextBtnText}>
-            {step < STEPS.length - 1 ? "Continue" : submitting ? "Submitting…" : "Submit Listing"}
+            {step < STEPS.length - 1
+              ? "Continue"
+              : submitting
+              ? "Saving…"
+              : editId
+              ? "Save & Resubmit"
+              : "Submit Listing"}
           </Text>
           <Feather name={step < STEPS.length - 1 ? "arrow-right" : "check"} size={18} color="#fff" />
         </TouchableOpacity>
@@ -404,45 +612,57 @@ export default function CreateListing() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
-  headerTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
-  stepIndicator: { fontSize: 14, fontFamily: "Inter_500Medium" },
-  stepBar: { flexDirection: "row", gap: 4, paddingHorizontal: 16, paddingVertical: 12 },
-  stepItem: { flex: 1, height: 4, borderRadius: 2 },
-  scroll: { padding: 16, gap: 16 },
-  stepTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  fields: { gap: 14 },
-  field: { gap: 8 },
-  label: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
-  input: { paddingHorizontal: 14, paddingVertical: 13, borderRadius: 12, borderWidth: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
-  inputMulti: { minHeight: 90, paddingTop: 13 },
-  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
-  chipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  switchRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
-  switchLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  switchHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  radioRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
-  radioLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  radioHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  badgeInfoCard: { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
-  badgeInfoText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
-  badgesSelected: { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "right" },
-  badgeRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
-  badgeIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  badgeInfo: { flex: 1 },
-  badgeLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  badgeDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  container:          { flex: 1 },
+  loadingText:        { fontSize: 16, fontFamily: "Inter_400Regular" },
+  header:             { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  headerTitle:        { fontSize: 17, fontFamily: "Inter_700Bold" },
+  stepIndicator:      { fontSize: 14, fontFamily: "Inter_500Medium" },
+  stepBar:            { flexDirection: "row", gap: 4, paddingHorizontal: 16, paddingVertical: 12 },
+  stepItem:           { flex: 1, height: 4, borderRadius: 2 },
+  scroll:             { padding: 16, gap: 16 },
+  stepTitle:          { fontSize: 22, fontFamily: "Inter_700Bold" },
+  fields:             { gap: 14 },
+  field:              { gap: 8 },
+  label:              { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
+  input:              { paddingHorizontal: 14, paddingVertical: 13, borderRadius: 12, borderWidth: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  inputMulti:         { minHeight: 90, paddingTop: 13 },
+  chipGrid:           { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip:               { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  chipText:           { fontSize: 13, fontFamily: "Inter_500Medium" },
+  switchRow:          { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  switchLabel:        { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  switchHint:         { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  radioRow:           { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
+  radioLabel:         { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  radioHint:          { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  badgeInfoCard:      { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  badgeInfoText:      { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  badgesSelected:     { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "right" },
+  badgeRow:           { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
+  badgeIcon:          { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  badgeInfo:          { flex: 1 },
+  badgeLabel:         { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  badgeDesc:          { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  photoGrid:          { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  photoCell:          { width: "31%", aspectRatio: 1, borderRadius: 10, overflow: "hidden" },
+  photoThumb:         { width: "100%", height: "100%" },
+  photoRemoveBtn:     { position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center" },
+  heroBadge:          { position: "absolute", bottom: 4, left: 4, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
+  heroBadgeText:      { color: "#fff", fontSize: 8, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
+  photoAddCell:       { width: "31%", aspectRatio: 1, borderRadius: 10, borderWidth: 1.5, borderStyle: "dashed", alignItems: "center", justifyContent: "center", gap: 4 },
+  photoAddLabel:      { fontSize: 11, fontFamily: "Inter_500Medium" },
+  photoCount:         { fontSize: 10, fontFamily: "Inter_400Regular" },
+  photoHintCard:      { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  photoHintText:      { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19 },
   reviewSectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold", marginTop: 4 },
-  reviewCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  reviewRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
-  reviewLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  reviewValue: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "right", flex: 1, marginLeft: 16 },
-  infoBox: { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
-  infoText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
-  footer: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
-  backStepBtn: { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  nextBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12 },
-  nextBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  reviewCard:         { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
+  reviewRow:          { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
+  reviewLabel:        { fontSize: 13, fontFamily: "Inter_400Regular" },
+  reviewValue:        { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "right", flex: 1, marginLeft: 16 },
+  infoBox:            { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  infoText:           { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  footer:             { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
+  backStepBtn:        { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  nextBtn:            { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12 },
+  nextBtnText:        { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
