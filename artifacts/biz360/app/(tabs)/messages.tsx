@@ -12,6 +12,12 @@ function initials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
+function sanitiseName(name: string | undefined): string {
+  if (!name) return "Agent";
+  if (/^u-\d|^\+?61\d{7,}/.test(name)) return "Agent";
+  return name;
+}
+
 function ThreadRow({
   item,
   colors,
@@ -25,6 +31,7 @@ function ThreadRow({
   const preview = last ? last.text : "No messages yet";
   const timeLabel = item.updatedAt ? formatThreadTime(item.updatedAt) : "";
   const unread = item.unreadBuyer ?? 0;
+  const sellerDisplay = sanitiseName(item.sellerName);
 
   const handleDelete = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -45,11 +52,11 @@ function ThreadRow({
       activeOpacity={0.7}
     >
       <View style={[styles.avatar, { backgroundColor: colors.primary + "22" }]}>
-        <Text style={[styles.avatarText, { color: colors.primary }]}>{initials(item.sellerName)}</Text>
+        <Text style={[styles.avatarText, { color: colors.primary }]}>{initials(sellerDisplay)}</Text>
       </View>
       <View style={styles.info}>
         <View style={styles.infoTop}>
-          <Text style={[styles.threadName, { color: colors.foreground }]} numberOfLines={1}>{item.sellerName}</Text>
+          <Text style={[styles.threadName, { color: colors.foreground }]} numberOfLines={1}>{sellerDisplay}</Text>
           <Text style={[styles.time, { color: colors.mutedForeground }]}>{timeLabel}</Text>
         </View>
         <Text style={[styles.listingName, { color: colors.primary }]} numberOfLines={1}>{item.listingName}</Text>
@@ -79,7 +86,7 @@ export default function MessagesScreen() {
   const { user } = useAuth();
   const { threads, loading, remove } = useThreadList();
 
-  const myThreads   = threads.filter((t) => !t.buyerId || t.buyerId === user?.id);
+  const myThreads   = threads.filter((t) => t.buyerId === user?.id);
   const totalUnread = myThreads.reduce((sum, t) => sum + (t.unreadBuyer ?? 0), 0);
 
   return (

@@ -354,7 +354,7 @@ export default function ListingDetailScreen() {
             )}
             <TouchableOpacity
               style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
-              onPress={() => handleMessage(`listing-${listing.id}`, listing.businessName, "Sarah Mitchell", listing.id)}
+              onPress={() => handleMessage(`listing-${listing.id}_${buyerId}`, listing.businessName, "Sarah Mitchell", listing.id)}
             >
               <Feather name="message-circle" size={18} color="#fff" />
               <Text style={styles.footerPrimaryText}>{listing.contactPreference === "broker_only" ? "Contact Broker" : "Message Seller"}</Text>
@@ -545,7 +545,7 @@ export default function ListingDetailScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
-            onPress={() => handleMessage(item.listingId, businessName, item.submittedByName ?? item.submittedByRole ?? "Seller", item.listingId)}
+            onPress={() => handleMessage(`${item.listingId}_${buyerId}`, businessName, item.submittedByName ?? item.submittedByRole ?? "Seller", item.listingId)}
           >
             <Feather name="message-circle" size={18} color="#fff" />
             <Text style={styles.footerPrimaryText}>Contact Seller</Text>
