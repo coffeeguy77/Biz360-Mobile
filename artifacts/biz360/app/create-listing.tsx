@@ -70,6 +70,7 @@ interface FormState {
   risks: string;
   badges: VerificationBadge[];
   contactPreference: "message" | "call" | "broker_only";
+  priceDisplay: "askingPrice" | "weeklyRevenue" | "poa";
   sellerPhone: string;
   photos: string[];
 }
@@ -79,7 +80,8 @@ const INITIAL_FORM: FormState = {
   confidential: false, askingPrice: "", weeklyRevenue: "", adjustedProfit: "",
   rent: "", staffCount: "", ownerHours: "", leaseExpiry: "", leaseOptions: "",
   franchiseStatus: "", trainingPeriod: "", reasonForSale: "", growthOpportunities: "",
-  risks: "", badges: [], contactPreference: "message", sellerPhone: "", photos: [],
+  risks: "", badges: [], contactPreference: "message", priceDisplay: "askingPrice",
+  sellerPhone: "", photos: [],
 };
 
 export default function CreateListing() {
@@ -107,6 +109,7 @@ export default function CreateListing() {
           confidential:       item.confidential       ?? false,
           askingPrice:        item.askingPrice        ? String(item.askingPrice)  : "",
           weeklyRevenue:      item.weeklyRevenue      ? String(item.weeklyRevenue): "",
+          priceDisplay:       (item.priceDisplay      ?? "askingPrice") as FormState["priceDisplay"],
           adjustedProfit:     item.adjustedProfit     ? String(item.adjustedProfit): "",
           rent:               item.rent               ? String(item.rent)         : "",
           staffCount:         item.staffCount         ? String(item.staffCount)   : "",
@@ -227,6 +230,7 @@ export default function CreateListing() {
         confidential:        form.confidential,
         askingPrice:         parseInt(form.askingPrice.replace(/[^0-9]/g, ""))        || 0,
         weeklyRevenue:       parseInt(form.weeklyRevenue.replace(/[^0-9]/g, ""))      || 0,
+        priceDisplay:        form.priceDisplay,
         adjustedProfit:      parseInt(form.adjustedProfit.replace(/[^0-9]/g, ""))     || 0,
         rent:                parseInt(form.rent.replace(/[^0-9]/g, ""))               || 0,
         staffCount:          parseInt(form.staffCount)                                || 0,
@@ -402,6 +406,34 @@ export default function CreateListing() {
           <View style={styles.fields}>
             {textField("askingPrice",    "Asking Price ($)",                "185000",                  true)}
             {textField("weeklyRevenue",  "Weekly Revenue ($)",              "18500",                   true)}
+
+            {/* Price display selector */}
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Card Price Display</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 10, fontFamily: "Inter_400Regular" }}>
+                What buyers see in the first stat slot on your listing card
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {(["askingPrice", "weeklyRevenue", "poa"] as const).map((opt) => {
+                  const labels = { askingPrice: "Asking Price", weeklyRevenue: "Weekly Revenue", poa: "POA" };
+                  const active = form.priceDisplay === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[styles.chip, { flex: 1, backgroundColor: active ? colors.primary : colors.muted }]}
+                      onPress={() => update("priceDisplay", opt)}
+                    >
+                      <Text style={[styles.chipText, { color: active ? "#fff" : colors.foreground, textAlign: "center" }]}>{labels[opt]}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {form.priceDisplay === "poa" && (
+                <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8, fontFamily: "Inter_400Regular" }}>
+                  Buyers will see "POA · Contact Seller" instead of a price.
+                </Text>
+              )}
+            </View>
             {textField("adjustedProfit", "Adjusted Profit / SDE ($ p.a.)", "72000",                   true)}
             {textField("rent",           "Monthly Rent ($)",                "4200",                    true)}
             {textField("staffCount",     "Staff Count",                     "4",                       true)}

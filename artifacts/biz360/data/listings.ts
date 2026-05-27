@@ -49,6 +49,7 @@ export interface Listing {
   suburb: string;
   askingPrice: number;
   weeklyRevenue: number;
+  priceDisplay?: "askingPrice" | "weeklyRevenue" | "poa";
   adjustedProfit: number;
   rent: number;
   leaseExpiry: string;

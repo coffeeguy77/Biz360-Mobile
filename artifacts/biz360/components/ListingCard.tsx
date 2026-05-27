@@ -35,23 +35,24 @@ export function ListingCard({ listing, onSave, isSaved, onLongPress }: Props) {
         {listing.imageUrl && (
           <Image source={{ uri: listing.imageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
-        <View style={styles.heroOverlay}>
-          <View style={styles.heroTopRow}>
-            {listing.confidential && (
-              <View style={[styles.pill, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
-                <Feather name="eye-off" size={10} color="#fff" />
-                <Text style={styles.pillText}>Confidential</Text>
-              </View>
-            )}
-            {listing.hasTour && (
-              <View style={[styles.pill, { backgroundColor: "#2563EB" }]}>
-                <Feather name="rotate-ccw" size={10} color="#fff" />
-                <Text style={styles.pillText}>360 Tour</Text>
-              </View>
-            )}
+        {(listing.confidential || listing.hasTour) && (
+          <View style={styles.heroOverlay}>
+            <View style={styles.heroTopRow}>
+              {listing.confidential && (
+                <View style={[styles.pill, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
+                  <Feather name="eye-off" size={10} color="#fff" />
+                  <Text style={styles.pillText}>Confidential</Text>
+                </View>
+              )}
+              {listing.hasTour && (
+                <View style={[styles.pill, { backgroundColor: "#2563EB" }]}>
+                  <Feather name="rotate-ccw" size={10} color="#fff" />
+                  <Text style={styles.pillText}>360 Tour</Text>
+                </View>
+              )}
+            </View>
           </View>
-          <Text style={styles.heroPrice}>{formatPrice(listing.askingPrice)}</Text>
-        </View>
+        )}
 
         {onSave && (
           <TouchableOpacity
@@ -88,12 +89,26 @@ export function ListingCard({ listing, onSave, isSaved, onLongPress }: Props) {
 
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>
-              ${listing.weeklyRevenue.toLocaleString()}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              /week revenue
-            </Text>
+            {listing.priceDisplay === "poa" ? (
+              <>
+                <Text style={[styles.statValue, { color: colors.foreground }]}>POA</Text>
+                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Contact Seller</Text>
+              </>
+            ) : listing.priceDisplay === "weeklyRevenue" ? (
+              <>
+                <Text style={[styles.statValue, { color: colors.foreground }]}>
+                  ${listing.weeklyRevenue.toLocaleString()}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>/week revenue</Text>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.statValue, { color: colors.foreground }]}>
+                  {formatPrice(listing.askingPrice)}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>asking price</Text>
+              </>
+            )}
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.statItem}>
@@ -154,10 +169,11 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   heroOverlay: {
-    flex: 1,
-    justifyContent: "space-between",
-    padding: 12,
-    backgroundColor: "rgba(0,0,0,0.15)",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: 10,
   },
   heroTopRow: {
     flexDirection: "row",
@@ -175,11 +191,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 10,
     fontFamily: "Inter_600SemiBold",
-  },
-  heroPrice: {
-    color: "#fff",
-    fontSize: 24,
-    fontFamily: "Inter_700Bold",
   },
   saveBtn: {
     position: "absolute",

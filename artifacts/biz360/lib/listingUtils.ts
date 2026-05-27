@@ -11,6 +11,7 @@ export function pendingToListing(p: PendingListing): Listing {
     suburb:              p.suburb              ?? "",
     askingPrice:         p.askingPrice         ?? 0,
     weeklyRevenue:       p.weeklyRevenue       ?? 0,
+    priceDisplay:        p.priceDisplay        ?? "askingPrice",
     adjustedProfit:      p.adjustedProfit      ?? 0,
     rent:                p.rent                ?? 0,
     leaseExpiry:         p.leaseExpiry         ?? "",

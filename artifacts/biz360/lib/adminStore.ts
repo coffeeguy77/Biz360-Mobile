@@ -100,6 +100,7 @@ export interface PendingListing {
   category?: string;
   askingPrice?: number;
   weeklyRevenue?: number;
+  priceDisplay?: "askingPrice" | "weeklyRevenue" | "poa";
   heroColor?: string;
   photos?: string[];
   description?: string;

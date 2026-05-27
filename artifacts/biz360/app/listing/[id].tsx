@@ -294,7 +294,16 @@ export default function ListingDetailScreen() {
                   <Text style={styles.confText}>Confidential Listing</Text>
                 </View>
               )}
-              <Text style={styles.heroPrice}>{formatPrice(listing.askingPrice)}</Text>
+              {listing.priceDisplay === "poa" ? (
+                <View>
+                  <Text style={styles.heroPrice}>POA</Text>
+                  <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
+                </View>
+              ) : listing.priceDisplay === "weeklyRevenue" ? (
+                <Text style={styles.heroPrice}>${listing.weeklyRevenue.toLocaleString()}/wk</Text>
+              ) : (
+                <Text style={styles.heroPrice}>{formatPrice(listing.askingPrice)}</Text>
+              )}
               <Text style={styles.heroName}>{listing.businessName}</Text>
               <Text style={styles.heroMeta}>{listing.suburb}, {listing.state} · {listing.category}</Text>
             </View>
@@ -437,7 +446,16 @@ export default function ListingDetailScreen() {
             <Feather name="bookmark" size={20} color={isSaved ? "#3B82F6" : "#fff"} />
           </TouchableOpacity>
           <View style={styles.heroContent}>
-            <Text style={styles.heroPrice}>{safeFormatPrice(price)}</Text>
+            {item.priceDisplay === "poa" ? (
+              <View>
+                <Text style={styles.heroPrice}>POA</Text>
+                <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
+              </View>
+            ) : item.priceDisplay === "weeklyRevenue" ? (
+              <Text style={styles.heroPrice}>{revenue && revenue > 0 ? `$${revenue.toLocaleString()}/wk` : safeFormatPrice(price)}</Text>
+            ) : (
+              <Text style={styles.heroPrice}>{safeFormatPrice(price)}</Text>
+            )}
             <Text style={styles.heroName}>{businessName}</Text>
             {(locationMeta || item.category) && (
               <Text style={styles.heroMeta}>
