@@ -38,19 +38,25 @@ export default function ProfileScreen() {
   const [expanded,      setExpanded]      = useState<Section>(null);
   const [expandedFaq,   setExpandedFaq]   = useState<number | null>(null);
   const [editVisible,   setEditVisible]   = useState(false);
-  const [draftName,     setDraftName]     = useState("");
-  const [saving,        setSaving]        = useState(false);
+  const [draftName,        setDraftName]        = useState("");
+  const [draftDisplayName, setDraftDisplayName] = useState("");
+  const [saving,           setSaving]           = useState(false);
 
   const openEdit = () => {
     setDraftName(user?.name ?? "");
+    setDraftDisplayName(user?.displayName ?? user?.name?.split(" ")[0] ?? "");
     setEditVisible(true);
   };
 
   const saveProfile = async () => {
-    const trimmed = draftName.trim();
+    const trimmed        = draftName.trim();
+    const trimmedDisplay = draftDisplayName.trim();
     if (!trimmed) return;
     setSaving(true);
-    await updateProfile({ name: trimmed });
+    await updateProfile({
+      name: trimmed,
+      displayName: trimmedDisplay || trimmed.split(" ")[0],
+    });
     setSaving(false);
     setEditVisible(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -382,18 +388,32 @@ export default function ProfileScreen() {
 
           {/* Name field */}
           <View style={styles.editFields}>
-            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground }]}>Display Name</Text>
+            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground }]}>Full Name</Text>
             <TextInput
               style={[styles.editInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
               value={draftName}
               onChangeText={setDraftName}
-              placeholder="Your name"
+              placeholder="Your full name"
               placeholderTextColor={colors.mutedForeground}
               autoFocus
+              returnKeyType="next"
+            />
+            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground, marginTop: 14 }]}>Messaging Name</Text>
+            <TextInput
+              style={[styles.editInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+              value={draftDisplayName}
+              onChangeText={setDraftDisplayName}
+              placeholder={user?.role === "broker" ? "e.g. your firm name" : "e.g. your first name"}
+              placeholderTextColor={colors.mutedForeground}
               returnKeyType="done"
               onSubmitEditing={saveProfile}
             />
-            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground, marginTop: 14 }]}>Email (read-only)</Text>
+            <Text style={[styles.editFieldHint, { color: colors.mutedForeground }]}>
+              {user?.role === "broker"
+                ? "Shown to buyers in messages. Use your firm name to protect your privacy."
+                : "Shown to buyers in messages. Your first name is recommended — your phone number is never shared."}
+            </Text>
+            <Text style={[styles.editFieldLabel, { color: colors.mutedForeground, marginTop: 14 }]}>Phone (read-only)</Text>
             <View style={[styles.editInputReadOnly, { backgroundColor: colors.muted, borderColor: colors.border }]}>
               <Text style={[styles.editInputReadOnlyText, { color: colors.mutedForeground }]}>{user?.email ?? "—"}</Text>
             </View>
@@ -486,6 +506,7 @@ const styles = StyleSheet.create({
   editCloseBtn:          { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   editFields:            { paddingHorizontal: 20 },
   editFieldLabel:        { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 },
+  editFieldHint:         { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6, lineHeight: 17, opacity: 0.75 },
   editInput:             { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
   editInputReadOnly:     { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   editInputReadOnlyText: { fontSize: 15, fontFamily: "Inter_400Regular" },

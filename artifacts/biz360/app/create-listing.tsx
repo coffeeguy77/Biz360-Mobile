@@ -267,6 +267,7 @@ export default function CreateListing() {
           submittedAt: Date.now(),
           status: "pending",
           submittedBy: user?.id ?? "unknown",
+          submittedByName: user?.displayName ?? user?.name?.split(" ")[0] ?? "Seller",
           submittedByRole: user?.role ?? "seller",
           heroColor: randomHeroColor(),
           ...fieldData,

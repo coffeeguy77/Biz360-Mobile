@@ -544,7 +544,7 @@ export default function ListingDetailScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
-            onPress={() => handleMessage(item.listingId, businessName, item.submittedBy)}
+            onPress={() => handleMessage(item.listingId, businessName, item.submittedByName ?? item.submittedByRole ?? "Seller")}
           >
             <Feather name="message-circle" size={18} color="#fff" />
             <Text style={styles.footerPrimaryText}>Contact Seller</Text>

@@ -119,6 +119,8 @@ export interface PendingListing {
   badges?: string[];
   confidential?: boolean;
   suspended?: boolean;
+  /** Friendly display name for the seller/broker (first name or firm name). Never a raw user ID. */
+  submittedByName?: string;
 }
 
 const K = {

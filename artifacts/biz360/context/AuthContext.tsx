@@ -20,6 +20,8 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string;
+  /** Short name shown to other users in messages (first name / firm name). Never exposes the user ID. */
+  displayName?: string;
 }
 
 interface AuthContextType {
@@ -31,7 +33,7 @@ interface AuthContextType {
   restoreReal:   () => Promise<void>;               // switch back to realUser from a demo session
   logout:        () => Promise<void>;               // full sign-out, clears everything
   updateRole:    (role: UserRole) => Promise<void>;
-  updateProfile: (fields: Partial<Pick<User, "name" | "avatar">>) => Promise<void>;
+  updateProfile: (fields: Partial<Pick<User, "name" | "avatar" | "displayName">>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -45,24 +47,28 @@ const DEMO_USERS: Record<UserRole, User> = {
     name:  "Alex Chen",
     email: "alex@example.com",
     role:  "buyer",
+    displayName: "Alex",
   },
   seller: {
     id:    "seller-001",
     name:  "Sarah Mitchell",
     email: "sarah@example.com",
     role:  "seller",
+    displayName: "Sarah",
   },
   broker: {
     id:    "broker-001",
     name:  "James Harrington",
     email: "james@premiumbiz.com.au",
     role:  "broker",
+    displayName: "Premium Business Brokers",
   },
   admin: {
     id:    "admin-001",
     name:  "Admin User",
     email: "admin@biz360.com.au",
     role:  "admin",
+    displayName: "Admin",
   },
 };
 
