@@ -192,7 +192,7 @@ export default function ListingDetailScreen() {
           )}
           <TouchableOpacity
             style={[styles.footerPrimaryBtn, { backgroundColor: colors.primary }]}
-            onPress={() => router.push("/thread/thread-001" as any)}
+            onPress={() => router.push(`/thread/listing-${listing.id}?listingName=${encodeURIComponent(listing.businessName)}&sellerName=Sarah+Mitchell` as any)}
           >
             <Feather name="message-circle" size={18} color="#fff" />
             <Text style={styles.footerPrimaryText}>
