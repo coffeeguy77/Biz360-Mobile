@@ -470,6 +470,8 @@ export default function ToursScreen() {
     setShowSpaceModal(false); setDraftSpace(EMPTY_SPACE);
     setEditingSpaceId(null);  setPinPlaceMode(false);
     setActivePinId(null);     setConfirmedPlacement(null);
+    setShowPinModal(false);   setEditingPinId(null);
+    setShowRichPopup(false);
   };
 
   const moveSpaceUp = (idx: number) => {
@@ -1190,10 +1192,7 @@ export default function ToursScreen() {
                 }}
               />
               <View style={styles.pinPlaceTopBar}>
-                <TouchableOpacity style={styles.pinPlaceBack} onPress={() => {
-                  setPinPlaceMode(false);
-                  setTimeout(() => setShowPinModal(true), 150);
-                }}>
+                <TouchableOpacity style={styles.pinPlaceBack} onPress={() => { setPinPlaceMode(false); setShowPinModal(true); }}>
                   <Feather name="arrow-left" size={18} color="#fff" />
                   <Text style={styles.pinPlaceBackText}>Back to pin</Text>
                 </TouchableOpacity>
@@ -1201,10 +1200,7 @@ export default function ToursScreen() {
                 {draftPin.x != null && (
                   <TouchableOpacity
                     style={styles.pinPlaceConfirm}
-                    onPress={() => {
-                      setPinPlaceMode(false);
-                      setTimeout(() => setShowPinModal(true), 150);
-                    }}
+                    onPress={() => { setPinPlaceMode(false); setShowPinModal(true); }}
                   >
                     <Text style={styles.pinPlaceConfirmText}>Done</Text>
                   </TouchableOpacity>
@@ -1212,23 +1208,21 @@ export default function ToursScreen() {
               </View>
             </View>
           )}
-        </View>
-      </Modal>
 
-      {/* ── Pin Modal ── */}
-      <Modal visible={showPinModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPinModal(false)}>
-        <View style={[styles.modal, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity onPress={() => { setShowPinModal(false); setEditingPinId(null); setShowRichPopup(false); }}>
-              <Text style={[styles.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>{editingPinId ? "Edit Pin" : "New Pin"}</Text>
-            <TouchableOpacity onPress={savePin}>
-              <Text style={[styles.modalSave, { color: colors.primary }]}>Save</Text>
-            </TouchableOpacity>
-          </View>
+          {/* ── Pin config (inline overlay — avoids iOS double-modal freeze) ── */}
+          {showPinModal && (
+            <View style={[StyleSheet.absoluteFill, { zIndex: 300, backgroundColor: colors.background }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                <TouchableOpacity onPress={() => { setShowPinModal(false); setEditingPinId(null); setShowRichPopup(false); }}>
+                  <Text style={[styles.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>{editingPinId ? "Edit Pin" : "New Pin"}</Text>
+                <TouchableOpacity onPress={savePin}>
+                  <Text style={[styles.modalSave, { color: colors.primary }]}>Save</Text>
+                </TouchableOpacity>
+              </View>
 
-          <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* Pin type picker */}
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PIN TYPE</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
@@ -1561,7 +1555,9 @@ export default function ToursScreen() {
                 })}
               </>
             )}
-          </ScrollView>
+              </ScrollView>
+            </View>
+          )}
         </View>
       </Modal>
     </View>
