@@ -82,8 +82,25 @@ function buildSinglePanoHtml(
   <script>
     var PINS = ${JSON.stringify(hotspots)};
     function createPin(container, args) {
-      container.style.cssText = 'background:'+args.color+';width:38px;height:38px;border-radius:50%;position:relative;display:inline-flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 3px 10px rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.3);cursor:pointer;user-select:none;transform:translateY(-50%);flex-shrink:0';
-      container.innerHTML = args.icon+(args.locked?'<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-size:8px">&#128274;</span>':'');
+      /* IMPORTANT: never use cssText here — it wipes pannellum's position:absolute.
+         Set individual properties so pannellum keeps control of left/top/position. */
+      container.style.background = args.color;
+      container.style.width = '36px';
+      container.style.height = '36px';
+      container.style.borderRadius = '50%';
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.justifyContent = 'center';
+      container.style.fontSize = '20px';
+      container.style.boxShadow = '0 3px 12px rgba(0,0,0,0.7)';
+      container.style.border = '2px solid rgba(255,255,255,0.35)';
+      container.style.cursor = 'pointer';
+      container.style.zIndex = '10';
+      /* Center the pin circle on the hotspot point using negative margins
+         (safer than transform, which can interact with pannellum's positioning) */
+      container.style.marginLeft = '-18px';
+      container.style.marginTop = '-18px';
+      container.innerHTML = args.icon;
       ['touchend','click'].forEach(function(ev){container.addEventListener(ev,function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));});});
     }
     pannellum.viewer('pano',{
