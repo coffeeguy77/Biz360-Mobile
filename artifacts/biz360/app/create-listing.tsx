@@ -214,37 +214,31 @@ export default function CreateListing() {
 
     setSubmitting(true);
     try {
-      console.log("[submit] step 1 — photos, count:", form.photos.length);
       let savedPhotos = form.photos;
       try {
         if (Platform.OS !== "web" && form.photos.length > 0 && FileSystem.documentDirectory) {
           const dir = `${FileSystem.documentDirectory}biz360_listing_photos/`;
-          console.log("[submit] dir:", dir);
           await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
           savedPhotos = (await Promise.all(
             form.photos.map(async (uri) => {
               if (!uri) return null;
-              // pass through all absolute URI formats — only copy transient picker URIs
+              // pass through all absolute URI formats — only copy transient picker URIs (ph://, etc.)
               if (uri.startsWith("file://") || uri.startsWith("http") || uri.startsWith(dir)) return uri;
-              console.log("[submit] copying picker uri:", uri);
               try {
                 const ext = uri.split(".").pop() ?? "jpg";
                 const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
                 const dest = `${dir}${filename}`;
                 await FileSystem.copyAsync({ from: uri, to: dest });
                 return dest;
-              } catch (copyErr) {
-                console.warn("[submit] copy failed, keeping original uri:", copyErr);
-                return uri;
+              } catch {
+                return uri; // keep original URI if copy fails
               }
             }),
           )).filter((u): u is string => !!u);
         }
-      } catch (photoErr) {
-        console.error("[submit] photo block error (continuing anyway):", photoErr);
-        // keep savedPhotos as the original form.photos — don't let a photo error kill the save
+      } catch {
+        // keep savedPhotos as-is — don't let a photo error kill the save
       }
-      console.log("[submit] step 2 — fieldData, savedPhotos:", savedPhotos.length);
 
       const fieldData = {
         businessName:        form.businessName.trim(),
@@ -275,9 +269,7 @@ export default function CreateListing() {
         photos:              savedPhotos,
       };
 
-      console.log("[submit] step 3 — getPendingListings");
       const existing = await getPendingListings();
-      console.log("[submit] step 4 — got", existing.length, "listings, editId:", editId);
 
       if (editId) {
         const updated = existing.map((p) =>
@@ -285,10 +277,7 @@ export default function CreateListing() {
             ? { ...p, ...fieldData, status: "pending" as const, submittedAt: Date.now() }
             : p,
         );
-        const matched = updated.some((p) => p.id === editId && p.status === "pending");
-        console.log("[submit] step 5 — mapped, matched:", matched, "saving...");
         await savePendingListings(updated);
-        console.log("[submit] step 6 — saved OK");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
           "Listing Updated!",
@@ -316,9 +305,8 @@ export default function CreateListing() {
           [{ text: "Done", onPress: () => router.back() }],
         );
       }
-    } catch (err) {
-      console.error("[create-listing] submit error:", err);
-      Alert.alert("Error", `Something went wrong saving your listing.\n\n${String(err)}`);
+    } catch {
+      Alert.alert("Error", "Something went wrong saving your listing. Please try again.");
     } finally {
       setSubmitting(false);
     }
