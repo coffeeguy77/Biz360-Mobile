@@ -26,7 +26,8 @@ export default function BrokerListings() {
   useFocusEffect(
     useCallback(() => {
       getPendingListings().then((all) => {
-        setListings(all.filter((p) => p.submittedBy === user?.id));
+        // Brokers manage any approved listing, regardless of who submitted it
+        setListings(all.filter((p) => p.status === "approved"));
       });
     }, [user?.id]),
   );
