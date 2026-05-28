@@ -9,6 +9,30 @@ export type VerificationBadge =
   | "accountant"
   | "seller_supplied";
 
+// ─── Rich popup content ────────────────────────────────────────────────────────
+
+export interface PopupSection {
+  label: string;
+  value: string;
+}
+
+export interface PopupDocLink {
+  label: string;
+  url: string;
+}
+
+export interface PopupContent {
+  heading?: string;
+  body?: string;
+  sections?: PopupSection[];
+  images?: string[];
+  docLinks?: PopupDocLink[];
+}
+
+export type AudioTrigger = "auto_prompt" | "button" | "hotspot";
+
+// ─── Tour pin ─────────────────────────────────────────────────────────────────
+
 export interface TourPin {
   id: string;
   type:
@@ -23,12 +47,27 @@ export interface TourPin {
     | "narration"
     | "inspection"
     | "highlight"
-    | "document";
+    | "document"
+    | "navigation"
+    | "external_link"
+    | "audio";
   title: string;
   description: string;
   position: { x: number; y: number };
   requiresNDA?: boolean;
+  // Navigation hotspot
+  targetSpaceId?: string;
+  // Audio hotspot
+  audioUrl?: string;
+  audioTrigger?: AudioTrigger;
+  // Document / external link
+  documentUrl?: string;
+  externalUrl?: string;
+  // Rich popup content (for info-type pins)
+  popupContent?: PopupContent;
 }
+
+// ─── Tour space ───────────────────────────────────────────────────────────────
 
 export interface TourSpace {
   id: string;
@@ -38,6 +77,25 @@ export interface TourSpace {
   panoramaStartYaw?: number;
   pins: TourPin[];
   dirMode?: 4 | 8 | "panorama";
+  // Scene-level audio narration
+  audioUrl?: string;
+  audioTrigger?: AudioTrigger;
+  audioTranscript?: string;
+  // Start scene designation
+  isStartScene?: boolean;
+}
+
+// ─── Tour request (from buyer "Request More Info") ────────────────────────────
+
+export interface TourRequest {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  buyerName: string;
+  category: string;
+  message: string;
+  timestamp: number;
+  status: "new" | "seen" | "replied";
 }
 
 export type StatSlotOption =
@@ -128,6 +186,7 @@ export const DEMO_LISTINGS: Listing[] = [
         name: "Main Floor",
         panoramaUrl: "https://pannellum.org/images/alma.jpg",
         panoramaStartYaw: 0,
+        isStartScene: true,
         photos: [
           "https://picsum.photos/seed/cafe-main-0/1200/800",
           "https://picsum.photos/seed/cafe-main-1/1200/800",
@@ -146,6 +205,16 @@ export const DEMO_LISTINGS: Listing[] = [
             description:
               "2022 La Marzocco Linea PB 3-group. Valued at $28,000 new. Fully serviced 3 months ago. Produces 250-300 coffees per day at peak. Included in sale price.",
             position: { x: 0.25, y: 0.45 },
+            popupContent: {
+              heading: "La Marzocco Linea PB 3-Group",
+              body: "2022 model, fully serviced 3 months ago. Produces 250-300 coffees per day at peak. Included in sale price.",
+              sections: [
+                { label: "Purchase Year", value: "2022" },
+                { label: "Replacement Value", value: "$28,000" },
+                { label: "Last Service", value: "3 months ago" },
+                { label: "Daily Output", value: "250–300 coffees" },
+              ],
+            },
           },
           {
             id: "pin-002",
@@ -154,6 +223,15 @@ export const DEMO_LISTINGS: Listing[] = [
             description:
               "Weekly revenue consistently $17,000–$20,000 over 12 months. 65% coffee, 25% food, 10% merchandise. Peak hours: 7am–10am Mon–Fri. Saturday trade equal to a weekday.",
             position: { x: 0.55, y: 0.5 },
+            popupContent: {
+              sections: [
+                { label: "Weekly Revenue", value: "$17,000–$20,000" },
+                { label: "Coffee Revenue", value: "65%" },
+                { label: "Food Revenue", value: "25%" },
+                { label: "Merchandise", value: "10%" },
+                { label: "Peak Hours", value: "7am–10am Mon–Fri" },
+              ],
+            },
           },
           {
             id: "pin-003",
@@ -188,6 +266,14 @@ export const DEMO_LISTINGS: Listing[] = [
               "3 corporate offices within 200m have expressed interest in regular catering. Equipment and kitchen capacity supports this. Could add $1,500–$3,000/week in high-margin revenue.",
             position: { x: 0.85, y: 0.45 },
           },
+          {
+            id: "pin-nav-001",
+            type: "navigation",
+            title: "Go to Kitchen",
+            description: "See the full commercial kitchen setup",
+            position: { x: 0.92, y: 0.55 },
+            targetSpaceId: "space-002",
+          },
         ],
       },
       {
@@ -218,6 +304,22 @@ export const DEMO_LISTINGS: Listing[] = [
               "All food prepared fresh daily 6am–8am. Menu designed for speed and consistency. SOPs documented for all items. New owner can operate with minimal culinary background.",
             position: { x: 0.65, y: 0.55 },
           },
+          {
+            id: "pin-nav-002",
+            type: "navigation",
+            title: "Back to Main Floor",
+            description: "Return to the main seating area",
+            position: { x: 0.08, y: 0.55 },
+            targetSpaceId: "space-001",
+          },
+          {
+            id: "pin-nav-003",
+            type: "navigation",
+            title: "Go to Outdoor Area",
+            description: "See the outdoor dining space",
+            position: { x: 0.92, y: 0.55 },
+            targetSpaceId: "space-003",
+          },
         ],
       },
       {
@@ -239,6 +341,14 @@ export const DEMO_LISTINGS: Listing[] = [
             description:
               "Council-approved footpath trading licence. 12 outdoor seats generating ~$2,400/week in fine weather. Licence transferable to new owner. Annual fee $1,800.",
             position: { x: 0.4, y: 0.5 },
+          },
+          {
+            id: "pin-nav-004",
+            type: "navigation",
+            title: "Back to Kitchen",
+            description: "Return to the kitchen",
+            position: { x: 0.08, y: 0.55 },
+            targetSpaceId: "space-002",
           },
         ],
       },
@@ -282,6 +392,7 @@ export const DEMO_LISTINGS: Listing[] = [
         name: "Main Studio",
         panoramaUrl: "https://pannellum.org/images/alma.jpg",
         panoramaStartYaw: 90,
+        isStartScene: true,
         photos: [
           "https://picsum.photos/seed/salon-main-0/1200/800",
           "https://picsum.photos/seed/salon-main-1/1200/800",
@@ -381,6 +492,7 @@ export const DEMO_LISTINGS: Listing[] = [
         name: "Weights Floor",
         panoramaUrl: "https://pannellum.org/images/alma.jpg",
         panoramaStartYaw: 270,
+        isStartScene: true,
         photos: [
           "https://picsum.photos/seed/gym-floor-0/1200/800",
           "https://picsum.photos/seed/gym-floor-1/1200/800",

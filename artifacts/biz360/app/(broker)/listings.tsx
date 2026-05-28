@@ -86,12 +86,12 @@ export default function BrokerListings() {
           const demo = DEMO_LISTINGS.find((d) => d.id === item.listingId);
           const sc   = STATUS_CONFIG[item.status];
 
-          const heroColor   = demo?.heroColor ?? item.heroColor ?? "#2563EB";
-          const name        = demo?.businessName ?? item.businessName ?? "Unnamed Listing";
-          const price       = demo?.askingPrice  ?? item.askingPrice;
-          const suburb      = demo?.suburb       ?? item.suburb       ?? "";
-          const state       = demo?.state        ?? item.state        ?? "";
-          const category    = demo?.category     ?? item.category     ?? "";
+          const heroColor = demo?.heroColor ?? item.heroColor ?? "#2563EB";
+          const name      = demo?.businessName ?? item.businessName ?? "Unnamed Listing";
+          const price     = demo?.askingPrice  ?? item.askingPrice;
+          const suburb    = demo?.suburb       ?? item.suburb       ?? "";
+          const state     = demo?.state        ?? item.state        ?? "";
+          const category  = demo?.category     ?? item.category     ?? "";
 
           const card = (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: item.status === "rejected" ? "#EF444440" : colors.border }]}>
@@ -116,7 +116,6 @@ export default function BrokerListings() {
                   {[suburb, state].filter(Boolean).join(", ")}{category ? ` · ${category}` : ""}
                 </Text>
 
-                {/* Metrics — only for DEMO listings (have real data) */}
                 {demo && item.status === "approved" && (
                   <View style={styles.metricsRow}>
                     {[
@@ -132,7 +131,6 @@ export default function BrokerListings() {
                   </View>
                 )}
 
-                {/* Status notes */}
                 {item.status === "pending" && (
                   <View style={[styles.statusNote, { backgroundColor: "#F59E0B12", borderColor: "#F59E0B30" }]}>
                     <Feather name="info" size={12} color="#F59E0B" />
@@ -150,7 +148,6 @@ export default function BrokerListings() {
                   </View>
                 )}
 
-                {/* Edit button — user-created pending/rejected listings */}
                 {(item.status === "pending" || item.status === "rejected") && !demo && (
                   <View style={styles.actionRow}>
                     <TouchableOpacity
@@ -165,7 +162,6 @@ export default function BrokerListings() {
                   </View>
                 )}
 
-                {/* Action buttons — all approved listings get View; DEMO listings also get Tour */}
                 {item.status === "approved" && (
                   <View style={styles.actionRow}>
                     <TouchableOpacity
@@ -175,13 +171,24 @@ export default function BrokerListings() {
                       <Feather name="eye" size={13} color={colors.foreground} />
                       <Text style={[styles.actionBtnText, { color: colors.foreground }]}>View</Text>
                     </TouchableOpacity>
+                    {/* Manage Tour — opens the shared tour builder */}
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: "#7C3AED" }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push("/(seller)/tours" as any);
+                      }}
+                    >
+                      <Feather name="rotate-ccw" size={13} color="#fff" />
+                      <Text style={[styles.actionBtnText, { color: "#fff" }]}>Tour</Text>
+                    </TouchableOpacity>
                     {demo && (
                       <TouchableOpacity
                         style={[styles.actionBtn, { backgroundColor: colors.primary }]}
                         onPress={() => router.push(`/tour/${demo.id}` as any)}
                       >
-                        <Feather name="rotate-ccw" size={13} color="#fff" />
-                        <Text style={[styles.actionBtnText, { color: "#fff" }]}>Tour</Text>
+                        <Feather name="play" size={13} color="#fff" />
+                        <Text style={[styles.actionBtnText, { color: "#fff" }]}>Preview</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -190,7 +197,6 @@ export default function BrokerListings() {
             </View>
           );
 
-          // All approved listings are tappable (non-DEMO uses pending store fallback in /listing/[id])
           if (item.status === "approved") {
             return (
               <TouchableOpacity onPress={() => router.push(`/listing/${item.listingId}` as any)}>

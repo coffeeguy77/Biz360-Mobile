@@ -75,6 +75,34 @@ router.post("/biz360/img", async (req, res): Promise<void> => {
   }
 });
 
+// ─── Audio upload via Cloudinary (resource_type: video handles MP3/audio) ─────
+// POST /biz360/audio  { key, data (base64) }  → uploads to Cloudinary audio folder
+//                                              → returns { url: <cloudinary https url> }
+
+router.post("/biz360/audio", async (req, res): Promise<void> => {
+  const { key, data, userId, listingId } = req.body as {
+    key?: string; data?: string; userId?: string; listingId?: string;
+  };
+  if (!key || !data) { res.status(400).json({ error: "key and data required" }); return; }
+  try {
+    const dataUri  = `data:audio/mpeg;base64,${data}`;
+    const safeKey  = key.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeUser = (userId    ?? "anon").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeLid  = (listingId ?? "misc").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const folder   = `biz360/${safeUser}/${safeLid}/audio`;
+    const result   = await cloudinary.uploader.upload(dataUri, {
+      folder,
+      public_id:     safeKey,
+      overwrite:     true,
+      resource_type: "video",
+    });
+    res.json({ url: result.secure_url });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Upload failed";
+    res.status(500).json({ error: msg });
+  }
+});
+
 // ─── Folder delete (used when listing sold or user purged) ────────────────────
 // DELETE /biz360/img/folder   body: { prefix: "biz360/userId/listingId" }
 
