@@ -24,6 +24,8 @@ import { useAuth } from "@/context/AuthContext";
 import { getTourSpaces, addTourRequest, REQUEST_CATEGORIES } from "@/lib/tourStore";
 
 const PIN_DISPLAY: Record<string, { color: string; label: string }> = {
+  navigation:   { color: "#2563EB", label: "Navigate"   },
+  look:         { color: "#0EA5E9", label: "Look"       },
   equipment:    { color: "#F59E0B", label: "Equipment"  },
   revenue:      { color: "#16A34A", label: "Revenue"    },
   cogs:         { color: "#EF4444", label: "COGS"       },
@@ -36,7 +38,6 @@ const PIN_DISPLAY: Record<string, { color: string; label: string }> = {
   inspection:   { color: "#06B6D4", label: "Inspection" },
   highlight:    { color: "#F59E0B", label: "Highlight"  },
   document:     { color: "#6366F1", label: "Document"   },
-  navigation:   { color: "#2563EB", label: "Navigate"   },
   external_link:{ color: "#0891B2", label: "Link"       },
   audio:        { color: "#EC4899", label: "Audio"      },
 };

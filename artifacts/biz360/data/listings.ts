@@ -49,6 +49,7 @@ export interface TourPin {
     | "highlight"
     | "document"
     | "navigation"
+    | "look"
     | "external_link"
     | "audio";
   title: string;

@@ -34,26 +34,33 @@ const MINI_PANO_H = 100;
 const DIRS_4 = ["Front", "Right", "Back", "Left"] as const;
 const DIRS_8 = ["Front", "Front-Right", "Right", "Back-Right", "Back", "Back-Left", "Left", "Front-Left"] as const;
 
-const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color: string }[] = [
-  { type: "equipment",    label: "Equipment",    icon: "tool",              color: "#F59E0B" },
-  { type: "revenue",      label: "Revenue",      icon: "trending-up",       color: "#16A34A" },
-  { type: "cogs",         label: "COGS",         icon: "package",           color: "#EF4444" },
-  { type: "workflow",     label: "Workflow",      icon: "git-branch",        color: "#8B5CF6" },
-  { type: "staffing",     label: "Staffing",      icon: "users",             color: "#3B82F6" },
-  { type: "lease",        label: "Lease",         icon: "home",              color: "#F97316" },
-  { type: "risk",         label: "Risk",          icon: "alert-triangle",    color: "#EF4444" },
-  { type: "opportunity",  label: "Opportunity",   icon: "star",              color: "#16A34A" },
-  { type: "narration",    label: "Narration",     icon: "mic",               color: "#EC4899" },
-  { type: "inspection",   label: "Inspection",    icon: "clipboard",         color: "#06B6D4" },
-  { type: "highlight",    label: "Highlight",     icon: "zap",               color: "#F59E0B" },
-  { type: "document",     label: "Document",      icon: "file-text",         color: "#6366F1" },
-  { type: "navigation",   label: "Navigation",    icon: "arrow-right-circle",color: "#2563EB" },
-  { type: "external_link",label: "External Link", icon: "external-link",     color: "#0891B2" },
-  { type: "audio",        label: "Audio Hotspot", icon: "volume-2",          color: "#EC4899" },
+const NAV_360_ICON = require("../../assets/nav-360-icon.png");
+
+const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color: string; image?: any }[] = [
+  // ── Primary navigation pins ──
+  { type: "navigation",   label: "Navigation",    icon: "arrow-right-circle", color: "#2563EB", image: NAV_360_ICON },
+  { type: "look",         label: "Look",          icon: "eye",                color: "#0EA5E9" },
+  // ── Info pins ──
+  { type: "equipment",    label: "Equipment",     icon: "tool",               color: "#F59E0B" },
+  { type: "revenue",      label: "Revenue",       icon: "trending-up",        color: "#16A34A" },
+  { type: "cogs",         label: "COGS",          icon: "package",            color: "#EF4444" },
+  { type: "workflow",     label: "Workflow",       icon: "git-branch",         color: "#8B5CF6" },
+  { type: "staffing",     label: "Staffing",       icon: "users",              color: "#3B82F6" },
+  { type: "lease",        label: "Lease",          icon: "home",               color: "#F97316" },
+  { type: "risk",         label: "Risk",           icon: "alert-triangle",     color: "#EF4444" },
+  { type: "opportunity",  label: "Opportunity",    icon: "star",               color: "#16A34A" },
+  { type: "narration",    label: "Narration",      icon: "mic",                color: "#EC4899" },
+  { type: "inspection",   label: "Inspection",     icon: "clipboard",          color: "#06B6D4" },
+  { type: "highlight",    label: "Highlight",      icon: "zap",                color: "#F59E0B" },
+  { type: "document",     label: "Document",       icon: "file-text",          color: "#6366F1" },
+  { type: "external_link",label: "External Link",  icon: "external-link",      color: "#0891B2" },
+  { type: "audio",        label: "Audio Hotspot",  icon: "volume-2",           color: "#EC4899" },
 ];
 
+const PRIMARY_PIN_TYPES = new Set(["navigation", "look"]);
+
 const INFO_PIN_TYPES = new Set([
-  "equipment","revenue","cogs","workflow","staffing","lease",
+  "look","equipment","revenue","cogs","workflow","staffing","lease",
   "risk","opportunity","narration","inspection","highlight","document",
 ]);
 
@@ -99,7 +106,7 @@ const EMPTY_SPACE: DraftSpace = {
   name: "", dirMode: 4, photos: {}, pins: [],
   audioUrl: "", audioTrigger: "button", audioTranscript: "", isStartScene: false,
 };
-const EMPTY_PIN: DraftPin = { id: "", type: "equipment", title: "", description: "", requiresNDA: false, visibility: "public" };
+const EMPTY_PIN: DraftPin = { id: "", type: "navigation", title: "", description: "", requiresNDA: false, visibility: "public" };
 
 const VISIBILITY_OPTIONS: { val: Visibility; label: string; hint: string; icon: string; color: string }[] = [
   { val: "public",        label: "Public",        hint: "All buyers can see this pin",      icon: "eye",    color: "#16A34A" },
@@ -952,7 +959,10 @@ export default function ToursScreen() {
                             width: isActivePin ? 20 : 16, height: isActivePin ? 20 : 16,
                             borderRadius: isActivePin ? 10 : 8,
                           }]}>
-                            <Feather name={meta.icon as any} size={isActivePin ? 10 : 8} color="#fff" />
+                            {meta.image
+                              ? <Image source={meta.image} style={{ width: isActivePin ? 10 : 8, height: isActivePin ? 10 : 8 }} tintColor="#fff" />
+                              : <Feather name={meta.icon as any} size={isActivePin ? 10 : 8} color="#fff" />
+                            }
                           </View>
                         );
                       })}
@@ -1122,7 +1132,10 @@ export default function ToursScreen() {
                   activeOpacity={0.75}
                 >
                   <View style={[styles.pinDot, { backgroundColor: meta.color }]}>
-                    <Feather name={meta.icon as any} size={12} color="#fff" />
+                    {meta.image
+                      ? <Image source={meta.image} style={{ width: 12, height: 12 }} tintColor="#fff" />
+                      : <Feather name={meta.icon as any} size={12} color="#fff" />
+                    }
                   </View>
                   <View style={styles.pinRowInfo}>
                     <Text style={[styles.pinRowTitle, { color: colors.foreground }]}>{pin.title}</Text>
@@ -1168,13 +1181,19 @@ export default function ToursScreen() {
                 const meta = ALL_PIN_TYPES.find((m) => m.type === pin.type) ?? ALL_PIN_TYPES[0];
                 return (
                   <View key={pin.id} style={[styles.pinDotOnPano, { left: pin.x! * panoLayout.width - 8, top: (pin.y ?? 0.5) * panoLayout.height - 8, backgroundColor: meta.color, opacity: 0.5 }]}>
-                    <Feather name={meta.icon as any} size={8} color="#fff" />
+                    {meta.image
+                      ? <Image source={meta.image} style={{ width: 8, height: 8 }} tintColor="#fff" />
+                      : <Feather name={meta.icon as any} size={8} color="#fff" />
+                    }
                   </View>
                 );
               })}
               {draftPin.x != null && (
                 <View style={[styles.pinDotOnPano, { left: draftPin.x * panoLayout.width - 10, top: (draftPin.y ?? 0.5) * panoLayout.height - 10, width: 20, height: 20, borderRadius: 10, backgroundColor: selectedPinMeta.color }]}>
-                  <Feather name={selectedPinMeta.icon as any} size={10} color="#fff" />
+                  {selectedPinMeta.image
+                    ? <Image source={selectedPinMeta.image} style={{ width: 10, height: 10 }} tintColor="#fff" />
+                    : <Feather name={selectedPinMeta.icon as any} size={10} color="#fff" />
+                  }
                 </View>
               )}
               {confirmedPlacement && (
@@ -1223,11 +1242,32 @@ export default function ToursScreen() {
               </View>
 
               <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {/* Pin type picker */}
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PIN TYPE</Text>
+            {/* Pin type picker — Primary row */}
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PRIMARY</Text>
+            <View style={[styles.typeGrid, { marginBottom: 12, paddingRight: 0 }]}>
+              {ALL_PIN_TYPES.filter((t) => PRIMARY_PIN_TYPES.has(t.type)).map((t) => {
+                const active = draftPin.type === t.type;
+                return (
+                  <TouchableOpacity
+                    key={t.type}
+                    style={[styles.typeChipLg, { backgroundColor: active ? t.color + "25" : colors.card, borderColor: active ? t.color : colors.border }]}
+                    onPress={() => setDraftPin((p) => ({ ...p, type: t.type }))}
+                  >
+                    {t.image
+                      ? <Image source={t.image} style={{ width: 18, height: 18 }} tintColor={active ? t.color : colors.mutedForeground} />
+                      : <Feather name={t.icon as any} size={18} color={active ? t.color : colors.mutedForeground} />
+                    }
+                    <Text style={[styles.typeChipText, { color: active ? t.color : colors.mutedForeground, fontSize: 13 }]}>{t.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Info pins */}
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>INFORMATION</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               <View style={styles.typeGrid}>
-                {ALL_PIN_TYPES.map((t) => {
+                {ALL_PIN_TYPES.filter((t) => !PRIMARY_PIN_TYPES.has(t.type)).map((t) => {
                   const active = draftPin.type === t.type;
                   return (
                     <TouchableOpacity
@@ -1671,6 +1711,7 @@ const styles = StyleSheet.create({
   pinPlaceConfirmText:{ color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
   typeGrid:        { flexDirection: "row", gap: 8, paddingRight: 16 },
   typeChip:        { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  typeChipLg:      { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1.5 },
   typeChipText:    { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   navTargetRow:    { flexDirection: "row", alignItems: "center", gap: 12, padding: 13, borderRadius: 12, borderWidth: 1 },
   navTargetText:   { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
