@@ -18,14 +18,18 @@ const PIN_COLORS: Record<string, string> = {
   workflow:"#8B5CF6",  staffing:"#3B82F6", lease:"#F97316",
   risk:"#EF4444",      opportunity:"#16A34A", narration:"#EC4899",
   inspection:"#06B6D4",highlight:"#F59E0B",   document:"#6366F1",
-  navigation:"#2563EB",external_link:"#0891B2",audio:"#EC4899",
+  navigation:"#2563EB",look:"#0EA5E9",         external_link:"#0891B2",audio:"#EC4899",
 };
+
+// Navigation pin uses an inline SVG 360° icon (base64) so no emoji white-box artifact
+const NAV_ICON_HTML = '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgOTAiPjxwYXRoIGQ9Ik0gMTIgNjIgQSA0MCA0MCAwIDEgMSA4OCA2MiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSI3IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48dGV4dCB4PSI1MCIgeT0iNTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjMiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IndoaXRlIiBmb250LWZhbWlseT0ic3lzdGVtLXVpLC1hcHBsZS1zeXN0ZW0sc2Fucy1zZXJpZiI+MzYwwrA8L3RleHQ+PHBhdGggZD0iTSA4MiA1MiBMIDg4IDYyIEwgNzkgNjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+" style="width:22px;height:22px;display:block;pointer-events:none"/>';
+
 const PIN_ICONS: Record<string, string> = {
   equipment:"&#128296;",  revenue:"&#128200;",    cogs:"&#128230;",
   workflow:"&#128256;",   staffing:"&#128101;",   lease:"&#127968;",
-  risk:"&#9888;&#65039;", opportunity:"&#11088;", narration:"&#127908;",
+  risk:"&#9888;",         opportunity:"&#11088;", narration:"&#127908;",
   inspection:"&#128203;", highlight:"&#9889;",    document:"&#128196;",
-  navigation:"&#10145;",  external_link:"&#128279;", audio:"&#127925;",
+  navigation:NAV_ICON_HTML, look:"&#128065;",     external_link:"&#128279;", audio:"&#127925;",
 };
 
 // ─── Single equirectangular panorama (demo spaces or stitched panorama) ─────────
