@@ -492,10 +492,9 @@ interface Props {
   onPinPress: (pin: TourPin) => void;
   focusPin?: TourPin | null;
   onFocusPinHandled?: () => void;
-  onError?: () => void;
 }
 
-export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled, onError }: Props) {
+export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
   const webRef = useRef<WebView>(null);
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
@@ -563,10 +562,6 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled,
   }, [space.id, space.panoramaUrl]);
 
   useEffect(() => {
-    if (loadError) onError?.();
-  }, [loadError]);
-
-  useEffect(() => {
     if (space.panoramaUrl) return; // single panorama — no conversion needed
     if (!space.photos.length) { setPhotoDataUris([]); return; }
 
@@ -627,7 +622,6 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled,
 
   // ── Error state ──
   if (loadError) {
-    if (onError) return null;
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>{loadError}</Text>

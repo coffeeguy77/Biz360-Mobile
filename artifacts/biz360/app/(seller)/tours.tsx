@@ -82,7 +82,7 @@ const VISIBILITY_OPTIONS: { val: Visibility; label: string; hint: string; icon: 
 
 // ─── Image upload helper ──────────────────────────────────────────────────────
 // Reads a local file:// URI as base64 and POSTs it to the API server.
-// Returns the resulting https:// URL. Returns the original URI on failure.
+// Returns the resulting https:// URL. Throws on any failure.
 
 async function uploadTourPhoto(
   uri: string,
@@ -91,16 +91,16 @@ async function uploadTourPhoto(
   listingId: string,
   onStatus: (s: string) => void,
 ): Promise<string> {
-  if (uri.startsWith("http")) return uri; // already a server URL
+  if (uri.startsWith("http")) return uri; // already a Cloudinary URL
   const domain  = process.env.EXPO_PUBLIC_DOMAIN;
   const apiBase = domain ? `https://${domain}/api` : "/api";
   onStatus("Uploading photo…");
+  const base64   = await FileSystem.readAsStringAsync(uri, { encoding: "base64" });
+  const ext      = uri.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "jpg";
+  const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+  const controller = new AbortController();
+  const timer      = setTimeout(() => controller.abort(), 120_000);
   try {
-    const base64   = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-    const ext      = uri.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "jpg";
-    const mimeType = ext === "png" ? "image/png" : "image/jpeg";
-    const controller = new AbortController();
-    const timer      = setTimeout(() => controller.abort(), 120_000);
     const res = await fetch(`${apiBase}/biz360/img`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -108,11 +108,13 @@ async function uploadTourPhoto(
       signal:  controller.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
     const json = await res.json() as { url: string };
-    return json.url; // Cloudinary full https:// URL
-  } catch {
-    return uri; // graceful fallback to local path
+    if (!json.url) throw new Error("No URL returned from server");
+    return json.url; // Cloudinary https:// URL
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
   }
 }
 
@@ -218,12 +220,29 @@ export default function ToursScreen() {
 
   // ── Photo pickers ──────────────────────────────────────────────────────────
 
+  // Copy a picker URI (ph:// on iOS, temp file://) to a permanent file:// location.
+  // uploadTourPhoto reads via FileSystem.readAsStringAsync which only works on file:// URIs.
+  const copyPickerAsset = async (pickedUri: string, prefix: string): Promise<string> => {
+    if (Platform.OS === "web") return pickedUri;
+    const dir = `${FileSystem.documentDirectory}biz360_tour/`;
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    const ext  = pickedUri.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "jpg";
+    const dest = `${dir}${prefix}_${Date.now()}.${ext}`;
+    await FileSystem.copyAsync({ from: pickedUri, to: dest });
+    return dest;
+  };
+
   const pickPhoto = async (dir: string) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") { Alert.alert("Permission needed", "Allow photo library access to add photos to your tour."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "images", allowsEditing: true, aspect: [16, 9], quality: 0.8 });
     if (!result.canceled && result.assets[0]) {
-      setDraftSpace((prev) => ({ ...prev, photos: { ...prev.photos, [dir]: result.assets[0].uri } }));
+      try {
+        const localUri = await copyPickerAsset(result.assets[0].uri, `photo_${dir.replace(/\s/g, "_")}`);
+        setDraftSpace((prev) => ({ ...prev, photos: { ...prev.photos, [dir]: localUri } }));
+      } catch {
+        Alert.alert("Could not load photo", "Failed to copy the selected photo. Please try again.");
+      }
     }
   };
 
@@ -236,7 +255,12 @@ export default function ToursScreen() {
     if (status !== "granted") { Alert.alert("Permission needed", "Allow photo library access to add a panorama to your tour."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "images", allowsEditing: false, quality: 1 });
     if (!result.canceled && result.assets[0]) {
-      setDraftSpace((prev) => ({ ...prev, panoramaUri: result.assets[0].uri }));
+      try {
+        const localUri = await copyPickerAsset(result.assets[0].uri, "pano");
+        setDraftSpace((prev) => ({ ...prev, panoramaUri: localUri }));
+      } catch {
+        Alert.alert("Could not load panorama", "Failed to copy the selected photo. Please try again.");
+      }
     }
   };
 

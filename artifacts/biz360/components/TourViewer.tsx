@@ -57,16 +57,13 @@ interface Props {
 }
 
 export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
-  const [panoFailed, setPanoFailed] = useState(false);
-
-  if (Platform.OS !== "web" && !panoFailed && (space.panoramaUrl || space.photos.length > 0)) {
+  if (Platform.OS !== "web" && (space.panoramaUrl || space.photos.length > 0)) {
     return (
       <PanoramaViewer
         space={space}
         onPinPress={onPinPress}
         focusPin={focusPin}
         onFocusPinHandled={onFocusPinHandled}
-        onError={() => setPanoFailed(true)}
       />
     );
   }
