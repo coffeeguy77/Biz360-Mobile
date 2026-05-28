@@ -21,15 +21,27 @@ const PIN_COLORS: Record<string, string> = {
   navigation:"#2563EB",look:"#0EA5E9",         external_link:"#0891B2",audio:"#EC4899",
 };
 
-// Navigation pin uses an inline SVG 360° icon (base64) so no emoji white-box artifact
+// Navigation pin uses an inline SVG 360° icon (base64) — used in flat viewers only.
+// Pannellum hotspots cannot safely use <img> tags inside innerHTML inside a <script> block,
+// so we keep a separate emoji-only icon map for pannellum.
 const NAV_ICON_HTML = '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgOTAiPjxwYXRoIGQ9Ik0gMTIgNjIgQSA0MCA0MCAwIDEgMSA4OCA2MiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSI3IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48dGV4dCB4PSI1MCIgeT0iNTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjMiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IndoaXRlIiBmb250LWZhbWlseT0ic3lzdGVtLXVpLC1hcHBsZS1zeXN0ZW0sc2Fucy1zZXJpZiI+MzYwwrA8L3RleHQ+PHBhdGggZD0iTSA4MiA1MiBMIDg4IDYyIEwgNzkgNjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+" style="width:22px;height:22px;display:block;pointer-events:none"/>';
 
+// Flat-viewer icons (HTML allowed — used in buildFlatPanoHtml / buildFlatStripHtml)
 const PIN_ICONS: Record<string, string> = {
   equipment:"&#128296;",  revenue:"&#128200;",    cogs:"&#128230;",
   workflow:"&#128256;",   staffing:"&#128101;",   lease:"&#127968;",
   risk:"&#9888;",         opportunity:"&#11088;", narration:"&#127908;",
   inspection:"&#128203;", highlight:"&#9889;",    document:"&#128196;",
   navigation:NAV_ICON_HTML, look:"&#128065;",     external_link:"&#128279;", audio:"&#127925;",
+};
+
+// Pannellum hotspot icons — emoji/text ONLY (no HTML tags; they'd break inside <script> JSON)
+const PIN_ICONS_PANO: Record<string, string> = {
+  equipment:"\u{1F527}",  revenue:"\u{1F4C8}",    cogs:"\u{1F4E6}",
+  workflow:"\u{1F500}",   staffing:"\u{1F465}",   lease:"\u{1F3E0}",
+  risk:"\u26A0",          opportunity:"\u2B50",    narration:"\u{1F3A4}",
+  inspection:"\u{1F4CB}", highlight:"\u26A1",      document:"\u{1F4C4}",
+  navigation:"\u21BA",    look:"\u{1F441}",        external_link:"\u{1F517}", audio:"\u{1F3B5}",
 };
 
 // ─── Single equirectangular panorama (demo spaces or stitched panorama) ─────────
@@ -42,11 +54,11 @@ function buildSinglePanoHtml(
 ): string {
   const hotspots = pins.map((p) => ({
     id: p.id,
-    pitch: (0.5 - p.position.y) * 60,
+    pitch: (0.5 - p.position.y) * 90,
     yaw: p.position.x * 360 - 180,
     title: p.title.split(" ").slice(0, 4).join(" "),
     color: PIN_COLORS[p.type] ?? "#3B82F6",
-    icon: PIN_ICONS[p.type] ?? "&#8505;",
+    icon: PIN_ICONS_PANO[p.type] ?? "\u2139",
     locked: !!p.requiresNDA,
   }));
 
