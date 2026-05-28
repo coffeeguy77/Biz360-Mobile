@@ -1,0 +1,1015 @@
+Biz360 Walkthrough Builder — Detailed Replit Build Plan
+
+1. Core Concept
+
+Build a 360-degree walkthrough builder for Biz360 that allows sellers, brokers, and admins to create interactive business tours.
+
+The system must support:
+
+* One seller managing one business
+* A broker managing multiple businesses
+* Multiple 360 scenes per business
+* Cloudinary-hosted 360 images, videos, thumbnails, and ElevenLabs audio
+* Hotspot navigation between 360 scenes
+* Information popups inside each scene
+* Audio triggers per scene or per hotspot
+* Ability to add more 360 images later without rebuilding the tour
+* Buyer-facing walkthrough viewer
+* Admin/builder interface for editing tours
+
+The hierarchy should be:
+
+User → Business/Cafe ID → Tour → Scene → Hotspots / Audio / Popups
+
+⸻
+
+2. Recommended Data Structure
+
+Users Table
+
+users {
+  id uuid primary key
+  full_name text
+  email text
+  role text -- seller, broker, admin, buyer
+  created_at timestamp
+}
+
+Roles:
+
+seller = can create/manage their own business
+broker = can create/manage multiple businesses
+admin = full platform control
+buyer = can view tours they have permission to access
+
+⸻
+
+Businesses Table
+
+businesses {
+  id uuid primary key
+  owner_user_id uuid references users(id)
+  broker_user_id uuid references users(id) nullable
+  business_name text
+  business_type text -- cafe, restaurant, gym, salon, retail, etc.
+  address text
+  suburb text
+  state text
+  country text
+  status text -- draft, live, private, archived
+  created_at timestamp
+  updated_at timestamp
+}
+
+Important:
+
+A seller may own one business.
+
+A broker may have many businesses.
+
+Each business/cafe must have a unique business ID.
+
+Example URL:
+
+/biz360/cafe/:businessId/tour/:tourId
+
+⸻
+
+Tours Table
+
+tours {
+  id uuid primary key
+  business_id uuid references businesses(id)
+  title text
+  description text
+  cover_image_url text
+  default_start_scene_id uuid nullable
+  visibility text -- private, public, nda_locked, invite_only
+  status text -- draft, live, archived
+  created_at timestamp
+  updated_at timestamp
+}
+
+Each business can have multiple tours if needed:
+
+* Main buyer tour
+* Staff training tour
+* Investor due diligence tour
+* Private broker tour
+
+⸻
+
+Scenes Table
+
+Each 360 image becomes a scene.
+
+tour_scenes {
+  id uuid primary key
+  tour_id uuid references tours(id)
+  business_id uuid references businesses(id)
+  title text
+  description text
+  scene_order integer
+  panorama_url text
+  panorama_public_id text -- Cloudinary public ID
+  thumbnail_url text
+  initial_yaw float default 0
+  initial_pitch float default 0
+  initial_zoom float default 50
+  floorplan_x float nullable
+  floorplan_y float nullable
+  is_start_scene boolean default false
+  created_at timestamp
+  updated_at timestamp
+}
+
+Example scene titles:
+
+Front Entrance
+Customer Seating Area
+Coffee Bar
+Kitchen
+Storage Room
+Outdoor Dining
+Office
+Back Exit
+
+⸻
+
+Hotspots Table
+
+Hotspots are clickable points inside a 360 scene.
+
+scene_hotspots {
+  id uuid primary key
+  business_id uuid references businesses(id)
+  tour_id uuid references tours(id)
+  scene_id uuid references tour_scenes(id)
+  type text -- navigation, info, audio, video, document, external_link
+  title text
+  description text
+  yaw float
+  pitch float
+  icon_type text -- arrow, info, speaker, video, document, dollar, equipment
+  target_scene_id uuid nullable
+  popup_content jsonb nullable
+  media_url text nullable
+  audio_url text nullable
+  video_url text nullable
+  document_url text nullable
+  external_url text nullable
+  display_order integer
+  created_at timestamp
+  updated_at timestamp
+}
+
+Hotspot types:
+
+navigation = move to another 360 scene
+info = open text/image popup
+audio = play ElevenLabs narration
+video = play embedded video
+document = open PDF/spec sheet
+external_link = open another page
+
+⸻
+
+Audio Table
+
+Store ElevenLabs narration references here.
+
+scene_audio {
+  id uuid primary key
+  business_id uuid references businesses(id)
+  tour_id uuid references tours(id)
+  scene_id uuid references tour_scenes(id)
+  title text
+  audio_url text
+  audio_public_id text -- Cloudinary public ID
+  trigger_type text -- auto_on_enter, click_hotspot, manual_button
+  transcript text
+  duration_seconds integer
+  created_at timestamp
+}
+
+Trigger types:
+
+auto_on_enter = audio plays when entering scene
+click_hotspot = audio plays when user clicks speaker/info point
+manual_button = buyer presses play button
+
+⸻
+
+Popup Content Example
+
+For info hotspots, store flexible JSON.
+
+{
+  "heading": "La Marzocco Coffee Machine",
+  "body": "This machine handles the core espresso production for the business.",
+  "sections": [
+    {
+      "label": "Purchase Date",
+      "value": "2023"
+    },
+    {
+      "label": "Estimated Value",
+      "value": "$18,000"
+    },
+    {
+      "label": "Service History",
+      "value": "Serviced every 6 months"
+    }
+  ],
+  "images": [
+    "https://cloudinary.com/example-machine-photo.jpg"
+  ],
+  "documents": [
+    {
+      "label": "Service Record",
+      "url": "https://cloudinary.com/service-record.pdf"
+    }
+  ]
+}
+
+⸻
+
+3. Cloudinary Media Storage
+
+Use Cloudinary for:
+
+* 360 panoramas
+* thumbnails
+* videos
+* ElevenLabs MP3 files
+* PDF documents
+* hotspot images
+* floorplans
+
+Recommended folder structure:
+
+biz360/
+  users/{userId}/
+    businesses/{businessId}/
+      tours/{tourId}/
+        scenes/
+        thumbnails/
+        audio/
+        videos/
+        documents/
+        floorplans/
+
+Example:
+
+biz360/users/123/businesses/cafe456/tours/tour789/scenes/front-entry.jpg
+biz360/users/123/businesses/cafe456/tours/tour789/audio/front-entry-intro.mp3
+
+⸻
+
+4. Tour Builder UI
+
+Create a builder page:
+
+/dashboard/businesses/:businessId/tours/:tourId/builder
+
+The builder should have 3 main panels.
+
+Left Panel — Scene List
+
+Shows all scenes in the tour.
+
+Each item should show:
+
+* Thumbnail
+* Scene title
+* Scene order
+* Start scene badge
+* Edit button
+* Delete button
+* Add hotspot button
+
+Actions:
+
+* Add new 360 scene
+* Reorder scenes
+* Set start scene
+* Upload replacement panorama
+* Add narration
+
+⸻
+
+Centre Panel — 360 Viewer
+
+Use:
+
+Photo Sphere Viewer
+or
+Pannellum
+or
+Three.js
+
+The centre viewer allows the user to:
+
+* Look around the 360 image
+* Click “Add Hotspot”
+* Place hotspot at current yaw/pitch
+* Drag/reposition hotspot
+* Preview the buyer experience
+
+When adding a hotspot, capture:
+
+yaw
+pitch
+current_scene_id
+
+⸻
+
+Right Panel — Hotspot Editor
+
+When a hotspot is selected, show fields:
+
+Hotspot Type
+Title
+Description
+Icon
+Target Scene
+Popup Content
+Upload Image
+Upload Video
+Upload Audio
+Upload Document
+External URL
+Display Conditions
+Save
+Delete
+
+For navigation hotspot:
+
+Target Scene: Coffee Bar
+Transition Label: Go to Coffee Bar
+Icon: Arrow
+
+For info hotspot:
+
+Title: Coffee Machine
+Description: Details about machine value, service, and production.
+Popup Sections:
+- Purchase Date
+- Replacement Value
+- Finance Status
+- Service History
+- Operational Notes
+
+For audio hotspot:
+
+Title: Owner Introduction
+Audio Source: ElevenLabs MP3 from Cloudinary
+Trigger: Click or Auto Play
+Transcript: Optional
+
+⸻
+
+5. Buyer Viewer
+
+Create a public/private viewer page:
+
+/tour/:tourId
+
+The viewer should include:
+
+* Fullscreen 360 scene
+* Clickable navigation hotspots
+* Clickable info hotspots
+* Audio play button
+* Scene list/minimap
+* Business title
+* Contact seller button
+* Request more info button
+* NDA lock if needed
+
+Viewer behaviour:
+
+When buyer opens tour:
+
+1. Load start scene
+2. Display blurred thumbnail instantly
+3. Load full 360 panorama
+4. Show hotspots
+5. If scene has auto narration, show “Play narration” prompt
+6. Buyer clicks hotspots to move or learn more
+
+Do not force autoplay audio on mobile. Use a visible play button because mobile browsers often block autoplay.
+
+⸻
+
+6. Adding More Information Later
+
+The system must allow a seller/broker/admin to add:
+
+* New 360 scene
+* New hotspot inside existing scene
+* New audio narration
+* New popup
+* New document
+* New video
+* New navigation connection
+
+Example use case:
+
+A buyer asks:
+
+Can I see the back storage area?
+
+The seller can:
+
+1. Upload a new 360 photo called “Back Storage Room”
+2. Add it to the existing tour
+3. Open the “Kitchen” scene
+4. Add a navigation hotspot pointing to “Back Storage Room”
+5. Add an info popup about stock capacity
+6. Save and publish
+
+No rebuild required.
+
+⸻
+
+7. Important Permissions
+
+Seller
+
+Can:
+
+* Create one or more businesses they own
+* Upload scenes
+* Edit tours for their business
+* Add hotspots
+* Add audio
+* View analytics
+
+Cannot:
+
+* Edit other sellers’ businesses
+
+⸻
+
+Broker
+
+Can:
+
+* Create multiple business profiles
+* Manage tours for each business
+* Invite sellers to collaborate
+* View buyer engagement across listings
+
+⸻
+
+Admin
+
+Can:
+
+* Manage all users
+* Manage all businesses
+* Manage all tours
+* Moderate content
+* Feature listings
+
+⸻
+
+Buyer
+
+Can:
+
+* View approved tours
+* Request more information
+* Submit enquiry
+* Save favourite businesses
+* Unlock private tour if invited
+
+⸻
+
+8. Suggested API Routes
+
+Business Routes
+
+GET /api/businesses
+POST /api/businesses
+GET /api/businesses/:businessId
+PATCH /api/businesses/:businessId
+DELETE /api/businesses/:businessId
+
+Tour Routes
+
+GET /api/businesses/:businessId/tours
+POST /api/businesses/:businessId/tours
+GET /api/tours/:tourId
+PATCH /api/tours/:tourId
+DELETE /api/tours/:tourId
+
+Scene Routes
+
+GET /api/tours/:tourId/scenes
+POST /api/tours/:tourId/scenes
+PATCH /api/scenes/:sceneId
+DELETE /api/scenes/:sceneId
+
+Hotspot Routes
+
+GET /api/scenes/:sceneId/hotspots
+POST /api/scenes/:sceneId/hotspots
+PATCH /api/hotspots/:hotspotId
+DELETE /api/hotspots/:hotspotId
+
+Media Routes
+
+POST /api/media/upload
+DELETE /api/media/delete
+
+Audio Routes
+
+POST /api/scenes/:sceneId/audio
+PATCH /api/audio/:audioId
+DELETE /api/audio/:audioId
+
+⸻
+
+9. Cloudinary Upload Flow
+
+The app should not upload directly through the frontend using secret keys.
+
+Use a secure backend upload signature.
+
+Flow:
+
+1. Frontend requests upload signature from backend
+2. Backend signs Cloudinary upload
+3. Frontend uploads file to Cloudinary
+4. Cloudinary returns secure URL and public ID
+5. App stores URL and public ID in database
+
+Required environment variables:
+
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+
+⸻
+
+10. ElevenLabs Audio Flow
+
+Option A — Manual Upload MVP:
+
+1. Seller creates narration in ElevenLabs
+2. Downloads MP3
+3. Uploads MP3 to Biz360
+4. Biz360 stores MP3 in Cloudinary
+5. Seller attaches audio to scene or hotspot
+
+This is easiest for MVP.
+
+Option B — API Integration Later:
+
+1. Seller writes narration script in Biz360
+2. Selects voice
+3. Biz360 sends text to ElevenLabs API
+4. ElevenLabs returns generated audio
+5. Biz360 uploads audio to Cloudinary
+6. Audio becomes available in builder
+
+For MVP, build Option A first.
+
+⸻
+
+11. Scene JSON Output for Viewer
+
+The tour viewer should receive a full JSON structure like this:
+
+{
+  "tour_id": "tour_001",
+  "business_id": "cafe_001",
+  "title": "Bean Culture Walkthrough",
+  "start_scene_id": "scene_front_entry",
+  "scenes": [
+    {
+      "id": "scene_front_entry",
+      "title": "Front Entry",
+      "panorama_url": "https://res.cloudinary.com/example/front-entry.jpg",
+      "thumbnail_url": "https://res.cloudinary.com/example/front-entry-thumb.jpg",
+      "initial_yaw": 0,
+      "initial_pitch": 0,
+      "hotspots": [
+        {
+          "id": "hotspot_001",
+          "type": "navigation",
+          "title": "Go to Coffee Bar",
+          "yaw": 110,
+          "pitch": -5,
+          "target_scene_id": "scene_coffee_bar",
+          "icon_type": "arrow"
+        },
+        {
+          "id": "hotspot_002",
+          "type": "info",
+          "title": "Customer Seating",
+          "yaw": 45,
+          "pitch": 0,
+          "icon_type": "info",
+          "popup_content": {
+            "heading": "Customer Seating",
+            "body": "This area seats 28 customers and supports dine-in revenue."
+          }
+        }
+      ],
+      "audio": [
+        {
+          "id": "audio_001",
+          "title": "Front Entry Introduction",
+          "audio_url": "https://res.cloudinary.com/example/front-entry.mp3",
+          "trigger_type": "manual_button"
+        }
+      ]
+    }
+  ]
+}
+
+⸻
+
+12. Analytics Events
+
+Track buyer engagement.
+
+Important events:
+
+tour_opened
+scene_viewed
+hotspot_clicked
+audio_played
+video_played
+document_opened
+contact_seller_clicked
+request_more_info_clicked
+tour_completed
+
+Store analytics:
+
+tour_analytics {
+  id uuid primary key
+  business_id uuid
+  tour_id uuid
+  scene_id uuid nullable
+  hotspot_id uuid nullable
+  user_id uuid nullable
+  visitor_id text
+  event_type text
+  metadata jsonb
+  created_at timestamp
+}
+
+This lets sellers and brokers see:
+
+* Which areas buyers inspected
+* Which machines they clicked
+* Which documents they opened
+* How long they stayed
+* Whether they requested more information
+
+This is powerful for business sales.
+
+⸻
+
+13. Buyer “Request More Info” Feature
+
+Inside the viewer, add:
+
+Request More Info
+
+Buyer can choose:
+
+I want to see another room
+I want more financial details
+I want equipment details
+I want lease details
+I want staff/process details
+Other
+
+This creates a request:
+
+buyer_requests {
+  id uuid primary key
+  business_id uuid
+  tour_id uuid
+  buyer_user_id uuid nullable
+  buyer_name text
+  buyer_email text
+  request_type text
+  message text
+  status text -- new, in_review, completed
+  created_at timestamp
+}
+
+This directly supports your idea of adding another 360 image when a buyer needs more detail.
+
+⸻
+
+14. MVP Build Order
+
+Phase 1 — Core Data Model
+
+Build:
+
+* Users
+* Businesses
+* Tours
+* Scenes
+* Hotspots
+* Audio
+* Cloudinary upload
+
+⸻
+
+Phase 2 — Tour Viewer
+
+Build:
+
+* 360 image viewer
+* Load tour JSON
+* Navigate between scenes
+* Show hotspots
+* Info popup modal
+* Play audio
+* Mobile-friendly controls
+
+⸻
+
+Phase 3 — Tour Builder
+
+Build:
+
+* Scene upload
+* Scene list
+* Hotspot placement
+* Hotspot editor
+* Audio upload
+* Save/publish controls
+
+⸻
+
+Phase 4 — Permissions
+
+Build:
+
+* Seller access
+* Broker multi-business access
+* Admin access
+* Private/public tour visibility
+
+⸻
+
+Phase 5 — Buyer Engagement
+
+Build:
+
+* Analytics events
+* Request more info
+* Contact seller
+* Buyer activity dashboard
+
+⸻
+
+15. Recommended Tech Choices for Replit
+
+Frontend:
+
+React
+Vite or Next.js
+Tailwind CSS
+Photo Sphere Viewer
+
+Backend:
+
+Node.js
+Express
+PostgreSQL
+Prisma or Drizzle ORM
+
+Storage:
+
+Cloudinary
+
+Authentication:
+
+Supabase Auth
+Clerk
+or Replit Auth for prototype
+
+Best option:
+
+Supabase Auth + PostgreSQL + Cloudinary
+
+⸻
+
+16. Critical UX Details
+
+The builder must be simple.
+
+The seller/broker should not think in technical terms like yaw and pitch.
+
+They should only do this:
+
+1. Upload a 360 image
+2. Name the scene
+3. Click where they want a hotspot
+4. Choose what the hotspot does
+5. Save
+6. Preview tour
+
+For the buyer, the tour should feel like:
+
+Click arrow → move forward
+Click info icon → learn more
+Click speaker → hear owner explain
+Click document → verify detail
+
+⸻
+
+17. Replit Build Prompt
+
+Build a full-stack Biz360 Walkthrough Builder web app.
+
+The app must allow sellers, brokers, and admins to create interactive 360-degree walkthrough tours for businesses.
+
+The system must be user and business based.
+
+Data hierarchy:
+
+User → Business → Tour → Scene → Hotspot / Audio / Popup
+
+A seller can manage their own business.
+A broker can manage multiple businesses.
+An admin can manage everything.
+A buyer can view tours and request more information.
+
+Use React for the frontend, Node/Express for the backend, PostgreSQL for the database, and Cloudinary for media storage.
+
+Use a 360 panorama viewer such as Photo Sphere Viewer or Pannellum.
+
+Core features required:
+
+1. Authentication and roles:
+
+* seller
+* broker
+* admin
+* buyer
+
+2. Business management:
+
+* create business
+* edit business
+* assign owner
+* assign broker
+* business status: draft, live, private, archived
+
+3. Tour management:
+
+* create tour for a business
+* edit tour
+* set tour cover image
+* set start scene
+* set visibility: private, public, NDA locked, invite only
+
+4. Scene management:
+
+* upload 360 panorama image to Cloudinary
+* store panorama URL and Cloudinary public ID
+* generate/store thumbnail
+* add title and description
+* reorder scenes
+* set start scene
+* delete scene
+
+5. 360 viewer:
+
+* load panorama image
+* allow viewer to look around
+* show hotspots at saved yaw/pitch coordinates
+* support mobile and desktop
+* support fullscreen mode
+
+6. Hotspot builder:
+
+* allow seller/broker/admin to click inside the 360 viewer to place a hotspot
+* save yaw and pitch coordinates
+* allow hotspot type selection:
+    * navigation
+    * info
+    * audio
+    * video
+    * document
+    * external link
+* allow icon selection:
+    * arrow
+    * info
+    * speaker
+    * video
+    * document
+    * dollar
+    * equipment
+* allow navigation hotspot to link to another scene
+* allow info hotspot to open popup content
+* allow audio hotspot to play Cloudinary-hosted ElevenLabs MP3
+* allow video hotspot to play Cloudinary-hosted video
+* allow document hotspot to open Cloudinary-hosted PDF
+
+7. Audio system:
+
+* allow upload of MP3 files created in ElevenLabs
+* store audio files on Cloudinary
+* attach audio to a scene or hotspot
+* support trigger types:
+    * manual button
+    * click hotspot
+    * auto prompt on scene entry
+* store optional transcript
+
+8. Popup system:
+
+* allow rich popup content
+* popup can include heading, body, image, structured fields, document links, and video links
+* store popup data as JSON
+
+9. Buyer tour viewer:
+
+* public/private tour URL
+* open tour at start scene
+* navigate between scenes using hotspots
+* view information popups
+* play audio narration
+* open documents
+* contact seller/broker
+* request more information
+
+10. Request more information:
+
+* buyer can request:
+    * another room
+    * more financial detail
+    * more equipment detail
+    * lease information
+    * staff/process information
+    * other
+* request is stored against business ID and tour ID
+* seller/broker/admin can view and respond
+
+11. Analytics:
+    Track:
+
+* tour opened
+* scene viewed
+* hotspot clicked
+* audio played
+* video played
+* document opened
+* contact seller clicked
+* request more info clicked
+
+12. Cloudinary:
+
+* use backend-generated upload signatures
+* never expose Cloudinary API secret in frontend
+* store secure_url and public_id
+* organise uploads by user ID, business ID, and tour ID
+
+13. Database tables:
+
+* users
+* businesses
+* tours
+* tour_scenes
+* scene_hotspots
+* scene_audio
+* buyer_requests
+* tour_analytics
+
+14. Build pages:
+
+* /dashboard
+* /dashboard/businesses
+* /dashboard/businesses/:businessId
+* /dashboard/businesses/:businessId/tours
+* /dashboard/businesses/:businessId/tours/:tourId/builder
+* /tour/:tourId
+* /admin
+
+15. UI requirements:
+
+* clean modern business SaaS interface
+* left panel scene list
+* centre 360 viewer
+* right panel hotspot editor
+* preview mode
+* publish button
+* mobile responsive buyer viewer
+
+The most important part is flexibility. A tour must be editable after publishing. If a buyer asks for more detail, the seller or broker must be able to upload another 360 image, add it as a new scene, and connect it to the existing walkthrough using a navigation hotspot.
+
+Build the app in a clean modular way with reusable components and clear database relationships.
