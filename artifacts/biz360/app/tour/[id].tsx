@@ -286,9 +286,11 @@ export default function TourScreen() {
   }
 
   // ── Derived view data ────────────────────────────────────────────────────────
-  const hasAudio      = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger !== "hotspot";
-  const hasTranscript = !!(activeSpace?.audioTranscript?.trim());
-  const audioPct      = audioDurMs > 0 ? audioPosMs / audioDurMs : 0;
+  const hasAudio        = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger !== "hotspot";
+  const hasAudioHotspot = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger === "hotspot";
+  const showAudioBar    = hasAudio || (hasAudioHotspot && (audioPlaying || audioLoading || audioDurMs > 0));
+  const hasTranscript   = !!(activeSpace?.audioTranscript?.trim());
+  const audioPct        = audioDurMs > 0 ? audioPosMs / audioDurMs : 0;
 
   const infoTypes = useMemo(() => {
     const seen  = new Set<string>();
@@ -361,8 +363,29 @@ export default function TourScreen() {
         onFocusPinHandled={() => setFocusPin(null)}
       />
 
-      {/* ── Audio bar (button/auto_prompt triggers only) ── */}
-      {hasAudio && (
+      {/* ── Audio hotspot pin (hotspot trigger) ── */}
+      {hasAudioHotspot && (
+        <TouchableOpacity
+          style={[styles.audioHotspot, { bottom: bottomBase + 140 }]}
+          onPress={() => playAudio(activeSpace!.audioUrl!)}
+          disabled={audioLoading}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.audioHotspotInner, audioPlaying && { backgroundColor: "#BE185D" }]}>
+            <Feather
+              name={audioLoading ? "loader" : audioPlaying ? "pause" : "volume-2"}
+              size={22}
+              color="#fff"
+            />
+          </View>
+          <Text style={styles.audioHotspotLabel}>
+            {audioLoading ? "Loading…" : audioPlaying ? "Pause" : "Narration"}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── Audio bar (button/auto_prompt triggers; also shown after hotspot tap) ── */}
+      {showAudioBar && (
         <View style={[styles.audioBarWrap, { bottom: bottomBase + 72 }]}>
           <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
             <Feather name="volume-2" size={14} color="#EC4899" />
@@ -535,7 +558,10 @@ const styles = StyleSheet.create({
   progressTrack:   { height: 2, backgroundColor: "rgba(236,72,153,0.2)", borderRadius: 1, marginTop: 4, overflow: "hidden" },
   progressFill:    { height: 2, backgroundColor: "#EC4899", borderRadius: 1 },
   audioPlayBtn:    { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#EC4899", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
-  audioPlayBtnText:{ color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
+  audioPlayBtnText: { color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
+  audioHotspot:     { position: "absolute", right: 20, zIndex: 10, alignItems: "center", gap: 5 },
+  audioHotspotInner:{ width: 54, height: 54, borderRadius: 27, backgroundColor: "#EC4899", alignItems: "center", justifyContent: "center", shadowColor: "#EC4899", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12, elevation: 8 },
+  audioHotspotLabel:{ color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold", textShadowColor: "rgba(0,0,0,0.6)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   transcriptBox:   { backgroundColor: "rgba(7,18,33,0.92)", borderRadius: 12, padding: 12, marginTop: 6, borderWidth: 1, borderColor: "#EC489940" },
   transcriptText:  { color: "rgba(255,255,255,0.75)", fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   bottomOverlay:   { position: "absolute", bottom: 60, left: 0, right: 0, zIndex: 10, paddingHorizontal: 16, gap: 8 },

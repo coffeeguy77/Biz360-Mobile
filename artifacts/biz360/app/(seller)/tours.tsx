@@ -1039,6 +1039,11 @@ export default function ToursScreen() {
                       );
                     })}
                   </View>
+                  {(draftSpace.audioTrigger ?? "button") === "hotspot" && (
+                    <Text style={[styles.fieldHint, { color: colors.mutedForeground, marginBottom: 10 }]}>
+                      A pink narration pin will appear on the scene. Buyers tap it to start playback.
+                    </Text>
+                  )}
                   <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>TRANSCRIPT (OPTIONAL)</Text>
                   <TextInput
                     style={[styles.nameInput, styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
