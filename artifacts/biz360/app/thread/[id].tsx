@@ -42,7 +42,17 @@ export default function ThreadScreen() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
-  const role = (user?.role === "seller" ? "seller" : "buyer") as "buyer" | "seller";
+  // admin and broker sit on the platform/seller side of conversations
+  const role = (
+    user?.role === "seller" || user?.role === "admin" || user?.role === "broker"
+      ? "seller"
+      : "buyer"
+  ) as "buyer" | "seller";
+
+  const roleBadgeLabel =
+    user?.role === "admin"  ? "Admin view"  :
+    user?.role === "broker" ? "Broker view" :
+    role === "seller"       ? "Seller view" : "Buyer view";
 
   const meta = {
     listingId: thread?.listingId || (listingIdParam ? decodeURIComponent(listingIdParam) : "") || id,
@@ -99,7 +109,7 @@ export default function ThreadScreen() {
         </View>
         <View style={[styles.roleBadge, { backgroundColor: role === "seller" ? "#16A34A18" : colors.primary + "18" }]}>
           <Text style={[styles.roleBadgeText, { color: role === "seller" ? "#16A34A" : colors.primary }]}>
-            {role === "seller" ? "Seller view" : "Buyer view"}
+            {roleBadgeLabel}
           </Text>
         </View>
       </View>
