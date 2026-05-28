@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -112,7 +113,22 @@ const AUDIO_TRIGGERS: { val: AudioTrigger; label: string; hint: string }[] = [
   { val: "hotspot",     label: "Hotspot",      hint: "Buyer taps a pin to trigger audio" },
 ];
 
-// ─── Upload helper ─────────────────────────────────────────────────────────────
+// ─── Upload helpers ────────────────────────────────────────────────────────────
+
+/** Compress + resize a local image URI before upload. Falls back to original on error. */
+async function _compressImage(uri: string, maxWidth: number, quality: number): Promise<string> {
+  if (uri.startsWith("http")) return uri;
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: maxWidth } }],
+      { compress: quality, format: ImageManipulator.SaveFormat.JPEG },
+    );
+    return result.uri;
+  } catch {
+    return uri;
+  }
+}
 
 async function _uploadAudio(
   uri: string, key: string, userId: string, listingId: string, onStatus: (s: string) => void,
@@ -131,7 +147,11 @@ async function _uploadAudio(
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    if (!res.ok) {
+      let serverMsg = `Server error ${res.status}`;
+      try { const j = await res.json(); if (j.error) serverMsg = j.error; } catch {}
+      throw new Error(serverMsg);
+    }
     const json = await res.json() as { url: string };
     if (!json.url) throw new Error("No URL returned");
     return json.url;
@@ -499,9 +519,11 @@ export default function ToursScreen() {
     try {
       let savedSpace: TourSpace;
       if (draftSpace.dirMode === "panorama") {
+        setSaveStatus("Compressing panorama…");
+        const compressed  = await _compressImage(draftSpace.panoramaUri!, 4000, 0.85);
         setSaveStatus("Uploading panorama…");
         const imgKey      = `pano_${Date.now()}`;
-        const panoramaUrl = await _uploadPhoto(draftSpace.panoramaUri!, imgKey, userId, listingKey, setSaveStatus);
+        const panoramaUrl = await _uploadPhoto(compressed, imgKey, userId, listingKey, setSaveStatus);
         savedSpace = {
           id: spaceIdNow, name: draftSpace.name.trim(), photos: [],
           pins: buildTourPins(draftSpace.pins), panoramaUrl, panoramaStartYaw: 0, dirMode: "panorama",
@@ -514,9 +536,11 @@ export default function ToursScreen() {
         for (const dir of dirs) {
           const uri = draftSpace.photos[dir];
           if (!uri) continue;
+          setSaveStatus(`Compressing photo ${photoIdx + 1}…`);
+          const compressed  = await _compressImage(uri, 2000, 0.8);
           setSaveStatus(`Uploading photo ${++photoIdx}…`);
           const imgKey      = `${dir.replace(/\s/g, "_")}_${Date.now()}`;
-          const uploadedUrl = await _uploadPhoto(uri, imgKey, userId, listingKey, setSaveStatus);
+          const uploadedUrl = await _uploadPhoto(compressed, imgKey, userId, listingKey, setSaveStatus);
           photoArray.push(uploadedUrl);
         }
         savedSpace = {
@@ -540,8 +564,9 @@ export default function ToursScreen() {
           : [...prev, savedSpace]);
       }
       closeSpaceModal();
-    } catch {
-      Alert.alert("Save failed", "Could not upload photos. Check your connection and try again.");
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "Unknown error";
+      Alert.alert("Save failed", `Could not upload photos.\n\n${detail}`);
     } finally { setSaving(false); setSaveStatus(""); }
   };
 

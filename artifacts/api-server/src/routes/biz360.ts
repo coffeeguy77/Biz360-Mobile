@@ -71,6 +71,7 @@ router.post("/biz360/img", async (req, res): Promise<void> => {
     res.json({ url: result.secure_url });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Upload failed";
+    console.error("[biz360/img] Cloudinary error:", msg);
     res.status(500).json({ error: msg });
   }
 });
