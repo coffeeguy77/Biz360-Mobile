@@ -1190,7 +1190,10 @@ export default function ToursScreen() {
                 }}
               />
               <View style={styles.pinPlaceTopBar}>
-                <TouchableOpacity style={styles.pinPlaceBack} onPress={() => { setPinPlaceMode(false); setShowPinModal(true); }}>
+                <TouchableOpacity style={styles.pinPlaceBack} onPress={() => {
+                  setPinPlaceMode(false);
+                  setTimeout(() => setShowPinModal(true), 150);
+                }}>
                   <Feather name="arrow-left" size={18} color="#fff" />
                   <Text style={styles.pinPlaceBackText}>Back to pin</Text>
                 </TouchableOpacity>
@@ -1198,7 +1201,10 @@ export default function ToursScreen() {
                 {draftPin.x != null && (
                   <TouchableOpacity
                     style={styles.pinPlaceConfirm}
-                    onPress={() => { setPinPlaceMode(false); setShowPinModal(true); }}
+                    onPress={() => {
+                      setPinPlaceMode(false);
+                      setTimeout(() => setShowPinModal(true), 150);
+                    }}
                   >
                     <Text style={styles.pinPlaceConfirmText}>Done</Text>
                   </TouchableOpacity>
