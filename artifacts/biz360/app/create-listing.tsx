@@ -220,7 +220,7 @@ export default function CreateListing() {
         await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
         savedPhotos = await Promise.all(
           form.photos.map(async (uri) => {
-            if (uri.startsWith(dir)) return uri;
+            if (uri.startsWith(dir) || uri.startsWith("http")) return uri; // already local or remote URL
             const ext = uri.split(".").pop() ?? "jpg";
             const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
             const dest = `${dir}${filename}`;
