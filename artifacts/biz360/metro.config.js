@@ -13,6 +13,8 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
+config.resolver.unstable_enableSymlinks = true;
+
 // Block temp directories react-native-webview creates during install
 config.resolver.blockList = [/node_modules\/.*_tmp_\d+\/.*/];
 

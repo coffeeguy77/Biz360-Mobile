@@ -2,3 +2,4 @@
 - [Twilio Verify setup](twilio-verify.md) — phone OTP auth via Twilio Verify; server endpoints + OTP screen pattern.
 - [Message thread refresh](message-thread-refresh.md) — useThreadList polls every 5s + exposes refresh(); screens use useFocusEffect to call refresh() on focus; buyerId passed via URL param from listing/[id].tsx handleMessage.
 - [Panorama fallback](panorama-fallback.md) — PanoramaViewer has onError prop; FileSystem fail → fetch() fallback → onError(); TourViewer tracks panoFailed and renders DirectionalStrip on error.
+- [pnpm symlinks + Metro](pnpm-metro-symlinks.md) — Metro does not follow pnpm symlinks by default; must add unstable_enableSymlinks to metro.config.js, and install packages at the correct SDK-pinned version.
