@@ -303,7 +303,9 @@ export default function ToursScreen() {
     if (!result.canceled && result.assets[0]) {
       try {
         const localUri = await copyPickerAsset(result.assets[0].uri, "pano");
-        setDraftSpace((prev) => ({ ...prev, panoramaUri: localUri }));
+        // Compress immediately so the pin-placement overlay loads fast and upload is smaller
+        const compressed = await _compressImage(localUri, 4000, 0.85);
+        setDraftSpace((prev) => ({ ...prev, panoramaUri: compressed }));
       } catch { Alert.alert("Could not load panorama", "Failed to copy photo. Try again."); }
     }
   };
@@ -519,11 +521,10 @@ export default function ToursScreen() {
     try {
       let savedSpace: TourSpace;
       if (draftSpace.dirMode === "panorama") {
-        setSaveStatus("Compressing panorama…");
-        const compressed  = await _compressImage(draftSpace.panoramaUri!, 4000, 0.85);
+        // Already compressed at pick time — upload directly
         setSaveStatus("Uploading panorama…");
         const imgKey      = `pano_${Date.now()}`;
-        const panoramaUrl = await _uploadPhoto(compressed, imgKey, userId, listingKey, setSaveStatus);
+        const panoramaUrl = await _uploadPhoto(draftSpace.panoramaUri!, imgKey, userId, listingKey, setSaveStatus);
         savedSpace = {
           id: spaceIdNow, name: draftSpace.name.trim(), photos: [],
           pins: buildTourPins(draftSpace.pins), panoramaUrl, panoramaStartYaw: 0, dirMode: "panorama",

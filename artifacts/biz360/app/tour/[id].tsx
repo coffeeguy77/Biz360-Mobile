@@ -320,42 +320,40 @@ export default function TourScreen() {
         </TouchableOpacity>
         <View style={styles.tourInfo}>
           <Text style={styles.tourTitle} numberOfLines={1}>{listing?.businessName ?? "Tour"}</Text>
-          {allSpaces.length <= 1 && (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={styles.tourSpace}>{activeSpace?.name}</Text>
-              {activeSpace?.isStartScene && (
-                <View style={styles.startBadge}>
-                  <Feather name="home" size={9} color="#fff" />
-                </View>
-              )}
-            </View>
-          )}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={styles.tourSpace}>{activeSpace?.name}</Text>
+            {activeSpace?.isStartScene && (
+              <View style={styles.startBadge}>
+                <Feather name="home" size={9} color="#fff" />
+              </View>
+            )}
+          </View>
         </View>
         <TouchableOpacity style={styles.iconBtn} onPress={() => setShowRequestSheet(true)}>
           <Feather name="help-circle" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      {/* ── Scene tabs ── */}
-      {allSpaces.length > 1 && (
-        <View style={styles.spaceTabsWrap}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.spaceTabs}>
-            {allSpaces.map((space, idx) => (
-              <TouchableOpacity
-                key={space.id}
-                style={[styles.spaceTab, { backgroundColor: idx === safeIdx ? "#2563EB" : "rgba(255,255,255,0.1)" }]}
-                onPress={() => { setActiveSpaceIdx(idx); setFocusPin(null); }}
-              >
-                {space.isStartScene && (
-                  <Feather name="home" size={9} color={idx === safeIdx ? "#fff" : "rgba(255,255,255,0.5)"} />
-                )}
-                <Text style={[styles.spaceTabText, { color: idx === safeIdx ? "#fff" : "rgba(255,255,255,0.6)" }]}>
-                  {space.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+      {/* ── Directional room nav arrows (overlaid bottom-left / bottom-right) ── */}
+      {allSpaces.length > 1 && safeIdx > 0 && (
+        <TouchableOpacity
+          style={[styles.roomNavBtn, styles.roomNavLeft, { bottom: bottomBase + 140 }]}
+          onPress={() => { setActiveSpaceIdx(safeIdx - 1); setFocusPin(null); }}
+          activeOpacity={0.8}
+        >
+          <Feather name="chevron-left" size={16} color="#fff" />
+          <Text style={styles.roomNavText} numberOfLines={1}>{allSpaces[safeIdx - 1].name}</Text>
+        </TouchableOpacity>
+      )}
+      {allSpaces.length > 1 && safeIdx < allSpaces.length - 1 && (
+        <TouchableOpacity
+          style={[styles.roomNavBtn, styles.roomNavRight, { bottom: bottomBase + 140 }]}
+          onPress={() => { setActiveSpaceIdx(safeIdx + 1); setFocusPin(null); }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.roomNavText} numberOfLines={1}>{allSpaces[safeIdx + 1].name}</Text>
+          <Feather name="chevron-right" size={16} color="#fff" />
+        </TouchableOpacity>
       )}
 
       <TourViewer
@@ -551,10 +549,10 @@ const styles = StyleSheet.create({
   tourTitle:       { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   tourSpace:       { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
   startBadge:      { backgroundColor: "#16A34A", width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  spaceTabsWrap:   { position: "absolute", top: 90, left: 0, right: 0, zIndex: 10 },
-  spaceTabs:       { paddingHorizontal: 12, gap: 8, flexDirection: "row" },
-  spaceTab:        { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
-  spaceTabText:    { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  roomNavBtn:      { position: "absolute", zIndex: 10, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.65)", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 22, maxWidth: 160, borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
+  roomNavLeft:     { left: 12 },
+  roomNavRight:    { right: 12 },
+  roomNavText:     { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold", flexShrink: 1 },
   audioBarWrap:    { position: "absolute", left: 16, right: 16, zIndex: 10 },
   audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.92)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   audioBarText:    { color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
