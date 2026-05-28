@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -113,6 +114,30 @@ const AUDIO_TRIGGERS: { val: AudioTrigger; label: string; hint: string }[] = [
 
 // ─── Upload helper ─────────────────────────────────────────────────────────────
 
+async function _uploadAudio(
+  uri: string, key: string, userId: string, listingId: string, onStatus: (s: string) => void,
+): Promise<string> {
+  if (uri.startsWith("http")) return uri;
+  const domain   = process.env.EXPO_PUBLIC_DOMAIN;
+  const apiBase  = domain ? `https://${domain}/api` : "/api";
+  onStatus("Uploading audio…");
+  const base64   = await FileSystem.readAsStringAsync(uri, { encoding: "base64" });
+  const ctrl     = new AbortController();
+  const timer    = setTimeout(() => ctrl.abort(), 120_000);
+  try {
+    const res = await fetch(`${apiBase}/biz360/audio`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, data: base64, userId, listingId }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const json = await res.json() as { url: string };
+    if (!json.url) throw new Error("No URL returned");
+    return json.url;
+  } catch (err) { clearTimeout(timer); throw err; }
+}
+
 async function _uploadPhoto(
   uri: string, key: string, userId: string, listingId: string, onStatus: (s: string) => void,
 ): Promise<string> {
@@ -166,7 +191,9 @@ export default function ToursScreen() {
   const [confirmedPlacement, setConfirmedPlacement] = useState<{ x: number; y: number } | null>(null);
   const [saving,             setSaving]             = useState(false);
   const [saveStatus,         setSaveStatus]         = useState("");
-  const [showRichPopup,      setShowRichPopup]      = useState(false);
+  const [showRichPopup,         setShowRichPopup]         = useState(false);
+  const [audioUploadingScene,   setAudioUploadingScene]   = useState(false);
+  const [audioUploadingPin,     setAudioUploadingPin]     = useState(false);
 
   const draggingPinIdRef  = useRef<string | null>(null);
   const dragPositionRef   = useRef<{ x: number; y: number } | null>(null);
@@ -342,6 +369,26 @@ export default function ToursScreen() {
     setDraftPin((p) => ({ ...p, popupContent: { ...p.popupContent, images } }));
   };
 
+  // ── Audio picker + upload ──────────────────────────────────────────────────
+
+  const pickAudio = async (target: "scene" | "pin") => {
+    const setUploading = target === "scene" ? setAudioUploadingScene : setAudioUploadingPin;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "audio/*", copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setUploading(true);
+      const key = `audio_${target}_${Date.now()}`;
+      const url = await _uploadAudio(asset.uri, key, user?.id ?? "anon", selectedId ?? "misc", () => {});
+      if (target === "scene") setDraftSpace((p) => ({ ...p, audioUrl: url }));
+      else                    setDraftPin((p)   => ({ ...p, audioUrl: url }));
+    } catch (err) {
+      Alert.alert("Upload failed", err instanceof Error ? err.message : "Could not upload audio. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // ── Space handlers ─────────────────────────────────────────────────────────
 
   const openEditSpace = (space: TourSpace) => {
@@ -501,11 +548,17 @@ export default function ToursScreen() {
       if (dp.externalUrl?.trim())     pin.externalUrl    = dp.externalUrl.trim();
       if (dp.audioUrl?.trim())        pin.audioUrl       = dp.audioUrl.trim();
       if (dp.audioTrigger)            pin.audioTrigger   = dp.audioTrigger;
-      if (dp.popupContent && (dp.popupContent.sections?.length || dp.popupContent.docLinks?.length)) {
+      const hasPopup = dp.popupContent && (
+        dp.popupContent.sections?.length ||
+        dp.popupContent.docLinks?.length ||
+        dp.popupContent.images?.some(Boolean)
+      );
+      if (hasPopup) {
         pin.popupContent = {
           ...dp.popupContent,
           heading: dp.title,
           body:    dp.description,
+          images:  (dp.popupContent!.images ?? []).filter(Boolean),
         };
       }
       return pin;
@@ -941,16 +994,34 @@ export default function ToursScreen() {
               <Text style={[styles.fieldHint, { color: colors.mutedForeground, marginBottom: 10 }]}>
                 Paste a Cloudinary or hosted MP3 URL. Buyers can play narration while viewing this scene.
               </Text>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>AUDIO URL (MP3)</Text>
-              <TextInput
-                style={[styles.nameInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
-                placeholder="https://res.cloudinary.com/…/audio.mp3"
-                placeholderTextColor={colors.mutedForeground}
-                value={draftSpace.audioUrl ?? ""}
-                onChangeText={(t) => setDraftSpace((p) => ({ ...p, audioUrl: t }))}
-                autoCapitalize="none"
-                keyboardType="url"
-              />
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>MP3 FILE</Text>
+              <View style={styles.audioPickerRow}>
+                <TextInput
+                  style={[styles.nameInput, { flex: 1, marginBottom: 0, backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                  placeholder="Paste URL or pick MP3 →"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={draftSpace.audioUrl ?? ""}
+                  onChangeText={(t) => setDraftSpace((p) => ({ ...p, audioUrl: t }))}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+                <TouchableOpacity
+                  style={[styles.audioPickBtn, { backgroundColor: "#EC4899", opacity: audioUploadingScene ? 0.7 : 1 }]}
+                  onPress={() => pickAudio("scene")}
+                  disabled={audioUploadingScene}
+                >
+                  {audioUploadingScene
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <><Feather name="upload" size={13} color="#fff" /><Text style={styles.audioPickBtnText}>Pick MP3</Text></>
+                  }
+                </TouchableOpacity>
+              </View>
+              {draftSpace.audioUrl?.trim() && (
+                <TouchableOpacity style={styles.audioRemoveBtn} onPress={() => setDraftSpace((p) => ({ ...p, audioUrl: "", audioTranscript: "" }))}>
+                  <Feather name="x" size={11} color="#EF4444" />
+                  <Text style={[styles.audioRemoveBtnText, { color: "#EF4444" }]}>Remove audio</Text>
+                </TouchableOpacity>
+              )}
               {draftSpace.audioUrl?.trim() ? (
                 <>
                   <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>TRIGGER</Text>
@@ -1230,15 +1301,33 @@ export default function ToursScreen() {
             {/* Audio hotspot */}
             {draftPin.type === "audio" && (
               <>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>AUDIO URL (MP3)</Text>
-                <TextInput
-                  style={[styles.nameInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                  placeholder="https://res.cloudinary.com/…/audio.mp3"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={draftPin.audioUrl ?? ""}
-                  onChangeText={(t) => setDraftPin((p) => ({ ...p, audioUrl: t }))}
-                  autoCapitalize="none" keyboardType="url"
-                />
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>MP3 FILE</Text>
+                <View style={styles.audioPickerRow}>
+                  <TextInput
+                    style={[styles.nameInput, { flex: 1, marginBottom: 0, backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                    placeholder="Paste URL or pick MP3 →"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={draftPin.audioUrl ?? ""}
+                    onChangeText={(t) => setDraftPin((p) => ({ ...p, audioUrl: t }))}
+                    autoCapitalize="none" keyboardType="url"
+                  />
+                  <TouchableOpacity
+                    style={[styles.audioPickBtn, { backgroundColor: "#EC4899", opacity: audioUploadingPin ? 0.7 : 1 }]}
+                    onPress={() => pickAudio("pin")}
+                    disabled={audioUploadingPin}
+                  >
+                    {audioUploadingPin
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <><Feather name="upload" size={13} color="#fff" /><Text style={styles.audioPickBtnText}>Pick MP3</Text></>
+                    }
+                  </TouchableOpacity>
+                </View>
+                {draftPin.audioUrl?.trim() && (
+                  <TouchableOpacity style={styles.audioRemoveBtn} onPress={() => setDraftPin((p) => ({ ...p, audioUrl: "" }))}>
+                    <Feather name="x" size={11} color="#EF4444" />
+                    <Text style={[styles.audioRemoveBtnText, { color: "#EF4444" }]}>Remove audio</Text>
+                  </TouchableOpacity>
+                )}
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>TRIGGER</Text>
                 <View style={styles.triggerRow}>
                   {AUDIO_TRIGGERS.map((t) => {
@@ -1502,10 +1591,15 @@ const styles = StyleSheet.create({
   photoThumb:      { width: "100%", height: "100%", borderRadius: 10 },
   photoLabel:      { fontFamily: "Inter_500Medium" },
   photoLabelUnder: { textAlign: "center", fontFamily: "Inter_600SemiBold", marginTop: 3 },
-  audioSection:    { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16, gap: 4 },
-  audioSectionHeader:{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
-  audioSectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1 },
-  audioSectionHint:  { fontSize: 11, fontFamily: "Inter_400Regular" },
+  audioSection:       { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16, gap: 4 },
+  audioSectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  audioSectionTitle:  { fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1 },
+  audioSectionHint:   { fontSize: 11, fontFamily: "Inter_400Regular" },
+  audioPickerRow:     { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  audioPickBtn:       { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12 },
+  audioPickBtnText:   { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  audioRemoveBtn:     { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 10 },
+  audioRemoveBtnText: { fontSize: 12, fontFamily: "Inter_400Regular" },
   triggerRow:      { flexDirection: "row", gap: 8, marginBottom: 12, flexWrap: "wrap" },
   triggerChip:     { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
   triggerChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
