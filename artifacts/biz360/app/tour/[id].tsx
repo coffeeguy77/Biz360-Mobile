@@ -266,6 +266,23 @@ export default function TourScreen() {
     } finally { setReqSending(false); }
   };
 
+  // ── Derived view data (must be above early returns to keep hook order stable) ─
+  const hasAudio        = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger !== "hotspot";
+  const hasAudioHotspot = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger === "hotspot";
+  const showAudioBar    = hasAudio || (hasAudioHotspot && (audioPlaying || audioLoading || audioDurMs > 0));
+  const hasTranscript   = !!(activeSpace?.audioTranscript?.trim());
+  const audioPct        = audioDurMs > 0 ? audioPosMs / audioDurMs : 0;
+
+  const infoTypes = useMemo(() => {
+    const seen  = new Set<string>();
+    const types: string[] = [];
+    for (const p of (activeSpace?.pins ?? [])) {
+      if (p.type === "navigation" || p.type === "external_link") continue;
+      if (!seen.has(p.type)) { seen.add(p.type); types.push(p.type); }
+    }
+    return types;
+  }, [activeSpace?.pins]);
+
   // ── Loading / empty states ───────────────────────────────────────────────────
   if (kvLoading && !listing) {
     return (
@@ -287,23 +304,6 @@ export default function TourScreen() {
       </View>
     );
   }
-
-  // ── Derived view data ────────────────────────────────────────────────────────
-  const hasAudio        = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger !== "hotspot";
-  const hasAudioHotspot = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger === "hotspot";
-  const showAudioBar    = hasAudio || (hasAudioHotspot && (audioPlaying || audioLoading || audioDurMs > 0));
-  const hasTranscript   = !!(activeSpace?.audioTranscript?.trim());
-  const audioPct        = audioDurMs > 0 ? audioPosMs / audioDurMs : 0;
-
-  const infoTypes = useMemo(() => {
-    const seen  = new Set<string>();
-    const types: string[] = [];
-    for (const p of (activeSpace?.pins ?? [])) {
-      if (p.type === "navigation" || p.type === "external_link") continue;
-      if (!seen.has(p.type)) { seen.add(p.type); types.push(p.type); }
-    }
-    return types;
-  }, [activeSpace?.pins]);
 
   const shownTypes  = infoTypes.slice(0, 3);
   const shownCount  = shownTypes.reduce((s, t) => s + (activeSpace?.pins ?? []).filter((p) => p.type === t).length, 0);
