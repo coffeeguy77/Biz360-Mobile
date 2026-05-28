@@ -1,4 +1,4 @@
-import { Listing, VerificationBadge } from "@/data/listings";
+import { Listing, StatSlotOption, VerificationBadge } from "@/data/listings";
 import { PendingListing } from "@/lib/adminStore";
 
 export function pendingToListing(p: PendingListing): Listing {
@@ -12,8 +12,8 @@ export function pendingToListing(p: PendingListing): Listing {
     askingPrice:         p.askingPrice         ?? 0,
     weeklyRevenue:       p.weeklyRevenue       ?? 0,
     priceDisplay:        p.priceDisplay        ?? "askingPrice",
-    stat2Display:        p.stat2Display,
-    stat3Display:        p.stat3Display,
+    stat2Display:        p.stat2Display        as StatSlotOption | undefined,
+    stat3Display:        p.stat3Display        as StatSlotOption | undefined,
     adjustedProfit:      p.adjustedProfit      ?? 0,
     rent:                p.rent                ?? 0,
     leaseExpiry:         p.leaseExpiry         ?? "",
