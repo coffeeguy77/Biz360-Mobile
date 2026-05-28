@@ -78,7 +78,7 @@ function buildSinglePanoHtml(
       type:'equirectangular', panorama:'${panoramaUrl}',
       haov:${haov}, vaov:${vaov},
       autoLoad:true, showControls:false, compass:false,
-      yaw:${startYaw}, pitch:0, hfov:Math.min(80,${haov}*0.55), minHfov:30, maxHfov:Math.min(130,${haov}),
+      yaw:${startYaw}, pitch:0, hfov:100, minHfov:40, maxHfov:140,
       mouseZoom:true, touchPanSpeedCoeffFactor:1.5, showFullscreenCtrl:false,
       hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked}};})
     });
@@ -658,12 +658,12 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled 
   }
 
   // ── Build HTML ──
-  // ALL panoramas use the flat pan viewer. Local files are passed as
-  // base64 data URIs (the only approach that works in Expo Go's sandbox).
-  // Remote https:// URLs are passed directly — no conversion needed.
+  // Panoramas (single equirectangular) → pannellum spherical viewer.
+  // Local files are converted to base64 data URIs (works in Expo Go sandbox).
+  // Remote https:// URLs passed directly. vaov=180 for full Insta360 spheres.
   let html: string;
   if (space.panoramaUrl && panoDataUri) {
-    html = buildFlatPanoHtml(panoDataUri, space.pins);
+    html = buildSinglePanoHtml(panoDataUri, space.panoramaStartYaw ?? 0, space.pins, 360, 180);
   } else {
     html = buildFlatStripHtml(photoDataUris, space.pins);
   }
