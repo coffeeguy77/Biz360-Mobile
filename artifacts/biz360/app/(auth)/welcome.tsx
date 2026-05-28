@@ -19,6 +19,7 @@ import { getPendingListings, getUsers } from "@/lib/adminStore";
 
 const ROLES: { key: UserRole; label: string; subtitle: string; icon: string }[] = [
   { key: "buyer",  label: "Buyer",  subtitle: "Browse & explore businesses for sale", icon: "search"    },
+  { key: "seller", label: "Seller", subtitle: "Manage & showcase your listing",       icon: "tag"       },
   { key: "broker", label: "Broker", subtitle: "Manage listings, leads & team",        icon: "briefcase" },
   { key: "admin",  label: "Admin",  subtitle: "Platform administration",               icon: "shield"    },
 ];
