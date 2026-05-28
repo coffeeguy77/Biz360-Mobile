@@ -209,7 +209,10 @@ export default function ToursScreen() {
       if (!user?.id) { setListingsLoading(false); return; }
       setListingsLoading(true);
       getPendingListings().then((all) => {
-        const mine = all.filter((p) => p.submittedBy === user.id);
+        // Brokers can manage tours for any approved listing; sellers see only their own
+        const mine = user.role === "broker"
+          ? all.filter((p) => p.status === "approved")
+          : all.filter((p) => p.submittedBy === user.id);
         setListings(mine);
         setListingsLoading(false);
         if (mine.length > 0) {

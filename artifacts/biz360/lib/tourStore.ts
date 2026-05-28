@@ -12,7 +12,9 @@ const tourRequestKey = (listingId: string) => `biz360_tour_requests_v1_${listing
 export async function getTourSpaces(listingId: string): Promise<TourSpace[]> {
   try {
     const v2 = await apiGet<TourSpace[]>(tourSpacesKey(listingId));
-    if (v2 && v2.length > 0) return v2;
+    // v2 !== null means the key exists (even if empty array) — treat as authoritative
+    if (v2 !== null) return v2;
+    // v2 is null → key has never been written → attempt v1 migration
     const v1 = await apiGet<TourSpace[]>(tourSpacesKeyV1(listingId));
     if (v1 && v1.length > 0) {
       await apiSet(tourSpacesKey(listingId), v1);
