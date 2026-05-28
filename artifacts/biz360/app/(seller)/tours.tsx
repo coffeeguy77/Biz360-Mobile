@@ -316,6 +316,18 @@ export default function ToursScreen() {
     if (!draftPin.title.trim()) { Alert.alert("Title required", "Please enter a title for this pin."); return; }
     const needsDesc = draftPin.type !== "navigation" && draftPin.type !== "external_link";
     if (needsDesc && !draftPin.description.trim()) { Alert.alert("Description required", "Please add a description so buyers understand this pin."); return; }
+    if (draftPin.type === "navigation" && !draftPin.targetSpaceId) {
+      Alert.alert("Destination required", "Choose which scene this navigation pin leads to."); return;
+    }
+    if (draftPin.type === "document" && !draftPin.documentUrl?.trim()) {
+      Alert.alert("Document URL required", "Paste or upload a document URL for this pin."); return;
+    }
+    if (draftPin.type === "external_link" && !draftPin.externalUrl?.trim()) {
+      Alert.alert("URL required", "Paste an external URL for this link pin."); return;
+    }
+    if (draftPin.type === "audio" && !draftPin.audioUrl?.trim()) {
+      Alert.alert("Audio required", "Pick or paste an MP3 URL for this audio pin."); return;
+    }
     if (editingPinId) {
       setDraftSpace((prev) => ({ ...prev, pins: prev.pins.map((p) => p.id === editingPinId ? draftPin : p) }));
     } else {

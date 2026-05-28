@@ -55,6 +55,7 @@ export default function TourScreen() {
 
   const listing     = DEMO_LISTINGS.find((l) => l.id === id);
   const [kvSpaces,  setKvSpaces]  = useState<TourSpace[]>([]);
+  const [kvFetched, setKvFetched] = useState(false);
   const [kvLoading, setKvLoading] = useState(true);
   const tourTrackedRef = useRef(false);
 
@@ -73,11 +74,12 @@ export default function TourScreen() {
   const [reqMessage,       setReqMessage]       = useState("");
   const [reqSending,       setReqSending]       = useState(false);
 
-  // ── Combine demo + KV spaces (KV takes precedence) ──────────────────────────
+  // ── Combine demo + KV spaces (KV takes precedence once fetched) ─────────────
+  // kvFetched=true means the KV key was read; even an empty array is authoritative
   const allSpaces: TourSpace[] = useMemo(() => {
-    if (kvSpaces.length > 0) return kvSpaces;
+    if (kvFetched) return kvSpaces;
     return listing?.tourSpaces ?? [];
-  }, [listing, kvSpaces]);
+  }, [listing, kvSpaces, kvFetched]);
 
   const resolvedStartIdx = useMemo(() => {
     if (startSpace) return Math.max(0, parseInt(startSpace, 10));
@@ -93,7 +95,8 @@ export default function TourScreen() {
   useEffect(() => {
     if (!id) return;
     getTourSpaces(id).then((spaces) => {
-      if (spaces && spaces.length > 0) setKvSpaces(spaces);
+      setKvSpaces(spaces);   // always apply — empty [] is authoritative v2 state
+      setKvFetched(true);
       setKvLoading(false);
     });
   }, [id]);
@@ -209,7 +212,7 @@ export default function TourScreen() {
       currentAudioUrlRef.current = url;
       setAudioPlaying(true);
     } catch {
-      Linking.openURL(url).catch(() => {});
+      if (/^https?:\/\//i.test(url)) Linking.openURL(url).catch(() => {});
     } finally {
       setAudioLoading(false);
     }
@@ -222,11 +225,11 @@ export default function TourScreen() {
       if (targetIdx >= 0) { setActiveSpaceIdx(targetIdx); setFocusPin(null); return; }
     }
     if (pin.type === "external_link" && pin.externalUrl) {
-      Linking.openURL(pin.externalUrl).catch(() => {});
+      if (/^https?:\/\//i.test(pin.externalUrl)) Linking.openURL(pin.externalUrl).catch(() => {});
       return;
     }
     if (pin.type === "document" && pin.documentUrl) {
-      Linking.openURL(pin.documentUrl).catch(() => {});
+      if (/^https?:\/\//i.test(pin.documentUrl)) Linking.openURL(pin.documentUrl).catch(() => {});
       return;
     }
     if (pin.type === "audio" && pin.audioUrl) {
