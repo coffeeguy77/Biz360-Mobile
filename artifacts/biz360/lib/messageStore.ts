@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiSet } from "./apiStore";
 
 const STORAGE_KEY = "biz360_threads_v3";
@@ -138,21 +138,28 @@ export function useThreadList() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    getThreads()
-      .then((t) => { if (active) { setThreads(t); setLoading(false); } })
-      .catch(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+  const load = useCallback(async () => {
+    try {
+      const t = await getThreads();
+      setThreads(t);
+      setLoading(false);
+    } catch {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   const remove = async (id: string) => {
     setThreads((prev) => prev.filter((t) => t.id !== id));
     await deleteThread(id);
   };
 
-  return { threads, loading, remove };
+  return { threads, loading, remove, refresh: load };
 }
 
 export function useThreadDetail(id: string) {

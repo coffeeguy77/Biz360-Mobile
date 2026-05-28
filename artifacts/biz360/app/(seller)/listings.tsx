@@ -11,6 +11,40 @@ import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing, savePendingListings } from "@/lib/adminStore";
 import { apiGet } from "@/lib/apiStore";
 
+function fmtStat(
+  opt: string | undefined,
+  item: PendingListing,
+  demo?: typeof DEMO_LISTINGS[0],
+): { val: string; label: string } | null {
+  switch (opt ?? "sde") {
+    case "sde": {
+      const v = demo?.adjustedProfit ?? item.adjustedProfit;
+      return v && v > 0 ? { val: `$${v.toLocaleString()}`, label: "SDE p.a." } : null;
+    }
+    case "weeklyRevenue": {
+      const v = demo?.weeklyRevenue ?? item.weeklyRevenue;
+      return v && v > 0 ? { val: `$${v.toLocaleString()}`, label: "/wk revenue" } : null;
+    }
+    case "rent": {
+      const v = demo?.rent ?? item.rent;
+      return v && v > 0 ? { val: `$${v.toLocaleString()}`, label: "/mo rent" } : null;
+    }
+    case "staffCount": {
+      const v = demo?.staffCount ?? item.staffCount;
+      return { val: String(v ?? 0), label: "staff" };
+    }
+    case "ownerHours": {
+      const v = demo?.ownerHours ?? item.ownerHours;
+      return v && v > 0 ? { val: `${v}h`, label: "owner/wk" } : null;
+    }
+    case "leaseExpiry": {
+      const v = demo?.leaseExpiry ?? item.leaseExpiry;
+      return v ? { val: v, label: "lease expiry" } : null;
+    }
+    default: return null;
+  }
+}
+
 const STATUS_CONFIG = {
   pending:  { label: "Pending Review", color: "#F59E0B", icon: "clock"       },
   approved: { label: "Active",         color: "#16A34A", icon: "check-circle" },
@@ -151,6 +185,41 @@ export default function SellerListings() {
                   {[suburb, state].filter(Boolean).join(", ")}{category ? ` · ${category}` : ""}
                 </Text>
 
+                {/* Public stats row — what buyers see in the discovery card */}
+                {(() => {
+                  const pd = item.priceDisplay ?? "askingPrice";
+                  const rawPrice = demo?.askingPrice ?? item.askingPrice;
+                  const priceLabel =
+                    pd === "poa" ? "POA" :
+                    pd === "weeklyRevenue" ? (demo?.weeklyRevenue ?? item.weeklyRevenue) ? `$${(demo?.weeklyRevenue ?? item.weeklyRevenue)!.toLocaleString()}/wk` : "TBC" :
+                    rawPrice ? formatPrice(rawPrice) : "TBC";
+                  const priceSub = pd === "poa" ? "contact seller" : pd === "weeklyRevenue" ? "revenue" : "asking price";
+                  const slot2 = fmtStat(item.stat2Display, item, demo ?? undefined);
+                  const slot3 = fmtStat(item.stat3Display, item, demo ?? undefined);
+                  return (
+                    <View style={[styles.statsRow, { borderColor: colors.border }]}>
+                      <View style={styles.statItem}>
+                        <Text style={[styles.statVal, { color: "#16A34A" }]}>{priceLabel}</Text>
+                        <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{priceSub}</Text>
+                      </View>
+                      {slot2 && <View style={[styles.statDivider, { backgroundColor: colors.border }]} />}
+                      {slot2 && (
+                        <View style={styles.statItem}>
+                          <Text style={[styles.statVal, { color: colors.foreground }]}>{slot2.val}</Text>
+                          <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{slot2.label}</Text>
+                        </View>
+                      )}
+                      {slot3 && <View style={[styles.statDivider, { backgroundColor: colors.border }]} />}
+                      {slot3 && (
+                        <View style={styles.statItem}>
+                          <Text style={[styles.statVal, { color: colors.foreground }]}>{slot3.val}</Text>
+                          <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>{slot3.label}</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
+
                 {demo && item.status === "approved" && (
                   <View style={styles.metricsRow}>
                     {[
@@ -183,51 +252,26 @@ export default function SellerListings() {
                   </View>
                 )}
 
-                {(item.status === "pending" || item.status === "rejected") && !demo && (
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: colors.primary, flex: 1 }]}
-                      onPress={() => router.push(`/create-listing?editId=${item.id}` as any)}
-                    >
-                      <Feather name="edit-2" size={13} color="#fff" />
-                      <Text style={[styles.actionBtnText, { color: "#fff" }]}>
-                        {item.status === "rejected" ? "Revise & Resubmit" : "Edit Listing"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {item.status === "approved" && (
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: colors.muted }]}
-                      onPress={() => router.push(`/listing/${item.listingId}` as any)}
-                    >
-                      <Feather name="eye" size={13} color={colors.foreground} />
-                      <Text style={[styles.actionBtnText, { color: colors.foreground }]}>View</Text>
-                    </TouchableOpacity>
-                    {demo && (
-                      <TouchableOpacity
-                        style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-                        onPress={() => router.push(`/tour/${demo.id}` as any)}
-                      >
-                        <Feather name="rotate-ccw" size={13} color="#fff" />
-                        <Text style={[styles.actionBtnText, { color: "#fff" }]}>View Tour</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.muted }]}
+                    onPress={() => router.push(`/listing/${item.listingId}` as any)}
+                  >
+                    <Feather name="eye" size={13} color={colors.foreground} />
+                    <Text style={[styles.actionBtnText, { color: colors.foreground }]}>View</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => router.push(`/create-listing?editId=${item.id}` as any)}
+                  >
+                    <Feather name="edit-2" size={13} color="#fff" />
+                    <Text style={[styles.actionBtnText, { color: "#fff" }]}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           );
 
-          if (item.status === "approved") {
-            return (
-              <TouchableOpacity onPress={() => router.push(`/listing/${item.listingId}` as any)}>
-                {cardContent}
-              </TouchableOpacity>
-            );
-          }
           return cardContent;
         }}
       />
@@ -265,4 +309,9 @@ const styles = StyleSheet.create({
   actionRow:     { flexDirection: "row", gap: 8 },
   actionBtn:     { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
   actionBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  statsRow:      { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderTopWidth: 1 },
+  statItem:      { flex: 1, alignItems: "center" },
+  statVal:       { fontSize: 14, fontFamily: "Inter_700Bold" },
+  statLbl:       { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 1 },
+  statDivider:   { width: 1, height: 24, alignSelf: "center" },
 });

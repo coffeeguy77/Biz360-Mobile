@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
-import React from "react";
+import { useFocusEffect, router } from "expo-router";
+import React, { useCallback } from "react";
 import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
@@ -84,7 +84,13 @@ export default function MessagesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { threads, loading, remove } = useThreadList();
+  const { threads, loading, remove, refresh } = useThreadList();
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   const myThreads   = threads.filter((t) => t.buyerId === user?.id);
   const totalUnread = myThreads.reduce((sum, t) => sum + (t.unreadBuyer ?? 0), 0);

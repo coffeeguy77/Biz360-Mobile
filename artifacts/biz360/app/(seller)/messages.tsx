@@ -74,16 +74,17 @@ export default function SellerMessages() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { threads, loading, remove } = useThreadList();
+  const { threads, loading, remove, refresh } = useThreadList();
   const [myListingIds, setMyListingIds] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
+      refresh();
       if (!user?.id) return;
       getPendingListings().then((all) => {
         setMyListingIds(all.filter((p) => p.submittedBy === user.id).map((p) => p.listingId));
       });
-    }, [user?.id]),
+    }, [user?.id, refresh]),
   );
 
   const myThreads    = threads.filter((t) => myListingIds.includes(t.listingId));

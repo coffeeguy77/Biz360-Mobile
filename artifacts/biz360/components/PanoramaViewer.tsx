@@ -492,9 +492,10 @@ interface Props {
   onPinPress: (pin: TourPin) => void;
   focusPin?: TourPin | null;
   onFocusPinHandled?: () => void;
+  onError?: () => void;
 }
 
-export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
+export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled, onError }: Props) {
   const webRef = useRef<WebView>(null);
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
@@ -539,12 +540,31 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled 
           encoding: "base64",
         });
         if (!cancelled) setPanoDataUri(`data:image/jpeg;base64,${base64}`);
-      } catch (e) {
+      } catch {
+        // fetch() fallback — file:// URIs can go stale but fetch may still resolve them
+        try {
+          const resp = await fetch(space.panoramaUrl!);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const dataUri = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+            if (!cancelled) setPanoDataUri(dataUri);
+            return;
+          }
+        } catch { /* fall through to error */ }
         if (!cancelled) setLoadError("Could not load panorama file.\n\nTry deleting and re-uploading the photo.");
       }
     })();
     return () => { cancelled = true; };
   }, [space.id, space.panoramaUrl]);
+
+  useEffect(() => {
+    if (loadError) onError?.();
+  }, [loadError]);
 
   useEffect(() => {
     if (space.panoramaUrl) return; // single panorama — no conversion needed
@@ -607,6 +627,7 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled 
 
   // ── Error state ──
   if (loadError) {
+    if (onError) return null;
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>{loadError}</Text>

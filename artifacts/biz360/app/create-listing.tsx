@@ -200,6 +200,10 @@ export default function CreateListing() {
     if (step < STEPS.length - 1) setStep((s) => s + 1);
   };
 
+  const skip = () => {
+    if (step < STEPS.length - 1) setStep((s) => s + 1);
+  };
+
   const back = () => setStep((s) => s - 1);
 
   const submit = async () => {
@@ -689,6 +693,11 @@ export default function CreateListing() {
             <Feather name="arrow-left" size={18} color={colors.foreground} />
           </TouchableOpacity>
         )}
+        {step > 0 && step < STEPS.length - 1 && (
+          <TouchableOpacity style={[styles.skipBtn, { borderColor: colors.border }]} onPress={skip}>
+            <Text style={[styles.skipBtnText, { color: colors.mutedForeground }]}>Skip</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={[styles.nextBtn, { backgroundColor: submitting ? colors.muted : colors.primary }]}
           onPress={step < STEPS.length - 1 ? next : submit}
@@ -762,6 +771,8 @@ const styles = StyleSheet.create({
   infoText:           { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   footer:             { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
   backStepBtn:        { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  skipBtn:            { paddingHorizontal: 16, height: 48, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  skipBtnText:        { fontSize: 14, fontFamily: "Inter_500Medium" },
   nextBtn:            { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12 },
   nextBtnText:        { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
