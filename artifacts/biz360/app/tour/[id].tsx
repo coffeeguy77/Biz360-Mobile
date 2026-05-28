@@ -1,3 +1,4 @@
+import { Audio } from "expo-av";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -40,6 +41,11 @@ const PIN_DISPLAY: Record<string, { color: string; label: string }> = {
   audio:        { color: "#EC4899", label: "Audio"      },
 };
 
+function fmtMs(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 export default function TourScreen() {
   const { id, startSpace } = useLocalSearchParams<{ id: string; startSpace?: string }>();
   const colors   = useColors();
@@ -52,19 +58,27 @@ export default function TourScreen() {
   const [kvLoading, setKvLoading] = useState(true);
   const tourTrackedRef = useRef(false);
 
-  // Request More Info sheet
-  const [showRequestSheet,  setShowRequestSheet]  = useState(false);
-  const [selectedCategory,  setSelectedCategory]  = useState<string>("");
-  const [reqMessage,        setReqMessage]        = useState("");
-  const [reqSending,        setReqSending]        = useState(false);
+  // ── Audio state ─────────────────────────────────────────────────────────────
+  const soundRef           = useRef<Audio.Sound | null>(null);
+  const [audioPlaying,     setAudioPlaying]     = useState(false);
+  const [audioPosMs,       setAudioPosMs]       = useState(0);
+  const [audioDurMs,       setAudioDurMs]       = useState(0);
+  const [audioLoading,     setAudioLoading]     = useState(false);
+  const [showTranscript,   setShowTranscript]   = useState(false);
+  const currentAudioUrlRef = useRef<string | null>(null);
 
-  // Combine demo + KV spaces (KV takes precedence if available)
+  // ── Request More Info state ──────────────────────────────────────────────────
+  const [showRequestSheet, setShowRequestSheet] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [reqMessage,       setReqMessage]       = useState("");
+  const [reqSending,       setReqSending]       = useState(false);
+
+  // ── Combine demo + KV spaces (KV takes precedence) ──────────────────────────
   const allSpaces: TourSpace[] = useMemo(() => {
     if (kvSpaces.length > 0) return kvSpaces;
     return listing?.tourSpaces ?? [];
   }, [listing, kvSpaces]);
 
-  // Determine start index: param > isStartScene > 0
   const resolvedStartIdx = useMemo(() => {
     if (startSpace) return Math.max(0, parseInt(startSpace, 10));
     const idx = allSpaces.findIndex((s) => s.isStartScene);
@@ -75,7 +89,7 @@ export default function TourScreen() {
   const [activePin,      setActivePin]      = useState<TourPin | null>(null);
   const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
 
-  // Load KV spaces
+  // ── Load KV spaces ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
     getTourSpaces(id).then((spaces) => {
@@ -99,16 +113,135 @@ export default function TourScreen() {
     trackEvent(id, "tour_start", buyerId);
   }, [id, kvLoading, allSpaces.length, buyerId]);
 
+  // ── Audio cleanup on unmount ─────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      soundRef.current?.unloadAsync().catch(() => {});
+      soundRef.current = null;
+    };
+  }, []);
+
+  // ── Stop audio when scene changes ────────────────────────────────────────────
+  const prevSpaceIdxRef = useRef(activeSpaceIdx);
+  useEffect(() => {
+    if (prevSpaceIdxRef.current === activeSpaceIdx) return;
+    prevSpaceIdxRef.current = activeSpaceIdx;
+    (async () => {
+      if (!soundRef.current) return;
+      try { await soundRef.current.stopAsync(); } catch { /* ignore */ }
+      try { await soundRef.current.unloadAsync(); } catch { /* ignore */ }
+      soundRef.current = null;
+      currentAudioUrlRef.current = null;
+    })();
+    setAudioPlaying(false);
+    setAudioPosMs(0);
+    setAudioDurMs(0);
+    setAudioLoading(false);
+    setShowTranscript(false);
+  }, [activeSpaceIdx]);
+
+  const safeIdx     = Math.min(activeSpaceIdx, Math.max(0, allSpaces.length - 1));
+  const activeSpace = allSpaces[safeIdx];
+
+  // ── Auto-prompt trigger ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeSpace?.audioUrl || activeSpace.audioTrigger !== "auto_prompt") return;
+    const t = setTimeout(() => {
+      Alert.alert(
+        "🎵 Audio Narration",
+        "This space has a seller narration. Would you like to listen?",
+        [
+          { text: "Not Now", style: "cancel" },
+          { text: "Play", onPress: () => playAudio(activeSpace.audioUrl!) },
+        ],
+      );
+    }, 700);
+    return () => clearTimeout(t);
+  }, [activeSpaceIdx, activeSpace?.audioUrl]);
+
+  // ── Audio playback ───────────────────────────────────────────────────────────
+  const playAudio = async (url: string) => {
+    // Toggle pause/resume if same URL loaded
+    if (soundRef.current && currentAudioUrlRef.current === url) {
+      try {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded) {
+          if (status.isPlaying) {
+            await soundRef.current.pauseAsync();
+            setAudioPlaying(false);
+          } else {
+            await soundRef.current.playAsync();
+            setAudioPlaying(true);
+          }
+          return;
+        }
+      } catch { /* fall through to reload */ }
+    }
+
+    // Unload any previous sound
+    if (soundRef.current) {
+      try { await soundRef.current.unloadAsync(); } catch { /* ignore */ }
+      soundRef.current = null;
+    }
+
+    setAudioLoading(true);
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: url },
+        { shouldPlay: true },
+        (status) => {
+          if (!status.isLoaded) return;
+          setAudioPlaying(status.isPlaying ?? false);
+          setAudioPosMs(status.positionMillis ?? 0);
+          setAudioDurMs(status.durationMillis ?? 0);
+          if (status.didJustFinish) {
+            setAudioPlaying(false);
+            setAudioPosMs(0);
+          }
+        },
+      );
+      soundRef.current = sound;
+      currentAudioUrlRef.current = url;
+      setAudioPlaying(true);
+    } catch {
+      Linking.openURL(url).catch(() => {});
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+
+  // ── Pin press handler ────────────────────────────────────────────────────────
   const handlePinPress = (pin: TourPin) => {
     if (pin.type === "navigation" && pin.targetSpaceId) {
       const targetIdx = allSpaces.findIndex((s) => s.id === pin.targetSpaceId);
       if (targetIdx >= 0) { setActiveSpaceIdx(targetIdx); setFocusPin(null); return; }
     }
+    if (pin.type === "external_link" && pin.externalUrl) {
+      Linking.openURL(pin.externalUrl).catch(() => {});
+      return;
+    }
+    if (pin.type === "document" && pin.documentUrl) {
+      Linking.openURL(pin.documentUrl).catch(() => {});
+      return;
+    }
+    if (pin.type === "audio" && pin.audioUrl) {
+      playAudio(pin.audioUrl);
+      return;
+    }
     setActivePin(pin);
   };
 
+  // ── Request More Info ────────────────────────────────────────────────────────
   const handleSubmitRequest = async () => {
-    if (!selectedCategory) { Alert.alert("Select a category", "Please select what you'd like to know more about."); return; }
+    if (!selectedCategory) {
+      Alert.alert("Select a category", "Please select what you'd like to know more about.");
+      return;
+    }
     setReqSending(true);
     try {
       await addTourRequest({
@@ -130,6 +263,7 @@ export default function TourScreen() {
     } finally { setReqSending(false); }
   };
 
+  // ── Loading / empty states ───────────────────────────────────────────────────
   if (kvLoading && !listing) {
     return (
       <View style={[styles.center, { backgroundColor: "#071221" }]}>
@@ -142,7 +276,7 @@ export default function TourScreen() {
   if (allSpaces.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: "#071221" }]}>
-        <Feather name="rotate-ccw" size={40} color="#3B82F6" />
+        <Feather name="camera-off" size={40} color="#3B82F6" />
         <Text style={styles.noTourText}>No tour spaces yet</Text>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backText}>Go back</Text>
@@ -151,9 +285,10 @@ export default function TourScreen() {
     );
   }
 
-  const safeIdx     = Math.min(activeSpaceIdx, allSpaces.length - 1);
-  const activeSpace = allSpaces[safeIdx];
-  const hasAudio    = !!(activeSpace?.audioUrl);
+  // ── Derived view data ────────────────────────────────────────────────────────
+  const hasAudio      = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger !== "hotspot";
+  const hasTranscript = !!(activeSpace?.audioTranscript?.trim());
+  const audioPct      = audioDurMs > 0 ? audioPosMs / audioDurMs : 0;
 
   const infoTypes = useMemo(() => {
     const seen  = new Set<string>();
@@ -165,15 +300,15 @@ export default function TourScreen() {
     return types;
   }, [activeSpace?.pins]);
 
-  const shownTypes    = infoTypes.slice(0, 3);
-  const shownCount    = shownTypes.reduce((s, t) => s + (activeSpace?.pins ?? []).filter((p) => p.type === t).length, 0);
-  const extraCount    = (activeSpace?.pins.length ?? 0) - shownCount;
-  const navPinCount   = (activeSpace?.pins ?? []).filter((p) => p.type === "navigation").length;
-  const bottomBase    = insets.bottom + (Platform.OS === "web" ? 34 : 0);
+  const shownTypes  = infoTypes.slice(0, 3);
+  const shownCount  = shownTypes.reduce((s, t) => s + (activeSpace?.pins ?? []).filter((p) => p.type === t).length, 0);
+  const extraCount  = (activeSpace?.pins.length ?? 0) - shownCount;
+  const navPinCount = (activeSpace?.pins ?? []).filter((p) => p.type === "navigation").length;
+  const bottomBase  = insets.bottom + (Platform.OS === "web" ? 34 : 0);
 
   return (
     <View style={styles.container}>
-      {/* Top bar */}
+      {/* ── Top bar ── */}
       <View style={[styles.topBar, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 8 }]}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
           <Feather name="x" size={20} color="#fff" />
@@ -196,7 +331,7 @@ export default function TourScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Scene tabs */}
+      {/* ── Scene tabs ── */}
       {allSpaces.length > 1 && (
         <View style={styles.spaceTabsWrap}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.spaceTabs}>
@@ -226,24 +361,53 @@ export default function TourScreen() {
         onFocusPinHandled={() => setFocusPin(null)}
       />
 
-      {/* Audio bar */}
+      {/* ── Audio bar (button/auto_prompt triggers only) ── */}
       {hasAudio && (
-        <View style={[styles.audioBar, { bottom: bottomBase + 72 }]}>
-          <View style={styles.audioBarInner}>
+        <View style={[styles.audioBarWrap, { bottom: bottomBase + 72 }]}>
+          <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
             <Feather name="volume-2" size={14} color="#EC4899" />
-            <Text style={styles.audioBarText}>Narration available</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.audioBarText}>
+                {audioLoading
+                  ? "Loading narration…"
+                  : audioPlaying && audioDurMs > 0
+                  ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
+                  : "Seller narration"}
+              </Text>
+              {audioDurMs > 0 && (
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${Math.round(audioPct * 100)}%` as any }]} />
+                </View>
+              )}
+            </View>
+            {hasTranscript && (
+              <TouchableOpacity
+                onPress={() => setShowTranscript((v) => !v)}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              >
+                <Feather name={showTranscript ? "eye-off" : "file-text"} size={14} color="rgba(255,255,255,0.55)" />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={styles.audioPlayBtn}
-              onPress={() => Linking.openURL(activeSpace.audioUrl!).catch(() => {})}
+              style={[styles.audioPlayBtn, audioLoading && { opacity: 0.6 }]}
+              onPress={() => playAudio(activeSpace!.audioUrl!)}
+              disabled={audioLoading}
             >
-              <Feather name="play" size={11} color="#fff" />
-              <Text style={styles.audioPlayBtnText}>Play</Text>
+              <Feather name={audioLoading ? "loader" : audioPlaying ? "pause" : "play"} size={11} color="#fff" />
+              <Text style={styles.audioPlayBtnText}>
+                {audioLoading ? "…" : audioPlaying ? "Pause" : "Play"}
+              </Text>
             </TouchableOpacity>
           </View>
+          {showTranscript && hasTranscript && (
+            <View style={styles.transcriptBox}>
+              <Text style={styles.transcriptText}>{activeSpace!.audioTranscript}</Text>
+            </View>
+          )}
         </View>
       )}
 
-      {/* Bottom overlay */}
+      {/* ── Bottom overlay ── */}
       <View style={[styles.bottomOverlay, { paddingBottom: bottomBase + 8 }]}>
         <View style={styles.legendRow}>
           {shownTypes.length > 0 && (
@@ -284,7 +448,7 @@ export default function TourScreen() {
 
       <PinSheet pin={activePin} onClose={() => setActivePin(null)} />
 
-      {/* Request More Info Modal */}
+      {/* ── Request More Info modal ── */}
       <Modal
         visible={showRequestSheet}
         transparent
@@ -323,7 +487,6 @@ export default function TourScreen() {
                   );
                 })}
               </View>
-
               <Text style={[styles.noteLabel, { color: colors.mutedForeground }]}>ADD A NOTE (OPTIONAL)</Text>
               <TextInput
                 style={[styles.msgInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
@@ -335,7 +498,6 @@ export default function TourScreen() {
                 numberOfLines={3}
                 textAlignVertical="top"
               />
-
               <TouchableOpacity
                 style={[styles.sendBtn, { backgroundColor: reqSending || !selectedCategory ? colors.mutedForeground : "#3B82F6" }]}
                 onPress={handleSubmitRequest}
@@ -367,11 +529,15 @@ const styles = StyleSheet.create({
   spaceTabs:       { paddingHorizontal: 12, gap: 8, flexDirection: "row" },
   spaceTab:        { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   spaceTabText:    { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  audioBar:        { position: "absolute", left: 16, right: 16, zIndex: 10 },
-  audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.88)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: "#EC489940" },
-  audioBarText:    { flex: 1, color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
+  audioBarWrap:    { position: "absolute", left: 16, right: 16, zIndex: 10 },
+  audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.92)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
+  audioBarText:    { color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
+  progressTrack:   { height: 2, backgroundColor: "rgba(236,72,153,0.2)", borderRadius: 1, marginTop: 4, overflow: "hidden" },
+  progressFill:    { height: 2, backgroundColor: "#EC4899", borderRadius: 1 },
   audioPlayBtn:    { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#EC4899", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   audioPlayBtnText:{ color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
+  transcriptBox:   { backgroundColor: "rgba(7,18,33,0.92)", borderRadius: 12, padding: 12, marginTop: 6, borderWidth: 1, borderColor: "#EC489940" },
+  transcriptText:  { color: "rgba(255,255,255,0.75)", fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   bottomOverlay:   { position: "absolute", bottom: 60, left: 0, right: 0, zIndex: 10, paddingHorizontal: 16, gap: 8 },
   legendRow:       { flexDirection: "row", alignItems: "center", gap: 8 },
   pinLegend:       { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },

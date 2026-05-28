@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -145,6 +145,7 @@ export default function ToursScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { listingId: initListingId } = useLocalSearchParams<{ listingId?: string }>();
 
   const [listings,        setListings]        = useState<PendingListing[]>([]);
   const [listingsLoading, setListingsLoading] = useState(true);
@@ -186,6 +187,7 @@ export default function ToursScreen() {
         setListingsLoading(false);
         if (mine.length > 0) {
           setSelectedId((prev) => {
+            if (initListingId && mine.some((l) => l.listingId === initListingId)) return initListingId;
             const stillValid = prev && mine.some((l) => l.listingId === prev);
             return stillValid ? prev : mine[0].listingId;
           });
@@ -271,7 +273,7 @@ export default function ToursScreen() {
     setDraftPin(pin);
     setEditingPinId(pin.id);
     setActivePinId(pin.id);
-    setShowRichPopup(!!(pin.popupContent?.sections?.length || pin.popupContent?.docLinks?.length));
+    setShowRichPopup(!!(pin.popupContent?.sections?.length || pin.popupContent?.docLinks?.length || pin.popupContent?.images?.some(Boolean)));
     setShowPinModal(true);
   };
 
@@ -315,6 +317,29 @@ export default function ToursScreen() {
   const removeSection = (i: number) => {
     const sections = (draftPin.popupContent?.sections ?? []).filter((_, j) => j !== i);
     setDraftPin((p) => ({ ...p, popupContent: { ...p.popupContent, sections } }));
+  };
+
+  const addDocLink = () => {
+    const docLinks = [...(draftPin.popupContent?.docLinks ?? []), { label: "", url: "" }];
+    setDraftPin((p) => ({ ...p, popupContent: { ...p.popupContent, docLinks } }));
+  };
+
+  const updateDocLink = (i: number, field: "label" | "url", val: string) => {
+    const docLinks = [...(draftPin.popupContent?.docLinks ?? [])];
+    docLinks[i] = { ...docLinks[i], [field]: val };
+    setDraftPin((p) => ({ ...p, popupContent: { ...p.popupContent, docLinks } }));
+  };
+
+  const removeDocLink = (i: number) => {
+    const docLinks = (draftPin.popupContent?.docLinks ?? []).filter((_, j) => j !== i);
+    setDraftPin((p) => ({ ...p, popupContent: { ...p.popupContent, docLinks } }));
+  };
+
+  const updatePopupImage = (i: number, val: string) => {
+    const images = [...(draftPin.popupContent?.images ?? ["", "", ""])];
+    while (images.length < 3) images.push("");
+    images[i] = val;
+    setDraftPin((p) => ({ ...p, popupContent: { ...p.popupContent, images } }));
   };
 
   // ── Space handlers ─────────────────────────────────────────────────────────
@@ -1318,28 +1343,55 @@ export default function ToursScreen() {
                       <Text style={[styles.addSectionBtnText, { color: colors.primary }]}>Add Key Fact</Text>
                     </TouchableOpacity>
 
-                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 12 }]}>DOCUMENT LINK (OPTIONAL)</Text>
-                    <TextInput
-                      style={[styles.nameInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
-                      placeholder="Link label (e.g. Health Inspection Report)"
-                      placeholderTextColor={colors.mutedForeground}
-                      value={draftPin.popupContent?.docLinks?.[0]?.label ?? ""}
-                      onChangeText={(v) => setDraftPin((p) => ({
-                        ...p,
-                        popupContent: { ...p.popupContent, docLinks: [{ label: v, url: p.popupContent?.docLinks?.[0]?.url ?? "" }] },
-                      }))}
-                    />
-                    <TextInput
-                      style={[styles.nameInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
-                      placeholder="URL (https://…)"
-                      placeholderTextColor={colors.mutedForeground}
-                      value={draftPin.popupContent?.docLinks?.[0]?.url ?? ""}
-                      onChangeText={(v) => setDraftPin((p) => ({
-                        ...p,
-                        popupContent: { ...p.popupContent, docLinks: [{ label: p.popupContent?.docLinks?.[0]?.label ?? "", url: v }] },
-                      }))}
-                      autoCapitalize="none" keyboardType="url"
-                    />
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 12 }]}>POPUP IMAGES (up to 3 URLs)</Text>
+                    {[0, 1, 2].map((i) => (
+                      <TextInput
+                        key={`img-${i}`}
+                        style={[styles.nameInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                        placeholder={`Image URL ${i + 1} (https://…)`}
+                        placeholderTextColor={colors.mutedForeground}
+                        value={draftPin.popupContent?.images?.[i] ?? ""}
+                        onChangeText={(v) => updatePopupImage(i, v)}
+                        autoCapitalize="none"
+                        keyboardType="url"
+                      />
+                    ))}
+
+                    <View style={[styles.richDocHeader, { marginTop: 12 }]}>
+                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginBottom: 0 }]}>DOCUMENT LINKS</Text>
+                      <TouchableOpacity style={[styles.addSectionBtn, { borderColor: colors.primary }]} onPress={addDocLink}>
+                        <Feather name="plus" size={12} color={colors.primary} />
+                        <Text style={[styles.addSectionBtnText, { color: colors.primary }]}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {(draftPin.popupContent?.docLinks ?? []).length === 0 && (
+                      <Text style={[styles.richDocEmpty, { color: colors.mutedForeground }]}>No document links yet — tap Add to attach PDFs or reports.</Text>
+                    )}
+                    {(draftPin.popupContent?.docLinks ?? []).map((doc, i) => (
+                      <View key={`doc-${i}`} style={[styles.docLinkEditorRow, { borderColor: colors.border }]}>
+                        <View style={{ flex: 1, gap: 6 }}>
+                          <TextInput
+                            style={[styles.nameInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, marginBottom: 0 }]}
+                            placeholder="Label (e.g. Health Inspection Report)"
+                            placeholderTextColor={colors.mutedForeground}
+                            value={doc.label}
+                            onChangeText={(v) => updateDocLink(i, "label", v)}
+                          />
+                          <TextInput
+                            style={[styles.nameInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, marginBottom: 0 }]}
+                            placeholder="URL (https://…)"
+                            placeholderTextColor={colors.mutedForeground}
+                            value={doc.url}
+                            onChangeText={(v) => updateDocLink(i, "url", v)}
+                            autoCapitalize="none"
+                            keyboardType="url"
+                          />
+                        </View>
+                        <TouchableOpacity onPress={() => removeDocLink(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Feather name="trash-2" size={15} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
                   </View>
                 )}
               </>
@@ -1489,8 +1541,11 @@ const styles = StyleSheet.create({
   richSection:     { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12, gap: 4 },
   sectionEditorRow:{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   sectionInput:    { flex: 1, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_400Regular" },
-  addSectionBtn:   { flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, borderStyle: "dashed", alignSelf: "flex-start" },
+  addSectionBtn:    { flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, borderStyle: "dashed", alignSelf: "flex-start" },
   addSectionBtnText:{ fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  richDocHeader:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  richDocEmpty:     { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic", marginBottom: 8 },
+  docLinkEditorRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10 },
   visRow:          { flexDirection: "row", alignItems: "center", gap: 12, padding: 13, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
   visLabel:        { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   visHint:         { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },

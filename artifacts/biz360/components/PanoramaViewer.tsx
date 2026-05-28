@@ -14,16 +14,18 @@ const DIR_8 = ["Front","Front-Right","Right","Back-Right","Back","Back-Left","Le
 const DIR_4 = ["Front","Right","Back","Left"];
 
 const PIN_COLORS: Record<string, string> = {
-  equipment:"#F59E0B", revenue:"#16A34A", cogs:"#EF4444",
+  equipment:"#F59E0B", revenue:"#16A34A",  cogs:"#EF4444",
   workflow:"#8B5CF6",  staffing:"#3B82F6", lease:"#F97316",
   risk:"#EF4444",      opportunity:"#16A34A", narration:"#EC4899",
   inspection:"#06B6D4",highlight:"#F59E0B",   document:"#6366F1",
+  navigation:"#2563EB",external_link:"#0891B2",audio:"#EC4899",
 };
 const PIN_ICONS: Record<string, string> = {
-  equipment:"&#128296;", revenue:"&#128200;",  cogs:"&#128230;",
-  workflow:"&#128256;",  staffing:"&#128101;", lease:"&#127968;",
-  risk:"&#9888;&#65039;",opportunity:"&#11088;",narration:"&#127908;",
-  inspection:"&#128203;",highlight:"&#9889;",   document:"&#128196;",
+  equipment:"&#128296;",  revenue:"&#128200;",    cogs:"&#128230;",
+  workflow:"&#128256;",   staffing:"&#128101;",   lease:"&#127968;",
+  risk:"&#9888;&#65039;", opportunity:"&#11088;", narration:"&#127908;",
+  inspection:"&#128203;", highlight:"&#9889;",    document:"&#128196;",
+  navigation:"&#10145;",  external_link:"&#128279;", audio:"&#127925;",
 };
 
 // ─── Single equirectangular panorama (demo spaces or stitched panorama) ─────────

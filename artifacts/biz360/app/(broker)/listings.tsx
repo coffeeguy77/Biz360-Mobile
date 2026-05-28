@@ -171,12 +171,12 @@ export default function BrokerListings() {
                       <Feather name="eye" size={13} color={colors.foreground} />
                       <Text style={[styles.actionBtnText, { color: colors.foreground }]}>View</Text>
                     </TouchableOpacity>
-                    {/* Manage Tour — opens the shared tour builder */}
+                    {/* Manage Tour — opens the shared tour builder scoped to this listing */}
                     <TouchableOpacity
                       style={[styles.actionBtn, { backgroundColor: "#7C3AED" }]}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        router.push("/(seller)/tours" as any);
+                        router.push(`/(seller)/tours?listingId=${item.listingId}` as any);
                       }}
                     >
                       <Feather name="rotate-ccw" size={13} color="#fff" />

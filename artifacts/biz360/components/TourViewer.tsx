@@ -23,18 +23,21 @@ const COMPASS_LABELS_4 = ["N", "E", "S", "W"];
 const PLACEHOLDER_COLORS = ["#1A3A5C", "#142E4A", "#0F2238", "#0A1628", "#142E4A", "#1A3A5C", "#0F2238", "#0A1628"];
 
 const PIN_CFG: Record<string, { icon: string; color: string }> = {
-  equipment:   { icon: "tool",           color: "#F59E0B" },
-  revenue:     { icon: "trending-up",    color: "#16A34A" },
-  cogs:        { icon: "package",        color: "#EF4444" },
-  workflow:    { icon: "git-branch",     color: "#8B5CF6" },
-  staffing:    { icon: "users",          color: "#3B82F6" },
-  lease:       { icon: "home",           color: "#F97316" },
-  risk:        { icon: "alert-triangle", color: "#EF4444" },
-  opportunity: { icon: "star",           color: "#16A34A" },
-  narration:   { icon: "mic",            color: "#EC4899" },
-  inspection:  { icon: "clipboard",      color: "#06B6D4" },
-  highlight:   { icon: "zap",            color: "#F59E0B" },
-  document:    { icon: "file-text",      color: "#6366F1" },
+  equipment:    { icon: "tool",                color: "#F59E0B" },
+  revenue:      { icon: "trending-up",         color: "#16A34A" },
+  cogs:         { icon: "package",             color: "#EF4444" },
+  workflow:     { icon: "git-branch",          color: "#8B5CF6" },
+  staffing:     { icon: "users",               color: "#3B82F6" },
+  lease:        { icon: "home",                color: "#F97316" },
+  risk:         { icon: "alert-triangle",      color: "#EF4444" },
+  opportunity:  { icon: "star",                color: "#16A34A" },
+  narration:    { icon: "mic",                 color: "#EC4899" },
+  inspection:   { icon: "clipboard",           color: "#06B6D4" },
+  highlight:    { icon: "zap",                 color: "#F59E0B" },
+  document:     { icon: "file-text",           color: "#6366F1" },
+  navigation:   { icon: "arrow-right-circle",  color: "#2563EB" },
+  external_link:{ icon: "external-link",       color: "#0891B2" },
+  audio:        { icon: "volume-2",            color: "#EC4899" },
 };
 
 function isUri(s: string) {
@@ -223,9 +226,26 @@ function DirectionalStrip({ space, onPinPress, focusPin, onFocusPinHandled }: Pr
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         {pinsForCurrent.map((pin) => {
           const frac = (pin.position.x * N) - Math.floor(pin.position.x * N);
-          const px   = Math.max(8, Math.min(frac * SW, SW - 165));
-          const py   = 110 + pin.position.y * (SH * 0.55);
           const cfg  = PIN_CFG[pin.type] ?? { icon: "info", color: "#3B82F6" };
+
+          if (pin.type === "navigation") {
+            const px = Math.max(8, Math.min(frac * SW, SW - 150));
+            const py = 110 + pin.position.y * (SH * 0.55);
+            return (
+              <TouchableOpacity
+                key={pin.id}
+                style={[styles.navPin, { left: px, top: py, backgroundColor: cfg.color }]}
+                onPress={() => onPinPress(pin)}
+                activeOpacity={0.8}
+              >
+                <Feather name="arrow-right-circle" size={15} color="#fff" />
+                <Text style={styles.navPinLabel} numberOfLines={1}>{pin.title}</Text>
+              </TouchableOpacity>
+            );
+          }
+
+          const px = Math.max(8, Math.min(frac * SW, SW - 46));
+          const py = 110 + pin.position.y * (SH * 0.55);
           return (
             <TouchableOpacity
               key={pin.id}
@@ -366,6 +386,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
   },
   countText: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  navPin: {
+    position: "absolute",
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 22,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6, shadowRadius: 8, elevation: 10,
+    borderWidth: 2, borderColor: "rgba(255,255,255,0.45)",
+    maxWidth: 150,
+  },
+  navPinLabel: {
+    color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold",
+  },
   pin: {
     position: "absolute", width: 38, height: 38, borderRadius: 19,
     alignItems: "center", justifyContent: "center",
