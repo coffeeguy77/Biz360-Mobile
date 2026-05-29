@@ -168,6 +168,8 @@ interface DraftPin {
   // Document / External link
   documentUrl?: string;
   externalUrl?: string;
+  // Ground-mounted pin (renders near floor in panorama)
+  groundMounted?: boolean;
   // Audio / Listen hotspot
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
@@ -304,7 +306,6 @@ export default function ToursScreen() {
   const [activePinId,        setActivePinId]        = useState<string | null>(null);
   const [confirmedPlacement, setConfirmedPlacement] = useState<{ x: number; y: number } | null>(null);
   const [relocatePinId,      setRelocatePinId]      = useState<string | null>(null);
-  const [relocateStep,       setRelocateStep]       = useState<0 | 1 | 2>(0);
   const [relocatePos,        setRelocatePos]        = useState<{ x: number; y: number } | null>(null);
   const [relocateOriginal,   setRelocateOriginal]   = useState<{ x: number; y: number } | null>(null);
   const [saving,             setSaving]             = useState(false);
@@ -431,7 +432,6 @@ export default function ToursScreen() {
   const openRelocate = (pin: DraftPin) => {
     setRelocatePinId(pin.id);
     setRelocateOriginal(pin.x != null ? { x: pin.x, y: pin.y ?? 0.5 } : null);
-    setRelocateStep(0);
     setRelocatePos(null);
   };
 
@@ -445,18 +445,15 @@ export default function ToursScreen() {
     }));
     setRelocatePinId(null);
     setRelocatePos(null);
-    setRelocateStep(0);
   };
 
   const cancelRelocate = () => {
     setRelocatePinId(null);
     setRelocatePos(null);
-    setRelocateStep(0);
   };
 
   const undoRelocate = () => {
-    if (relocateStep === 2) { setRelocateStep(1); }
-    else if (relocateStep === 1) { setRelocateStep(0); setRelocatePos(null); }
+    setRelocatePos(null);
   };
 
   const copyPin = (pin: DraftPin) => {
@@ -587,6 +584,7 @@ export default function ToursScreen() {
       id: p.id, type: p.type, title: p.title, description: p.description,
       requiresNDA: p.requiresNDA ?? false, visibility: "public" as Visibility,
       x: p.position.x, y: p.position.y,
+      groundMounted:  p.groundMounted ?? false,
       targetSpaceId:  p.targetSpaceId,
       imageUrl:       p.imageUrl,
       documentUrl:    p.documentUrl,
@@ -740,6 +738,7 @@ export default function ToursScreen() {
       if (dp.imageUrl?.trim())        pin.imageUrl       = dp.imageUrl.trim();
       if (dp.documentUrl?.trim())     pin.documentUrl    = dp.documentUrl.trim();
       if (dp.externalUrl?.trim())     pin.externalUrl    = dp.externalUrl.trim();
+      if (dp.groundMounted)           pin.groundMounted  = true;
       if (dp.audioUrl?.trim())        pin.audioUrl       = dp.audioUrl.trim();
       if (dp.audioTrigger)            pin.audioTrigger   = dp.audioTrigger;
       const hasPopup = dp.popupContent && (
@@ -1410,19 +1409,8 @@ export default function ToursScreen() {
                 <View style={[styles.relocateGhost, { left: relocateOriginal.x * panoLayout.width - 14, top: relocateOriginal.y * panoLayout.height - 14 }]} />
               )}
 
-              {/* Step 1: pending position */}
-              {relocateStep === 1 && relocatePos && (
-                <View style={[styles.relocatePending, { left: relocatePos.x * panoLayout.width - 16, top: relocatePos.y * panoLayout.height - 16 }]}>
-                  {(() => {
-                    const pin = draftSpace.pins.find((p) => p.id === relocatePinId);
-                    const m   = ALL_PIN_TYPES.find((m) => m.type === pin?.type) ?? ALL_PIN_TYPES[0];
-                    return <Feather name={m.icon as any} size={12} color="#fff" />;
-                  })()}
-                </View>
-              )}
-
-              {/* Step 2: confirmed position */}
-              {relocateStep === 2 && relocatePos && (
+              {/* New position dot — shown immediately on tap */}
+              {relocatePos && (
                 <View style={[styles.pinDotOnPano, { left: relocatePos.x * panoLayout.width - 11, top: relocatePos.y * panoLayout.height - 11, width: 22, height: 22, borderRadius: 11 }]}>
                   {(() => {
                     const pin = draftSpace.pins.find((p) => p.id === relocatePinId);
@@ -1444,17 +1432,7 @@ export default function ToursScreen() {
                   const { locationX, locationY } = e.nativeEvent;
                   const nx = Math.max(0.01, Math.min(0.99, locationX / panoLayout.width));
                   const ny = Math.max(0.01, Math.min(0.99, locationY / panoLayout.height));
-                  if (relocateStep === 0) {
-                    setRelocatePos({ x: nx, y: ny });
-                    setRelocateStep(1);
-                  } else if (relocateStep === 1) {
-                    setRelocatePos({ x: nx, y: ny });
-                    setRelocateStep(2);
-                  } else {
-                    // step 2: new tap starts over
-                    setRelocatePos({ x: nx, y: ny });
-                    setRelocateStep(1);
-                  }
+                  setRelocatePos({ x: nx, y: ny });
                 }}
               />
 
@@ -1462,7 +1440,7 @@ export default function ToursScreen() {
               <View style={styles.pinPlaceTopBar}>
                 <View style={{ width: 60 }} />
                 <Text style={styles.pinPlaceTitle}>
-                  {relocateStep === 0 ? "Tap to select location" : relocateStep === 1 ? "Tap again to place" : "Location set"}
+                  {relocatePos ? "Location set — tap Save" : "Tap to place"}
                 </Text>
                 <View style={{ width: 60 }} />
               </View>
@@ -1473,17 +1451,17 @@ export default function ToursScreen() {
                   <Text style={styles.relocateCancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.relocateUndoBtn, relocateStep === 0 && { opacity: 0.35 }]}
+                  style={[styles.relocateUndoBtn, !relocatePos && { opacity: 0.35 }]}
                   onPress={undoRelocate}
-                  disabled={relocateStep === 0}
+                  disabled={!relocatePos}
                 >
                   <Feather name="rotate-ccw" size={14} color="#fff" />
                   <Text style={styles.relocateUndoText}>Undo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.relocateSaveBtn, relocateStep !== 2 && { opacity: 0.35 }]}
+                  style={[styles.relocateSaveBtn, !relocatePos && { opacity: 0.35 }]}
                   onPress={commitRelocate}
-                  disabled={relocateStep !== 2}
+                  disabled={!relocatePos}
                 >
                   <Text style={styles.relocateSaveText}>Save</Text>
                 </TouchableOpacity>
@@ -1787,6 +1765,18 @@ export default function ToursScreen() {
                     Requires NDA to view
                   </Text>
                   <Feather name={draftPin.requiresNDA ? "check-square" : "square"} size={16} color={draftPin.requiresNDA ? "#EF4444" : colors.mutedForeground} />
+                </TouchableOpacity>
+
+                {/* Ground-mounted toggle */}
+                <TouchableOpacity
+                  style={[styles.ndaToggle, { backgroundColor: draftPin.groundMounted ? "#16A34A18" : colors.card, borderColor: draftPin.groundMounted ? "#16A34A" : colors.border }]}
+                  onPress={() => setDraftPin((p) => ({ ...p, groundMounted: !p.groundMounted }))}
+                >
+                  <Feather name="map-pin" size={14} color={draftPin.groundMounted ? "#16A34A" : colors.mutedForeground} />
+                  <Text style={[styles.ndaToggleText, { color: draftPin.groundMounted ? "#16A34A" : colors.foreground }]}>
+                    Ground mounted (pin sits at floor level)
+                  </Text>
+                  <Feather name={draftPin.groundMounted ? "check-square" : "square"} size={16} color={draftPin.groundMounted ? "#16A34A" : colors.mutedForeground} />
                 </TouchableOpacity>
 
                 {/* Place on panorama */}

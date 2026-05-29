@@ -60,6 +60,8 @@ export interface TourPin {
   targetSpaceId?: string;
   // Look pin — dedicated feature photo
   imageUrl?: string;
+  // Ground-mounted pin (pin renders near floor level)
+  groundMounted?: boolean;
   // Audio / Listen hotspot
   audioUrl?: string;
   audioTrigger?: AudioTrigger;

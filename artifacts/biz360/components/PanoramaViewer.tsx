@@ -54,7 +54,7 @@ function buildSinglePanoHtml(
 ): string {
   const hotspots = pins.map((p) => ({
     id: p.id,
-    pitch: (0.5 - p.position.y) * 90,
+    pitch: p.groundMounted ? -30 : (0.5 - p.position.y) * 90,
     yaw: p.position.x * 360 - 180,
     title: p.title.split(" ").slice(0, 4).join(" "),
     color: PIN_COLORS[p.type] ?? "#3B82F6",
