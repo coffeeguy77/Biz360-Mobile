@@ -303,6 +303,10 @@ export default function ToursScreen() {
   const [editingPinId,       setEditingPinId]       = useState<string | null>(null);
   const [activePinId,        setActivePinId]        = useState<string | null>(null);
   const [confirmedPlacement, setConfirmedPlacement] = useState<{ x: number; y: number } | null>(null);
+  const [relocatePinId,      setRelocatePinId]      = useState<string | null>(null);
+  const [relocateStep,       setRelocateStep]       = useState<0 | 1 | 2>(0);
+  const [relocatePos,        setRelocatePos]        = useState<{ x: number; y: number } | null>(null);
+  const [relocateOriginal,   setRelocateOriginal]   = useState<{ x: number; y: number } | null>(null);
   const [saving,             setSaving]             = useState(false);
   const [saveStatus,         setSaveStatus]         = useState("");
   const [showRichPopup,         setShowRichPopup]         = useState(false);
@@ -422,6 +426,37 @@ export default function ToursScreen() {
     setActivePinId(pin.id);
     setShowRichPopup(!!(pin.popupContent?.sections?.length || pin.popupContent?.docLinks?.length || pin.popupContent?.images?.some(Boolean)));
     setShowPinModal(true);
+  };
+
+  const openRelocate = (pin: DraftPin) => {
+    setRelocatePinId(pin.id);
+    setRelocateOriginal(pin.x != null ? { x: pin.x, y: pin.y ?? 0.5 } : null);
+    setRelocateStep(0);
+    setRelocatePos(null);
+  };
+
+  const commitRelocate = () => {
+    if (!relocatePinId || !relocatePos) return;
+    setDraftSpace((prev) => ({
+      ...prev,
+      pins: prev.pins.map((p) =>
+        p.id === relocatePinId ? { ...p, x: relocatePos.x, y: relocatePos.y } : p,
+      ),
+    }));
+    setRelocatePinId(null);
+    setRelocatePos(null);
+    setRelocateStep(0);
+  };
+
+  const cancelRelocate = () => {
+    setRelocatePinId(null);
+    setRelocatePos(null);
+    setRelocateStep(0);
+  };
+
+  const undoRelocate = () => {
+    if (relocateStep === 2) { setRelocateStep(1); }
+    else if (relocateStep === 1) { setRelocateStep(0); setRelocatePos(null); }
   };
 
   const copyPin = (pin: DraftPin) => {
@@ -1111,12 +1146,6 @@ export default function ToursScreen() {
                           : "Panorama ready"}
                       </Text>
                     </View>
-                    {draftSpace.pins.some((p) => p.x != null) && (
-                      <View style={styles.dragHint}>
-                        <Feather name="move" size={9} color="rgba(255,255,255,0.75)" />
-                        <Text style={styles.dragHintText}>Drag pins to reposition</Text>
-                      </View>
-                    )}
                   </View>
                 ) : (
                   <TouchableOpacity style={[styles.panoUploadSlot, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={pickPanorama}>
@@ -1278,6 +1307,11 @@ export default function ToursScreen() {
                     <TouchableOpacity onPress={() => openEditPin(pin)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Feather name="edit-2" size={14} color={colors.primary} />
                     </TouchableOpacity>
+                    {draftSpace.panoramaUri && (
+                      <TouchableOpacity onPress={() => openRelocate(pin)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Feather name="map-pin" size={14} color="#16A34A" />
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity onPress={() => copyPin(pin)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Feather name="copy" size={14} color={colors.mutedForeground} />
                     </TouchableOpacity>
@@ -1362,6 +1396,110 @@ export default function ToursScreen() {
                     <Text style={styles.pinPlaceConfirmText}>Done</Text>
                   </TouchableOpacity>
                 )}
+              </View>
+            </View>
+          )}
+
+          {/* ── Relocate pin full-screen overlay ── */}
+          {relocatePinId != null && draftSpace.panoramaUri && (
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: "#000", zIndex: 250 }]}
+              onLayout={(e) => setPanoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+            >
+              <Image source={{ uri: draftSpace.panoramaUri }} style={StyleSheet.absoluteFill} resizeMode="stretch" />
+
+              {/* All other pins as dim dots */}
+              {draftSpace.pins.filter((p) => p.x != null && p.id !== relocatePinId).map((p) => {
+                const m = ALL_PIN_TYPES.find((m) => m.type === p.type) ?? ALL_PIN_TYPES[0];
+                return (
+                  <View key={p.id} style={[styles.pinDotOnPano, { left: p.x! * panoLayout.width - 8, top: (p.y ?? 0.5) * panoLayout.height - 8, backgroundColor: m.color, opacity: 0.4 }]}>
+                    <Feather name={m.icon as any} size={8} color="#fff" />
+                  </View>
+                );
+              })}
+
+              {/* Original position — ghost ring */}
+              {relocateOriginal && (
+                <View style={[styles.relocateGhost, { left: relocateOriginal.x * panoLayout.width - 14, top: relocateOriginal.y * panoLayout.height - 14 }]} />
+              )}
+
+              {/* Step 1: pending position */}
+              {relocateStep === 1 && relocatePos && (
+                <View style={[styles.relocatePending, { left: relocatePos.x * panoLayout.width - 16, top: relocatePos.y * panoLayout.height - 16 }]}>
+                  {(() => {
+                    const pin = draftSpace.pins.find((p) => p.id === relocatePinId);
+                    const m   = ALL_PIN_TYPES.find((m) => m.type === pin?.type) ?? ALL_PIN_TYPES[0];
+                    return <Feather name={m.icon as any} size={12} color="#fff" />;
+                  })()}
+                </View>
+              )}
+
+              {/* Step 2: confirmed position */}
+              {relocateStep === 2 && relocatePos && (
+                <View style={[styles.pinDotOnPano, { left: relocatePos.x * panoLayout.width - 11, top: relocatePos.y * panoLayout.height - 11, width: 22, height: 22, borderRadius: 11 }]}>
+                  {(() => {
+                    const pin = draftSpace.pins.find((p) => p.id === relocatePinId);
+                    const m   = ALL_PIN_TYPES.find((m) => m.type === pin?.type) ?? ALL_PIN_TYPES[0];
+                    return (
+                      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: m.color, alignItems: "center", justifyContent: "center" }}>
+                        <Feather name={m.icon as any} size={10} color="#fff" />
+                      </View>
+                    );
+                  })()}
+                </View>
+              )}
+
+              {/* Tap catcher */}
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                activeOpacity={1}
+                onPress={(e) => {
+                  const { locationX, locationY } = e.nativeEvent;
+                  const nx = Math.max(0.01, Math.min(0.99, locationX / panoLayout.width));
+                  const ny = Math.max(0.01, Math.min(0.99, locationY / panoLayout.height));
+                  if (relocateStep === 0) {
+                    setRelocatePos({ x: nx, y: ny });
+                    setRelocateStep(1);
+                  } else if (relocateStep === 1) {
+                    setRelocatePos({ x: nx, y: ny });
+                    setRelocateStep(2);
+                  } else {
+                    // step 2: new tap starts over
+                    setRelocatePos({ x: nx, y: ny });
+                    setRelocateStep(1);
+                  }
+                }}
+              />
+
+              {/* Top bar */}
+              <View style={styles.pinPlaceTopBar}>
+                <View style={{ width: 60 }} />
+                <Text style={styles.pinPlaceTitle}>
+                  {relocateStep === 0 ? "Tap to select location" : relocateStep === 1 ? "Tap again to place" : "Location set"}
+                </Text>
+                <View style={{ width: 60 }} />
+              </View>
+
+              {/* Bottom action bar */}
+              <View style={styles.relocateBottomBar}>
+                <TouchableOpacity style={styles.relocateCancelBtn} onPress={cancelRelocate}>
+                  <Text style={styles.relocateCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.relocateUndoBtn, relocateStep === 0 && { opacity: 0.35 }]}
+                  onPress={undoRelocate}
+                  disabled={relocateStep === 0}
+                >
+                  <Feather name="rotate-ccw" size={14} color="#fff" />
+                  <Text style={styles.relocateUndoText}>Undo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.relocateSaveBtn, relocateStep !== 2 && { opacity: 0.35 }]}
+                  onPress={commitRelocate}
+                  disabled={relocateStep !== 2}
+                >
+                  <Text style={styles.relocateSaveText}>Save</Text>
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -1907,6 +2045,15 @@ const styles = StyleSheet.create({
   pinPlaceTitle:   { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   pinPlaceConfirm: { backgroundColor: "#3B82F6", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
   pinPlaceConfirmText:{ color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
+  relocateGhost:      { position: "absolute", width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: "rgba(255,255,255,0.45)", zIndex: 5 },
+  relocatePending:    { position: "absolute", width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(22,163,74,0.55)", borderWidth: 2, borderColor: "#16A34A", alignItems: "center", justifyContent: "center", zIndex: 6 },
+  relocateBottomBar:  { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 20, paddingBottom: 44, backgroundColor: "rgba(0,0,0,0.65)", gap: 12 },
+  relocateCancelBtn:  { flex: 1, alignItems: "center", paddingVertical: 13, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
+  relocateCancelText: { color: "rgba(255,255,255,0.8)", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  relocateUndoBtn:    { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
+  relocateUndoText:   { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  relocateSaveBtn:    { flex: 1, alignItems: "center", paddingVertical: 13, borderRadius: 14, backgroundColor: "#16A34A" },
+  relocateSaveText:   { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
   typeGrid:        { flexDirection: "row", gap: 8, paddingRight: 16 },
   typeChip:        { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
   typeChipLg:      { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1.5 },
