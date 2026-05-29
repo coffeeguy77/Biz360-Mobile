@@ -35,8 +35,6 @@ const MINI_PANO_H = 100;
 const DIRS_4 = ["Front", "Right", "Back", "Left"] as const;
 const DIRS_8 = ["Front", "Front-Right", "Right", "Back-Right", "Back", "Back-Left", "Left", "Front-Left"] as const;
 
-const NAV_360_ICON = require("../../assets/nav-360-icon.png");
-
 function PulsingNavDot({ size, active }: { size: number; active: boolean }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -81,7 +79,7 @@ function PulsingNavDot({ size, active }: { size: number; active: boolean }) {
 
 const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color: string; image?: any }[] = [
   // ── Primary navigation pins ──
-  { type: "navigation",   label: "Navigation",    icon: "arrow-right-circle", color: "#2563EB", image: NAV_360_ICON },
+  { type: "navigation",   label: "Navigation",    icon: "arrow-right-circle", color: "#2563EB" },
   { type: "look",         label: "Look",          icon: "eye",                color: "#0EA5E9" },
   // ── Info pins ──
   { type: "equipment",    label: "Equipment",     icon: "tool",               color: "#F59E0B" },
@@ -1246,10 +1244,19 @@ export default function ToursScreen() {
                 );
               })}
               {draftPin.x != null && (
-                <View style={[styles.pinDotOnPano, { left: draftPin.x * panoLayout.width - 10, top: (draftPin.y ?? 0.5) * panoLayout.height - 10, width: 20, height: 20, borderRadius: 10, backgroundColor: selectedPinMeta.color }]}>
-                  {selectedPinMeta.image
-                    ? <Image source={selectedPinMeta.image} style={{ width: 10, height: 10 }} tintColor="#fff" />
-                    : <Feather name={selectedPinMeta.icon as any} size={10} color="#fff" />
+                <View style={[styles.pinDotOnPano, {
+                  left: draftPin.x * panoLayout.width - 11,
+                  top: (draftPin.y ?? 0.5) * panoLayout.height - 11,
+                  width: 22, height: 22,
+                  backgroundColor: "transparent",
+                }]}>
+                  {draftPin.type === "navigation"
+                    ? <PulsingNavDot size={22} active />
+                    : (
+                      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: selectedPinMeta.color, alignItems: "center", justifyContent: "center" }}>
+                        <Feather name={selectedPinMeta.icon as any} size={10} color="#fff" />
+                      </View>
+                    )
                   }
                 </View>
               )}
