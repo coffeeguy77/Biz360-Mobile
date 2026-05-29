@@ -26,6 +26,25 @@ import { useAuth } from "@/context/AuthContext";
 import { getTourSpaces, getTourSettings, addTourRequest, REQUEST_CATEGORIES } from "@/lib/tourStore";
 import { DEFAULT_TOUR_SETTINGS, TourSettings } from "@/data/listings";
 
+const PIN_LEGEND: Record<string, { feather: string; color: string; label: string; desc: string }> = {
+  navigation:   { feather: "arrow-right-circle", color: "#2563EB", label: "Navigate",   desc: "Move to another room or area of the business" },
+  audio:        { feather: "volume-2",           color: "#EC4899", label: "Audio",      desc: "Tap to play the seller's narration for this spot" },
+  look:         { feather: "eye",                color: "#0EA5E9", label: "Look",        desc: "Zoom in to this area for a closer view" },
+  equipment:    { feather: "tool",               color: "#F59E0B", label: "Equipment",  desc: "Details about machinery, fixtures, or tools here" },
+  revenue:      { feather: "trending-up",        color: "#16A34A", label: "Revenue",    desc: "Revenue streams or income generated from this area" },
+  cogs:         { feather: "package",            color: "#EF4444", label: "COGS",       desc: "Cost of goods, supplies, or raw materials" },
+  workflow:     { feather: "git-branch",         color: "#8B5CF6", label: "Workflow",   desc: "How work flows through this part of the business" },
+  staffing:     { feather: "users",              color: "#3B82F6", label: "Staffing",   desc: "Staff roles, headcount, or responsibilities here" },
+  lease:        { feather: "home",               color: "#F97316", label: "Lease",      desc: "Lease terms, rent, or property information" },
+  risk:         { feather: "alert-triangle",     color: "#EF4444", label: "Risk",       desc: "Potential risk or issue to be aware of" },
+  opportunity:  { feather: "star",               color: "#16A34A", label: "Opportunity",desc: "Growth opportunity or underutilised potential" },
+  highlight:    { feather: "zap",                color: "#F59E0B", label: "Highlight",  desc: "Key selling point or standout feature" },
+  document:     { feather: "file-text",          color: "#6366F1", label: "Document",   desc: "View a document, report, or certification" },
+  inspection:   { feather: "clipboard",          color: "#06B6D4", label: "Inspection", desc: "Inspection record or compliance note" },
+  external_link:{ feather: "external-link",      color: "#0891B2", label: "Link",       desc: "Opens an external website or resource" },
+  narration:    { feather: "mic",                color: "#EC4899", label: "Narration",  desc: "Seller voice note about this area" },
+};
+
 const PIN_DISPLAY: Record<string, { color: string; label: string }> = {
   navigation:   { color: "#2563EB", label: "Navigate"   },
   look:         { color: "#0EA5E9", label: "Look"       },
@@ -169,6 +188,7 @@ export default function TourScreen() {
   const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
   const [showRoomNav,       setShowRoomNav]       = useState(false);
   const [showAudioOnboarding, setShowAudioOnboarding] = useState(false);
+  const [showTourGuide,     setShowTourGuide]     = useState(false);
   const arrowAnim = useRef(new Animated.Value(0)).current;
 
   // ── Tour settings ────────────────────────────────────────────────────────────
@@ -376,6 +396,21 @@ export default function TourScreen() {
     return types;
   }, [activeSpace?.pins]);
 
+  const tourLegend = useMemo(() => {
+    const seen = new Set<string>();
+    const items: Array<{ type: string; feather: string; color: string; label: string; desc: string }> = [];
+    for (const space of allSpaces) {
+      for (const pin of (space.pins ?? [])) {
+        if (!seen.has(pin.type)) {
+          seen.add(pin.type);
+          const cfg = PIN_LEGEND[pin.type];
+          if (cfg) items.push({ type: pin.type, ...cfg });
+        }
+      }
+    }
+    return items;
+  }, [allSpaces]);
+
   // ── Loading / empty states ───────────────────────────────────────────────────
   if (kvLoading && !listing) {
     return (
@@ -433,7 +468,7 @@ export default function TourScreen() {
               <Text style={[styles.navPillText, { color: showRoomNav ? "#fff" : "rgba(255,255,255,0.5)" }]}>NAV</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setShowRequestSheet(true)}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => setShowTourGuide(true)}>
             <Feather name="help-circle" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -594,6 +629,81 @@ export default function TourScreen() {
 
       <PinSheet pin={activePin} onClose={() => setActivePin(null)} />
 
+      {/* ── Tour Guide sheet ── */}
+      <Modal
+        visible={showTourGuide}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTourGuide(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowTourGuide(false)} />
+          <View style={[styles.guideSheet, { backgroundColor: colors.card }]}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetTitleRow}>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Tour Guide</Text>
+              <TouchableOpacity onPress={() => setShowTourGuide(false)}>
+                <Feather name="x" size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              {/* ── How to navigate ── */}
+              <Text style={[styles.guideSectionTitle, { color: colors.foreground }]}>How to navigate</Text>
+              {[
+                { icon: "move",             hint: "Drag or swipe to look around in 360°" },
+                { icon: "mouse-pointer",    hint: "Tap any coloured pin to view its details" },
+                ...(allSpaces.length > 1 ? [
+                  { icon: "chevrons-right", hint: "Use the ← → arrows to walk between rooms" },
+                  { icon: "map",            hint: "Tap NAV (top right) to see all rooms at once" },
+                ] : []),
+              ].map(({ icon, hint }) => (
+                <View key={hint} style={styles.guideNavRow}>
+                  <View style={[styles.guideNavIcon, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "40" }]}>
+                    <Feather name={icon as any} size={15} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.guideNavHint, { color: colors.foreground }]}>{hint}</Text>
+                </View>
+              ))}
+
+              {/* ── Icon legend ── */}
+              {tourLegend.length > 0 && (
+                <>
+                  <View style={[styles.guideDivider, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.guideSectionTitle, { color: colors.foreground }]}>
+                    Icons in this tour
+                  </Text>
+                  <Text style={[styles.guideSectionHint, { color: colors.mutedForeground }]}>
+                    Tap any coloured circle in the tour to open it
+                  </Text>
+                  {tourLegend.map(({ type, feather, color, label, desc }) => (
+                    <View key={type} style={[styles.guideLegendRow, { borderBottomColor: colors.border }]}>
+                      <View style={[styles.guideLegendIcon, { backgroundColor: color + "20", borderColor: color + "50" }]}>
+                        <Feather name={feather as any} size={16} color={color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.guideLegendLabel, { color: colors.foreground }]}>{label}</Text>
+                        <Text style={[styles.guideLegendDesc, { color: colors.mutedForeground }]}>{desc}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {/* ── Request more info ── */}
+              <View style={[styles.guideDivider, { backgroundColor: colors.border }]} />
+              <TouchableOpacity
+                style={[styles.guideRequestBtn, { backgroundColor: colors.primary }]}
+                onPress={() => { setShowTourGuide(false); setTimeout(() => setShowRequestSheet(true), 300); }}
+              >
+                <Feather name="send" size={15} color="#fff" />
+                <Text style={styles.guideRequestBtnText}>Request Info from Seller</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* ── Request More Info modal ── */}
       <Modal
         visible={showRequestSheet}
@@ -705,6 +815,19 @@ const styles = StyleSheet.create({
   navHint:         { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, alignSelf: "flex-start" },
   navHintText:     { color: "rgba(255,255,255,0.6)", fontSize: 11, fontFamily: "Inter_400Regular" },
   modalOverlay:    { flex: 1, justifyContent: "flex-end" },
+  guideSheet:      { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 0, maxHeight: "88%" },
+  guideSectionTitle:  { fontSize: 13, fontFamily: "Inter_700Bold", letterSpacing: 0.4, marginBottom: 10, marginTop: 4 },
+  guideSectionHint:   { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 12, marginTop: -6, lineHeight: 17 },
+  guideDivider:       { height: 1, marginVertical: 18 },
+  guideNavRow:        { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+  guideNavIcon:       { width: 34, height: 34, borderRadius: 17, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  guideNavHint:       { fontSize: 14, fontFamily: "Inter_400Regular", flex: 1, lineHeight: 19 },
+  guideLegendRow:     { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  guideLegendIcon:    { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  guideLegendLabel:   { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  guideLegendDesc:    { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  guideRequestBtn:    { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14, marginTop: 4 },
+  guideRequestBtnText:{ color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   requestSheet:    { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, maxHeight: "82%" },
   sheetHandle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ccc", alignSelf: "center", marginBottom: 16 },
   sheetTitleRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
