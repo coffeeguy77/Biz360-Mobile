@@ -77,10 +77,10 @@ function buildSinglePanoHtml(
     .pnlm-load-box p{color:#fff!important}
     .pnlm-lbar{background:#3B82F6!important}
     .pnlm-lbar-fill{background:#60A5FA!important}
-    @keyframes navRipple{0%{transform:scale(0.25);opacity:1}100%{transform:scale(4);opacity:0}}
-    .nav-ring{position:absolute;width:26px;height:26px;border-radius:50%;background:rgba(37,99,235,0.55);top:50%;left:50%;margin:-13px 0 0 -13px;animation:navRipple 2s ease-out infinite;pointer-events:none}
-    .nr2{animation-delay:.67s}.nr3{animation-delay:1.33s}
-    .nav-core{width:28px;height:28px;border-radius:50%;background:#2563EB;border:2.5px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;position:relative;z-index:2;box-shadow:0 2px 10px rgba(0,0,0,0.65);flex-shrink:0}
+    @keyframes navRipple{0%{transform:scale(0.2);opacity:0.9}100%{transform:scale(4.5);opacity:0}}
+    .nav-ring{position:absolute;width:22px;height:22px;border-radius:50%;background:transparent;border:2.5px solid rgba(59,130,246,0.9);top:50%;left:50%;margin:-11px 0 0 -11px;animation:navRipple 2.2s ease-out infinite;pointer-events:none}
+    .nr2{animation-delay:.73s}.nr3{animation-delay:1.46s}
+    .nav-core{width:10px;height:10px;border-radius:50%;background:#3B82F6;position:relative;z-index:2;box-shadow:0 0 8px 3px rgba(59,130,246,0.7)}
   </style>
 </head><body>
   <div id="pano"></div>
@@ -106,7 +106,7 @@ function buildSinglePanoHtml(
         container.style.marginLeft = '-26px';
         container.style.marginTop = '-26px';
         container.style.overflow = 'visible';
-        container.innerHTML = '<div class="nav-ring"></div><div class="nav-ring nr2"></div><div class="nav-ring nr3"></div><div class="nav-core">\u21BA</div>';
+        container.innerHTML = '<div class="nav-ring"></div><div class="nav-ring nr2"></div><div class="nav-ring nr3"></div><div class="nav-core"></div>';
       } else {
         /* Standard info/look/etc pin: solid circle with emoji icon */
         container.style.background = args.color;

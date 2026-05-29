@@ -50,33 +50,31 @@ function PulsingNavDot({ size, active }: { size: number; active: boolean }) {
     loop.start();
     return () => loop.stop();
   }, [anim]);
-  const ringScale   = anim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 2.8] });
-  const ringOpacity = anim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.85, 0.3, 0] });
-  const coreSize = size * 0.75;
+  const ringScale   = anim.interpolate({ inputRange: [0, 1], outputRange: [0.2, 4.5] });
+  const ringOpacity = anim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.9, 0.25, 0] });
+  const dotSize = Math.max(6, size * 0.32);
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      {/* Ring: border-only (transparent fill), expands outward and fades */}
       <Animated.View
         style={{
           position: "absolute",
-          width: size, height: size,
-          borderRadius: size / 2,
-          backgroundColor: "#2563EB",
+          width: size * 0.55, height: size * 0.55,
+          borderRadius: size * 0.275,
+          backgroundColor: "transparent",
+          borderWidth: 2,
+          borderColor: "rgba(59,130,246,0.9)",
           transform: [{ scale: ringScale }],
           opacity: ringOpacity,
         }}
       />
+      {/* Core: small solid dot, no icon */}
       <View style={{
-        width: coreSize, height: coreSize, borderRadius: coreSize / 2,
-        backgroundColor: "#2563EB",
-        alignItems: "center", justifyContent: "center",
-        borderWidth: 1.5, borderColor: "rgba(255,255,255,0.88)",
-      }}>
-        <Image
-          source={NAV_360_ICON}
-          style={{ width: coreSize * 0.52, height: coreSize * 0.52 }}
-          tintColor="#fff"
-        />
-      </View>
+        width: dotSize, height: dotSize, borderRadius: dotSize / 2,
+        backgroundColor: "#3B82F6",
+        shadowColor: "#3B82F6", shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.9, shadowRadius: 4, elevation: 4,
+      }} />
     </View>
   );
 }
