@@ -91,6 +91,7 @@ export default function TourScreen() {
   const [activeSpaceIdx, setActiveSpaceIdx] = useState(resolvedStartIdx);
   const [activePin,      setActivePin]      = useState<TourPin | null>(null);
   const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
+  const [showRoomNav,    setShowRoomNav]    = useState(true);
 
   // ── Load KV spaces ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -330,13 +331,24 @@ export default function TourScreen() {
             )}
           </View>
         </View>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => setShowRequestSheet(true)}>
-          <Feather name="help-circle" size={18} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {allSpaces.length > 1 && (
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: showRoomNav ? "rgba(59,130,246,0.3)" : "rgba(0,0,0,0.4)" }]}
+              onPress={() => setShowRoomNav((v) => !v)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Feather name="navigation" size={16} color={showRoomNav ? "#60A5FA" : "rgba(255,255,255,0.45)"} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.iconBtn} onPress={() => setShowRequestSheet(true)}>
+            <Feather name="help-circle" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Directional room nav arrows (overlaid bottom-left / bottom-right) ── */}
-      {allSpaces.length > 1 && safeIdx > 0 && (
+      {showRoomNav && allSpaces.length > 1 && safeIdx > 0 && (
         <TouchableOpacity
           style={[styles.roomNavBtn, styles.roomNavLeft, { bottom: bottomBase + 140 }]}
           onPress={() => { setActiveSpaceIdx(safeIdx - 1); setFocusPin(null); }}
@@ -346,7 +358,7 @@ export default function TourScreen() {
           <Text style={styles.roomNavText} numberOfLines={1}>{allSpaces[safeIdx - 1].name}</Text>
         </TouchableOpacity>
       )}
-      {allSpaces.length > 1 && safeIdx < allSpaces.length - 1 && (
+      {showRoomNav && allSpaces.length > 1 && safeIdx < allSpaces.length - 1 && (
         <TouchableOpacity
           style={[styles.roomNavBtn, styles.roomNavRight, { bottom: bottomBase + 140 }]}
           onPress={() => { setActiveSpaceIdx(safeIdx + 1); setFocusPin(null); }}
@@ -463,7 +475,7 @@ export default function TourScreen() {
             <Text style={styles.requestBtnText}>Request Info</Text>
           </TouchableOpacity>
         </View>
-        {navPinCount > 0 && (
+        {showRoomNav && navPinCount > 0 && (
           <View style={styles.navHint}>
             <Feather name="arrow-right-circle" size={11} color="#3B82F6" />
             <Text style={styles.navHintText}>Tap arrows to navigate between spaces</Text>
