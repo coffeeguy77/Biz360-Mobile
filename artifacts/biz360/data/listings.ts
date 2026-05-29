@@ -79,7 +79,7 @@ export interface TourSpace {
   panoramaUrl?: string;
   panoramaStartYaw?: number;
   pins: TourPin[];
-  dirMode?: 4 | 8 | "panorama";
+  dirMode?: 4 | 8 | "panorama" | "single";
   // Scene-level audio narration
   audioUrl?: string;
   audioTrigger?: AudioTrigger;

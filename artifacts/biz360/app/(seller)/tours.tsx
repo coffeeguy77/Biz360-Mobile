@@ -177,7 +177,7 @@ interface DraftPin {
 
 interface DraftSpace {
   name: string;
-  dirMode: 4 | 8 | "panorama";
+  dirMode: 4 | 8 | "panorama" | "single";
   photos: Record<string, string>;
   panoramaUri?: string;
   pins: DraftPin[];
@@ -190,7 +190,7 @@ interface DraftSpace {
 }
 
 const EMPTY_SPACE: DraftSpace = {
-  name: "", dirMode: 4, photos: {}, pins: [],
+  name: "", dirMode: "panorama", photos: {}, pins: [],
   audioUrl: "", audioTrigger: "button", audioTranscript: "", isStartScene: false,
 };
 const EMPTY_PIN: DraftPin = { id: "", type: "navigation", title: "", description: "", requiresNDA: false, visibility: "public" };
@@ -416,7 +416,7 @@ export default function ToursScreen() {
     setDraftPin(newPin);
     setEditingPinId(null);
     setShowRichPopup(false);
-    if (draftSpace.dirMode === "panorama" && draftSpace.panoramaUri) { setPinPlaceMode(true); }
+    if ((draftSpace.dirMode === "panorama" || draftSpace.dirMode === "single") && draftSpace.panoramaUri) { setPinPlaceMode(true); }
     else { setShowPinModal(true); }
   };
 
@@ -579,10 +579,10 @@ export default function ToursScreen() {
   // ── Space handlers ─────────────────────────────────────────────────────────
 
   const openEditSpace = (space: TourSpace) => {
-    const dirMode: 4 | 8 | "panorama" = space.dirMode ?? (space.panoramaUrl ? "panorama" : space.photos.length > 4 ? 8 : 4);
+    const dirMode: 4 | 8 | "panorama" | "single" = space.dirMode ?? (space.panoramaUrl ? "panorama" : space.photos.length > 4 ? 8 : 4);
     const dirs = dirMode === 8 ? DIRS_8 : dirMode === 4 ? DIRS_4 : [];
     const photos: Record<string, string> = {};
-    if (dirMode !== "panorama") { dirs.forEach((dir, i) => { if (space.photos[i]) photos[dir] = space.photos[i]; }); }
+    if (dirMode !== "panorama" && dirMode !== "single") { dirs.forEach((dir, i) => { if (space.photos[i]) photos[dir] = space.photos[i]; }); }
     const draftPins: DraftPin[] = space.pins.map((p) => ({
       id: p.id, type: p.type, title: p.title, description: p.description,
       requiresNDA: p.requiresNDA ?? false, visibility: "public" as Visibility,
@@ -652,8 +652,8 @@ export default function ToursScreen() {
 
   const handleSaveSpace = async () => {
     if (!draftSpace.name.trim()) { Alert.alert("Name required", "Please enter a name for this tour space."); return; }
-    if (draftSpace.dirMode === "panorama") {
-      if (!draftSpace.panoramaUri) { Alert.alert("Photo required", "Please choose a panorama photo before saving."); return; }
+    if (draftSpace.dirMode === "panorama" || draftSpace.dirMode === "single") {
+      if (!draftSpace.panoramaUri) { Alert.alert("Photo required", "Please choose a photo before saving."); return; }
     } else {
       if (Object.keys(draftSpace.photos).length === 0) { Alert.alert("Photos required", `Please add at least 1 directional photo before saving.`); return; }
     }
@@ -673,14 +673,13 @@ export default function ToursScreen() {
 
     try {
       let savedSpace: TourSpace;
-      if (draftSpace.dirMode === "panorama") {
-        // Already compressed at pick time — upload directly
-        setSaveStatus("Uploading panorama…");
+      if (draftSpace.dirMode === "panorama" || draftSpace.dirMode === "single") {
+        setSaveStatus(draftSpace.dirMode === "single" ? "Uploading photo…" : "Uploading panorama…");
         const imgKey      = `pano_${Date.now()}`;
         const panoramaUrl = await _uploadPhoto(draftSpace.panoramaUri!, imgKey, userId, listingKey, setSaveStatus);
         savedSpace = {
           id: spaceIdNow, name: draftSpace.name.trim(), photos: [],
-          pins: buildTourPins(draftSpace.pins), panoramaUrl, panoramaStartYaw: 0, dirMode: "panorama",
+          pins: buildTourPins(draftSpace.pins), panoramaUrl, panoramaStartYaw: 0, dirMode: draftSpace.dirMode,
           ...extraFields,
         };
       } else {
@@ -760,20 +759,9 @@ export default function ToursScreen() {
     });
   }
 
-  const switchDirMode = (mode: 4 | 8 | "panorama") => {
-    const messages: Record<string, string> = {
-      "4":        "Reduce to 4 cardinal directions. Existing photos will be cleared.",
-      "8":        "8 directions for a more immersive tour. Existing photos will be cleared.",
-      "panorama": "Upload a single 360° panorama photo from your camera roll.",
-    };
-    Alert.alert(
-      mode === "panorama" ? "Switch to 360° Photo" : `Switch to ${mode}-Direction`,
-      messages[String(mode)],
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Switch", onPress: () => setDraftSpace((prev) => ({ ...prev, dirMode: mode, photos: {}, panoramaUri: undefined })) },
-      ]
-    );
+  const switchDirMode = (mode: 4 | 8 | "panorama" | "single") => {
+    if ((draftSpace.dirMode as string) === String(mode)) return;
+    setDraftSpace((prev) => ({ ...prev, dirMode: mode, photos: {}, panoramaUri: undefined }));
   };
 
   const selectedPinMeta = ALL_PIN_TYPES.find((p) => p.type === draftPin.type) ?? ALL_PIN_TYPES[0];
@@ -1001,28 +989,27 @@ export default function ToursScreen() {
             </View>
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PHOTO MODE</Text>
-            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Choose how buyers experience this space in the tour.</Text>
 
-            {(() => {
-              const active = draftSpace.dirMode === "panorama";
-              return (
-                <TouchableOpacity
-                  style={[styles.modeChipWide, { backgroundColor: active ? "#7C3AED" : colors.card, borderColor: active ? "#7C3AED" : colors.border }]}
-                  onPress={() => !active ? switchDirMode("panorama") : undefined}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ fontSize: 18 }}>🔮</Text>
-                    <View>
-                      <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>360° Photo</Text>
-                      <Text style={[styles.modeHint, { color: active ? "rgba(255,255,255,0.75)" : colors.mutedForeground }]}>
-                        Insta360 / Panoramic — upload a pre-made panorama
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })()}
+            {/* Row 1: 360° and Single */}
+            <View style={styles.modeRow}>
+              {([
+                { mode: "panorama", emoji: "🔮", label: "360° Photo",     hint: "Insta360 / Panoramic"    },
+                { mode: "single",   icon: "image", label: "Single",       hint: "Traditional photo"       },
+              ] as const).map(({ mode, emoji, icon, label, hint }) => {
+                const active = draftSpace.dirMode === mode;
+                const bg     = active ? "#7C3AED" : colors.card;
+                const bc     = active ? "#7C3AED" : colors.border;
+                return (
+                  <TouchableOpacity key={mode} style={[styles.modeChip, { backgroundColor: bg, borderColor: bc }]} onPress={() => switchDirMode(mode)}>
+                    {emoji ? <Text style={{ fontSize: 16 }}>{emoji}</Text> : <Feather name={icon as any} size={14} color={active ? "#fff" : colors.mutedForeground} />}
+                    <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>{label}</Text>
+                    <Text style={[styles.modeHint, { color: active ? "rgba(255,255,255,0.7)" : colors.mutedForeground }]}>{hint}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
+            {/* Row 2: 4-Direction and 8-Direction */}
             <View style={styles.modeRow}>
               {([4, 8] as const).map((mode) => {
                 const active = draftSpace.dirMode === mode;
@@ -1030,7 +1017,7 @@ export default function ToursScreen() {
                   <TouchableOpacity
                     key={mode}
                     style={[styles.modeChip, { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border }]}
-                    onPress={() => !active ? switchDirMode(mode) : undefined}
+                    onPress={() => switchDirMode(mode)}
                   >
                     <Feather name="compass" size={14} color={active ? "#fff" : colors.mutedForeground} />
                     <Text style={[styles.modeLabel, { color: active ? "#fff" : colors.foreground }]}>{mode}-Direction</Text>
@@ -1042,9 +1029,9 @@ export default function ToursScreen() {
               })}
             </View>
 
-            {draftSpace.dirMode === "panorama" ? (
+            {(draftSpace.dirMode === "panorama" || draftSpace.dirMode === "single") ? (
               <>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PANORAMA PHOTO</Text>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{draftSpace.dirMode === "single" ? "PHOTO" : "PANORAMA PHOTO"}</Text>
                 {draftSpace.panoramaUri ? (
                   <View
                     style={[styles.panoUploadSlot, { borderColor: "#7C3AED", borderStyle: "solid" }]}
@@ -1810,7 +1797,7 @@ export default function ToursScreen() {
                   >
                     <Feather name="crosshair" size={14} color={colors.primary} />
                     <Text style={[styles.placePinBtnText, { color: colors.primary }]}>
-                      {draftPin.x != null ? `Reposition pin (${Math.round(draftPin.x * 100)}%, ${Math.round((draftPin.y ?? 0.5) * 100)}%)` : "Place on Panorama"}
+                      {draftPin.x != null ? `Reposition pin (${Math.round(draftPin.x * 100)}%, ${Math.round((draftPin.y ?? 0.5) * 100)}%)` : draftSpace.dirMode === "single" ? "Place on Photo" : "Place on Panorama"}
                     </Text>
                   </TouchableOpacity>
                 )}

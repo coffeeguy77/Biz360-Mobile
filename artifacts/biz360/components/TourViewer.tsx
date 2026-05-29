@@ -60,6 +60,9 @@ interface Props {
 }
 
 export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
+  if (space.dirMode === "single" && space.panoramaUrl) {
+    return <SinglePhotoViewer space={space} onPinPress={onPinPress} focusPin={focusPin} onFocusPinHandled={onFocusPinHandled} />;
+  }
   if (Platform.OS !== "web" && (space.panoramaUrl || space.photos.length > 0)) {
     return (
       <PanoramaViewer
@@ -72,6 +75,46 @@ export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled }: P
   }
   return <DirectionalStrip space={space} onPinPress={onPinPress} focusPin={focusPin} onFocusPinHandled={onFocusPinHandled} />;
 }
+
+// ── Single flat-photo viewer with pin overlays ──────────────────────────────
+function SinglePhotoViewer({ space, onPinPress }: Props) {
+  const [imgSize, setImgSize] = useState({ width: SW, height: SH * 0.6 });
+
+  return (
+    <View style={{ flex: 1, backgroundColor: "#071221" }}>
+      <Image
+        source={{ uri: space.panoramaUrl }}
+        style={{ width: imgSize.width, height: imgSize.height, alignSelf: "center" }}
+        resizeMode="contain"
+        onLayout={(e) => setImgSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+      />
+      {space.pins.filter((p) => p.position.x != null).map((pin) => {
+        const cfg = PIN_CFG[pin.type] ?? { icon: "info", color: "#3B82F6" };
+        const left = (pin.position.x ?? 0.5) * imgSize.width - 19;
+        const top  = (pin.position.y ?? 0.5) * imgSize.height - 19;
+        return (
+          <TouchableOpacity
+            key={pin.id}
+            style={[svStyles.pin, { left, top, backgroundColor: cfg.color }]}
+            onPress={() => onPinPress(pin)}
+          >
+            <Feather name={cfg.icon as any} size={16} color="#fff" />
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+const svStyles = StyleSheet.create({
+  pin: {
+    position: "absolute", width: 38, height: 38, borderRadius: 19,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.55, shadowRadius: 6, elevation: 8,
+    borderWidth: 2, borderColor: "rgba(255,255,255,0.3)",
+  },
+});
 
 const PHOTO_W = SW;
 
