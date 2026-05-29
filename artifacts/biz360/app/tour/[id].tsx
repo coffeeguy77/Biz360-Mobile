@@ -509,7 +509,7 @@ export default function TourScreen() {
             )}
             <TouchableOpacity
               style={[styles.audioPlayBtn, audioLoading && { opacity: 0.6 }]}
-              onPress={() => playAudio(activeSpace!.audioUrl!)}
+              onPress={() => playAudio(currentAudioUrlRef.current ?? activeSpace!.audioUrl!)}
               disabled={audioLoading}
             >
               <Feather name={audioLoading ? "loader" : audioPlaying ? "pause" : "play"} size={11} color="#fff" />
