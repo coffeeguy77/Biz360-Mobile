@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -165,7 +166,9 @@ export default function TourScreen() {
   const [activeSpaceIdx, setActiveSpaceIdx] = useState(resolvedStartIdx);
   const [activePin,      setActivePin]      = useState<TourPin | null>(null);
   const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
-  const [showRoomNav,    setShowRoomNav]    = useState(false);
+  const [showRoomNav,       setShowRoomNav]       = useState(false);
+  const [showAudioOnboarding, setShowAudioOnboarding] = useState(false);
+  const arrowAnim = useRef(new Animated.Value(0)).current;
 
   // ── Load KV spaces ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -222,21 +225,29 @@ export default function TourScreen() {
   const safeIdx     = Math.min(activeSpaceIdx, Math.max(0, allSpaces.length - 1));
   const activeSpace = allSpaces[safeIdx];
 
-  // ── Auto-prompt trigger ──────────────────────────────────────────────────────
+  // ── One-time audio onboarding ────────────────────────────────────────────────
   useEffect(() => {
-    if (!activeSpace?.audioUrl || activeSpace.audioTrigger !== "auto_prompt") return;
-    const t = setTimeout(() => {
-      Alert.alert(
-        "🎵 Audio Narration",
-        "This space has a seller narration. Would you like to listen?",
-        [
-          { text: "Not Now", style: "cancel" },
-          { text: "Play", onPress: () => playAudio(activeSpace.audioUrl!) },
-        ],
-      );
-    }, 700);
-    return () => clearTimeout(t);
-  }, [activeSpaceIdx, activeSpace?.audioUrl]);
+    const spaceHasAudio =
+      !!(activeSpace?.audioUrl) ||
+      (activeSpace?.pins ?? []).some((p) => p.type === "audio");
+    if (!spaceHasAudio) return;
+    AsyncStorage.getItem("biz360_audio_onboarding_seen").then((val) => {
+      if (!val) setShowAudioOnboarding(true);
+    });
+  }, [activeSpaceIdx]);
+
+  // ── Bouncing arrow animation ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!showAudioOnboarding) return;
+    const bounce = Animated.loop(
+      Animated.sequence([
+        Animated.timing(arrowAnim, { toValue: 10, duration: 500, useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 0,  duration: 500, useNativeDriver: true }),
+      ])
+    );
+    bounce.start();
+    return () => bounce.stop();
+  }, [showAudioOnboarding]);
 
   // ── Audio playback ───────────────────────────────────────────────────────────
   const playAudio = async (url: string) => {
@@ -543,6 +554,37 @@ export default function TourScreen() {
         </View>
       </View>
 
+      {/* ── One-time audio onboarding overlay ── */}
+      {showAudioOnboarding && (
+        <View style={styles.onboardingOverlay}>
+          <View style={styles.onboardingCard}>
+            <View style={styles.onboardingIconRow}>
+              <View style={styles.onboardingIconBubble}>
+                <Feather name="mic" size={20} color="#EC4899" />
+              </View>
+              <Text style={styles.onboardingTitle}>Audio-narrated business</Text>
+            </View>
+            <Text style={styles.onboardingBody}>
+              This listing is optimised with narration. Whenever you see the pulsing{" "}
+              <Text style={{ color: "#EC4899" }}>🎙</Text>
+              {" "}icon in the tour, or the player bar — tap it to hear the seller's message directly.
+            </Text>
+            <Animated.View style={{ alignItems: "center", marginVertical: 12, transform: [{ translateY: arrowAnim }] }}>
+              <Feather name="arrow-down" size={26} color="#EC4899" />
+            </Animated.View>
+            <TouchableOpacity
+              style={styles.onboardingBtn}
+              onPress={async () => {
+                await AsyncStorage.setItem("biz360_audio_onboarding_seen", "1");
+                setShowAudioOnboarding(false);
+              }}
+            >
+              <Text style={styles.onboardingBtnText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       <PinSheet pin={activePin} onClose={() => setActivePin(null)} />
 
       {/* ── Request More Info modal ── */}
@@ -636,6 +678,14 @@ const styles = StyleSheet.create({
   audioHotspotLabel:{ color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold", textShadowColor: "rgba(0,0,0,0.6)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   transcriptBox:   { backgroundColor: "rgba(7,18,33,0.92)", borderRadius: 12, padding: 12, marginTop: 6, borderWidth: 1, borderColor: "#EC489940" },
   transcriptText:  { color: "rgba(255,255,255,0.75)", fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  onboardingOverlay:  { position: "absolute", inset: 0, zIndex: 50, justifyContent: "flex-end", paddingHorizontal: 20, paddingBottom: 160, backgroundColor: "rgba(0,0,0,0.55)" },
+  onboardingCard:     { backgroundColor: "#0F2040", borderRadius: 20, padding: 22, borderWidth: 1, borderColor: "#1E3A5C" },
+  onboardingIconRow:  { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+  onboardingIconBubble:{ width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(236,72,153,0.15)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#EC489960" },
+  onboardingTitle:    { color: "#fff", fontSize: 17, fontFamily: "Inter_700Bold", flex: 1 },
+  onboardingBody:     { color: "rgba(255,255,255,0.72)", fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22 },
+  onboardingBtn:      { backgroundColor: "#EC4899", borderRadius: 14, paddingVertical: 13, alignItems: "center", marginTop: 4 },
+  onboardingBtnText:  { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   bottomOverlay:   { position: "absolute", bottom: 60, left: 0, right: 0, zIndex: 10, paddingHorizontal: 16, gap: 8 },
   legendRow:       { flexDirection: "row", alignItems: "center", gap: 8 },
   pinLegend:       { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
