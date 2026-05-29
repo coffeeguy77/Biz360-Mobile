@@ -165,7 +165,7 @@ export default function TourScreen() {
   const [activeSpaceIdx, setActiveSpaceIdx] = useState(resolvedStartIdx);
   const [activePin,      setActivePin]      = useState<TourPin | null>(null);
   const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
-  const [showRoomNav,    setShowRoomNav]    = useState(true);
+  const [showRoomNav,    setShowRoomNav]    = useState(false);
 
   // ── Load KV spaces ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -408,11 +408,12 @@ export default function TourScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           {allSpaces.length > 1 && (
             <TouchableOpacity
-              style={[styles.iconBtn, { backgroundColor: showRoomNav ? "rgba(59,130,246,0.3)" : "rgba(0,0,0,0.4)" }]}
+              style={[styles.navPill, { backgroundColor: showRoomNav ? "rgba(59,130,246,0.85)" : "rgba(0,0,0,0.45)" }]}
               onPress={() => setShowRoomNav((v) => !v)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Feather name="navigation" size={16} color={showRoomNav ? "#60A5FA" : "rgba(255,255,255,0.45)"} />
+              <Feather name="map" size={13} color={showRoomNav ? "#fff" : "rgba(255,255,255,0.5)"} />
+              <Text style={[styles.navPillText, { color: showRoomNav ? "#fff" : "rgba(255,255,255,0.5)" }]}>NAV</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.iconBtn} onPress={() => setShowRequestSheet(true)}>
@@ -468,54 +469,54 @@ export default function TourScreen() {
         </TouchableOpacity>
       )}
 
+      {/* ── Audio bar — floats above bottom overlay, clears the nav hint ── */}
+      {showAudioBar && (
+        <View style={[styles.audioBarWrap, { bottom: bottomBase + 72 }]}>
+          <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
+            <Feather name="volume-2" size={14} color="#EC4899" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.audioBarText}>
+                {audioLoading
+                  ? "Loading narration…"
+                  : audioPlaying && audioDurMs > 0
+                  ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
+                  : "Seller narration"}
+              </Text>
+              {audioDurMs > 0 && (
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${Math.round(audioPct * 100)}%` as any }]} />
+                </View>
+              )}
+            </View>
+            {hasTranscript && (
+              <TouchableOpacity
+                onPress={() => setShowTranscript((v) => !v)}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              >
+                <Feather name={showTranscript ? "eye-off" : "file-text"} size={14} color="rgba(255,255,255,0.55)" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.audioPlayBtn, audioLoading && { opacity: 0.6 }]}
+              onPress={() => playAudio(activeSpace!.audioUrl!)}
+              disabled={audioLoading}
+            >
+              <Feather name={audioLoading ? "loader" : audioPlaying ? "pause" : "play"} size={11} color="#fff" />
+              <Text style={styles.audioPlayBtnText}>
+                {audioLoading ? "…" : audioPlaying ? "Pause" : "Play"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {showTranscript && hasTranscript && (
+            <View style={styles.transcriptBox}>
+              <Text style={styles.transcriptText}>{activeSpace!.audioTranscript}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* ── Bottom overlay ── */}
       <View style={[styles.bottomOverlay, { paddingBottom: bottomBase + 8 }]}>
-        {/* Audio bar lives here — below nav arrows, above legend */}
-        {showAudioBar && (
-          <View style={styles.audioBarWrap}>
-            <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
-              <Feather name="volume-2" size={14} color="#EC4899" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.audioBarText}>
-                  {audioLoading
-                    ? "Loading narration…"
-                    : audioPlaying && audioDurMs > 0
-                    ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
-                    : "Seller narration"}
-                </Text>
-                {audioDurMs > 0 && (
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${Math.round(audioPct * 100)}%` as any }]} />
-                  </View>
-                )}
-              </View>
-              {hasTranscript && (
-                <TouchableOpacity
-                  onPress={() => setShowTranscript((v) => !v)}
-                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                >
-                  <Feather name={showTranscript ? "eye-off" : "file-text"} size={14} color="rgba(255,255,255,0.55)" />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[styles.audioPlayBtn, audioLoading && { opacity: 0.6 }]}
-                onPress={() => playAudio(activeSpace!.audioUrl!)}
-                disabled={audioLoading}
-              >
-                <Feather name={audioLoading ? "loader" : audioPlaying ? "pause" : "play"} size={11} color="#fff" />
-                <Text style={styles.audioPlayBtnText}>
-                  {audioLoading ? "…" : audioPlaying ? "Pause" : "Play"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {showTranscript && hasTranscript && (
-              <View style={styles.transcriptBox}>
-                <Text style={styles.transcriptText}>{activeSpace!.audioTranscript}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
         <View style={styles.legendRow}>
           {shownTypes.length > 0 && (
             <View style={styles.pinLegend}>
@@ -623,11 +624,13 @@ const styles = StyleSheet.create({
   backText:        { color: "#3B82F6", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   topBar:          { position: "absolute", top: 0, left: 0, right: 0, zIndex: 10, flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingBottom: 12, backgroundColor: "rgba(7,18,33,0.7)" },
   iconBtn:         { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
+  navPill:         { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  navPillText:     { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
   tourInfo:        { flex: 1, alignItems: "center", gap: 2 },
   tourTitle:       { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   tourSpace:       { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
   startBadge:      { backgroundColor: "#16A34A", width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  audioBarWrap:    {},
+  audioBarWrap:    { position: "absolute", left: 0, right: 0, paddingHorizontal: 16, zIndex: 10 },
   audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.92)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   audioBarText:    { color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
   progressTrack:   { height: 2, backgroundColor: "rgba(236,72,153,0.2)", borderRadius: 1, marginTop: 4, overflow: "hidden" },
