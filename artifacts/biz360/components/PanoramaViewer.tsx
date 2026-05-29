@@ -93,7 +93,13 @@ function buildSinglePanoHtml(
     } else if (p.groundMounted) {
       pitch = gp;
     } else {
-      pitch = (0.5 - p.position.y) * 90;
+      // Split at eye level (y=0.5):
+      //   upper half maps to 0° → +90°
+      //   lower half maps to 0° → groundPitch (calibrated to actual floor)
+      const relY = 0.5 - p.position.y;
+      pitch = relY >= 0
+        ? (relY / 0.5) * 90
+        : (relY / 0.5) * (-gp);
     }
 
     // Resolve icon: system icon key > type default
