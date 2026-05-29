@@ -468,54 +468,54 @@ export default function TourScreen() {
         </TouchableOpacity>
       )}
 
-      {/* ── Audio bar (button/auto_prompt triggers; also shown after hotspot tap) ── */}
-      {showAudioBar && (
-        <View style={[styles.audioBarWrap, { bottom: bottomBase + 72 }]}>
-          <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
-            <Feather name="volume-2" size={14} color="#EC4899" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.audioBarText}>
-                {audioLoading
-                  ? "Loading narration…"
-                  : audioPlaying && audioDurMs > 0
-                  ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
-                  : "Seller narration"}
-              </Text>
-              {audioDurMs > 0 && (
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${Math.round(audioPct * 100)}%` as any }]} />
-                </View>
-              )}
-            </View>
-            {hasTranscript && (
-              <TouchableOpacity
-                onPress={() => setShowTranscript((v) => !v)}
-                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-              >
-                <Feather name={showTranscript ? "eye-off" : "file-text"} size={14} color="rgba(255,255,255,0.55)" />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.audioPlayBtn, audioLoading && { opacity: 0.6 }]}
-              onPress={() => playAudio(activeSpace!.audioUrl!)}
-              disabled={audioLoading}
-            >
-              <Feather name={audioLoading ? "loader" : audioPlaying ? "pause" : "play"} size={11} color="#fff" />
-              <Text style={styles.audioPlayBtnText}>
-                {audioLoading ? "…" : audioPlaying ? "Pause" : "Play"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {showTranscript && hasTranscript && (
-            <View style={styles.transcriptBox}>
-              <Text style={styles.transcriptText}>{activeSpace!.audioTranscript}</Text>
-            </View>
-          )}
-        </View>
-      )}
-
       {/* ── Bottom overlay ── */}
       <View style={[styles.bottomOverlay, { paddingBottom: bottomBase + 8 }]}>
+        {/* Audio bar lives here — below nav arrows, above legend */}
+        {showAudioBar && (
+          <View style={styles.audioBarWrap}>
+            <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
+              <Feather name="volume-2" size={14} color="#EC4899" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.audioBarText}>
+                  {audioLoading
+                    ? "Loading narration…"
+                    : audioPlaying && audioDurMs > 0
+                    ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
+                    : "Seller narration"}
+                </Text>
+                {audioDurMs > 0 && (
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${Math.round(audioPct * 100)}%` as any }]} />
+                  </View>
+                )}
+              </View>
+              {hasTranscript && (
+                <TouchableOpacity
+                  onPress={() => setShowTranscript((v) => !v)}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                >
+                  <Feather name={showTranscript ? "eye-off" : "file-text"} size={14} color="rgba(255,255,255,0.55)" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.audioPlayBtn, audioLoading && { opacity: 0.6 }]}
+                onPress={() => playAudio(activeSpace!.audioUrl!)}
+                disabled={audioLoading}
+              >
+                <Feather name={audioLoading ? "loader" : audioPlaying ? "pause" : "play"} size={11} color="#fff" />
+                <Text style={styles.audioPlayBtnText}>
+                  {audioLoading ? "…" : audioPlaying ? "Pause" : "Play"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {showTranscript && hasTranscript && (
+              <View style={styles.transcriptBox}>
+                <Text style={styles.transcriptText}>{activeSpace!.audioTranscript}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         <View style={styles.legendRow}>
           {shownTypes.length > 0 && (
             <View style={styles.pinLegend}>
@@ -539,11 +539,6 @@ export default function TourScreen() {
               )}
             </View>
           )}
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity style={styles.requestBtn} onPress={() => setShowRequestSheet(true)}>
-            <Feather name="help-circle" size={13} color="#fff" />
-            <Text style={styles.requestBtnText}>Request Info</Text>
-          </TouchableOpacity>
         </View>
         {showRoomNav && navPinCount > 0 && (
           <View style={styles.navHint}>
@@ -632,7 +627,7 @@ const styles = StyleSheet.create({
   tourTitle:       { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   tourSpace:       { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
   startBadge:      { backgroundColor: "#16A34A", width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  audioBarWrap:    { position: "absolute", left: 16, right: 16, zIndex: 10 },
+  audioBarWrap:    {},
   audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.92)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   audioBarText:    { color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
   progressTrack:   { height: 2, backgroundColor: "rgba(236,72,153,0.2)", borderRadius: 1, marginTop: 4, overflow: "hidden" },
