@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   Linking,
   Modal,
   Platform,
@@ -45,6 +46,79 @@ const PIN_DISPLAY: Record<string, { color: string; label: string }> = {
 function fmtMs(ms: number): string {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// ── Pulsing animated navigation arrow ────────────────────────────────────────
+// Three chevrons wave sequentially (like a scroll-indicator) to gently invite
+// the user to navigate, without the visual weight of a pill button.
+function AnimatedNavArrow({
+  direction, label, onPress, bottom,
+}: {
+  direction: "left" | "right";
+  label: string;
+  onPress: () => void;
+  bottom: number;
+}) {
+  const a1 = useRef(new Animated.Value(0)).current;
+  const a2 = useRef(new Animated.Value(0)).current;
+  const a3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const FADE = 280;
+    const STEP = 170;
+    const PAUSE = 700;
+    const TOTAL = STEP * 2 + FADE * 2 + PAUSE;
+
+    function wave(anim: Animated.Value, delay: number) {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(anim, { toValue: 1, duration: FADE, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0.08, duration: FADE, useNativeDriver: true }),
+          Animated.delay(TOTAL - delay - FADE * 2),
+        ]),
+      );
+    }
+
+    // For "right": leftmost chevron leads (a1→a2→a3)
+    // For "left": rightmost chevron leads (a3→a2→a1)
+    const [first, second, third] =
+      direction === "right" ? [a1, a2, a3] : [a3, a2, a1];
+
+    const anim = Animated.parallel([
+      wave(first,  0),
+      wave(second, STEP),
+      wave(third,  STEP * 2),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [direction]);
+
+  const icon = direction === "left" ? "chevron-left" : "chevron-right";
+  const side = direction === "left" ? { left: 14 } : { right: 14 };
+
+  return (
+    <TouchableOpacity
+      style={[{ position: "absolute", zIndex: 10, bottom, alignItems: "center" }, side]}
+      onPress={onPress}
+      activeOpacity={0.6}
+      hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {[a1, a2, a3].map((anim, i) => (
+          <Animated.View key={i} style={{ opacity: anim }}>
+            <Feather name={icon} size={26} color="#fff" style={{ textShadowColor: "rgba(0,0,0,0.8)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }} />
+          </Animated.View>
+        ))}
+      </View>
+      <Text style={{
+        color: "rgba(255,255,255,0.75)", fontSize: 10,
+        fontFamily: "Inter_600SemiBold", marginTop: 3,
+        textShadowColor: "rgba(0,0,0,0.9)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+        maxWidth: 90, textAlign: "center",
+      }} numberOfLines={1}>{label}</Text>
+    </TouchableOpacity>
+  );
 }
 
 export default function TourScreen() {
@@ -347,26 +421,22 @@ export default function TourScreen() {
         </View>
       </View>
 
-      {/* ── Directional room nav arrows (overlaid bottom-left / bottom-right) ── */}
+      {/* ── Animated room nav arrows ── */}
       {showRoomNav && allSpaces.length > 1 && safeIdx > 0 && (
-        <TouchableOpacity
-          style={[styles.roomNavBtn, styles.roomNavLeft, { bottom: bottomBase + 140 }]}
+        <AnimatedNavArrow
+          direction="left"
+          label={allSpaces[safeIdx - 1].name}
+          bottom={bottomBase + 140}
           onPress={() => { setActiveSpaceIdx(safeIdx - 1); setFocusPin(null); }}
-          activeOpacity={0.8}
-        >
-          <Feather name="chevron-left" size={16} color="#fff" />
-          <Text style={styles.roomNavText} numberOfLines={1}>{allSpaces[safeIdx - 1].name}</Text>
-        </TouchableOpacity>
+        />
       )}
       {showRoomNav && allSpaces.length > 1 && safeIdx < allSpaces.length - 1 && (
-        <TouchableOpacity
-          style={[styles.roomNavBtn, styles.roomNavRight, { bottom: bottomBase + 140 }]}
+        <AnimatedNavArrow
+          direction="right"
+          label={allSpaces[safeIdx + 1].name}
+          bottom={bottomBase + 140}
           onPress={() => { setActiveSpaceIdx(safeIdx + 1); setFocusPin(null); }}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.roomNavText} numberOfLines={1}>{allSpaces[safeIdx + 1].name}</Text>
-          <Feather name="chevron-right" size={16} color="#fff" />
-        </TouchableOpacity>
+        />
       )}
 
       <TourViewer
@@ -562,10 +632,6 @@ const styles = StyleSheet.create({
   tourTitle:       { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   tourSpace:       { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
   startBadge:      { backgroundColor: "#16A34A", width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  roomNavBtn:      { position: "absolute", zIndex: 10, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.65)", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 22, maxWidth: 160, borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
-  roomNavLeft:     { left: 12 },
-  roomNavRight:    { right: 12 },
-  roomNavText:     { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold", flexShrink: 1 },
   audioBarWrap:    { position: "absolute", left: 16, right: 16, zIndex: 10 },
   audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.92)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   audioBarText:    { color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
