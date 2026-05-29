@@ -165,7 +165,7 @@ function buildSinglePanoHtml(
       container.style.overflow     = 'visible';
       container.style.opacity      = opac;
 
-      if (args.isNav || anim === 'ripple') {
+      if (anim === 'ripple') {
         /* Navigation / ripple: 3 expanding concentric rings + small solid core */
         injectKf('kf-ripple','@keyframes kfRipple{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
         var ringCol = args.isNav ? 'rgba(59,130,246,0.9)' : col + 'cc';
@@ -187,7 +187,7 @@ function buildSinglePanoHtml(
           '<div style="' + R + ';animation-delay:1.33s"></div>' +
           '<div style="' + C + '"></div>';
 
-      } else if (args.isListen || anim === 'pulse') {
+      } else if (anim === 'pulse') {
         /* Listen / pulse: 3 rings + icon core */
         injectKf('kf-pulse','@keyframes kfPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
         var listenRingCol = args.isListen ? 'rgba(236,72,153,0.9)' : col + 'cc';
@@ -207,7 +207,7 @@ function buildSinglePanoHtml(
                  'box-shadow:0 0 8px 3px ' + listenCore + '88;' +
                  'display:flex;align-items:center;justify-content:center;' +
                  'font-size:' + micSz + 'px;line-height:1;text-align:center';
-        var micIcon = args.isListen ? '\u{1F399}' : args.icon;
+        var micIcon = args.icon;
         container.innerHTML =
           '<div style="' + LR + ';animation-delay:0s"></div>' +
           '<div style="' + LR + ';animation-delay:0.67s"></div>' +
