@@ -90,23 +90,33 @@ function buildSinglePanoHtml(
       /* IMPORTANT: never use cssText here — it wipes pannellum's position:absolute.
          Set individual properties so pannellum keeps control of left/top/position. */
       if (args.isNav) {
-        /* Navigation pin: pulsing sonar/ripple animation — 3 expanding rings + core dot.
-           Container is transparent and larger (52px) to give rings room to expand.
-           overflow:visible lets rings animate beyond the container bounds. */
+        /* Navigation pin: pulsing sonar/ripple — inject keyframes once, then build
+           fully inline-styled rings so no CSS class dependency can break the effect. */
+        if (!document.getElementById('pnlm-pulse-kf')) {
+          var s = document.createElement('style');
+          s.id = 'pnlm-pulse-kf';
+          s.textContent = '@keyframes pnlmPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}';
+          document.head.appendChild(s);
+        }
         container.style.background = 'transparent';
         container.style.border = 'none';
         container.style.boxShadow = 'none';
-        container.style.width = '52px';
-        container.style.height = '52px';
+        container.style.width = '60px';
+        container.style.height = '60px';
         container.style.borderRadius = '0';
-        container.style.display = 'flex';
-        container.style.alignItems = 'center';
-        container.style.justifyContent = 'center';
         container.style.cursor = 'pointer';
-        container.style.marginLeft = '-26px';
-        container.style.marginTop = '-26px';
+        container.style.marginLeft = '-30px';
+        container.style.marginTop = '-30px';
         container.style.overflow = 'visible';
-        container.innerHTML = '<div class="nav-ring"></div><div class="nav-ring nr2"></div><div class="nav-ring nr3"></div><div class="nav-core"></div>';
+        /* Ring base: border-only circle, absolutely centred, animated */
+        var R = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;border:2.5px solid rgba(59,130,246,0.9);top:50%;left:50%;margin:-12px 0 0 -12px;animation-name:pnlmPulse;animation-duration:2s;animation-timing-function:ease-out;animation-iteration-count:infinite;pointer-events:none';
+        /* Core: small solid dot, no icon */
+        var C = 'position:absolute;width:12px;height:12px;border-radius:50%;background:#2563EB;top:50%;left:50%;margin:-6px 0 0 -6px;z-index:2;box-shadow:0 0 8px 3px rgba(59,130,246,0.75)';
+        container.innerHTML =
+          '<div style="'+R+';animation-delay:0s"></div>' +
+          '<div style="'+R+';animation-delay:0.67s"></div>' +
+          '<div style="'+R+';animation-delay:1.33s"></div>' +
+          '<div style="'+C+'"></div>';
       } else {
         /* Standard info/look/etc pin: solid circle with emoji icon */
         container.style.background = args.color;
@@ -135,7 +145,7 @@ function buildSinglePanoHtml(
       autoLoad:true, showControls:false, compass:false,
       yaw:${startYaw}, pitch:0, hfov:100, minHfov:40, maxHfov:140,
       mouseZoom:true, touchPanSpeedCoeffFactor:1.5, showFullscreenCtrl:false,
-      hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked}};})
+      hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked,isNav:p.isNav}};})
     });
   </script>
 </body></html>`;
