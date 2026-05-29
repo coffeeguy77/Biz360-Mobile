@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, ImageBackground, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, ImageBackground, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
@@ -56,8 +56,10 @@ export default function SellerListings() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [listings,    setListings]    = useState<PendingListing[]>([]);
-  const [tourPhotos,  setTourPhotos]  = useState<Record<string, string | null>>({});
+  const [listings,       setListings]       = useState<PendingListing[]>([]);
+  const [tourPhotos,     setTourPhotos]     = useState<Record<string, string | null>>({});
+  const [deleteMode,     setDeleteMode]     = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -87,20 +89,13 @@ export default function SellerListings() {
   const activeCount  = listings.filter((l) => l.status === "approved").length;
   const pendingCount = listings.filter((l) => l.status === "pending").length;
 
-  const handleDelete = (item: PendingListing, name: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert("Delete Listing", `Remove "${name}" from your listings?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete", style: "destructive", onPress: async () => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          const updated = listings.filter((l) => l.id !== item.id);
-          setListings(updated);
-          const all = await getPendingListings();
-          await savePendingListings(all.filter((l) => l.id !== item.id));
-        },
-      },
-    ]);
+  const confirmDelete = async (item: PendingListing) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    const updated = listings.filter((l) => l.id !== item.id);
+    setListings(updated);
+    setPendingDeleteId(null);
+    const all = await getPendingListings();
+    await savePendingListings(all.filter((l) => l.id !== item.id));
   };
 
   return (
@@ -112,12 +107,23 @@ export default function SellerListings() {
             {activeCount} active{pendingCount > 0 ? ` · ${pendingCount} pending` : ""}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: colors.primary }]}
-          onPress={() => router.push("/create-listing" as any)}
-        >
-          <Feather name="plus" size={18} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity
+            style={[styles.deleteModeToggle, { backgroundColor: deleteMode ? "#EF444418" : colors.muted, borderColor: deleteMode ? "#EF4444" : colors.border }]}
+            onPress={() => { setDeleteMode((v) => !v); setPendingDeleteId(null); }}
+          >
+            <Feather name={deleteMode ? "unlock" : "lock"} size={11} color={deleteMode ? "#EF4444" : colors.mutedForeground} />
+            <Text style={[styles.deleteModeText, { color: deleteMode ? "#EF4444" : colors.mutedForeground }]}>
+              {deleteMode ? "Delete on" : "Delete off"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            onPress={() => router.push("/create-listing" as any)}
+          >
+            <Feather name="plus" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -151,13 +157,21 @@ export default function SellerListings() {
                 <Feather name={sc.icon as any} size={10} color="#fff" />
                 <Text style={styles.statusPillText}>{sc.label}</Text>
               </View>
-              <TouchableOpacity
-                style={styles.deleteIcon}
-                onPress={() => handleDelete(item, name)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Feather name="trash-2" size={15} color="rgba(255,255,255,0.8)" />
-              </TouchableOpacity>
+              {deleteMode && (
+                pendingDeleteId === item.id ? (
+                  <TouchableOpacity style={styles.confirmDeleteBtn} onPress={() => confirmDelete(item)}>
+                    <Text style={styles.confirmDeleteText}>Confirm?</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.deleteIcon}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setPendingDeleteId(item.id); }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Feather name="trash-2" size={15} color="rgba(255,255,255,0.8)" />
+                  </TouchableOpacity>
+                )
+              )}
               <Text style={styles.heroPrice}>{price && price > 0 ? formatPrice(price) : "Price TBC"}</Text>
             </>
           );
@@ -295,7 +309,11 @@ const styles = StyleSheet.create({
   cardHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)" },
   statusPill:    { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
   statusPillText:{ color: "#fff", fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  deleteIcon:    { position: "absolute", top: 10, right: 12 },
+  deleteIcon:      { position: "absolute", top: 10, right: 12 },
+  deleteModeToggle:{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
+  deleteModeText:  { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  confirmDeleteBtn:{ position: "absolute", top: 10, right: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: "#EF4444" },
+  confirmDeleteText:{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff" },
   heroPrice:     { position: "absolute", bottom: 14, left: 14, color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold" },
   cardBody:      { padding: 14, gap: 8 },
   cardName:      { fontSize: 16, fontFamily: "Inter_600SemiBold" },

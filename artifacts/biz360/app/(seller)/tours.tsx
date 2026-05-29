@@ -314,6 +314,9 @@ export default function ToursScreen() {
   const [audioUploadingScene,   setAudioUploadingScene]   = useState(false);
   const [audioUploadingPin,     setAudioUploadingPin]     = useState(false);
   const [imageUploadingLook,    setImageUploadingLook]    = useState(false);
+  const [deleteMode,            setDeleteMode]            = useState(false);
+  const [pendingDeleteSpaceId,  setPendingDeleteSpaceId]  = useState<string | null>(null);
+  const [pendingDeletePinId,    setPendingDeletePinId]    = useState<string | null>(null);
 
   const draggingPinIdRef  = useRef<string | null>(null);
   const dragPositionRef   = useRef<{ x: number; y: number } | null>(null);
@@ -604,15 +607,10 @@ export default function ToursScreen() {
     setShowSpaceModal(true);
   };
 
-  const deleteSpace = (space: TourSpace) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert("Delete Space", `Remove "${space.name}" from this tour?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setAllSpaces((prev) => prev.filter((s) => s.id !== space.id));
-      }},
-    ]);
+  const confirmDeleteSpace = (id: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    setAllSpaces((prev) => prev.filter((s) => s.id !== id));
+    setPendingDeleteSpaceId(null);
   };
 
   const closeSpaceModal = () => {
@@ -855,7 +853,18 @@ export default function ToursScreen() {
                   ))}
                 </View>
 
-                <Text style={[styles.spacesTitle, { color: colors.foreground }]}>Tour Spaces</Text>
+                <View style={styles.spacesTitleRow}>
+                  <Text style={[styles.spacesTitle, { color: colors.foreground }]}>Tour Spaces</Text>
+                  <TouchableOpacity
+                    style={[styles.deleteModeToggle, { backgroundColor: deleteMode ? "#EF444418" : colors.muted, borderColor: deleteMode ? "#EF4444" : colors.border }]}
+                    onPress={() => { setDeleteMode((v) => !v); setPendingDeleteSpaceId(null); setPendingDeletePinId(null); }}
+                  >
+                    <Feather name={deleteMode ? "unlock" : "lock"} size={11} color={deleteMode ? "#EF4444" : colors.mutedForeground} />
+                    <Text style={[styles.deleteModeText, { color: deleteMode ? "#EF4444" : colors.mutedForeground }]}>
+                      {deleteMode ? "Delete on" : "Delete off"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
                 {!spacesLoaded && <ActivityIndicator color={colors.primary} style={{ alignSelf: "center", marginVertical: 16 }} />}
 
@@ -927,9 +936,20 @@ export default function ToursScreen() {
                       <TouchableOpacity onPress={() => openEditSpace(space)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Feather name="edit-2" size={16} color={colors.primary} />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => deleteSpace(space)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Feather name="trash-2" size={17} color="#EF4444" />
-                      </TouchableOpacity>
+                      {deleteMode && (
+                        pendingDeleteSpaceId === space.id ? (
+                          <TouchableOpacity style={styles.confirmDeleteBtn} onPress={() => confirmDeleteSpace(space.id)}>
+                            <Text style={styles.confirmDeleteText}>Confirm?</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setPendingDeleteSpaceId(space.id); setPendingDeletePinId(null); }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Feather name="trash-2" size={17} color="#EF4444" />
+                          </TouchableOpacity>
+                        )
+                      )}
                     </View>
                   </View>
                 ))}
@@ -1301,9 +1321,20 @@ export default function ToursScreen() {
                     <TouchableOpacity onPress={() => copyPin(pin)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Feather name="copy" size={14} color={colors.mutedForeground} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removePin(pin.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Feather name="trash-2" size={15} color="#EF4444" />
-                    </TouchableOpacity>
+                    {deleteMode && (
+                      pendingDeletePinId === pin.id ? (
+                        <TouchableOpacity style={styles.confirmDeleteBtn} onPress={() => { removePin(pin.id); setPendingDeletePinId(null); }}>
+                          <Text style={styles.confirmDeleteText}>Confirm?</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setPendingDeletePinId(pin.id); setPendingDeleteSpaceId(null); }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="trash-2" size={15} color="#EF4444" />
+                        </TouchableOpacity>
+                      )
+                    )}
                   </View>
                 </TouchableOpacity>
               );
@@ -1944,7 +1975,12 @@ const styles = StyleSheet.create({
   tourStat:        { alignItems: "center", gap: 3 },
   tourStatVal:     { fontSize: 20, fontFamily: "Inter_700Bold" },
   tourStatLbl:     { fontSize: 11, fontFamily: "Inter_400Regular" },
-  spacesTitle:     { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 4 },
+  spacesTitleRow:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  spacesTitle:     { fontSize: 13, fontFamily: "Inter_700Bold" },
+  deleteModeToggle:{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
+  deleteModeText:  { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  confirmDeleteBtn:{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: "#EF4444" },
+  confirmDeleteText:{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff" },
   emptySpacesBox:  { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
   emptySpacesText: { fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
   spaceRow:        { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, borderBottomWidth: 1 },
