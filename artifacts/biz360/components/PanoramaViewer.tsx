@@ -60,6 +60,7 @@ function buildSinglePanoHtml(
     color: PIN_COLORS[p.type] ?? "#3B82F6",
     icon: PIN_ICONS_PANO[p.type] ?? "\u2139",
     locked: !!p.requiresNDA,
+    isNav: p.type === "navigation",
   }));
 
   return `<!DOCTYPE html>
@@ -76,6 +77,10 @@ function buildSinglePanoHtml(
     .pnlm-load-box p{color:#fff!important}
     .pnlm-lbar{background:#3B82F6!important}
     .pnlm-lbar-fill{background:#60A5FA!important}
+    @keyframes navRipple{0%{transform:scale(0.25);opacity:1}100%{transform:scale(4);opacity:0}}
+    .nav-ring{position:absolute;width:26px;height:26px;border-radius:50%;background:rgba(37,99,235,0.55);top:50%;left:50%;margin:-13px 0 0 -13px;animation:navRipple 2s ease-out infinite;pointer-events:none}
+    .nr2{animation-delay:.67s}.nr3{animation-delay:1.33s}
+    .nav-core{width:28px;height:28px;border-radius:50%;background:#2563EB;border:2.5px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;position:relative;z-index:2;box-shadow:0 2px 10px rgba(0,0,0,0.65);flex-shrink:0}
   </style>
 </head><body>
   <div id="pano"></div>
@@ -84,23 +89,44 @@ function buildSinglePanoHtml(
     function createPin(container, args) {
       /* IMPORTANT: never use cssText here — it wipes pannellum's position:absolute.
          Set individual properties so pannellum keeps control of left/top/position. */
-      container.style.background = args.color;
-      container.style.width = '36px';
-      container.style.height = '36px';
-      container.style.borderRadius = '50%';
-      container.style.display = 'flex';
-      container.style.alignItems = 'center';
-      container.style.justifyContent = 'center';
-      container.style.fontSize = '20px';
-      container.style.boxShadow = '0 3px 12px rgba(0,0,0,0.7)';
-      container.style.border = '2px solid rgba(255,255,255,0.35)';
-      container.style.cursor = 'pointer';
-      container.style.zIndex = '10';
-      /* Center the pin circle on the hotspot point using negative margins
-         (safer than transform, which can interact with pannellum's positioning) */
-      container.style.marginLeft = '-18px';
-      container.style.marginTop = '-18px';
-      container.innerHTML = args.icon;
+      if (args.isNav) {
+        /* Navigation pin: pulsing sonar/ripple animation — 3 expanding rings + core dot.
+           Container is transparent and larger (52px) to give rings room to expand.
+           overflow:visible lets rings animate beyond the container bounds. */
+        container.style.background = 'transparent';
+        container.style.border = 'none';
+        container.style.boxShadow = 'none';
+        container.style.width = '52px';
+        container.style.height = '52px';
+        container.style.borderRadius = '0';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.cursor = 'pointer';
+        container.style.marginLeft = '-26px';
+        container.style.marginTop = '-26px';
+        container.style.overflow = 'visible';
+        container.innerHTML = '<div class="nav-ring"></div><div class="nav-ring nr2"></div><div class="nav-ring nr3"></div><div class="nav-core">\u21BA</div>';
+      } else {
+        /* Standard info/look/etc pin: solid circle with emoji icon */
+        container.style.background = args.color;
+        container.style.width = '36px';
+        container.style.height = '36px';
+        container.style.borderRadius = '50%';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.fontSize = '20px';
+        container.style.boxShadow = '0 3px 12px rgba(0,0,0,0.7)';
+        container.style.border = '2px solid rgba(255,255,255,0.35)';
+        container.style.cursor = 'pointer';
+        container.style.zIndex = '10';
+        /* Center the pin circle on the hotspot point using negative margins
+           (safer than transform, which can interact with pannellum's positioning) */
+        container.style.marginLeft = '-18px';
+        container.style.marginTop = '-18px';
+        container.innerHTML = args.icon;
+      }
       ['touchend','click'].forEach(function(ev){container.addEventListener(ev,function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));});});
     }
     pannellum.viewer('pano',{

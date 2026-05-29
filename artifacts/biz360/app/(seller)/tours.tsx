@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   Image,
   ImageBackground,
@@ -35,6 +36,50 @@ const DIRS_4 = ["Front", "Right", "Back", "Left"] as const;
 const DIRS_8 = ["Front", "Front-Right", "Right", "Back-Right", "Back", "Back-Left", "Left", "Front-Left"] as const;
 
 const NAV_360_ICON = require("../../assets/nav-360-icon.png");
+
+function PulsingNavDot({ size, active }: { size: number; active: boolean }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 1600, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 0,    useNativeDriver: true }),
+        Animated.delay(400),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anim]);
+  const ringScale   = anim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 2.8] });
+  const ringOpacity = anim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.85, 0.3, 0] });
+  const coreSize = size * 0.75;
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: size, height: size,
+          borderRadius: size / 2,
+          backgroundColor: "#2563EB",
+          transform: [{ scale: ringScale }],
+          opacity: ringOpacity,
+        }}
+      />
+      <View style={{
+        width: coreSize, height: coreSize, borderRadius: coreSize / 2,
+        backgroundColor: "#2563EB",
+        alignItems: "center", justifyContent: "center",
+        borderWidth: 1.5, borderColor: "rgba(255,255,255,0.88)",
+      }}>
+        <Image
+          source={NAV_360_ICON}
+          style={{ width: coreSize * 0.52, height: coreSize * 0.52 }}
+          tintColor="#fff"
+        />
+      </View>
+    </View>
+  );
+}
 
 const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color: string; image?: any }[] = [
   // ── Primary navigation pins ──
@@ -949,20 +994,34 @@ export default function ToursScreen() {
                       }}
                     >
                       {draftSpace.pins.filter((p) => p.x != null).map((pin) => {
-                        const meta       = ALL_PIN_TYPES.find((m) => m.type === pin.type) ?? ALL_PIN_TYPES[0];
+                        const meta        = ALL_PIN_TYPES.find((m) => m.type === pin.type) ?? ALL_PIN_TYPES[0];
                         const isActivePin = activePinId === pin.id;
+                        const dotSize     = isActivePin ? 22 : 18;
+                        const isNav       = pin.type === "navigation";
                         return (
-                          <View key={pin.id} style={[styles.pinDotOnPano, {
-                            left: pin.x! * panoLayout.width - (isActivePin ? 10 : 8),
-                            top:  (pin.y ?? 0.5) * panoLayout.height - (isActivePin ? 10 : 8),
-                            backgroundColor: meta.color,
-                            width: isActivePin ? 20 : 16, height: isActivePin ? 20 : 16,
-                            borderRadius: isActivePin ? 10 : 8,
-                          }]}>
-                            {meta.image
-                              ? <Image source={meta.image} style={{ width: isActivePin ? 10 : 8, height: isActivePin ? 10 : 8 }} tintColor="#fff" />
-                              : <Feather name={meta.icon as any} size={isActivePin ? 10 : 8} color="#fff" />
-                            }
+                          <View
+                            key={pin.id}
+                            style={[styles.pinDotOnPano, {
+                              left: pin.x! * panoLayout.width  - dotSize / 2,
+                              top:  (pin.y ?? 0.5) * panoLayout.height - dotSize / 2,
+                              width: dotSize, height: dotSize,
+                              backgroundColor: "transparent",
+                            }]}
+                          >
+                            {isNav ? (
+                              <PulsingNavDot size={dotSize} active={isActivePin} />
+                            ) : (
+                              <View style={{
+                                width: dotSize, height: dotSize, borderRadius: dotSize / 2,
+                                backgroundColor: meta.color,
+                                alignItems: "center", justifyContent: "center",
+                              }}>
+                                {meta.image
+                                  ? <Image source={meta.image} style={{ width: dotSize * 0.5, height: dotSize * 0.5 }} tintColor="#fff" />
+                                  : <Feather name={meta.icon as any} size={dotSize * 0.45} color="#fff" />
+                                }
+                              </View>
+                            )}
                           </View>
                         );
                       })}
