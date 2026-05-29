@@ -353,7 +353,7 @@ export default function TourScreen() {
     const seen  = new Set<string>();
     const types: string[] = [];
     for (const p of (activeSpace?.pins ?? [])) {
-      if (p.type === "navigation" || p.type === "external_link") continue;
+      if (p.type === "navigation" || p.type === "external_link" || p.type === "audio" || p.type === "look") continue;
       if (!seen.has(p.type)) { seen.add(p.type); types.push(p.type); }
     }
     return types;
