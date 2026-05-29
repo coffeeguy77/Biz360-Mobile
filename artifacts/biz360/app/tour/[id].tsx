@@ -541,12 +541,6 @@ export default function TourScreen() {
             </View>
           )}
         </View>
-        {showRoomNav && navPinCount > 0 && (
-          <View style={styles.navHint}>
-            <Feather name="arrow-right-circle" size={11} color="#3B82F6" />
-            <Text style={styles.navHintText}>Tap arrows to navigate between spaces</Text>
-          </View>
-        )}
       </View>
 
       <PinSheet pin={activePin} onClose={() => setActivePin(null)} />
