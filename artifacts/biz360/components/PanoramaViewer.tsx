@@ -76,18 +76,22 @@ function buildSinglePanoHtml(
   tourSettings?: Pick<TourSettings, "defaultAnimation" | "defaultPinSize" | "defaultPinOpacity">,
   haov = 360,
   vaov = 120,
+  groundPitch?: number,
 ): string {
   const defAnim    = tourSettings?.defaultAnimation    ?? "none";
   const defSize    = tourSettings?.defaultPinSize      ?? 1.0;
   const defOpacity = tourSettings?.defaultPinOpacity   ?? 1.0;
+  // groundPitch: pitch (degrees) where floor (0 m) appears in this panorama.
+  // Default -50°. Eye level (1.4 m) always maps to 0°.
+  const gp = groundPitch ?? -50;
 
   const hotspots = pins.map((p) => {
-    // Height-to-pitch: camera assumed at 1.4 m, ~25°/m linear mapping
+    // Height-to-pitch: linear interpolation — 0 m → groundPitch, 1.4 m → 0°
     let pitch: number;
     if (p.heightMetres !== undefined) {
-      pitch = (p.heightMetres - 1.4) * 25;
+      pitch = gp + (p.heightMetres / 1.4) * (-gp);
     } else if (p.groundMounted) {
-      pitch = -30;
+      pitch = gp;
     } else {
       pitch = (0.5 - p.position.y) * 90;
     }
@@ -854,7 +858,7 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled,
   // Remote https:// URLs passed directly. vaov=180 for full Insta360 spheres.
   let html: string;
   if (space.panoramaUrl && panoDataUri) {
-    html = buildSinglePanoHtml(panoDataUri, space.panoramaStartYaw ?? 0, space.pins, tourSettings, 360, 180);
+    html = buildSinglePanoHtml(panoDataUri, space.panoramaStartYaw ?? 0, space.pins, tourSettings, 360, 180, space.groundPitch);
   } else {
     html = buildFlatStripHtml(photoDataUris, space.pins);
   }

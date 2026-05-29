@@ -110,6 +110,7 @@ export interface TourSpace {
   photos: string[];
   panoramaUrl?: string;
   panoramaStartYaw?: number;
+  groundPitch?: number;    // degrees, e.g. -50 = floor appears 50° below horizon
   pins: TourPin[];
   dirMode?: 4 | 8 | "panorama" | "single";
   // Scene-level audio narration

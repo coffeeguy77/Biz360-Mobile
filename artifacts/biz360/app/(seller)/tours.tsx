@@ -37,6 +37,13 @@ const DIRS_8 = ["Front", "Front-Right", "Right", "Back-Right", "Back", "Back-Lef
 
 // ─── Hotspot customisation constants ─────────────────────────────────────────
 
+export const GROUND_PITCH_PRESETS = [
+  { key: "shallow", label: "−35°", hint: "Floor near centre" },
+  { key: "normal",  label: "−50°", hint: "Typical"           },
+  { key: "deep",    label: "−65°", hint: "Floor low down"    },
+  { key: "verylow", label: "−80°", hint: "Floor at edge"     },
+] as const;
+
 export const HEIGHT_PRESETS = [
   { key: "floor",   label: "Floor",     metres: 0.0  },
   { key: "table",   label: "Table",     metres: 0.75 },
@@ -233,6 +240,7 @@ interface DraftSpace {
   dirMode: 4 | 8 | "panorama" | "single";
   photos: Record<string, string>;
   panoramaUri?: string;
+  groundPitch?: number;
   pins: DraftPin[];
   // Audio narration
   audioUrl?: string;
@@ -665,6 +673,7 @@ export default function ToursScreen() {
     }));
     setDraftSpace({
       name: space.name, dirMode, photos, panoramaUri: space.panoramaUrl, pins: draftPins,
+      groundPitch:    space.groundPitch,
       audioUrl:       space.audioUrl ?? "",
       audioTrigger:   space.audioTrigger ?? "button",
       audioTranscript:space.audioTranscript ?? "",
@@ -728,6 +737,7 @@ export default function ToursScreen() {
     const userId     = user?.id ?? "unknown";
 
     const extraFields = {
+      groundPitch:     draftSpace.groundPitch,
       audioUrl:        draftSpace.audioUrl?.trim() || undefined,
       audioTrigger:    draftSpace.audioTrigger,
       audioTranscript: draftSpace.audioTranscript?.trim() || undefined,
@@ -1244,6 +1254,32 @@ export default function ToursScreen() {
                       Select the panorama exported from Insta360 or any 360° camera app
                     </Text>
                   </TouchableOpacity>
+                )}
+
+                {/* ── Ground pitch calibration ── */}
+                {draftSpace.panoramaUri && (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 12 }]}>FLOOR LEVEL IN PANORAMA</Text>
+                    <Text style={[styles.modeHint, { color: colors.mutedForeground, marginBottom: 8, fontSize: 11 }]}>
+                      Set how low the floor appears in your panorama shot so ground-level pins land correctly
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }} contentContainerStyle={{ gap: 7, paddingRight: 12 }}>
+                      {GROUND_PITCH_PRESETS.map((gp) => {
+                        const gpVal = -parseInt(gp.label.replace("−", ""), 10);
+                        const active = (draftSpace.groundPitch ?? -50) === gpVal;
+                        return (
+                          <TouchableOpacity
+                            key={gp.key}
+                            style={[styles.heightChip, { backgroundColor: active ? "#7C3AED" : colors.card, borderColor: active ? "#7C3AED" : colors.border }]}
+                            onPress={() => setDraftSpace((p) => ({ ...p, groundPitch: gpVal }))}
+                          >
+                            <Text style={[styles.heightChipTop, { color: active ? "#fff" : colors.foreground }]}>{gp.label}</Text>
+                            <Text style={[styles.heightChipBot, { color: active ? "rgba(255,255,255,0.75)" : colors.mutedForeground }]}>{gp.hint}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </>
                 )}
               </>
             ) : (
