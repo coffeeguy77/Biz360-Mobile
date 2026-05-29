@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { PanoramaViewer } from "@/components/PanoramaViewer";
-import { TourPin, TourSpace } from "@/data/listings";
+import { TourPin, TourSettings, TourSpace } from "@/data/listings";
 
 const { width: SW, height: SH } = Dimensions.get("window");
 
@@ -57,9 +57,10 @@ interface Props {
   onPinPress: (pin: TourPin) => void;
   focusPin?: TourPin | null;
   onFocusPinHandled?: () => void;
+  tourSettings?: TourSettings;
 }
 
-export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
+export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings }: Props) {
   if (space.dirMode === "single" && space.panoramaUrl) {
     return <SinglePhotoViewer space={space} onPinPress={onPinPress} focusPin={focusPin} onFocusPinHandled={onFocusPinHandled} />;
   }
@@ -70,6 +71,7 @@ export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled }: P
         onPinPress={onPinPress}
         focusPin={focusPin}
         onFocusPinHandled={onFocusPinHandled}
+        tourSettings={tourSettings}
       />
     );
   }

@@ -23,7 +23,8 @@ import { DEMO_LISTINGS, TourPin, TourSpace } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { trackEvent } from "@/lib/analyticsStore";
 import { useAuth } from "@/context/AuthContext";
-import { getTourSpaces, addTourRequest, REQUEST_CATEGORIES } from "@/lib/tourStore";
+import { getTourSpaces, getTourSettings, addTourRequest, REQUEST_CATEGORIES } from "@/lib/tourStore";
+import { DEFAULT_TOUR_SETTINGS, TourSettings } from "@/data/listings";
 
 const PIN_DISPLAY: Record<string, { color: string; label: string }> = {
   navigation:   { color: "#2563EB", label: "Navigate"   },
@@ -170,7 +171,10 @@ export default function TourScreen() {
   const [showAudioOnboarding, setShowAudioOnboarding] = useState(false);
   const arrowAnim = useRef(new Animated.Value(0)).current;
 
-  // ── Load KV spaces ───────────────────────────────────────────────────────────
+  // ── Tour settings ────────────────────────────────────────────────────────────
+  const [tourSettings, setTourSettings] = useState<TourSettings>(DEFAULT_TOUR_SETTINGS);
+
+  // ── Load KV spaces + settings ────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
     getTourSpaces(id).then((spaces) => {
@@ -178,6 +182,7 @@ export default function TourScreen() {
       setKvFetched(true);
       setKvLoading(false);
     });
+    getTourSettings(id).then((s) => setTourSettings(s));
   }, [id]);
 
   // Apply start scene once KV spaces load
@@ -356,7 +361,8 @@ export default function TourScreen() {
   // ── Derived view data (must be above early returns to keep hook order stable) ─
   const hasAudio        = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger !== "hotspot";
   const hasAudioHotspot = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger === "hotspot";
-  const showAudioBar    = hasAudio || (hasAudioHotspot && (audioPlaying || audioLoading || audioDurMs > 0));
+  const showAudioBar    = tourSettings.showNarrationBar &&
+    (hasAudio || (hasAudioHotspot && (audioPlaying || audioLoading || audioDurMs > 0)));
   const hasTranscript   = !!(activeSpace?.audioTranscript?.trim());
   const audioPct        = audioDurMs > 0 ? audioPosMs / audioDurMs : 0;
 
@@ -457,6 +463,7 @@ export default function TourScreen() {
         onPinPress={handlePinPress}
         focusPin={focusPin}
         onFocusPinHandled={() => setFocusPin(null)}
+        tourSettings={tourSettings}
       />
 
       {/* ── Audio hotspot pin (hotspot trigger) ── */}

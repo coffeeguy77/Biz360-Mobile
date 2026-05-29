@@ -24,16 +24,59 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { AudioTrigger, PopupContent, PopupSection, TourPin, TourSpace } from "@/data/listings";
+import { AudioTrigger, DEFAULT_TOUR_SETTINGS, PinAnimation, PopupContent, PopupSection, TourPin, TourSettings, TourSpace } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing } from "@/lib/adminStore";
-import { getTourSpaces, saveTourSpaces } from "@/lib/tourStore";
+import { getTourSettings, getTourSpaces, saveTourSettings, saveTourSpaces } from "@/lib/tourStore";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const MINI_PANO_H = 100;
 
 const DIRS_4 = ["Front", "Right", "Back", "Left"] as const;
 const DIRS_8 = ["Front", "Front-Right", "Right", "Back-Right", "Back", "Back-Left", "Left", "Front-Left"] as const;
+
+// ─── Hotspot customisation constants ─────────────────────────────────────────
+
+export const HEIGHT_PRESETS = [
+  { key: "floor",   label: "Floor",     metres: 0.0  },
+  { key: "table",   label: "Table",     metres: 0.75 },
+  { key: "counter", label: "Counter",   metres: 0.9  },
+  { key: "eye",     label: "Eye Level", metres: 1.6  },
+  { key: "signage", label: "Signage",   metres: 2.0  },
+  { key: "ceiling", label: "Ceiling",   metres: 2.8  },
+] as const;
+
+export const PIN_ANIMATIONS: { key: PinAnimation; label: string; hint: string }[] = [
+  { key: "none",      label: "None",      hint: "Static pin"              },
+  { key: "pulse",     label: "Pulse",     hint: "Rings expand outward"    },
+  { key: "glow",      label: "Glow",      hint: "Soft brightness burst"   },
+  { key: "bounce",    label: "Bounce",    hint: "Floats up and down"      },
+  { key: "ripple",    label: "Ripple",    hint: "Sonar wave rings"        },
+  { key: "breathing", label: "Breathing", hint: "Slow scale + fade"       },
+];
+
+export const SYSTEM_ICONS: { key: string; label: string; feather: string; emoji: string }[] = [
+  { key: "audio",       label: "Audio",         feather: "mic",          emoji: "\u{1F399}" },
+  { key: "info",        label: "Info",           feather: "info",         emoji: "\u2139"    },
+  { key: "photos",      label: "Photos",         feather: "image",        emoji: "\u{1F4F7}" },
+  { key: "video",       label: "Video",          feather: "video",        emoji: "\u{1F3AC}" },
+  { key: "financials",  label: "Financials",     feather: "trending-up",  emoji: "\u{1F4C8}" },
+  { key: "equipment",   label: "Equipment",      feather: "tool",         emoji: "\u{1F527}" },
+  { key: "lease",       label: "Lease",          feather: "key",          emoji: "\u{1F511}" },
+  { key: "staff",       label: "Staff",          feather: "users",        emoji: "\u{1F465}" },
+  { key: "menu",        label: "Menu",           feather: "book-open",    emoji: "\u{1F4CB}" },
+  { key: "outdoor",     label: "Outdoor Dining", feather: "sun",          emoji: "\u{1F33F}" },
+  { key: "entry",       label: "Entry Access",   feather: "log-in",       emoji: "\u{1F6AA}" },
+  { key: "kitchen",     label: "Kitchen",        feather: "coffee",       emoji: "\u{1F373}" },
+  { key: "storage",     label: "Storage",        feather: "archive",      emoji: "\u{1F4E6}" },
+  { key: "pos",         label: "POS",            feather: "credit-card",  emoji: "\u{1F4B3}" },
+  { key: "roastery",    label: "Roastery",       feather: "droplet",      emoji: "\u2615"    },
+  { key: "fitout",      label: "Fit-Out",        feather: "layout",       emoji: "\u{1F3D7}" },
+  { key: "seating",     label: "Seating",        feather: "grid",         emoji: "\u{1FA91}" },
+  { key: "utilities",   label: "Utilities",      feather: "zap",          emoji: "\u26A1"    },
+  { key: "foottraffic", label: "Foot Traffic",   feather: "activity",     emoji: "\u{1F6B6}" },
+  { key: "reviews",     label: "Reviews",        feather: "star",         emoji: "\u2B50"    },
+];
 
 function PulsingListenDot({ size, active }: { size: number; active: boolean }) {
   const anim = useRef(new Animated.Value(0)).current;
@@ -170,6 +213,14 @@ interface DraftPin {
   externalUrl?: string;
   // Ground-mounted pin (renders near floor in panorama)
   groundMounted?: boolean;
+  // Height from ground in metres (overrides groundMounted when set)
+  heightMetres?: number;
+  // Per-pin appearance overrides
+  pinAnimation?: PinAnimation;
+  pinIconKey?: string;
+  pinSize?: number;
+  pinOpacity?: number;
+  pinColor?: string;
   // Audio / Listen hotspot
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
@@ -195,7 +246,11 @@ const EMPTY_SPACE: DraftSpace = {
   name: "", dirMode: "panorama", photos: {}, pins: [],
   audioUrl: "", audioTrigger: "button", audioTranscript: "", isStartScene: false,
 };
-const EMPTY_PIN: DraftPin = { id: "", type: "navigation", title: "", description: "", requiresNDA: false, visibility: "public" };
+const EMPTY_PIN: DraftPin = {
+  id: "", type: "navigation", title: "", description: "",
+  requiresNDA: false, visibility: "public",
+  heightMetres: 1.6,
+};
 
 const VISIBILITY_OPTIONS: { val: Visibility; label: string; hint: string; icon: string; color: string }[] = [
   { val: "public",        label: "Public",        hint: "All buyers can see this pin",      icon: "eye",    color: "#16A34A" },
@@ -318,6 +373,11 @@ export default function ToursScreen() {
   const [pendingDeleteSpaceId,  setPendingDeleteSpaceId]  = useState<string | null>(null);
   const [pendingDeletePinId,    setPendingDeletePinId]    = useState<string | null>(null);
 
+  // ── Tour settings state ────────────────────────────────────────────────────
+  const [tourSettings,     setTourSettings]     = useState<TourSettings>(DEFAULT_TOUR_SETTINGS);
+  const [showTourSettings, setShowTourSettings] = useState(false);
+  const [settingsSaving,   setSettingsSaving]   = useState(false);
+
   const draggingPinIdRef  = useRef<string | null>(null);
   const dragPositionRef   = useRef<{ x: number; y: number } | null>(null);
   const editingSpaceIdRef = useRef<string | null>(null);
@@ -349,13 +409,14 @@ export default function ToursScreen() {
     }, [user?.id]),
   );
 
-  // ── Load spaces when listing changes ──────────────────────────────────────
+  // ── Load spaces + tour settings when listing changes ──────────────────────
 
   useEffect(() => {
     currentListingIdRef.current = selectedId;
     if (!selectedId) { setAllSpaces([]); setSpacesLoaded(true); return; }
     setSpacesLoaded(false);
     getTourSpaces(selectedId).then((spaces) => { setAllSpaces(spaces); setSpacesLoaded(true); });
+    getTourSettings(selectedId).then(setTourSettings);
   }, [selectedId]);
 
   // ── Auto-save spaces ───────────────────────────────────────────────────────
@@ -588,6 +649,12 @@ export default function ToursScreen() {
       requiresNDA: p.requiresNDA ?? false, visibility: "public" as Visibility,
       x: p.position.x, y: p.position.y,
       groundMounted:  p.groundMounted ?? false,
+      heightMetres:   p.heightMetres,
+      pinAnimation:   p.pinAnimation,
+      pinIconKey:     p.pinIconKey,
+      pinSize:        p.pinSize,
+      pinOpacity:     p.pinOpacity,
+      pinColor:       p.pinColor,
       targetSpaceId:  p.targetSpaceId,
       imageUrl:       p.imageUrl,
       documentUrl:    p.documentUrl,
@@ -737,6 +804,12 @@ export default function ToursScreen() {
       if (dp.documentUrl?.trim())     pin.documentUrl    = dp.documentUrl.trim();
       if (dp.externalUrl?.trim())     pin.externalUrl    = dp.externalUrl.trim();
       if (dp.groundMounted)           pin.groundMounted  = true;
+      if (dp.heightMetres !== undefined) pin.heightMetres = dp.heightMetres;
+      if (dp.pinAnimation)            pin.pinAnimation   = dp.pinAnimation;
+      if (dp.pinIconKey)              pin.pinIconKey     = dp.pinIconKey;
+      if (dp.pinSize !== undefined)   pin.pinSize        = dp.pinSize;
+      if (dp.pinOpacity !== undefined) pin.pinOpacity    = dp.pinOpacity;
+      if (dp.pinColor)                pin.pinColor       = dp.pinColor;
       if (dp.audioUrl?.trim())        pin.audioUrl       = dp.audioUrl.trim();
       if (dp.audioTrigger)            pin.audioTrigger   = dp.audioTrigger;
       const hasPopup = dp.popupContent && (
@@ -772,11 +845,21 @@ export default function ToursScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>360 Tours</Text>
-        {selectedListing && (
-          <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => setShowSpaceModal(true)}>
-            <Feather name="plus" size={18} color="#fff" />
-          </TouchableOpacity>
-        )}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {selectedListing && (
+            <TouchableOpacity
+              style={[styles.headerIconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => setShowTourSettings(true)}
+            >
+              <Feather name="settings" size={17} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          )}
+          {selectedListing && (
+            <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => setShowSpaceModal(true)}>
+              <Feather name="plus" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {listingsLoading ? (
@@ -1012,9 +1095,9 @@ export default function ToursScreen() {
             {/* Row 1: 360° and Single */}
             <View style={styles.modeRow}>
               {([
-                { mode: "panorama", emoji: "🔮", label: "360° Photo",     hint: "Insta360 / Panoramic"    },
-                { mode: "single",   icon: "image", label: "Single",       hint: "Traditional photo"       },
-              ] as const).map(({ mode, emoji, icon, label, hint }) => {
+                { mode: "panorama" as const, emoji: "🔮" as string | undefined, icon: undefined as string | undefined, label: "360° Photo",  hint: "Insta360 / Panoramic" },
+                { mode: "single"   as const, emoji: undefined as string | undefined, icon: "image",                    label: "Single",       hint: "Traditional photo"    },
+              ]).map(({ mode, emoji, icon, label, hint }) => {
                 const active = draftSpace.dirMode === mode;
                 const bg     = active ? "#7C3AED" : colors.card;
                 const bc     = active ? "#7C3AED" : colors.border;
@@ -1806,7 +1889,7 @@ export default function ToursScreen() {
                   >
                     <Feather name="crosshair" size={14} color={colors.primary} />
                     <Text style={[styles.placePinBtnText, { color: colors.primary }]}>
-                      {draftPin.x != null ? `Reposition pin (${Math.round(draftPin.x * 100)}%, ${Math.round((draftPin.y ?? 0.5) * 100)}%)` : draftSpace.dirMode === "single" ? "Place on Photo" : "Place on Panorama"}
+                      {draftPin.x != null ? `Reposition pin (${Math.round(draftPin.x * 100)}%, ${Math.round((draftPin.y ?? 0.5) * 100)}%)` : (draftSpace.dirMode as string) === "single" ? "Place on Photo" : "Place on Panorama"}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -1904,8 +1987,95 @@ export default function ToursScreen() {
               </>
             )}
 
-            {/* Ground-mounted toggle — all pin types except navigation */}
+            {/* ── HEIGHT FROM GROUND ─────────────────────────────────── */}
             {draftPin.type !== "navigation" && (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 4 }]}>HEIGHT FROM GROUND</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={{ gap: 7, paddingRight: 12 }}>
+                  {HEIGHT_PRESETS.map((h) => {
+                    const active = draftPin.heightMetres === h.metres;
+                    return (
+                      <TouchableOpacity
+                        key={h.key}
+                        style={[styles.heightChip, { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border }]}
+                        onPress={() => setDraftPin((p) => ({ ...p, heightMetres: h.metres }))}
+                      >
+                        <Text style={[styles.heightChipTop, { color: active ? "#fff" : colors.foreground }]}>{h.label}</Text>
+                        <Text style={[styles.heightChipBot, { color: active ? "rgba(255,255,255,0.75)" : colors.mutedForeground }]}>{h.metres}m</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <View style={[styles.heightInputRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Feather name="move" size={14} color={colors.mutedForeground} />
+                  <TextInput
+                    style={[styles.heightInput, { color: colors.foreground }]}
+                    keyboardType="decimal-pad"
+                    value={draftPin.heightMetres != null ? String(draftPin.heightMetres) : ""}
+                    onChangeText={(t) => {
+                      const n = parseFloat(t);
+                      if (!isNaN(n)) setDraftPin((p) => ({ ...p, heightMetres: Math.max(0, Math.min(4, n)) }));
+                      else if (t === "" || t === ".") setDraftPin((p) => ({ ...p, heightMetres: undefined }));
+                    }}
+                    placeholder="Custom metres (0 – 4)"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                  <Text style={[styles.heightUnit, { color: colors.mutedForeground }]}>m</Text>
+                </View>
+              </>
+            )}
+
+            {/* ── ICON STYLE ─────────────────────────────────────────── */}
+            {draftPin.type !== "navigation" && (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 4 }]}>PIN ICON</Text>
+                <View style={styles.iconGrid}>
+                  {SYSTEM_ICONS.map((ic) => {
+                    const active = draftPin.pinIconKey === ic.key;
+                    return (
+                      <TouchableOpacity
+                        key={ic.key}
+                        style={[styles.iconCell, { backgroundColor: active ? colors.primary + "20" : colors.card, borderColor: active ? colors.primary : colors.border }]}
+                        onPress={() => setDraftPin((p) => ({ ...p, pinIconKey: active ? undefined : ic.key }))}
+                      >
+                        <Feather name={ic.feather as any} size={15} color={active ? colors.primary : colors.mutedForeground} />
+                        <Text style={[styles.iconCellText, { color: active ? colors.primary : colors.mutedForeground }]} numberOfLines={1}>{ic.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {draftPin.pinIconKey && (
+                  <TouchableOpacity onPress={() => setDraftPin((p) => ({ ...p, pinIconKey: undefined }))} style={{ marginBottom: 6, alignSelf: "flex-start" }}>
+                    <Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_400Regular" }}>↩ Reset to type default</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            {/* ── ANIMATION ──────────────────────────────────────────── */}
+            {draftPin.type !== "navigation" && (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 4 }]}>ANIMATION</Text>
+                <View style={styles.animGrid}>
+                  {PIN_ANIMATIONS.map((a) => {
+                    const active = draftPin.pinAnimation === a.key || (!draftPin.pinAnimation && a.key === (draftPin.type === "audio" ? "pulse" : "none"));
+                    return (
+                      <TouchableOpacity
+                        key={a.key}
+                        style={[styles.animChip, { backgroundColor: active ? colors.primary + "18" : colors.card, borderColor: active ? colors.primary : colors.border }]}
+                        onPress={() => setDraftPin((p) => ({ ...p, pinAnimation: a.key }))}
+                      >
+                        <Text style={[styles.animChipLabel, { color: active ? colors.primary : colors.foreground }]}>{a.label}</Text>
+                        <Text style={[styles.animChipHint, { color: colors.mutedForeground }]}>{a.hint}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* Ground-mounted toggle — kept for backward compat; hidden when heightMetres is set */}
+            {draftPin.type !== "navigation" && draftPin.heightMetres === undefined && (
               <TouchableOpacity
                 style={[styles.ndaToggle, { backgroundColor: draftPin.groundMounted ? "#16A34A18" : colors.card, borderColor: draftPin.groundMounted ? "#16A34A" : colors.border }]}
                 onPress={() => setDraftPin((p) => ({ ...p, groundMounted: !p.groundMounted }))}
@@ -1944,6 +2114,182 @@ export default function ToursScreen() {
               </ScrollView>
             </View>
           )}
+        </View>
+      </Modal>
+
+      {/* ── Tour Settings Modal ────────────────────────────────────────────── */}
+      <Modal visible={showTourSettings} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowTourSettings(false)}>
+        <View style={[styles.modalOuter, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <TouchableOpacity onPress={() => setShowTourSettings(false)} style={styles.modalBack}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Tour Settings</Text>
+            <TouchableOpacity
+              style={[styles.settingsSaveBtn, { backgroundColor: colors.primary, opacity: settingsSaving ? 0.6 : 1 }]}
+              disabled={settingsSaving}
+              onPress={async () => {
+                if (!selectedId) return;
+                setSettingsSaving(true);
+                try { await saveTourSettings(selectedId, tourSettings); } catch {}
+                setSettingsSaving(false);
+                setShowTourSettings(false);
+              }}
+            >
+              <Text style={styles.settingsSaveBtnText}>{settingsSaving ? "Saving…" : "Save"}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 20 }} keyboardShouldPersistTaps="handled">
+
+            {/* Narration Bar */}
+            <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <Feather name="music" size={16} color={colors.primary} />
+                <Text style={[styles.settingsCardTitle, { color: colors.foreground }]}>Narration Bar</Text>
+              </View>
+              <Text style={[styles.settingsCardHint, { color: colors.mutedForeground }]}>
+                Show the audio narration bar when a buyer enters the tour
+              </Text>
+              <TouchableOpacity
+                style={[styles.settingsToggle, { backgroundColor: tourSettings.showNarrationBar ? colors.primary + "18" : colors.background, borderColor: tourSettings.showNarrationBar ? colors.primary : colors.border }]}
+                onPress={() => setTourSettings((s) => ({ ...s, showNarrationBar: !s.showNarrationBar }))}
+              >
+                <Text style={[styles.settingsToggleText, { color: tourSettings.showNarrationBar ? colors.primary : colors.mutedForeground }]}>
+                  {tourSettings.showNarrationBar ? "Visible" : "Hidden"}
+                </Text>
+                <Feather name={tourSettings.showNarrationBar ? "toggle-right" : "toggle-left"} size={22} color={tourSettings.showNarrationBar ? colors.primary : colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Default Height */}
+            <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <Feather name="move" size={16} color={colors.primary} />
+                <Text style={[styles.settingsCardTitle, { color: colors.foreground }]}>Default Pin Height</Text>
+              </View>
+              <Text style={[styles.settingsCardHint, { color: colors.mutedForeground }]}>
+                Applied when a new pin is added without a specific height
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 10 }}>
+                {HEIGHT_PRESETS.map((h) => {
+                  const active = tourSettings.defaultHeightMetres === h.metres;
+                  return (
+                    <TouchableOpacity
+                      key={h.key}
+                      style={[styles.heightChip, { backgroundColor: active ? colors.primary : colors.background, borderColor: active ? colors.primary : colors.border }]}
+                      onPress={() => setTourSettings((s) => ({ ...s, defaultHeightMetres: h.metres }))}
+                    >
+                      <Text style={[styles.heightChipTop, { color: active ? "#fff" : colors.foreground }]}>{h.label}</Text>
+                      <Text style={[styles.heightChipBot, { color: active ? "rgba(255,255,255,0.75)" : colors.mutedForeground }]}>{h.metres}m</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Default Animation */}
+            <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <Feather name="zap" size={16} color={colors.primary} />
+                <Text style={[styles.settingsCardTitle, { color: colors.foreground }]}>Default Animation</Text>
+              </View>
+              <Text style={[styles.settingsCardHint, { color: colors.mutedForeground }]}>
+                Animation applied to new info pins (audio + navigation have their own defaults)
+              </Text>
+              <View style={[styles.animGrid, { marginTop: 10 }]}>
+                {PIN_ANIMATIONS.map((a) => {
+                  const active = tourSettings.defaultAnimation === a.key;
+                  return (
+                    <TouchableOpacity
+                      key={a.key}
+                      style={[styles.animChip, { backgroundColor: active ? colors.primary + "18" : colors.background, borderColor: active ? colors.primary : colors.border }]}
+                      onPress={() => setTourSettings((s) => ({ ...s, defaultAnimation: a.key }))}
+                    >
+                      <Text style={[styles.animChipLabel, { color: active ? colors.primary : colors.foreground }]}>{a.label}</Text>
+                      <Text style={[styles.animChipHint, { color: colors.mutedForeground }]}>{a.hint}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Pin Opacity */}
+            <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <Feather name="eye" size={16} color={colors.primary} />
+                <Text style={[styles.settingsCardTitle, { color: colors.foreground }]}>Default Pin Opacity</Text>
+              </View>
+              <Text style={[styles.settingsCardHint, { color: colors.mutedForeground }]}>
+                1.0 = fully visible · 0.3 = very subtle
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                {[0.3, 0.5, 0.7, 0.85, 1.0].map((v) => {
+                  const active = tourSettings.defaultPinOpacity === v;
+                  return (
+                    <TouchableOpacity
+                      key={v}
+                      style={[styles.opacityChip, { backgroundColor: active ? colors.primary : colors.background, borderColor: active ? colors.primary : colors.border }]}
+                      onPress={() => setTourSettings((s) => ({ ...s, defaultPinOpacity: v }))}
+                    >
+                      <Text style={{ color: active ? "#fff" : colors.foreground, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{Math.round(v * 100)}%</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Pin Size */}
+            <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <Feather name="maximize-2" size={16} color={colors.primary} />
+                <Text style={[styles.settingsCardTitle, { color: colors.foreground }]}>Default Pin Size</Text>
+              </View>
+              <Text style={[styles.settingsCardHint, { color: colors.mutedForeground }]}>
+                Scale of pins rendered in the panorama (1.0 = standard 36 px)
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                {[{ label: "XS", v: 0.6 }, { label: "S", v: 0.8 }, { label: "M", v: 1.0 }, { label: "L", v: 1.3 }, { label: "XL", v: 1.6 }].map(({ label, v }) => {
+                  const active = tourSettings.defaultPinSize === v;
+                  return (
+                    <TouchableOpacity
+                      key={v}
+                      style={[styles.opacityChip, { backgroundColor: active ? colors.primary : colors.background, borderColor: active ? colors.primary : colors.border }]}
+                      onPress={() => setTourSettings((s) => ({ ...s, defaultPinSize: v }))}
+                    >
+                      <Text style={{ color: active ? "#fff" : colors.foreground, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Hotspot Behaviour */}
+            <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <Feather name="mouse-pointer" size={16} color={colors.primary} />
+                <Text style={[styles.settingsCardTitle, { color: colors.foreground }]}>Hotspot Behaviour</Text>
+              </View>
+              <Text style={[styles.settingsCardHint, { color: colors.mutedForeground }]}>
+                How buyers interact with pins
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                {([{ val: "tap", label: "Tap to open", icon: "mouse-pointer" }, { val: "always", label: "Always open", icon: "layers" }] as const).map(({ val, label, icon }) => {
+                  const active = tourSettings.defaultHotspotBehaviour === val;
+                  return (
+                    <TouchableOpacity
+                      key={val}
+                      style={[styles.behaviourChip, { flex: 1, backgroundColor: active ? colors.primary + "18" : colors.background, borderColor: active ? colors.primary : colors.border }]}
+                      onPress={() => setTourSettings((s) => ({ ...s, defaultHotspotBehaviour: val }))}
+                    >
+                      <Feather name={icon as any} size={14} color={active ? colors.primary : colors.mutedForeground} />
+                      <Text style={{ color: active ? colors.primary : colors.foreground, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -2092,4 +2438,41 @@ const styles = StyleSheet.create({
   visRow:          { flexDirection: "row", alignItems: "center", gap: 12, padding: 13, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
   visLabel:        { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   visHint:         { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+
+  // ── Header gear icon ────────────────────────────────────────────────────────
+  headerIconBtn:   { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+
+  // ── Tour settings modal ─────────────────────────────────────────────────────
+  modalOuter:         { flex: 1 },
+  modalBack:          { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  settingsSaveBtn:    { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 10 },
+  settingsSaveBtnText:{ color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
+  settingsCard:       { borderRadius: 16, borderWidth: 1, padding: 16 },
+  settingsCardTitle:  { fontSize: 15, fontFamily: "Inter_700Bold" },
+  settingsCardHint:   { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17, marginBottom: 2 },
+  settingsToggle:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12, borderRadius: 12, borderWidth: 1, marginTop: 10 },
+  settingsToggleText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
+  // ── Per-pin height presets ──────────────────────────────────────────────────
+  heightChip:      { alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, minWidth: 70 },
+  heightChipTop:   { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  heightChipBot:   { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 2 },
+  heightInputRow:  { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 },
+  heightInput:     { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", paddingVertical: 0 },
+  heightUnit:      { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+
+  // ── Per-pin icon picker ─────────────────────────────────────────────────────
+  iconGrid:        { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 },
+  iconCell:        { width: "22.5%", alignItems: "center", paddingVertical: 10, borderRadius: 10, borderWidth: 1, gap: 4 },
+  iconCellText:    { fontSize: 9, fontFamily: "Inter_500Medium", textAlign: "center" },
+
+  // ── Per-pin animation picker ────────────────────────────────────────────────
+  animGrid:        { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 12 },
+  animChip:        { width: "48%", padding: 10, borderRadius: 10, borderWidth: 1 },
+  animChipLabel:   { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  animChipHint:    { fontSize: 10, fontFamily: "Inter_400Regular" },
+
+  // ── Opacity / size / behaviour chips ───────────────────────────────────────
+  opacityChip:     { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: "center" },
+  behaviourChip:   { flexDirection: "row", alignItems: "center", gap: 7, padding: 12, borderRadius: 12, borderWidth: 1, justifyContent: "center" },
 });

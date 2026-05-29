@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import { TourPin, TourSpace } from "@/data/listings";
+import { TourPin, TourSettings, TourSpace } from "@/data/listings";
 
 const DIR_8 = ["Front","Front-Right","Right","Back-Right","Back","Back-Left","Left","Front-Left"];
 const DIR_4 = ["Front","Right","Back","Left"];
@@ -44,25 +44,80 @@ const PIN_ICONS_PANO: Record<string, string> = {
   navigation:"\u21BA",    look:"\u{1F441}",        external_link:"\u{1F517}", audio:"\u{1F3B5}",
 };
 
+// Extended system icon set — used when pinIconKey is set
+const SYSTEM_ICONS_PANO: Record<string, string> = {
+  audio:       "\u{1F399}",  // 🎙
+  info:        "\u2139",     // ℹ
+  photos:      "\u{1F4F7}",  // 📷
+  video:       "\u{1F3AC}",  // 🎬
+  financials:  "\u{1F4C8}",  // 📈
+  equipment:   "\u{1F527}",  // 🔧
+  lease:       "\u{1F511}",  // 🔑
+  staff:       "\u{1F465}",  // 👥
+  menu:        "\u{1F4CB}",  // 📋
+  outdoor:     "\u{1F33F}",  // 🌿
+  entry:       "\u{1F6AA}",  // 🚪
+  kitchen:     "\u{1F373}",  // 🍳
+  storage:     "\u{1F4E6}",  // 📦
+  pos:         "\u{1F4B3}",  // 💳
+  roastery:    "\u2615",     // ☕
+  fitout:      "\u{1F3D7}",  // 🏗
+  seating:     "\u{1FA91}",  // 🪑
+  utilities:   "\u26A1",     // ⚡
+  foottraffic: "\u{1F6B6}",  // 🚶
+  reviews:     "\u2B50",     // ⭐
+};
+
 // ─── Single equirectangular panorama (demo spaces or stitched panorama) ─────────
 function buildSinglePanoHtml(
   panoramaUrl: string,
   startYaw: number,
   pins: TourPin[],
+  tourSettings?: Pick<TourSettings, "defaultAnimation" | "defaultPinSize" | "defaultPinOpacity">,
   haov = 360,
   vaov = 120,
 ): string {
-  const hotspots = pins.map((p) => ({
-    id: p.id,
-    pitch: p.groundMounted ? -30 : (0.5 - p.position.y) * 90,
-    yaw: p.position.x * 360 - 180,
-    title: p.title.split(" ").slice(0, 4).join(" "),
-    color: PIN_COLORS[p.type] ?? "#3B82F6",
-    icon: PIN_ICONS_PANO[p.type] ?? "\u2139",
-    locked: !!p.requiresNDA,
-    isNav: p.type === "navigation",
-    isListen: p.type === "audio",
-  }));
+  const defAnim    = tourSettings?.defaultAnimation    ?? "none";
+  const defSize    = tourSettings?.defaultPinSize      ?? 1.0;
+  const defOpacity = tourSettings?.defaultPinOpacity   ?? 1.0;
+
+  const hotspots = pins.map((p) => {
+    // Height-to-pitch: camera assumed at 1.4 m, ~25°/m linear mapping
+    let pitch: number;
+    if (p.heightMetres !== undefined) {
+      pitch = (p.heightMetres - 1.4) * 25;
+    } else if (p.groundMounted) {
+      pitch = -30;
+    } else {
+      pitch = (0.5 - p.position.y) * 90;
+    }
+
+    // Resolve icon: system icon key > type default
+    const icon =
+      (p.pinIconKey ? SYSTEM_ICONS_PANO[p.pinIconKey] : undefined)
+      ?? PIN_ICONS_PANO[p.type]
+      ?? "\u2139";
+
+    // Resolve animation: per-pin override > type default > global default
+    const animation: string =
+      p.pinAnimation
+      ?? (p.type === "audio" ? "pulse" : p.type === "navigation" ? "ripple" : defAnim);
+
+    return {
+      id:        p.id,
+      pitch,
+      yaw:       p.position.x * 360 - 180,
+      title:     p.title.split(" ").slice(0, 4).join(" "),
+      color:     p.pinColor ?? PIN_COLORS[p.type] ?? "#3B82F6",
+      icon,
+      locked:    !!p.requiresNDA,
+      isNav:     p.type === "navigation",
+      isListen:  p.type === "audio",
+      animation,
+      size:      p.pinSize    ?? defSize,
+      opacity:   p.pinOpacity ?? defOpacity,
+    };
+  });
 
   return `<!DOCTYPE html>
 <html><head>
@@ -78,100 +133,144 @@ function buildSinglePanoHtml(
     .pnlm-load-box p{color:#fff!important}
     .pnlm-lbar{background:#3B82F6!important}
     .pnlm-lbar-fill{background:#60A5FA!important}
-    @keyframes navRipple{0%{transform:scale(0.2);opacity:0.9}100%{transform:scale(4.5);opacity:0}}
-    .nav-ring{position:absolute;width:22px;height:22px;border-radius:50%;background:transparent;border:2.5px solid rgba(59,130,246,0.9);top:50%;left:50%;margin:-11px 0 0 -11px;animation:navRipple 2.2s ease-out infinite;pointer-events:none}
-    .nr2{animation-delay:.73s}.nr3{animation-delay:1.46s}
-    .nav-core{width:10px;height:10px;border-radius:50%;background:#3B82F6;position:relative;z-index:2;box-shadow:0 0 8px 3px rgba(59,130,246,0.7)}
   </style>
 </head><body>
   <div id="pano"></div>
   <script>
     var PINS = ${JSON.stringify(hotspots)};
-    function createPin(container, args) {
-      /* IMPORTANT: never use cssText here — it wipes pannellum's position:absolute.
-         Set individual properties so pannellum keeps control of left/top/position. */
-      if (args.isNav) {
-        /* Navigation pin: pulsing sonar/ripple — inject keyframes once, then build
-           fully inline-styled rings so no CSS class dependency can break the effect. */
-        if (!document.getElementById('pnlm-pulse-kf')) {
-          var s = document.createElement('style');
-          s.id = 'pnlm-pulse-kf';
-          s.textContent = '@keyframes pnlmPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}';
-          document.head.appendChild(s);
-        }
-        container.style.background = 'transparent';
-        container.style.border = 'none';
-        container.style.boxShadow = 'none';
-        container.style.width = '60px';
-        container.style.height = '60px';
-        container.style.borderRadius = '0';
-        container.style.cursor = 'pointer';
-        container.style.marginLeft = '-30px';
-        container.style.marginTop = '-30px';
-        container.style.overflow = 'visible';
-        /* Ring base: border-only circle, absolutely centred, animated */
-        var R = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;border:2.5px solid rgba(59,130,246,0.9);top:50%;left:50%;margin:-12px 0 0 -12px;animation-name:pnlmPulse;animation-duration:2s;animation-timing-function:ease-out;animation-iteration-count:infinite;pointer-events:none';
-        /* Core: small solid dot, no icon */
-        var C = 'position:absolute;width:12px;height:12px;border-radius:50%;background:#2563EB;top:50%;left:50%;margin:-6px 0 0 -6px;z-index:2;box-shadow:0 0 8px 3px rgba(59,130,246,0.75)';
-        container.innerHTML =
-          '<div style="'+R+';animation-delay:0s"></div>' +
-          '<div style="'+R+';animation-delay:0.67s"></div>' +
-          '<div style="'+R+';animation-delay:1.33s"></div>' +
-          '<div style="'+C+'"></div>';
-      } else if (args.isListen) {
-        /* Listen pin: pulsing pink ripple + mic icon — same structure as nav but in pink. */
-        if (!document.getElementById('pnlm-listen-kf')) {
-          var sl = document.createElement('style');
-          sl.id = 'pnlm-listen-kf';
-          sl.textContent = '@keyframes pnlmListenPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}';
-          document.head.appendChild(sl);
-        }
-        container.style.background = 'transparent';
-        container.style.border = 'none';
-        container.style.boxShadow = 'none';
-        container.style.width = '60px';
-        container.style.height = '60px';
-        container.style.borderRadius = '0';
-        container.style.cursor = 'pointer';
-        container.style.marginLeft = '-30px';
-        container.style.marginTop = '-30px';
-        container.style.overflow = 'visible';
-        var LR = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;border:2.5px solid rgba(236,72,153,0.9);top:50%;left:50%;margin:-12px 0 0 -12px;animation-name:pnlmListenPulse;animation-duration:2s;animation-timing-function:ease-out;animation-iteration-count:infinite;pointer-events:none';
-        var LC = 'position:absolute;width:20px;height:20px;border-radius:50%;background:#EC4899;top:50%;left:50%;margin:-10px 0 0 -10px;z-index:2;box-shadow:0 0 8px 3px rgba(236,72,153,0.75);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:20px;text-align:center';
-        container.innerHTML =
-          '<div style="'+LR+';animation-delay:0s"></div>' +
-          '<div style="'+LR+';animation-delay:0.67s"></div>' +
-          '<div style="'+LR+';animation-delay:1.33s"></div>' +
-          '<div style="'+LC+'">&#127897;</div>';
-      } else {
-        /* Standard info/look/etc pin: solid circle with emoji icon */
-        container.style.background = args.color;
-        container.style.width = '36px';
-        container.style.height = '36px';
-        container.style.borderRadius = '50%';
-        container.style.display = 'flex';
-        container.style.alignItems = 'center';
-        container.style.justifyContent = 'center';
-        container.style.fontSize = '20px';
-        container.style.boxShadow = '0 3px 12px rgba(0,0,0,0.7)';
-        container.style.border = '2px solid rgba(255,255,255,0.35)';
-        container.style.cursor = 'pointer';
-        container.style.zIndex = '10';
-        /* Center the pin circle on the hotspot point using negative margins
-           (safer than transform, which can interact with pannellum's positioning) */
-        container.style.marginLeft = '-18px';
-        container.style.marginTop = '-18px';
-        container.innerHTML = args.icon;
+
+    /* Inject a named keyframe block at most once per animation type */
+    function injectKf(id, css) {
+      if (!document.getElementById(id)) {
+        var s = document.createElement('style');
+        s.id = id; s.textContent = css;
+        document.head.appendChild(s);
       }
-      ['touchend','click'].forEach(function(ev){container.addEventListener(ev,function(e){e.stopPropagation();e.preventDefault();if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinTap',id:args.id}));});});
     }
-    pannellum.viewer('pano',{
-      type:'equirectangular', panorama:'${panoramaUrl}',
-      haov:${haov}, vaov:${vaov},
-      autoLoad:true, showControls:false, compass:false,
-      yaw:${startYaw}, pitch:0, hfov:100, minHfov:40, maxHfov:140,
-      mouseZoom:true, touchPanSpeedCoeffFactor:1.5, showFullscreenCtrl:false,
-      hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked,isNav:p.isNav,isListen:p.isListen}};})
+
+    function createPin(container, args) {
+      /* IMPORTANT: never use cssText — it wipes pannellum's position:absolute.
+         Set individual style properties so pannellum keeps control of left/top/position. */
+      var sz   = Math.round(36 * (args.size   || 1));
+      var half = sz >> 1;
+      var col  = args.color;
+      var anim = args.animation || 'none';
+      var opac = (args.opacity != null) ? String(args.opacity) : '1';
+
+      container.style.background   = 'transparent';
+      container.style.border       = 'none';
+      container.style.boxShadow    = 'none';
+      container.style.borderRadius = '0';
+      container.style.cursor       = 'pointer';
+      container.style.overflow     = 'visible';
+      container.style.opacity      = opac;
+
+      if (args.isNav || anim === 'ripple') {
+        /* Navigation / ripple: 3 expanding concentric rings + small solid core */
+        injectKf('kf-ripple','@keyframes kfRipple{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
+        var ringCol = args.isNav ? 'rgba(59,130,246,0.9)' : col + 'cc';
+        var coreCol = args.isNav ? '#2563EB' : col;
+        var W = sz + 24; var HW = W >> 1;
+        container.style.width      = W + 'px';
+        container.style.height     = W + 'px';
+        container.style.marginLeft = '-' + HW + 'px';
+        container.style.marginTop  = '-' + HW + 'px';
+        var R = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;' +
+                'border:2.5px solid ' + ringCol + ';top:50%;left:50%;margin:-12px 0 0 -12px;' +
+                'animation-name:kfRipple;animation-duration:2s;animation-timing-function:ease-out;' +
+                'animation-iteration-count:infinite;pointer-events:none';
+        var C = 'position:absolute;width:12px;height:12px;border-radius:50%;background:' + coreCol + ';' +
+                'top:50%;left:50%;margin:-6px 0 0 -6px;z-index:2;box-shadow:0 0 8px 3px ' + coreCol + '88';
+        container.innerHTML =
+          '<div style="' + R + ';animation-delay:0s"></div>' +
+          '<div style="' + R + ';animation-delay:0.67s"></div>' +
+          '<div style="' + R + ';animation-delay:1.33s"></div>' +
+          '<div style="' + C + '"></div>';
+
+      } else if (args.isListen || anim === 'pulse') {
+        /* Listen / pulse: 3 rings + icon core */
+        injectKf('kf-pulse','@keyframes kfPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
+        var listenRingCol = args.isListen ? 'rgba(236,72,153,0.9)' : col + 'cc';
+        var listenCore    = args.isListen ? '#EC4899' : col;
+        var W2 = sz + 24; var HW2 = W2 >> 1;
+        container.style.width      = W2 + 'px';
+        container.style.height     = W2 + 'px';
+        container.style.marginLeft = '-' + HW2 + 'px';
+        container.style.marginTop  = '-' + HW2 + 'px';
+        var LR = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;' +
+                 'border:2.5px solid ' + listenRingCol + ';top:50%;left:50%;margin:-12px 0 0 -12px;' +
+                 'animation-name:kfPulse;animation-duration:2s;animation-timing-function:ease-out;' +
+                 'animation-iteration-count:infinite;pointer-events:none';
+        var micSz = Math.round(sz * 0.55);
+        var LC = 'position:absolute;width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;background:' + listenCore + ';' +
+                 'top:50%;left:50%;margin:-' + half + 'px 0 0 -' + half + 'px;z-index:2;' +
+                 'box-shadow:0 0 8px 3px ' + listenCore + '88;' +
+                 'display:flex;align-items:center;justify-content:center;' +
+                 'font-size:' + micSz + 'px;line-height:1;text-align:center';
+        var micIcon = args.isListen ? '\u{1F399}' : args.icon;
+        container.innerHTML =
+          '<div style="' + LR + ';animation-delay:0s"></div>' +
+          '<div style="' + LR + ';animation-delay:0.67s"></div>' +
+          '<div style="' + LR + ';animation-delay:1.33s"></div>' +
+          '<div style="' + LC + '">' + micIcon + '</div>';
+
+      } else {
+        /* Standard solid-circle pin with optional named animation */
+        var iconSz = Math.round(sz * 0.55);
+        container.style.width          = sz + 'px';
+        container.style.height         = sz + 'px';
+        container.style.borderRadius   = '50%';
+        container.style.display        = 'flex';
+        container.style.alignItems     = 'center';
+        container.style.justifyContent = 'center';
+        container.style.fontSize       = iconSz + 'px';
+        container.style.lineHeight     = '1';
+        container.style.boxShadow      = '0 3px 12px rgba(0,0,0,0.7)';
+        container.style.border         = '2px solid rgba(255,255,255,0.35)';
+        container.style.background     = col;
+        container.style.marginLeft     = '-' + half + 'px';
+        container.style.marginTop      = '-' + half + 'px';
+        container.innerHTML = args.icon;
+
+        if (anim === 'glow') {
+          injectKf('kf-glow','@keyframes kfGlow{0%,100%{filter:brightness(1) drop-shadow(0 0 3px rgba(255,255,255,0.25))}50%{filter:brightness(1.8) drop-shadow(0 0 10px rgba(255,255,255,0.65))}}');
+          container.style.animation = 'kfGlow 2s ease-in-out infinite';
+        } else if (anim === 'bounce') {
+          injectKf('kf-bounce','@keyframes kfBounce{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-8px) scale(1.08)}}');
+          container.style.animation = 'kfBounce 1.4s ease-in-out infinite';
+        } else if (anim === 'breathing') {
+          injectKf('kf-breathing','@keyframes kfBreathing{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.18);opacity:0.55}}');
+          container.style.animation = 'kfBreathing 2.8s ease-in-out infinite';
+        }
+      }
+
+      ['touchend','click'].forEach(function(ev) {
+        container.addEventListener(ev, function(e) {
+          e.stopPropagation(); e.preventDefault();
+          if (window.ReactNativeWebView)
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pinTap', id: args.id }));
+        });
+      });
+    }
+
+    pannellum.viewer('pano', {
+      type: 'equirectangular', panorama: '${panoramaUrl}',
+      haov: ${haov}, vaov: ${vaov},
+      autoLoad: true, showControls: false, compass: false,
+      yaw: ${startYaw}, pitch: 0, hfov: 100, minHfov: 40, maxHfov: 140,
+      mouseZoom: true, touchPanSpeedCoeffFactor: 1.5, showFullscreenCtrl: false,
+      hotSpots: PINS.map(function(p) {
+        return {
+          id: p.id, pitch: p.pitch, yaw: p.yaw,
+          type: 'custom', cssClass: '',
+          createTooltipFunc: createPin,
+          createTooltipArgs: {
+            id: p.id, label: p.title, icon: p.icon, color: p.color,
+            locked: p.locked, isNav: p.isNav, isListen: p.isListen,
+            animation: p.animation, size: p.size, opacity: p.opacity
+          }
+        };
+      })
     });
   </script>
 </body></html>`;
@@ -589,9 +688,10 @@ interface Props {
   onPinPress: (pin: TourPin) => void;
   focusPin?: TourPin | null;
   onFocusPinHandled?: () => void;
+  tourSettings?: TourSettings;
 }
 
-export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
+export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings }: Props) {
   const webRef = useRef<WebView>(null);
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
@@ -754,7 +854,7 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled 
   // Remote https:// URLs passed directly. vaov=180 for full Insta360 spheres.
   let html: string;
   if (space.panoramaUrl && panoDataUri) {
-    html = buildSinglePanoHtml(panoDataUri, space.panoramaStartYaw ?? 0, space.pins, 360, 180);
+    html = buildSinglePanoHtml(panoDataUri, space.panoramaStartYaw ?? 0, space.pins, tourSettings, 360, 180);
   } else {
     html = buildFlatStripHtml(photoDataUris, space.pins);
   }

@@ -1,11 +1,12 @@
-import { TourRequest, TourSpace } from "@/data/listings";
+import { DEFAULT_TOUR_SETTINGS, TourRequest, TourSettings, TourSpace } from "@/data/listings";
 import { apiGet, apiSet } from "./apiStore";
 
 // ─── KV keys ──────────────────────────────────────────────────────────────────
 
-const tourSpacesKey  = (listingId: string) => `biz360_tour_spaces_v2_${listingId}`;
+const tourSpacesKey   = (listingId: string) => `biz360_tour_spaces_v2_${listingId}`;
 const tourSpacesKeyV1 = (listingId: string) => `biz360_tour_spaces_v1_${listingId}`;
-const tourRequestKey = (listingId: string) => `biz360_tour_requests_v1_${listingId}`;
+const tourRequestKey  = (listingId: string) => `biz360_tour_requests_v1_${listingId}`;
+const tourSettingsKey = (listingId: string) => `biz360_tour_settings_v1_${listingId}`;
 
 // ─── Tour spaces (with v1 migration) ─────────────────────────────────────────
 
@@ -26,6 +27,19 @@ export async function getTourSpaces(listingId: string): Promise<TourSpace[]> {
 
 export async function saveTourSpaces(listingId: string, spaces: TourSpace[]): Promise<void> {
   await apiSet(tourSpacesKey(listingId), spaces);
+}
+
+// ─── Tour settings ────────────────────────────────────────────────────────────
+
+export async function getTourSettings(listingId: string): Promise<TourSettings> {
+  try {
+    const data = await apiGet<TourSettings>(tourSettingsKey(listingId));
+    return data ? { ...DEFAULT_TOUR_SETTINGS, ...data } : DEFAULT_TOUR_SETTINGS;
+  } catch { return DEFAULT_TOUR_SETTINGS; }
+}
+
+export async function saveTourSettings(listingId: string, settings: TourSettings): Promise<void> {
+  await apiSet(tourSettingsKey(listingId), settings);
 }
 
 // ─── Tour requests ────────────────────────────────────────────────────────────

@@ -31,6 +31,28 @@ export interface PopupContent {
 
 export type AudioTrigger = "auto_prompt" | "button" | "hotspot";
 
+// ─── Tour settings (global defaults per tour) ─────────────────────────────────
+
+export type PinAnimation = "none" | "pulse" | "glow" | "bounce" | "ripple" | "breathing";
+
+export interface TourSettings {
+  defaultAnimation: PinAnimation;
+  defaultPinSize: number;       // 0.5 – 2.0 scale
+  defaultPinOpacity: number;    // 0.3 – 1.0
+  showNarrationBar: boolean;
+  defaultHeightMetres: number;  // 0 = floor … 2.8 = ceiling
+  defaultHotspotBehaviour: "tap" | "always";
+}
+
+export const DEFAULT_TOUR_SETTINGS: TourSettings = {
+  defaultAnimation: "pulse",
+  defaultPinSize: 1.0,
+  defaultPinOpacity: 1.0,
+  showNarrationBar: true,
+  defaultHeightMetres: 1.6,
+  defaultHotspotBehaviour: "tap",
+};
+
 // ─── Tour pin ─────────────────────────────────────────────────────────────────
 
 export interface TourPin {
@@ -60,8 +82,16 @@ export interface TourPin {
   targetSpaceId?: string;
   // Look pin — dedicated feature photo
   imageUrl?: string;
-  // Ground-mounted pin (pin renders near floor level)
+  // Ground-mounted pin (deprecated — use heightMetres instead)
   groundMounted?: boolean;
+  // Height from ground in metres (overrides y-position pitch when set)
+  heightMetres?: number;
+  // Per-pin appearance overrides
+  pinAnimation?: PinAnimation;
+  pinIconKey?: string;    // system icon key; undefined = use type default
+  pinSize?: number;       // scale 0.5–2.0; undefined = default
+  pinOpacity?: number;    // 0.3–1.0; undefined = default
+  pinColor?: string;      // hex override; undefined = type default
   // Audio / Listen hotspot
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
