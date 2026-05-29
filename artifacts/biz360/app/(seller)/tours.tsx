@@ -1767,18 +1767,6 @@ export default function ToursScreen() {
                   <Feather name={draftPin.requiresNDA ? "check-square" : "square"} size={16} color={draftPin.requiresNDA ? "#EF4444" : colors.mutedForeground} />
                 </TouchableOpacity>
 
-                {/* Ground-mounted toggle */}
-                <TouchableOpacity
-                  style={[styles.ndaToggle, { backgroundColor: draftPin.groundMounted ? "#16A34A18" : colors.card, borderColor: draftPin.groundMounted ? "#16A34A" : colors.border }]}
-                  onPress={() => setDraftPin((p) => ({ ...p, groundMounted: !p.groundMounted }))}
-                >
-                  <Feather name="map-pin" size={14} color={draftPin.groundMounted ? "#16A34A" : colors.mutedForeground} />
-                  <Text style={[styles.ndaToggleText, { color: draftPin.groundMounted ? "#16A34A" : colors.foreground }]}>
-                    Ground mounted (pin sits at floor level)
-                  </Text>
-                  <Feather name={draftPin.groundMounted ? "check-square" : "square"} size={16} color={draftPin.groundMounted ? "#16A34A" : colors.mutedForeground} />
-                </TouchableOpacity>
-
                 {/* Place on panorama */}
                 {draftSpace.dirMode === "panorama" && draftSpace.panoramaUri && (
                   <TouchableOpacity
@@ -1883,6 +1871,20 @@ export default function ToursScreen() {
                   </View>
                 )}
               </>
+            )}
+
+            {/* Ground-mounted toggle — all pin types except navigation */}
+            {draftPin.type !== "navigation" && (
+              <TouchableOpacity
+                style={[styles.ndaToggle, { backgroundColor: draftPin.groundMounted ? "#16A34A18" : colors.card, borderColor: draftPin.groundMounted ? "#16A34A" : colors.border }]}
+                onPress={() => setDraftPin((p) => ({ ...p, groundMounted: !p.groundMounted }))}
+              >
+                <Feather name="map-pin" size={14} color={draftPin.groundMounted ? "#16A34A" : colors.mutedForeground} />
+                <Text style={[styles.ndaToggleText, { color: draftPin.groundMounted ? "#16A34A" : colors.foreground }]}>
+                  Ground mounted (pin sits at floor level)
+                </Text>
+                <Feather name={draftPin.groundMounted ? "check-square" : "square"} size={16} color={draftPin.groundMounted ? "#16A34A" : colors.mutedForeground} />
+              </TouchableOpacity>
             )}
 
             {/* Visibility for non-navigation pins */}
