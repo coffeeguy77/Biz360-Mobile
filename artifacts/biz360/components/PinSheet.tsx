@@ -32,8 +32,9 @@ const PIN_TYPE_LABELS: Record<string, string> = {
   highlight:    "Highlight",
   document:     "Document",
   navigation:   "Navigation",
+  look:         "Look",
   external_link:"External Link",
-  audio:        "Audio",
+  audio:        "Listen",
 };
 
 const PIN_TYPE_COLORS: Record<string, string> = {
@@ -116,6 +117,15 @@ export function PinSheet({ pin, onClose }: Props) {
             <Text style={[styles.title, { color: colors.foreground }]}>
               {popup?.heading ?? pin.title}
             </Text>
+
+            {/* Look pin — dedicated feature photo */}
+            {pin.type === "look" && pin.imageUrl ? (
+              <Image
+                source={{ uri: pin.imageUrl }}
+                style={styles.lookImage}
+                resizeMode="cover"
+              />
+            ) : null}
 
             {/* Body / description */}
             {(popup?.body || pin.description) ? (
@@ -236,6 +246,7 @@ const styles = StyleSheet.create({
   sectionRow:     { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10 },
   sectionLabel:   { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
   sectionValue:   { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "right" },
+  lookImage:      { width: "100%", height: 200, borderRadius: 12, marginBottom: 12 },
   imageScroll:    { marginBottom: 14 },
   popupImage:     { width: 180, height: 120, borderRadius: 10, marginRight: 10 },
   docLinksSection:{ gap: 8, marginBottom: 12 },

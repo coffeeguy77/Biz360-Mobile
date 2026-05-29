@@ -58,7 +58,9 @@ export interface TourPin {
   requiresNDA?: boolean;
   // Navigation hotspot
   targetSpaceId?: string;
-  // Audio hotspot
+  // Look pin — dedicated feature photo
+  imageUrl?: string;
+  // Audio / Listen hotspot
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
   // Document / external link

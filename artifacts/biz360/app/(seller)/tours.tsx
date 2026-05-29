@@ -35,6 +35,49 @@ const MINI_PANO_H = 100;
 const DIRS_4 = ["Front", "Right", "Back", "Left"] as const;
 const DIRS_8 = ["Front", "Front-Right", "Right", "Back-Right", "Back", "Back-Left", "Left", "Front-Left"] as const;
 
+function PulsingListenDot({ size, active }: { size: number; active: boolean }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 1600, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 0,    useNativeDriver: true }),
+        Animated.delay(400),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anim]);
+  const ringScale   = anim.interpolate({ inputRange: [0, 1], outputRange: [0.2, 4.5] });
+  const ringOpacity = anim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.9, 0.25, 0] });
+  const dotSize = Math.max(6, size * 0.38);
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: size * 0.55, height: size * 0.55,
+          borderRadius: size * 0.275,
+          backgroundColor: "transparent",
+          borderWidth: 2,
+          borderColor: "rgba(236,72,153,0.9)",
+          transform: [{ scale: ringScale }],
+          opacity: ringOpacity,
+        }}
+      />
+      <View style={{
+        width: dotSize, height: dotSize, borderRadius: dotSize / 2,
+        backgroundColor: "#EC4899",
+        alignItems: "center", justifyContent: "center",
+        shadowColor: "#EC4899", shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.9, shadowRadius: 4, elevation: 4,
+      }}>
+        <Feather name="mic" size={dotSize * 0.55} color="#fff" />
+      </View>
+    </View>
+  );
+}
+
 function PulsingNavDot({ size, active }: { size: number; active: boolean }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -78,9 +121,10 @@ function PulsingNavDot({ size, active }: { size: number; active: boolean }) {
 }
 
 const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color: string; image?: any }[] = [
-  // ── Primary navigation pins ──
+  // ── Primary pins ──
   { type: "navigation",   label: "Navigation",    icon: "arrow-right-circle", color: "#2563EB" },
   { type: "look",         label: "Look",          icon: "eye",                color: "#0EA5E9" },
+  { type: "audio",        label: "Listen",        icon: "mic",                color: "#EC4899" },
   // ── Info pins ──
   { type: "equipment",    label: "Equipment",     icon: "tool",               color: "#F59E0B" },
   { type: "revenue",      label: "Revenue",       icon: "trending-up",        color: "#16A34A" },
@@ -90,19 +134,19 @@ const ALL_PIN_TYPES: { type: TourPin["type"]; label: string; icon: string; color
   { type: "lease",        label: "Lease",          icon: "home",               color: "#F97316" },
   { type: "risk",         label: "Risk",           icon: "alert-triangle",     color: "#EF4444" },
   { type: "opportunity",  label: "Opportunity",    icon: "star",               color: "#16A34A" },
-  { type: "narration",    label: "Narration",      icon: "mic",                color: "#EC4899" },
   { type: "inspection",   label: "Inspection",     icon: "clipboard",          color: "#06B6D4" },
   { type: "highlight",    label: "Highlight",      icon: "zap",                color: "#F59E0B" },
   { type: "document",     label: "Document",       icon: "file-text",          color: "#6366F1" },
   { type: "external_link",label: "External Link",  icon: "external-link",      color: "#0891B2" },
-  { type: "audio",        label: "Audio Hotspot",  icon: "volume-2",           color: "#EC4899" },
+  // ── Legacy (not selectable — kept for backward compat display of saved pins) ──
+  { type: "narration",    label: "Narration",      icon: "mic",                color: "#EC4899" },
 ];
 
-const PRIMARY_PIN_TYPES = new Set(["navigation", "look"]);
+const PRIMARY_PIN_TYPES = new Set(["navigation", "look", "audio"]);
 
 const INFO_PIN_TYPES = new Set([
-  "look","equipment","revenue","cogs","workflow","staffing","lease",
-  "risk","opportunity","narration","inspection","highlight","document",
+  "equipment","revenue","cogs","workflow","staffing","lease",
+  "risk","opportunity","inspection","highlight","document",
 ]);
 
 type Visibility = "public" | "nda_only" | "approved_only";
@@ -119,10 +163,12 @@ interface DraftPin {
   mediaUri?: string;
   // Navigation
   targetSpaceId?: string;
+  // Look pin — dedicated photo
+  imageUrl?: string;
   // Document / External link
   documentUrl?: string;
   externalUrl?: string;
-  // Audio hotspot
+  // Audio / Listen hotspot
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
   // Rich popup content (info pins)
@@ -262,6 +308,7 @@ export default function ToursScreen() {
   const [showRichPopup,         setShowRichPopup]         = useState(false);
   const [audioUploadingScene,   setAudioUploadingScene]   = useState(false);
   const [audioUploadingPin,     setAudioUploadingPin]     = useState(false);
+  const [imageUploadingLook,    setImageUploadingLook]    = useState(false);
 
   const draggingPinIdRef  = useRef<string | null>(null);
   const dragPositionRef   = useRef<{ x: number; y: number } | null>(null);
@@ -384,7 +431,7 @@ export default function ToursScreen() {
 
   const savePin = () => {
     if (!draftPin.title.trim()) { Alert.alert("Title required", "Please enter a title for this pin."); return; }
-    const needsDesc = draftPin.type !== "navigation" && draftPin.type !== "external_link";
+    const needsDesc = draftPin.type !== "navigation" && draftPin.type !== "external_link" && draftPin.type !== "audio";
     if (needsDesc && !draftPin.description.trim()) { Alert.alert("Description required", "Please add a description so buyers understand this pin."); return; }
     if (draftPin.type === "navigation" && !draftPin.targetSpaceId) {
       Alert.alert("Destination required", "Choose which scene this navigation pin leads to."); return;
@@ -474,6 +521,26 @@ export default function ToursScreen() {
     }
   };
 
+  // ── Look pin image picker + upload ────────────────────────────────────────
+
+  const pickLookImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") { Alert.alert("Permission needed", "Allow photo library access to add a photo."); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "images", allowsEditing: true, quality: 0.85 });
+    if (result.canceled || !result.assets?.[0]) return;
+    try {
+      setImageUploadingLook(true);
+      const compressed = await _compressImage(result.assets[0].uri, 2000, 0.82);
+      const key        = `look_img_${Date.now()}`;
+      const url        = await _uploadPhoto(compressed, key, user?.id ?? "anon", selectedId ?? "misc", () => {});
+      setDraftPin((p) => ({ ...p, imageUrl: url }));
+    } catch (err) {
+      Alert.alert("Upload failed", err instanceof Error ? err.message : "Could not upload image.");
+    } finally {
+      setImageUploadingLook(false);
+    }
+  };
+
   // ── Space handlers ─────────────────────────────────────────────────────────
 
   const openEditSpace = (space: TourSpace) => {
@@ -486,6 +553,7 @@ export default function ToursScreen() {
       requiresNDA: p.requiresNDA ?? false, visibility: "public" as Visibility,
       x: p.position.x, y: p.position.y,
       targetSpaceId:  p.targetSpaceId,
+      imageUrl:       p.imageUrl,
       documentUrl:    p.documentUrl,
       externalUrl:    p.externalUrl,
       audioUrl:       p.audioUrl,
@@ -635,6 +703,7 @@ export default function ToursScreen() {
         },
       };
       if (dp.targetSpaceId)           pin.targetSpaceId  = dp.targetSpaceId;
+      if (dp.imageUrl?.trim())        pin.imageUrl       = dp.imageUrl.trim();
       if (dp.documentUrl?.trim())     pin.documentUrl    = dp.documentUrl.trim();
       if (dp.externalUrl?.trim())     pin.externalUrl    = dp.externalUrl.trim();
       if (dp.audioUrl?.trim())        pin.audioUrl       = dp.audioUrl.trim();
@@ -994,6 +1063,7 @@ export default function ToursScreen() {
                         const isActivePin = activePinId === pin.id;
                         const dotSize     = isActivePin ? 22 : 18;
                         const isNav       = pin.type === "navigation";
+                        const isListen    = pin.type === "audio";
                         return (
                           <View
                             key={pin.id}
@@ -1006,6 +1076,8 @@ export default function ToursScreen() {
                           >
                             {isNav ? (
                               <PulsingNavDot size={dotSize} active={isActivePin} />
+                            ) : isListen ? (
+                              <PulsingListenDot size={dotSize} active={isActivePin} />
                             ) : (
                               <View style={{
                                 width: dotSize, height: dotSize, borderRadius: dotSize / 2,
@@ -1252,6 +1324,8 @@ export default function ToursScreen() {
                 }]}>
                   {draftPin.type === "navigation"
                     ? <PulsingNavDot size={22} active />
+                    : draftPin.type === "audio"
+                    ? <PulsingListenDot size={22} active />
                     : (
                       <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: selectedPinMeta.color, alignItems: "center", justifyContent: "center" }}>
                         <Feather name={selectedPinMeta.icon as any} size={10} color="#fff" />
@@ -1331,7 +1405,7 @@ export default function ToursScreen() {
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>INFORMATION</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               <View style={styles.typeGrid}>
-                {ALL_PIN_TYPES.filter((t) => !PRIMARY_PIN_TYPES.has(t.type)).map((t) => {
+                {ALL_PIN_TYPES.filter((t) => !PRIMARY_PIN_TYPES.has(t.type) && t.type !== "narration").map((t) => {
                   const active = draftPin.type === t.type;
                   return (
                     <TouchableOpacity
@@ -1397,6 +1471,66 @@ export default function ToursScreen() {
                   onChangeText={(t) => setDraftPin((p) => ({ ...p, description: t }))}
                   multiline numberOfLines={2}
                 />
+              </>
+            )}
+
+            {/* Look pin: photo + description */}
+            {draftPin.type === "look" && (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PHOTO</Text>
+                <View style={styles.audioPickerRow}>
+                  <TextInput
+                    style={[styles.nameInput, { flex: 1, marginBottom: 0, backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                    placeholder="Paste image URL or upload →"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={draftPin.imageUrl ?? ""}
+                    onChangeText={(t) => setDraftPin((p) => ({ ...p, imageUrl: t }))}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                  <TouchableOpacity
+                    style={[styles.audioPickBtn, { backgroundColor: "#0EA5E9", opacity: imageUploadingLook ? 0.7 : 1 }]}
+                    onPress={pickLookImage}
+                    disabled={imageUploadingLook}
+                  >
+                    {imageUploadingLook
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <><Feather name="upload" size={13} color="#fff" /><Text style={styles.audioPickBtnText}>Upload</Text></>
+                    }
+                  </TouchableOpacity>
+                </View>
+                {draftPin.imageUrl?.trim() ? (
+                  <View style={{ marginTop: 8, marginBottom: 4, borderRadius: 10, overflow: "hidden" }}>
+                    <Image source={{ uri: draftPin.imageUrl }} style={{ width: "100%", height: 140 }} resizeMode="cover" />
+                    <TouchableOpacity
+                      style={[styles.audioRemoveBtn, { marginTop: 4 }]}
+                      onPress={() => setDraftPin((p) => ({ ...p, imageUrl: "" }))}
+                    >
+                      <Feather name="x" size={11} color="#EF4444" />
+                      <Text style={[styles.audioRemoveBtnText, { color: "#EF4444" }]}>Remove photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>DESCRIPTION</Text>
+                <TextInput
+                  style={[styles.nameInput, styles.textArea, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                  placeholder="What should buyers look at? Describe what makes this notable…"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={draftPin.description}
+                  onChangeText={(t) => setDraftPin((p) => ({ ...p, description: t }))}
+                  multiline numberOfLines={3}
+                />
+                {draftSpace.dirMode === "panorama" && draftSpace.panoramaUri && (
+                  <TouchableOpacity
+                    style={[styles.placePinBtn, { backgroundColor: colors.primary + "20", borderColor: colors.primary }]}
+                    onPress={() => { setShowPinModal(false); setPinPlaceMode(true); }}
+                  >
+                    <Feather name="crosshair" size={14} color={colors.primary} />
+                    <Text style={[styles.placePinBtnText, { color: colors.primary }]}>
+                      {draftPin.x != null ? `Reposition pin (${Math.round(draftPin.x * 100)}%, ${Math.round((draftPin.y ?? 0.5) * 100)}%)` : "Place on Panorama"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
 

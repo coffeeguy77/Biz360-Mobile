@@ -61,6 +61,7 @@ function buildSinglePanoHtml(
     icon: PIN_ICONS_PANO[p.type] ?? "\u2139",
     locked: !!p.requiresNDA,
     isNav: p.type === "navigation",
+    isListen: p.type === "audio",
   }));
 
   return `<!DOCTYPE html>
@@ -117,6 +118,31 @@ function buildSinglePanoHtml(
           '<div style="'+R+';animation-delay:0.67s"></div>' +
           '<div style="'+R+';animation-delay:1.33s"></div>' +
           '<div style="'+C+'"></div>';
+      } else if (args.isListen) {
+        /* Listen pin: pulsing pink ripple + mic icon — same structure as nav but in pink. */
+        if (!document.getElementById('pnlm-listen-kf')) {
+          var sl = document.createElement('style');
+          sl.id = 'pnlm-listen-kf';
+          sl.textContent = '@keyframes pnlmListenPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}';
+          document.head.appendChild(sl);
+        }
+        container.style.background = 'transparent';
+        container.style.border = 'none';
+        container.style.boxShadow = 'none';
+        container.style.width = '60px';
+        container.style.height = '60px';
+        container.style.borderRadius = '0';
+        container.style.cursor = 'pointer';
+        container.style.marginLeft = '-30px';
+        container.style.marginTop = '-30px';
+        container.style.overflow = 'visible';
+        var LR = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;border:2.5px solid rgba(236,72,153,0.9);top:50%;left:50%;margin:-12px 0 0 -12px;animation-name:pnlmListenPulse;animation-duration:2s;animation-timing-function:ease-out;animation-iteration-count:infinite;pointer-events:none';
+        var LC = 'position:absolute;width:20px;height:20px;border-radius:50%;background:#EC4899;top:50%;left:50%;margin:-10px 0 0 -10px;z-index:2;box-shadow:0 0 8px 3px rgba(236,72,153,0.75);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:20px;text-align:center';
+        container.innerHTML =
+          '<div style="'+LR+';animation-delay:0s"></div>' +
+          '<div style="'+LR+';animation-delay:0.67s"></div>' +
+          '<div style="'+LR+';animation-delay:1.33s"></div>' +
+          '<div style="'+LC+'">&#127897;</div>';
       } else {
         /* Standard info/look/etc pin: solid circle with emoji icon */
         container.style.background = args.color;
@@ -145,7 +171,7 @@ function buildSinglePanoHtml(
       autoLoad:true, showControls:false, compass:false,
       yaw:${startYaw}, pitch:0, hfov:100, minHfov:40, maxHfov:140,
       mouseZoom:true, touchPanSpeedCoeffFactor:1.5, showFullscreenCtrl:false,
-      hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked,isNav:p.isNav}};})
+      hotSpots:PINS.map(function(p){return{id:p.id,pitch:p.pitch,yaw:p.yaw,type:'custom',cssClass:'',createTooltipFunc:createPin,createTooltipArgs:{id:p.id,label:p.title,icon:p.icon,color:p.color,locked:p.locked,isNav:p.isNav,isListen:p.isListen}};})
     });
   </script>
 </body></html>`;
