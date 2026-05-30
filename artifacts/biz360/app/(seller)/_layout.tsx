@@ -32,6 +32,10 @@ function NativeLayout() {
         <Icon sf={{ default: "message", selected: "message.fill" }} />
         <Label>Messages</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="help">
+        <Icon sf={{ default: "book.pages", selected: "book.pages.fill" }} />
+        <Label>Help</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -69,6 +73,7 @@ function ClassicLayout() {
       <Tabs.Screen name="tours" options={{ title: "Tours", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="rotate.3d" tintColor={color} size={24} /> : <Feather name="rotate-ccw" size={22} color={color} /> }} />
       <Tabs.Screen name="leads" options={{ title: "Leads", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.2" tintColor={color} size={24} /> : <Feather name="users" size={22} color={color} /> }} />
       <Tabs.Screen name="messages" options={{ title: "Messages", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="message" tintColor={color} size={24} /> : <Feather name="message-circle" size={22} color={color} /> }} />
+      <Tabs.Screen name="help" options={{ title: "Help", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="book.pages" tintColor={color} size={24} /> : <Feather name="book-open" size={22} color={color} /> }} />
     </Tabs>
   );
 }

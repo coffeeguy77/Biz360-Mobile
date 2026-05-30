@@ -34,6 +34,7 @@ function RootLayoutNav() {
       <Stack.Screen name="thread/[id]" />
       <Stack.Screen name="create-listing" />
       <Stack.Screen name="packages" />
+      <Stack.Screen name="wiki" />
     </Stack>
   );
 }

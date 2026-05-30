@@ -367,6 +367,28 @@ export default function AdminCleanupSettings() {
               </Text>
             </View>
           )}
+
+          {/* ── Help & Wiki ─────────────────────────────────────────────── */}
+          <View style={{ height: 24 }} />
+          <SectionHeader title="Help & Reference" />
+          <TouchableOpacity
+            style={[sStyles.card, { backgroundColor: "#0F2040", borderColor: "#1E3A5C", overflow: "hidden" }]}
+            onPress={() => router.push("/wiki" as any)}
+            activeOpacity={0.8}
+          >
+            <View style={sStyles.quickRow}>
+              <View style={[sStyles.quickIcon, { backgroundColor: "#3B82F620" }]}>
+                <Feather name="book-open" size={18} color="#3B82F6" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[sStyles.quickLabel, { color: "#fff" }]}>Platform Wiki</Text>
+                <Text style={[sStyles.quickHint, { color: "rgba(255,255,255,0.55)" }]}>
+                  Admin guide, feature reference, and troubleshooting
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={16} color="rgba(255,255,255,0.4)" />
+            </View>
+          </TouchableOpacity>
         </ScrollView>
       </View>
     </KeyboardAvoidingView>

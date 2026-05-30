@@ -250,6 +250,22 @@ export default function BrokerDashboard() {
             </TouchableOpacity>
           ))
         )}
+
+        {/* Wiki / Help */}
+        <TouchableOpacity
+          style={[styles.wikiCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}
+          onPress={() => router.push("/wiki" as any)}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.wikiIcon, { backgroundColor: "#3B82F620" }]}>
+            <Feather name="book-open" size={18} color="#3B82F6" />
+          </View>
+          <View style={styles.wikiBody}>
+            <Text style={[styles.wikiTitle, { color: "#fff" }]}>Help & Wiki</Text>
+            <Text style={[styles.wikiSub, { color: "rgba(255,255,255,0.55)" }]}>Platform manual, feature guides, and troubleshooting</Text>
+          </View>
+          <Feather name="chevron-right" size={16} color="rgba(255,255,255,0.4)" />
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -291,4 +307,9 @@ const styles = StyleSheet.create({
   leadName:          { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   leadListing:       { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
   leadTime:          { fontSize: 11, fontFamily: "Inter_400Regular" },
+  wikiCard:          { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1 },
+  wikiIcon:          { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  wikiBody:          { flex: 1, gap: 2 },
+  wikiTitle:         { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  wikiSub:           { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
 });
