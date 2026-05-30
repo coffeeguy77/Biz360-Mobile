@@ -81,21 +81,28 @@ function buildSinglePanoHtml(
   const defAnim    = tourSettings?.defaultAnimation    ?? "none";
   const defSize    = tourSettings?.defaultPinSize      ?? 1.0;
   const defOpacity = tourSettings?.defaultPinOpacity   ?? 1.0;
-  // groundPitch: pitch (degrees) where floor (0 m) appears in this panorama.
+  // groundPitch: pitch (degrees) where the floor (0 m) appears in this panorama.
   // Default -50°. Eye level (1.4 m) always maps to 0°.
   const gp = groundPitch ?? -50;
+
+  // FLOOR_FORWARD_BIAS: shift height-based floor pins ~2 m ahead of the viewer
+  // so they appear in the buyer's natural forward view rather than at nadir.
+  // Full bias at 0 m, tapers to 0 at eye level (1.4 m).
+  const FLOOR_FORWARD_BIAS = 18; // degrees
 
   const hotspots = pins.map((p) => {
     // Height-to-pitch: linear interpolation — 0 m → groundPitch, 1.4 m → 0°
     let pitch: number;
     if (p.heightMetres !== undefined) {
-      pitch = gp + (p.heightMetres / 1.4) * (-gp);
+      const rawPitch = gp + (p.heightMetres / 1.4) * (-gp);
+      const biasFraction = Math.max(0, 1 - p.heightMetres / 1.4);
+      pitch = rawPitch + FLOOR_FORWARD_BIAS * biasFraction;
     } else if (p.groundMounted) {
-      pitch = gp;
+      pitch = gp + FLOOR_FORWARD_BIAS;
     } else {
-      // Split at eye level (y=0.5):
-      //   upper half maps to 0° → +90°
-      //   lower half maps to 0° → groundPitch (calibrated to actual floor)
+      // Tap-placed: split at eye level (y=0.5):
+      //   upper half maps 0° → +90°
+      //   lower half maps 0° → groundPitch (calibrated to actual floor)
       const relY = 0.5 - p.position.y;
       pitch = relY >= 0
         ? (relY / 0.5) * 90

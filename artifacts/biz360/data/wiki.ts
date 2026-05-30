@@ -498,7 +498,7 @@ export const WIKI_ARTICLES: WikiArticle[] = [
       },
       {
         heading: "How the formula works",
-        body: "The formula maps metres to a pitch angle:\n  pitch = groundPitch + (heightMetres ÷ 1.4) × (−groundPitch)\n\n• 0 m → groundPitch (floor of the panorama)\n• 1.4 m → 0° (horizontal / eye level)\n• 2.8 m → −groundPitch (same distance above eye level)\n\ngroundPitch is set via the Floor Level in Panorama calibration (see next article).",
+        body: "The formula maps metres to a pitch angle, then adds a forward bias so floor pins appear 2–3 m ahead of the viewer rather than directly underfoot:\n\n  rawPitch = groundPitch + (heightMetres ÷ 1.4) × (−groundPitch)\n  pitch = rawPitch + 18° × (1 − heightMetres ÷ 1.4)\n\n• 0 m → groundPitch + 18° (floor, shifted forward)\n• 1.4 m → 0° (horizontal / eye level, no bias)\n• 2.8 m → −groundPitch (above eye level)\n\ngroundPitch is set via Floor Level in Panorama calibration (see next article).",
       },
       {
         heading: "Important: height applies to 360° spaces only",
