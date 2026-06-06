@@ -93,6 +93,7 @@ export interface TourPin {
   pinOpacity?: number;    // 0.3–1.0; undefined = default
   pinColor?: string;      // hex override; undefined = type default
   // Audio / Listen hotspot
+  audioName?: string;
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
   // Document / external link

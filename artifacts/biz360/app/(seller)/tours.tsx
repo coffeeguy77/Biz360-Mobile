@@ -229,6 +229,7 @@ interface DraftPin {
   pinOpacity?: number;
   pinColor?: string;
   // Audio / Listen hotspot
+  audioName?: string;
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
   // Rich popup content (info pins)
@@ -823,6 +824,7 @@ export default function ToursScreen() {
       if (dp.pinSize !== undefined)   pin.pinSize        = dp.pinSize;
       if (dp.pinOpacity !== undefined) pin.pinOpacity    = dp.pinOpacity;
       if (dp.pinColor)                pin.pinColor       = dp.pinColor;
+      if (dp.audioName?.trim())       pin.audioName      = dp.audioName.trim();
       if (dp.audioUrl?.trim())        pin.audioUrl       = dp.audioUrl.trim();
       if (dp.audioTrigger)            pin.audioTrigger   = dp.audioTrigger;
       const hasPopup = dp.popupContent && (
@@ -1849,6 +1851,14 @@ export default function ToursScreen() {
             {/* Audio hotspot */}
             {draftPin.type === "audio" && (
               <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>CLIP NAME</Text>
+                <TextInput
+                  style={[styles.nameInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                  placeholder='e.g. "Outdoor dining narration"'
+                  placeholderTextColor={colors.mutedForeground}
+                  value={draftPin.audioName ?? ""}
+                  onChangeText={(t) => setDraftPin((p) => ({ ...p, audioName: t }))}
+                />
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>MP3 FILE</Text>
                 <View style={styles.audioPickerRow}>
                   <TextInput

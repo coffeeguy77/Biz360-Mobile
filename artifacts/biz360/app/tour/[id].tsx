@@ -162,6 +162,7 @@ export default function TourScreen() {
   const [audioDurMs,       setAudioDurMs]       = useState(0);
   const [audioLoading,     setAudioLoading]     = useState(false);
   const [showTranscript,   setShowTranscript]   = useState(false);
+  const [currentAudioName, setCurrentAudioName] = useState<string>("");
   const currentAudioUrlRef = useRef<string | null>(null);
 
   // ── Request More Info state ──────────────────────────────────────────────────
@@ -275,7 +276,7 @@ export default function TourScreen() {
   }, [showAudioOnboarding]);
 
   // ── Audio playback ───────────────────────────────────────────────────────────
-  const playAudio = async (url: string) => {
+  const playAudio = async (url: string, name?: string) => {
     // Toggle pause/resume if same URL loaded
     if (soundRef.current && currentAudioUrlRef.current === url) {
       try {
@@ -299,6 +300,7 @@ export default function TourScreen() {
       soundRef.current = null;
     }
 
+    if (name !== undefined) setCurrentAudioName(name);
     setAudioLoading(true);
     try {
       await Audio.setAudioModeAsync({
@@ -345,7 +347,7 @@ export default function TourScreen() {
       return;
     }
     if (pin.type === "audio" && pin.audioUrl) {
-      playAudio(pin.audioUrl);
+      playAudio(pin.audioUrl, pin.audioName ?? "");
       return;
     }
     setActivePin(pin);
@@ -382,7 +384,7 @@ export default function TourScreen() {
   const hasAudio        = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger !== "hotspot";
   const hasAudioHotspot = !!(activeSpace?.audioUrl) && activeSpace.audioTrigger === "hotspot";
   const showAudioBar    = tourSettings.showNarrationBar &&
-    (hasAudio || (hasAudioHotspot && (audioPlaying || audioLoading || audioDurMs > 0)));
+    (hasAudio || audioPlaying || audioLoading || audioDurMs > 0);
   const hasTranscript   = !!(activeSpace?.audioTranscript?.trim());
   const audioPct        = audioDurMs > 0 ? audioPosMs / audioDurMs : 0;
 
@@ -505,7 +507,7 @@ export default function TourScreen() {
       {hasAudioHotspot && (
         <TouchableOpacity
           style={[styles.audioHotspot, { bottom: bottomBase + 140 }]}
-          onPress={() => playAudio(activeSpace!.audioUrl!)}
+          onPress={() => playAudio(activeSpace!.audioUrl!, activeSpace?.audioName)}
           disabled={audioLoading}
           activeOpacity={0.8}
         >
@@ -528,13 +530,20 @@ export default function TourScreen() {
           <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
             <Feather name="volume-2" size={14} color="#EC4899" />
             <View style={{ flex: 1 }}>
+              {/* Primary line: timer while playing, clip name while idle */}
               <Text style={styles.audioBarText} numberOfLines={1}>
                 {audioLoading
                   ? "Loading narration…"
                   : audioPlaying && audioDurMs > 0
                   ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
-                  : activeSpace?.audioName?.trim() || "Seller narration"}
+                  : (currentAudioName || activeSpace?.audioName?.trim() || "Seller narration")}
               </Text>
+              {/* Subtitle: clip name persists below the timer during playback */}
+              {(audioPlaying || audioDurMs > 0) && (currentAudioName || activeSpace?.audioName?.trim()) && (
+                <Text style={styles.audioBarSubText} numberOfLines={1}>
+                  {currentAudioName || activeSpace?.audioName?.trim()}
+                </Text>
+              )}
               {audioDurMs > 0 && (
                 <View style={styles.progressTrack}>
                   <View style={[styles.progressFill, { width: `${Math.round(audioPct * 100)}%` as any }]} />
@@ -551,7 +560,7 @@ export default function TourScreen() {
             )}
             <TouchableOpacity
               style={[styles.audioPlayBtn, audioLoading && { opacity: 0.6 }]}
-              onPress={() => playAudio(currentAudioUrlRef.current ?? activeSpace!.audioUrl!)}
+              onPress={() => playAudio(currentAudioUrlRef.current ?? activeSpace!.audioUrl!, currentAudioName || activeSpace?.audioName)}
               disabled={audioLoading}
             >
               <Feather name={audioLoading ? "loader" : audioPlaying ? "pause" : "play"} size={11} color="#fff" />
@@ -786,6 +795,7 @@ const styles = StyleSheet.create({
   audioBarWrap:    { position: "absolute", left: 0, right: 0, paddingHorizontal: 16, zIndex: 10 },
   audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.92)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   audioBarText:    { color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
+  audioBarSubText: { color: "rgba(236,72,153,0.65)", fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 1 },
   progressTrack:   { height: 2, backgroundColor: "rgba(236,72,153,0.2)", borderRadius: 1, marginTop: 4, overflow: "hidden" },
   progressFill:    { height: 2, backgroundColor: "#EC4899", borderRadius: 1 },
   audioPlayBtn:    { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#EC4899", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
