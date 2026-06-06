@@ -538,8 +538,8 @@ export default function TourScreen() {
                   ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
                   : (currentAudioName || activeSpace?.audioName?.trim() || "Seller narration")}
               </Text>
-              {/* Subtitle: clip name persists below the timer during playback */}
-              {(audioPlaying || audioDurMs > 0) && (currentAudioName || activeSpace?.audioName?.trim()) && (
+              {/* Subtitle: clip name shown below the timer only while timer is visible */}
+              {audioPlaying && audioDurMs > 0 && (currentAudioName || activeSpace?.audioName?.trim()) && (
                 <Text style={styles.audioBarSubText} numberOfLines={1}>
                   {currentAudioName || activeSpace?.audioName?.trim()}
                 </Text>
@@ -795,7 +795,7 @@ const styles = StyleSheet.create({
   audioBarWrap:    { position: "absolute", left: 0, right: 0, paddingHorizontal: 16, zIndex: 10 },
   audioBarInner:   { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(7,18,33,0.92)", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   audioBarText:    { color: "#EC4899", fontSize: 12, fontFamily: "Inter_500Medium" },
-  audioBarSubText: { color: "rgba(236,72,153,0.85)", fontSize: 12, fontFamily: "Inter_600SemiBold", marginTop: 1 },
+  audioBarSubText: { color: "rgba(255,255,255,0.9)", fontSize: 12, fontFamily: "Inter_600SemiBold", marginTop: 1 },
   progressTrack:   { height: 2, backgroundColor: "rgba(236,72,153,0.2)", borderRadius: 1, marginTop: 4, overflow: "hidden" },
   progressFill:    { height: 2, backgroundColor: "#EC4899", borderRadius: 1 },
   audioPlayBtn:    { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#EC4899", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
