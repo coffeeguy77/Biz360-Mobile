@@ -528,12 +528,12 @@ export default function TourScreen() {
           <View style={[styles.audioBarInner, { borderColor: audioPlaying ? "#EC4899" : "#EC489940" }]}>
             <Feather name="volume-2" size={14} color="#EC4899" />
             <View style={{ flex: 1 }}>
-              <Text style={styles.audioBarText}>
+              <Text style={styles.audioBarText} numberOfLines={1}>
                 {audioLoading
                   ? "Loading narration…"
                   : audioPlaying && audioDurMs > 0
                   ? `${fmtMs(audioPosMs)} / ${fmtMs(audioDurMs)}`
-                  : "Seller narration"}
+                  : activeSpace?.audioName?.trim() || "Seller narration"}
               </Text>
               {audioDurMs > 0 && (
                 <View style={styles.progressTrack}>

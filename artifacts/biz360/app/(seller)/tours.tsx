@@ -243,6 +243,7 @@ interface DraftSpace {
   groundPitch?: number;
   pins: DraftPin[];
   // Audio narration
+  audioName?: string;
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
   audioTranscript?: string;
@@ -252,7 +253,7 @@ interface DraftSpace {
 
 const EMPTY_SPACE: DraftSpace = {
   name: "", dirMode: "panorama", photos: {}, pins: [],
-  audioUrl: "", audioTrigger: "button", audioTranscript: "", isStartScene: false,
+  audioName: "", audioUrl: "", audioTrigger: "button", audioTranscript: "", isStartScene: false,
 };
 const EMPTY_PIN: DraftPin = {
   id: "", type: "navigation", title: "", description: "",
@@ -674,6 +675,7 @@ export default function ToursScreen() {
     setDraftSpace({
       name: space.name, dirMode, photos, panoramaUri: space.panoramaUrl, pins: draftPins,
       groundPitch:    space.groundPitch,
+      audioName:      space.audioName ?? "",
       audioUrl:       space.audioUrl ?? "",
       audioTrigger:   space.audioTrigger ?? "button",
       audioTranscript:space.audioTranscript ?? "",
@@ -738,6 +740,7 @@ export default function ToursScreen() {
 
     const extraFields = {
       groundPitch:     draftSpace.groundPitch,
+      audioName:       draftSpace.audioName?.trim() || undefined,
       audioUrl:        draftSpace.audioUrl?.trim() || undefined,
       audioTrigger:    draftSpace.audioTrigger,
       audioTranscript: draftSpace.audioTranscript?.trim() || undefined,
@@ -1328,6 +1331,14 @@ export default function ToursScreen() {
               <Text style={[styles.fieldHint, { color: colors.mutedForeground, marginBottom: 10 }]}>
                 Paste a Cloudinary or hosted MP3 URL. Buyers can play narration while viewing this scene.
               </Text>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>CLIP NAME</Text>
+              <TextInput
+                style={[styles.nameInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                placeholder='e.g. "Main dining narration"'
+                placeholderTextColor={colors.mutedForeground}
+                value={draftSpace.audioName ?? ""}
+                onChangeText={(t) => setDraftSpace((p) => ({ ...p, audioName: t }))}
+              />
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>MP3 FILE</Text>
               <View style={styles.audioPickerRow}>
                 <TextInput

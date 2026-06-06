@@ -114,6 +114,7 @@ export interface TourSpace {
   pins: TourPin[];
   dirMode?: 4 | 8 | "panorama" | "single";
   // Scene-level audio narration
+  audioName?: string;      // display name shown in the player bar
   audioUrl?: string;
   audioTrigger?: AudioTrigger;
   audioTranscript?: string;
