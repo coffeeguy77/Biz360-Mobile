@@ -146,6 +146,10 @@ SPACES.forEach(function(s){
   scenesConfig[s.id]=sc;
 });
 var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:150},scenes:scenesConfig});
+/* Force remeasure on mobile — canvas size may not be settled at init time */
+function doResize(){try{viewer.resize()}catch(e){}}
+window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
+window.addEventListener('resize',doResize);
 viewer.on('scenechange',function(id){try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}});
 window.addEventListener('message',function(e){if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{viewer.loadScene(e.data.sceneId,0,0,100)}catch(e2){}});
 <\/script>
@@ -171,13 +175,13 @@ function TourViewer({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "16/9", maxHeight: 460, minHeight: 220 }}>
+      <div className="relative rounded-2xl overflow-hidden bg-black" style={{ height: "clamp(220px, 50vw, 460px)", touchAction: "none" }}>
         <iframe
           ref={iframeRef}
           srcDoc={srcdoc}
           className="w-full h-full border-0"
           title="360° Tour"
-          sandbox="allow-scripts allow-same-origin"
+          allow="fullscreen"
         />
         <div className="absolute top-4 right-4 bg-black/60 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 z-10 pointer-events-none">
           <Camera size={11} className="text-primary" />
