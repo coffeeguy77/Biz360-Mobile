@@ -1,10 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Alert,
-  FlatList,
+  Alert, FlatList,
   Platform,
   StyleSheet,
   Text,
@@ -30,7 +29,7 @@ const DEFAULT_FILTERS: FilterState = {
 export default function DiscoverScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, realUser, login, restoreReal, logout } = useAuth();
   const [search,      setSearch]      = useState("");
   const [filters,     setFilters]     = useState<FilterState>(DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
@@ -97,6 +96,20 @@ export default function DiscoverScreen() {
   const activeFilterCount = filters.categories.length + filters.states.length +
     (filters.hasTour ? 1 : 0) + (filters.verified ? 1 : 0);
 
+  const showAccountMenu = () => {
+    Alert.alert(user?.name ?? "Account", user?.email ?? "", [
+      { text: "Switch Account", onPress: () => Alert.alert("Switch Role", "Choose a demo account to test with:", [
+          { text: "Buyer",     onPress: async () => { await login(DEMO_USERS.buyer);  router.replace("/(tabs)/discover" as any); } },
+          { text: "My Seller", onPress: async () => { await restoreReal();             router.replace("/(seller)/dashboard" as any); } },
+          { text: "Broker",    onPress: async () => { await login(DEMO_USERS.broker); router.replace("/(broker)/dashboard" as any); } },
+          { text: "Admin",     onPress: async () => { await login(DEMO_USERS.admin);  router.replace("/(admin)/listings" as any); } },
+          { text: "Cancel", style: "cancel" },
+        ]) },
+      { text: "Sign Out", style: "destructive", onPress: async () => { await logout(); router.replace("/(auth)/welcome" as any); } },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View
@@ -110,10 +123,22 @@ export default function DiscoverScreen() {
         ]}
       >
         <View style={styles.headerTop}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Discover</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            {filtered.length} {filtered.length === 1 ? "business" : "businesses"} for sale
-          </Text>
+          <View>
+            <Text style={[styles.title, { color: colors.foreground }]}>Discover</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              {filtered.length} {filtered.length === 1 ? "business" : "businesses"} for sale
+            </Text>
+          </View>
+          {realUser?.email === "+61414631463" && (
+            <TouchableOpacity
+              style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={showAccountMenu}
+            >
+              <Text style={[styles.avatarText, { color: colors.foreground }]}>
+                {user?.name?.charAt(0)?.toUpperCase() ?? "?"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.searchRow}>
@@ -195,7 +220,9 @@ export default function DiscoverScreen() {
 const styles = StyleSheet.create({
   container:       { flex: 1 },
   header:          { paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
-  headerTop:       { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 },
+  headerTop:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  avatarBtn:       { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  avatarText:      { fontSize: 15, fontFamily: "Inter_700Bold" },
   title:           { fontSize: 26, fontFamily: "Inter_700Bold" },
   subtitle:        { fontSize: 13, fontFamily: "Inter_400Regular" },
   searchRow:       { flexDirection: "row", gap: 10, alignItems: "center" },
