@@ -220,6 +220,14 @@ export default function WelcomeScreen() {
             <Text style={[styles.loginLink, { color: "#3B82F6" }]}>Create account</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={styles.browseBtn}
+          onPress={() => router.replace("/(tabs)/discover" as any)}
+        >
+          <Feather name="compass" size={15} color="#8B9CB8" />
+          <Text style={styles.browseBtnText}>Browse listings without an account</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -277,4 +285,6 @@ const styles = StyleSheet.create({
   loginRow: { flexDirection: "row", justifyContent: "center" },
   loginText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   loginLink: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  browseBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 20, paddingVertical: 10 },
+  browseBtnText: { color: "#8B9CB8", fontSize: 14, fontFamily: "Inter_400Regular" },
 });
