@@ -1,4 +1,4 @@
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   ArrowLeft,
@@ -606,8 +606,12 @@ export function ListingDetail() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 pt-2">
-                  <Button className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
-                  <Button variant="outline" className="w-full gap-2"><Mail size={15} /> Send Enquiry</Button>
+                  <Link href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.name ?? "")}&return=/listings/${listing?.id ?? ""}`}>
+                    <Button className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
+                  </Link>
+                  <Link href={`/sign-in?intent=enquiry&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.name ?? "")}&return=/listings/${listing?.id ?? ""}`}>
+                    <Button variant="outline" className="w-full gap-2"><Mail size={15} /> Send Enquiry</Button>
+                  </Link>
                 </div>
               </div>
 

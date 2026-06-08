@@ -1,0 +1,366 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Link, useLocation } from "wouter";
+import { ArrowLeft, Eye, Phone, ShieldCheck, ChevronRight, Loader2, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+type Step = "phone" | "otp" | "success";
+
+function toE164(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("61")) return "+" + digits;
+  if (digits.startsWith("0")) return "+61" + digits.slice(1);
+  return "+61" + digits;
+}
+
+function formatDisplay(raw: string): string {
+  const digits = raw.replace(/\D/g, "").replace(/^0/, "");
+  const chunks = digits.match(/.{1,3}/g) || [];
+  return chunks.join(" ").trim();
+}
+
+function OtpBoxes({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  function handleKey(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace") {
+      if (value[i]) {
+        const next = [...value];
+        next[i] = "";
+        onChange(next);
+      } else if (i > 0) {
+        refs.current[i - 1]?.focus();
+      }
+    }
+  }
+
+  function handleChange(i: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const char = e.target.value.replace(/\D/g, "").slice(-1);
+    if (!char) return;
+    const next = [...value];
+    next[i] = char;
+    onChange(next);
+    if (i < 5) refs.current[i + 1]?.focus();
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!text) return;
+    e.preventDefault();
+    const next = Array(6).fill("");
+    text.split("").forEach((c, i) => { next[i] = c; });
+    onChange(next);
+    refs.current[Math.min(text.length, 5)]?.focus();
+  }
+
+  return (
+    <div className="flex gap-3 justify-center" onPaste={handlePaste}>
+      {value.map((digit, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={digit}
+          onChange={(e) => handleChange(i, e)}
+          onKeyDown={(e) => handleKey(i, e)}
+          onFocus={(e) => e.target.select()}
+          className={`w-12 h-14 text-center text-xl font-bold rounded-xl border-2 bg-card text-foreground outline-none transition-all ${
+            digit ? "border-primary" : "border-border focus:border-primary/60"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function SignIn() {
+  const [, navigate] = useLocation();
+  const params = new URLSearchParams(window.location.search);
+  const intent = params.get("intent") ?? "enquiry";
+  const listingId = params.get("listingId") ?? "";
+  const listingName = params.get("listingName") ?? "this listing";
+  const returnPath = params.get("return") ?? `/listings/${listingId}`;
+
+  const [step, setStep] = useState<Step>("phone");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const e164 = toE164(phone);
+  const phoneValid = e164.replace(/\D/g, "").length >= 11;
+  const otpFull = otp.every(Boolean);
+
+  // Auto-submit when all 6 digits entered
+  useEffect(() => {
+    if (step === "otp" && otpFull) handleVerify();
+  }, [otp]);
+
+  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+
+  function startCooldown() {
+    setResendCooldown(30);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((n) => {
+        if (n <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        return n - 1;
+      });
+    }, 1000);
+  }
+
+  async function handleSendOtp() {
+    if (!phoneValid) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/biz360/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: e164 }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || "Failed to send code");
+      }
+      setStep("otp");
+      startCooldown();
+    } catch (err: any) {
+      setError(err.message ?? "Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerify() {
+    if (!otpFull) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/biz360/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: e164, code: otp.join("") }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || "Invalid code — please try again");
+      }
+      setStep("success");
+    } catch (err: any) {
+      setError(err.message ?? "Verification failed. Try again.");
+      setOtp(Array(6).fill(""));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    if (resendCooldown > 0) return;
+    setOtp(Array(6).fill(""));
+    setError("");
+    setLoading(true);
+    try {
+      await fetch("/api/biz360/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: e164 }),
+      });
+      startCooldown();
+    } catch {
+      setError("Failed to resend. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const intentLabel = intent === "call" ? "Request a Call" : "Send Enquiry";
+  const intentDesc =
+    intent === "call"
+      ? "We'll pass your number to the seller so they can call you directly."
+      : "We'll send your enquiry to the seller on your behalf.";
+  const successMessage =
+    intent === "call"
+      ? `The seller will call you at ${e164} within 1–2 business days.`
+      : `Your enquiry about ${listingName} has been sent to the seller.`;
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Nav */}
+      <nav className="border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="max-w-lg mx-auto px-6 h-16 flex items-center gap-4">
+          <Link href={returnPath}>
+            <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm">
+              <ArrowLeft size={16} /> Back
+            </button>
+          </Link>
+          <span className="text-border">|</span>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-primary rounded flex items-center justify-center">
+              <Eye className="text-primary-foreground" size={13} />
+            </div>
+            <span className="font-bold">EXIT360</span>
+          </div>
+        </div>
+      </nav>
+
+      {/* Card */}
+      <div className="flex-1 flex items-center justify-center px-6 py-16">
+        <div className="w-full max-w-sm">
+
+          {/* Step: Phone */}
+          {step === "phone" && (
+            <div className="flex flex-col gap-7">
+              <div className="text-center">
+                <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Phone size={24} className="text-primary" />
+                </div>
+                <h1 className="text-2xl font-bold mb-2">{intentLabel}</h1>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {intentDesc}
+                  <br />
+                  Verify your number to continue.
+                </p>
+              </div>
+
+              {/* Listing context */}
+              {listingName && (
+                <div className="bg-card border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+                  <ShieldCheck size={14} className="text-green-400 flex-shrink-0" />
+                  <span className="truncate">{listingName}</span>
+                </div>
+              )}
+
+              {/* Phone input */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-2">Mobile Number</label>
+                <div className="flex items-center bg-card border-2 border-border rounded-xl overflow-hidden focus-within:border-primary/60 transition-colors">
+                  <div className="flex items-center gap-1.5 px-3 py-3 border-r border-border bg-muted/30 flex-shrink-0">
+                    <span className="text-base">🇦🇺</span>
+                    <span className="text-sm font-medium text-muted-foreground">+61</span>
+                  </div>
+                  <input
+                    type="tel"
+                    autoFocus
+                    placeholder="04XX XXX XXX"
+                    value={formatDisplay(phone)}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                    onKeyDown={(e) => { if (e.key === "Enter" && phoneValid) handleSendOtp(); }}
+                    className="flex-1 px-3 py-3 bg-transparent text-foreground text-base placeholder:text-muted-foreground/40 outline-none"
+                  />
+                </div>
+                {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+              </div>
+
+              <Button
+                onClick={handleSendOtp}
+                disabled={!phoneValid || loading}
+                className="w-full h-12 text-base font-semibold gap-2"
+              >
+                {loading ? (
+                  <><Loader2 size={16} className="animate-spin" /> Sending…</>
+                ) : (
+                  <>Send Verification Code <ChevronRight size={16} /></>
+                )}
+              </Button>
+
+              <p className="text-center text-xs text-muted-foreground">
+                A 6-digit code will be sent via SMS to your mobile.
+              </p>
+            </div>
+          )}
+
+          {/* Step: OTP */}
+          {step === "otp" && (
+            <div className="flex flex-col gap-7">
+              <div className="text-center">
+                <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ShieldCheck size={24} className="text-primary" />
+                </div>
+                <h1 className="text-2xl font-bold mb-2">Enter your code</h1>
+                <p className="text-muted-foreground text-sm">
+                  Sent to <span className="text-foreground font-medium">{e164}</span>
+                </p>
+              </div>
+
+              <OtpBoxes value={otp} onChange={setOtp} />
+
+              {error && <p className="text-center text-sm text-red-400">{error}</p>}
+
+              <Button
+                onClick={handleVerify}
+                disabled={!otpFull || loading}
+                className="w-full h-12 text-base font-semibold gap-2"
+              >
+                {loading ? (
+                  <><Loader2 size={16} className="animate-spin" /> Verifying…</>
+                ) : (
+                  <>Confirm <ChevronRight size={16} /></>
+                )}
+              </Button>
+
+              <div className="flex items-center justify-between text-sm">
+                <button
+                  onClick={() => { setStep("phone"); setOtp(Array(6).fill("")); setError(""); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Change number
+                </button>
+                <button
+                  onClick={handleResend}
+                  disabled={resendCooldown > 0 || loading}
+                  className={`transition-colors ${
+                    resendCooldown > 0 ? "text-muted-foreground/40 cursor-not-allowed" : "text-primary hover:text-primary/80"
+                  }`}
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: Success */}
+          {step === "success" && (
+            <div className="flex flex-col gap-7 text-center">
+              <div>
+                <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 size={32} className="text-green-400" />
+                </div>
+                <h1 className="text-2xl font-bold mb-3">
+                  {intent === "call" ? "Call Requested!" : "Enquiry Sent!"}
+                </h1>
+                <p className="text-muted-foreground text-sm leading-relaxed">{successMessage}</p>
+              </div>
+
+              <div className="bg-card border border-border rounded-xl p-4 text-left space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <ShieldCheck size={14} className="text-green-400" />
+                  <span className="text-muted-foreground">Verified number:</span>
+                  <span className="font-medium">{e164}</span>
+                </div>
+                {listingName && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Eye size={14} className="text-primary" />
+                    <span className="text-muted-foreground">Listing:</span>
+                    <span className="font-medium truncate">{listingName}</span>
+                  </div>
+                )}
+              </div>
+
+              <Link href={returnPath}>
+                <Button variant="outline" className="w-full h-12">Back to Listing</Button>
+              </Link>
+              <Link href="/listings">
+                <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Browse other listings
+                </button>
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
