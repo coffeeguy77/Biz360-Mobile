@@ -12,6 +12,7 @@ const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID;
 const XERO_CLIENT_SECRET = process.env.XERO_CLIENT_SECRET;
 
 function getBaseUrl(req: any) {
+  if (process.env.OAUTH_REDIRECT_BASE_URL) return process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/$/, "");
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
   if (domain) return `https://${domain}`;
   return `${req.protocol}://${req.get("host")}`;
