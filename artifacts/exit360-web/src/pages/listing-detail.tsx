@@ -552,10 +552,10 @@ export function ListingDetail() {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
-        <div className="grid lg:grid-cols-3 gap-6 lg:gap-10">
-          {/* Left: main content — on mobile appears second (below sidebar) */}
-          <div className="lg:col-span-2 flex flex-col gap-6 sm:gap-8 order-2 lg:order-1">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10 overflow-x-hidden">
+        <div className="flex flex-col-reverse lg:grid lg:grid-cols-3 gap-6 lg:gap-10">
+          {/* Left: main content */}
+          <div className="lg:col-span-2 flex flex-col gap-6 sm:gap-8 min-w-0">
             <div>
               <div className="flex items-center gap-3 mb-3 flex-wrap">
                 {listing.isRealListing && (
@@ -639,8 +639,8 @@ export function ListingDetail() {
             </div>
           </div>
 
-          {/* Right: sticky sidebar — on mobile appears first (above panorama) */}
-          <div className="flex flex-col gap-5 order-1 lg:order-2">
+          {/* Right: sidebar */}
+          <div className="flex flex-col gap-5 min-w-0">
             <div className="lg:sticky lg:top-24 flex flex-col gap-4">
               {/* Price card */}
               <div className="bg-card border border-border rounded-2xl p-6 flex flex-col gap-4">
