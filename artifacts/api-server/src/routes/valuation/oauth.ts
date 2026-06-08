@@ -59,6 +59,8 @@ async function upsertIntegration(cafeId: string, ownerId: string, type: string, 
 }
 
 const APP_SCHEME = "biz360";
+const SQUARE_MOBILE_REDIRECT = `${APP_SCHEME}://oauth/square/callback`;
+const XERO_MOBILE_REDIRECT = `${APP_SCHEME}://oauth/xero/callback`;
 
 function donePage(title: string, message: string, ok: boolean, provider: string, detail = "") {
   const color = ok ? "#2D6A4F" : "#9B1C1C";
@@ -78,17 +80,17 @@ function errorPage(title: string, message: string) {
 }
 
 router.get("/oauth/square/start", async (req, res) => {
-  const { cafeId, token } = req.query as { cafeId?: string; token?: string };
+  const { cafeId, token, mobile } = req.query as { cafeId?: string; token?: string; mobile?: string };
   if (!SQUARE_APP_ID || !SQUARE_APP_SECRET) return res.status(503).send(errorPage("Square not configured", "Square OAuth credentials are not set on this server."));
   if (!cafeId || !token) return res.status(400).send(errorPage("Missing parameters", "cafeId and token are required."));
   const userId = await verifyToken(token).catch(() => null);
   if (!userId) return res.status(401).send(errorPage("Unauthorised", "Invalid or expired session."));
   const owns = await assertCafeOwnerById(cafeId, userId);
   if (!owns) return res.status(403).send(errorPage("Forbidden", "You do not own this café."));
-  const baseUrl = getBaseUrl(req);
   const nonce = createHmac("sha256", getStateSecret()).update(`${cafeId}${userId}${Date.now()}`).digest("hex").slice(0, 16);
   const state = signState({ cafeId, userId, nonce });
-  const params = new URLSearchParams({ client_id: SQUARE_APP_ID, scope: "MERCHANT_PROFILE_READ ORDERS_READ PAYMENTS_READ ITEMS_READ", state, redirect_uri: `${baseUrl}/api/valuation/oauth/square/callback` });
+  const redirectUri = mobile === "1" ? SQUARE_MOBILE_REDIRECT : `${getBaseUrl(req)}/api/valuation/oauth/square/callback`;
+  const params = new URLSearchParams({ client_id: SQUARE_APP_ID, scope: "MERCHANT_PROFILE_READ ORDERS_READ PAYMENTS_READ ITEMS_READ", state, redirect_uri: redirectUri });
   return res.redirect(`https://connect.squareup.com/oauth2/authorize?${params}`);
 });
 
@@ -119,17 +121,17 @@ router.get("/oauth/square/callback", async (req, res) => {
 });
 
 router.get("/oauth/xero/start", async (req, res) => {
-  const { cafeId, token } = req.query as { cafeId?: string; token?: string };
+  const { cafeId, token, mobile } = req.query as { cafeId?: string; token?: string; mobile?: string };
   if (!XERO_CLIENT_ID || !XERO_CLIENT_SECRET) return res.status(503).send(errorPage("Xero not configured", "Xero OAuth credentials are not set on this server."));
   if (!cafeId || !token) return res.status(400).send(errorPage("Missing parameters", "cafeId and token are required."));
   const userId = await verifyToken(token).catch(() => null);
   if (!userId) return res.status(401).send(errorPage("Unauthorised", "Invalid or expired session."));
   const owns = await assertCafeOwnerById(cafeId, userId);
   if (!owns) return res.status(403).send(errorPage("Forbidden", "You do not own this café."));
-  const baseUrl = getBaseUrl(req);
   const nonce = createHmac("sha256", getStateSecret()).update(`${cafeId}${userId}${Date.now()}`).digest("hex").slice(0, 16);
   const state = signState({ cafeId, userId, nonce });
-  const params = new URLSearchParams({ response_type: "code", client_id: XERO_CLIENT_ID, redirect_uri: `${baseUrl}/api/valuation/oauth/xero/callback`, scope: "openid profile email offline_access accounting.reports.profitandloss.read accounting.contacts accounting.invoices accounting.banktransactions", state });
+  const redirectUri = mobile === "1" ? XERO_MOBILE_REDIRECT : `${getBaseUrl(req)}/api/valuation/oauth/xero/callback`;
+  const params = new URLSearchParams({ response_type: "code", client_id: XERO_CLIENT_ID, redirect_uri: redirectUri, scope: "openid profile email offline_access accounting.reports.read accounting.contacts accounting.transactions", state });
   return res.redirect(`https://login.xero.com/identity/connect/authorize?${params}`);
 });
 
@@ -157,6 +159,59 @@ router.get("/oauth/xero/callback", async (req, res) => {
   } catch {}
   await upsertIntegration(cafeId, userId, "xero", { status: "connected", merchantName: orgName, metadata: { tenant_id: tenantId }, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, tokenExpiresAt: new Date(Date.now() + tokenData.expires_in * 1000) });
   return res.redirect(`${baseUrl}/api/valuation/oauth/done?provider=xero&status=success`);
+});
+
+router.post("/oauth/square/mobile-exchange", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { code, state } = req.body as { code?: string; state?: string };
+  if (!SQUARE_APP_ID || !SQUARE_APP_SECRET) return res.status(503).json({ error: "Square not configured" });
+  if (!code || !state) return res.status(400).json({ error: "code and state required" });
+  let cafeId: string;
+  try { const parsed = verifyState(state); cafeId = parsed.cafeId; if (parsed.userId !== userId) throw new Error("user mismatch"); }
+  catch { return res.status(400).json({ error: "Invalid state" }); }
+  const owns = await assertCafeOwnerById(cafeId, userId);
+  if (!owns) return res.status(403).json({ error: "Access denied" });
+  const tokenRes = await fetch("https://connect.squareup.com/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Square-Version": "2024-01-17" },
+    body: JSON.stringify({ client_id: SQUARE_APP_ID, client_secret: SQUARE_APP_SECRET, code, grant_type: "authorization_code", redirect_uri: SQUARE_MOBILE_REDIRECT }),
+  });
+  if (!tokenRes.ok) { const err = await tokenRes.text(); return res.status(400).json({ error: err.slice(0, 200) }); }
+  const tokenData = await tokenRes.json() as any;
+  let merchantName = "", merchantId = tokenData.merchant_id;
+  try {
+    const meRes = await fetch("https://connect.squareup.com/v2/merchants/me", { headers: { Authorization: `Bearer ${tokenData.access_token}`, "Square-Version": "2024-01-17" } });
+    if (meRes.ok) { const meData = await meRes.json() as any; merchantName = meData.merchant?.business_name ?? ""; merchantId = meData.merchant?.id ?? merchantId; }
+  } catch {}
+  await upsertIntegration(cafeId, userId, "square", { status: "connected", merchantId, merchantName, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, tokenExpiresAt: tokenData.expires_at ? new Date(tokenData.expires_at) : null });
+  return res.json({ ok: true, merchantName });
+});
+
+router.post("/oauth/xero/mobile-exchange", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { code, state } = req.body as { code?: string; state?: string };
+  if (!XERO_CLIENT_ID || !XERO_CLIENT_SECRET) return res.status(503).json({ error: "Xero not configured" });
+  if (!code || !state) return res.status(400).json({ error: "code and state required" });
+  let cafeId: string;
+  try { const parsed = verifyState(state); cafeId = parsed.cafeId; if (parsed.userId !== userId) throw new Error("user mismatch"); }
+  catch { return res.status(400).json({ error: "Invalid state" }); }
+  const owns = await assertCafeOwnerById(cafeId, userId);
+  if (!owns) return res.status(403).json({ error: "Access denied" });
+  const credentials = Buffer.from(`${XERO_CLIENT_ID}:${XERO_CLIENT_SECRET}`).toString("base64");
+  const tokenRes = await fetch("https://identity.xero.com/connect/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${credentials}` },
+    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: XERO_MOBILE_REDIRECT }),
+  });
+  if (!tokenRes.ok) { return res.status(400).json({ error: "Token exchange failed" }); }
+  const tokenData = await tokenRes.json() as any;
+  let orgName = "", tenantId = "";
+  try {
+    const tenantsRes = await fetch("https://api.xero.com/connections", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+    if (tenantsRes.ok) { const tenants = await tenantsRes.json() as any[]; if (tenants.length > 0) { orgName = tenants[0].tenantName ?? ""; tenantId = tenants[0].tenantId ?? ""; } }
+  } catch {}
+  await upsertIntegration(cafeId, userId, "xero", { status: "connected", merchantName: orgName, metadata: { tenant_id: tenantId }, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, tokenExpiresAt: new Date(Date.now() + tokenData.expires_in * 1000) });
+  return res.json({ ok: true, orgName });
 });
 
 router.get("/oauth/done", (req, res) => {

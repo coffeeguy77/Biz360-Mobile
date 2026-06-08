@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback } from "react";
+import * as WebBrowser from "expo-web-browser";
+import React, { useCallback, useState } from "react";
 import {
-  Alert, Linking, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +17,7 @@ export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { selectedCafe, fetchCafes, authToken } = useValuation();
+  const [connecting, setConnecting] = useState<"square" | "xero" | null>(null);
 
   useFocusEffect(useCallback(() => { fetchCafes(); }, []));
 
@@ -23,10 +25,37 @@ export default function ProfileScreen() {
   const squareInt = integrations.find((i) => i.type === "square");
   const xeroInt = integrations.find((i) => i.type === "xero");
 
-  const handleConnect = (provider: "square" | "xero") => {
+  const handleConnect = async (provider: "square" | "xero") => {
     if (!selectedCafe || !authToken) { Alert.alert("Error", "Select a business first"); return; }
-    const startUrl = `${API_BASE}/api/valuation/oauth/${provider}/start?cafeId=${selectedCafe.id}&token=${encodeURIComponent(authToken)}`;
-    Linking.openURL(startUrl);
+    setConnecting(provider);
+    try {
+      const mobileRedirect = `biz360://oauth/${provider}/callback`;
+      const startUrl = `${API_BASE}/api/valuation/oauth/${provider}/start?cafeId=${selectedCafe.id}&token=${encodeURIComponent(authToken)}&mobile=1`;
+      const result = await WebBrowser.openAuthSessionAsync(startUrl, mobileRedirect);
+      if (result.type !== "success") return;
+      // Extract code + state that the provider appended to the deep link
+      const parsed = new URL(result.url);
+      const code = parsed.searchParams.get("code");
+      const state = parsed.searchParams.get("state");
+      if (!code || !state) { Alert.alert("Error", "OAuth did not return an authorisation code."); return; }
+      // Exchange on the server (server verifies state + swaps code for token)
+      const exchangeRes = await fetch(`${API_BASE}/api/valuation/oauth/${provider}/mobile-exchange`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ code, state }),
+      });
+      if (!exchangeRes.ok) {
+        const err = await exchangeRes.json().catch(() => ({ error: "Unknown error" })) as any;
+        Alert.alert("Connection failed", err.error ?? "Please try again.");
+        return;
+      }
+      await fetchCafes();
+      Alert.alert("Connected!", `${provider === "square" ? "Square" : "Xero"} connected successfully.`);
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Something went wrong");
+    } finally {
+      setConnecting(null);
+    }
   };
 
   const handleDisconnect = async (integrationId: string, name: string) => {
@@ -58,8 +87,15 @@ export default function ProfileScreen() {
               <Text style={{ color: "#EF4444", fontSize: 13, fontFamily: "Inter_600SemiBold" }}>Disconnect</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={[styles.intBtn, { backgroundColor: colors.primary + "20", borderColor: colors.primary + "40" }]} onPress={() => handleConnect(provider)}>
-              <Text style={{ color: colors.primary, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>Connect</Text>
+            <TouchableOpacity
+              style={[styles.intBtn, { backgroundColor: colors.primary + "20", borderColor: colors.primary + "40", opacity: connecting === provider ? 0.6 : 1 }]}
+              onPress={() => handleConnect(provider)}
+              disabled={!!connecting}
+            >
+              {connecting === provider
+                ? <ActivityIndicator size="small" color={colors.primary} />
+                : <Text style={{ color: colors.primary, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>Connect</Text>
+              }
             </TouchableOpacity>
           )}
         </View>
