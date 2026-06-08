@@ -49,4 +49,6 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
+
+[userenv.production]
 OAUTH_REDIRECT_BASE_URL = "https://exit360.com.au"

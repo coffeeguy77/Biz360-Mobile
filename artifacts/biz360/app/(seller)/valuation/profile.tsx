@@ -29,28 +29,20 @@ export default function ProfileScreen() {
     if (!selectedCafe || !authToken) { Alert.alert("Error", "Select a business first"); return; }
     setConnecting(provider);
     try {
-      const mobileRedirect = `biz360://oauth/${provider}/callback`;
-      const startUrl = `${API_BASE}/api/valuation/oauth/${provider}/start?cafeId=${selectedCafe.id}&token=${encodeURIComponent(authToken)}&mobile=1`;
-      const result = await WebBrowser.openAuthSessionAsync(startUrl, mobileRedirect);
+      // Server handles the HTTPS OAuth callback with Square/Xero, then redirects to biz360://oauth/done
+      // WebBrowser catches that biz360:// redirect and returns it here — Square/Xero never see a custom scheme
+      const startUrl = `${API_BASE}/api/valuation/oauth/${provider}/start?cafeId=${selectedCafe.id}&token=${encodeURIComponent(authToken)}`;
+      const result = await WebBrowser.openAuthSessionAsync(startUrl, "biz360://oauth/done");
       if (result.type !== "success") return;
-      // Extract code + state that the provider appended to the deep link
       const parsed = new URL(result.url);
-      const code = parsed.searchParams.get("code");
-      const state = parsed.searchParams.get("state");
-      if (!code || !state) { Alert.alert("Error", "OAuth did not return an authorisation code."); return; }
-      // Exchange on the server (server verifies state + swaps code for token)
-      const exchangeRes = await fetch(`${API_BASE}/api/valuation/oauth/${provider}/mobile-exchange`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ code, state }),
-      });
-      if (!exchangeRes.ok) {
-        const err = await exchangeRes.json().catch(() => ({ error: "Unknown error" })) as any;
-        Alert.alert("Connection failed", err.error ?? "Please try again.");
-        return;
+      const status = parsed.searchParams.get("status");
+      if (status === "success") {
+        await fetchCafes();
+        Alert.alert("Connected!", `${provider === "square" ? "Square" : "Xero"} connected successfully.`);
+      } else {
+        const detail = parsed.searchParams.get("detail") ?? "";
+        Alert.alert("Connection failed", detail || "Please try again.");
       }
-      await fetchCafes();
-      Alert.alert("Connected!", `${provider === "square" ? "Square" : "Xero"} connected successfully.`);
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Something went wrong");
     } finally {
