@@ -695,7 +695,11 @@ export default function ToursScreen() {
       defaultYaw:     space.defaultYaw,
       trueNorthYaw:   space.trueNorthYaw,
     });
-    setDefaultYawDegText(space.defaultYaw !== undefined ? String(space.defaultYaw) : "");
+    const northOff = space.trueNorthYaw ?? 0;
+    const displayDeg = space.defaultYaw !== undefined
+      ? ((space.defaultYaw - northOff) % 360 + 360) % 360
+      : undefined;
+    setDefaultYawDegText(displayDeg !== undefined ? String(displayDeg) : "");
     setEditingSpaceId(space.id);
     setShowSpaceModal(true);
   };
@@ -1128,7 +1132,7 @@ export default function ToursScreen() {
               Which way buyers face when they first enter this space (nav-pin direction overrides this)
             </Text>
             {(() => {
-              const DIRS = [
+              const BASE_DIRS = [
                 { label: "N",  yaw: 0   },
                 { label: "NE", yaw: 45  },
                 { label: "E",  yaw: 90  },
@@ -1138,9 +1142,34 @@ export default function ToursScreen() {
                 { label: "W",  yaw: 270 },
                 { label: "NW", yaw: 315 },
               ];
-              const currentYaw = draftSpace.defaultYaw;
+              const YAW_LBLS = ["N","NE","E","SE","S","SW","W","NW"];
+              // northOffset: panorama yaw that equals real-world North
+              const northOffset = draftSpace.trueNorthYaw ?? 0;
+              // When True North is calibrated, preset labels stay as real-world compass
+              // but the stored panorama yaw is offset: panoramaYaw = (realWorldDeg + northOffset) % 360
+              const DIRS = northOffset !== 0
+                ? BASE_DIRS.map((d) => ({ label: d.label, yaw: ((d.yaw + northOffset) % 360 + 360) % 360 }))
+                : BASE_DIRS;
+              const currentYaw = draftSpace.defaultYaw; // panorama coords
+              // Real-world degree to display in badge and text field
+              const realWorldYaw = currentYaw !== undefined
+                ? ((currentYaw - northOffset) % 360 + 360) % 360
+                : undefined;
+              const realWorldLabel = realWorldYaw !== undefined
+                ? (DIRS.find((d) => ((d.yaw - northOffset + 360) % 360) === realWorldYaw)?.label
+                    ?? YAW_LBLS[Math.round(((realWorldYaw % 360) + 360) % 360 / 45) % 8])
+                : undefined;
+              const presetMatch = DIRS.find((d) => d.yaw === currentYaw);
               return (
                 <View style={{ marginBottom: 16 }}>
+                  {northOffset !== 0 && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: "#FBBF2412", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#FBBF2440" }}>
+                      <Text style={{ fontSize: 12 }}>🧭</Text>
+                      <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#FBBF24" }}>
+                        Degrees are real-world compass (True North calibrated)
+                      </Text>
+                    </View>
+                  )}
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                     {DIRS.map(({ label, yaw }) => {
                       const active = currentYaw === yaw;
@@ -1148,9 +1177,13 @@ export default function ToursScreen() {
                         <TouchableOpacity
                           key={label}
                           onPress={() => {
-                            const newYaw = active ? undefined : yaw;
-                            setDraftSpace((p) => ({ ...p, defaultYaw: newYaw }));
-                            setDefaultYawDegText(newYaw !== undefined ? String(newYaw) : "");
+                            const newPanoYaw = active ? undefined : yaw;
+                            setDraftSpace((p) => ({ ...p, defaultYaw: newPanoYaw }));
+                            // Text field always shows real-world degrees
+                            const newRealWorldDeg = newPanoYaw !== undefined
+                              ? ((newPanoYaw - northOffset) % 360 + 360) % 360
+                              : undefined;
+                            setDefaultYawDegText(newRealWorldDeg !== undefined ? String(newRealWorldDeg) : "");
                           }}
                           style={{
                             paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5,
@@ -1166,13 +1199,13 @@ export default function ToursScreen() {
                       );
                     })}
                   </View>
-                  {/* Exact degree input */}
+                  {/* Exact degree input — always real-world compass degrees */}
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
                     <View style={{
                       flex: 1, flexDirection: "row", alignItems: "center",
                       borderWidth: 1.5, borderRadius: 8,
-                      borderColor: currentYaw !== undefined && !DIRS.find((d) => d.yaw === currentYaw) ? "#3B82F6" : colors.border,
-                      backgroundColor: currentYaw !== undefined && !DIRS.find((d) => d.yaw === currentYaw) ? "#3B82F610" : colors.card,
+                      borderColor: currentYaw !== undefined && !presetMatch ? "#3B82F6" : colors.border,
+                      backgroundColor: currentYaw !== undefined && !presetMatch ? "#3B82F610" : colors.card,
                       paddingHorizontal: 12, paddingVertical: 0,
                     }}>
                       <TextInput
@@ -1185,7 +1218,9 @@ export default function ToursScreen() {
                           setDefaultYawDegText(t);
                           const parsed = parseInt(t, 10);
                           if (!isNaN(parsed) && parsed >= 0 && parsed <= 359) {
-                            setDraftSpace((p) => ({ ...p, defaultYaw: parsed }));
+                            // Convert real-world input → panorama yaw for storage
+                            const panoramaYaw = ((parsed + northOffset) % 360 + 360) % 360;
+                            setDraftSpace((p) => ({ ...p, defaultYaw: panoramaYaw }));
                           } else if (t === "") {
                             setDraftSpace((p) => ({ ...p, defaultYaw: undefined }));
                           }
@@ -1193,7 +1228,7 @@ export default function ToursScreen() {
                         onBlur={() => {
                           const parsed = parseInt(defaultYawDegText, 10);
                           if (isNaN(parsed) || parsed < 0 || parsed > 359) {
-                            setDefaultYawDegText(currentYaw !== undefined ? String(currentYaw) : "");
+                            setDefaultYawDegText(realWorldYaw !== undefined ? String(realWorldYaw) : "");
                           }
                         }}
                         returnKeyType="done"
@@ -1201,13 +1236,13 @@ export default function ToursScreen() {
                       />
                       <Text style={{ fontSize: 14, color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }}>°</Text>
                     </View>
-                    {currentYaw !== undefined && (
+                    {realWorldYaw !== undefined && (
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#3B82F618", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: "#3B82F640" }}>
                         <Feather name="compass" size={12} color="#3B82F6" />
                         <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: "#3B82F6" }}>
-                          {DIRS.find((d) => d.yaw === currentYaw)?.label ?? (["N","NE","E","SE","S","SW","W","NW"][Math.round(((currentYaw % 360) + 360) % 360 / 45) % 8])}
+                          {realWorldLabel}
                         </Text>
-                        <Text style={{ fontSize: 11, color: "#3B82F699", fontFamily: "Inter_400Regular" }}>{currentYaw}°</Text>
+                        <Text style={{ fontSize: 11, color: "#3B82F699", fontFamily: "Inter_400Regular" }}>{realWorldYaw}°</Text>
                       </View>
                     )}
                   </View>
