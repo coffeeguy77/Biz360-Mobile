@@ -131,7 +131,7 @@ router.get("/oauth/xero/start", async (req, res) => {
   const nonce = createHmac("sha256", getStateSecret()).update(`${cafeId}${userId}${Date.now()}`).digest("hex").slice(0, 16);
   const state = signState({ cafeId, userId, nonce });
   const redirectUri = mobile === "1" ? XERO_MOBILE_REDIRECT : `${getBaseUrl(req)}/api/valuation/oauth/xero/callback`;
-  const params = new URLSearchParams({ response_type: "code", client_id: XERO_CLIENT_ID, redirect_uri: redirectUri, scope: "openid profile email offline_access accounting.reports.read accounting.contacts accounting.transactions", state });
+  const params = new URLSearchParams({ response_type: "code", client_id: XERO_CLIENT_ID, redirect_uri: redirectUri, scope: "openid profile email offline_access accounting.transactions accounting.contacts", state });
   return res.redirect(`https://login.xero.com/identity/connect/authorize?${params}`);
 });
 
