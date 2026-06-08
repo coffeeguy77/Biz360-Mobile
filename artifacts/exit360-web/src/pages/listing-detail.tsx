@@ -553,7 +553,7 @@ export function ListingDetail() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10 overflow-x-hidden">
-        <div className="flex flex-col-reverse lg:grid lg:grid-cols-3 gap-6 lg:gap-10">
+        <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 lg:gap-10">
           {/* Left: main content */}
           <div className="lg:col-span-2 flex flex-col gap-6 sm:gap-8 min-w-0">
             <div>
@@ -596,6 +596,23 @@ export function ListingDetail() {
               )
             ) : (
               <DemoHero listing={listing} />
+            )}
+
+            {/* Audio tour — mobile only, shown right after panorama */}
+            {listing.isRealListing && audioGroups.length > 0 && !spacesLoading && (
+              <div className="lg:hidden">
+                <AudioDirectory
+                  spaces={spaces}
+                  iframeRef={iframeRef}
+                  playingId={playingId}
+                  pausedId={pausedId}
+                  onPlay={handlePlay}
+                  onNavigate={navigateToSpace}
+                  playAllActive={playAllActive}
+                  onPlayAll={handlePlayAll}
+                  onStopAll={handleStopAll}
+                />
+              </div>
             )}
 
             <div>
@@ -676,9 +693,9 @@ export function ListingDetail() {
                 </div>
               </div>
 
-              {/* Audio directory */}
+              {/* Audio directory — desktop only (mobile version is above the panorama) */}
               {listing.isRealListing && audioGroups.length > 0 && !spacesLoading && (
-                <AudioDirectory
+                <div className="hidden lg:block"><AudioDirectory
                   spaces={spaces}
                   iframeRef={iframeRef}
                   playingId={playingId}
@@ -688,7 +705,7 @@ export function ListingDetail() {
                   playAllActive={playAllActive}
                   onPlayAll={handlePlayAll}
                   onStopAll={handleStopAll}
-                />
+                /></div>
               )}
 
               {listing.isRealListing && (
