@@ -98,23 +98,30 @@ function xToYaw(x){return(x-0.5)*360}
 function yToPitch(y){return(0.5-y)*180}
 function createNavPin(container,args){
   /* 0×0 anchor at the exact hotspot coordinate — children overflow freely */
-  container.style.cssText='width:0;height:0;overflow:visible;cursor:pointer;position:relative';
-  container.innerHTML=
-    /* SVG pin: scaled 1.6× with tip anchored at bottom-center → stays at hotspot coordinate */
-    '<div style="position:absolute;top:-44px;left:-17px;pointer-events:none;transform:scale(1.6);transform-origin:bottom center;animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite">'+
-      '<svg width="34" height="44" viewBox="0 0 34 44" fill="none">'+
-        '<path d="M17 2C9.82 2 4 7.82 4 15c0 8.12 11.6 23.5 12.35 24.5a.85.85 0 001.3 0C18.4 38.5 30 23.12 30 15 30 7.82 24.18 2 17 2z" fill="#2563EB" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>'+
-        '<circle cx="17" cy="15" r="6.5" fill="white" opacity="0.95"/>'+
-      '</svg>'+
-    '</div>'+
-    /* Shadow: just below the anchor */
-    '<div style="position:absolute;top:2px;left:-8px;width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;pointer-events:none;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite"></div>'+
-    /* Label: above the pin, shown on hover */
-    '<span class="nav-pin-label" style="bottom:50px">'+args.label+'</span>';
-  container.addEventListener('click',function(e){
+  container.style.cssText='width:0;height:0;overflow:visible;position:relative';
+  /* Pin body — pointer-events enabled so clicks land here, not on the canvas */
+  var pinDiv=document.createElement('div');
+  pinDiv.style.cssText='position:absolute;top:-44px;left:-17px;cursor:pointer;transform:scale(1.6);transform-origin:bottom center;animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite';
+  pinDiv.innerHTML=
+    '<svg width="34" height="44" viewBox="0 0 34 44" fill="none">'+
+      '<path d="M17 2C9.82 2 4 7.82 4 15c0 8.12 11.6 23.5 12.35 24.5a.85.85 0 001.3 0C18.4 38.5 30 23.12 30 15 30 7.82 24.18 2 17 2z" fill="#2563EB" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>'+
+      '<circle cx="17" cy="15" r="6.5" fill="white" opacity="0.95"/>'+
+    '</svg>';
+  pinDiv.addEventListener('click',function(e){
     e.stopPropagation();
     try{viewer.loadScene(args.sceneId,0,0,100)}catch(err){}
   });
+  container.appendChild(pinDiv);
+  /* Shadow */
+  var shadow=document.createElement('div');
+  shadow.style.cssText='position:absolute;top:2px;left:-8px;width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;pointer-events:none;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite';
+  container.appendChild(shadow);
+  /* Label */
+  var label=document.createElement('span');
+  label.className='nav-pin-label';
+  label.style.bottom='50px';
+  label.textContent=args.label;
+  container.appendChild(label);
 }
 function createAudioHotspot(div,args){
   div.classList.add('pnlm-audio-hs');
@@ -136,7 +143,7 @@ SPACES.forEach(function(s){
   var hotSpots=[];
   (s.pins||[]).forEach(function(pin){
     if(pin.type==='navigation'&&validIds.has(pin.targetSpaceId)){
-      hotSpots.push({pitch:20,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title}});
+      hotSpots.push({pitch:40,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title}});
     } else if(pin.type==='audio'&&pin.audioUrl){
       hotSpots.push({pitch:Math.max(10,yToPitch(pin.position.y)),yaw:xToYaw(pin.position.x),type:'custom',text:pin.title,cssClass:'pnlm-audio-hs-wrap',createTooltipFunc:createAudioHotspot,createTooltipArgs:{url:pin.audioUrl,name:pin.audioName||pin.title}});
     }
