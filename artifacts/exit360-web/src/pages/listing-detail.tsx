@@ -78,6 +78,8 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[]): string {
   @keyframes kfPinShadow{0%,100%{transform:translateX(-50%) scaleX(1);opacity:0.28}35%{transform:translateX(-50%) scaleX(0.52);opacity:0.09}60%{transform:translateX(-50%) scaleX(0.76);opacity:0.18}}
   .nav-pin-label{position:absolute;top:-26px;left:50%;transform:translateX(-50%);background:rgba(37,99,235,0.92);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .18s}
   .pnlm-nav-pin-wrap:hover .nav-pin-label{opacity:1!important}
+  .pnlm-hotspot.pnlm-nav-pin-wrap{background:transparent!important;border:none!important;box-shadow:none!important;width:40px!important;height:58px!important;overflow:visible!important}
+  .pnlm-hotspot.pnlm-nav-pin-wrap::before{display:none!important}
   .pnlm-audio-hs{width:32px;height:32px;background:rgba(16,163,74,0.85);border:2px solid rgba(255,255,255,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:0 0 0 4px rgba(16,163,74,0.2);transition:background .2s;user-select:none}
   .pnlm-audio-hs:hover{background:rgba(16,163,74,1)}
   .pnlm-audio-hs.active{background:#ea580c;box-shadow:0 0 0 6px rgba(234,88,12,0.3)}
