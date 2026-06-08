@@ -35,9 +35,10 @@ function ListingCard({ listing }: { listing: Listing }) {
   const multiple = hasProfit ? (listing.askingPrice / listing.adjustedProfit).toFixed(1) + "×" : "—";
 
   return (
+    <Link href={`/listings/${listing.id}`}>
     <article
       data-testid={`card-listing-${listing.id}`}
-      className={`group bg-card border rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-[0_0_40px_rgba(59,130,246,0.08)] flex flex-col ${
+      className={`group bg-card border rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-[0_0_40px_rgba(59,130,246,0.08)] flex flex-col cursor-pointer ${
         listing.isRealListing
           ? "border-amber-500/40 hover:border-amber-400/60 shadow-[0_0_20px_rgba(217,119,6,0.07)]"
           : "border-border hover:border-primary/40"
@@ -144,6 +145,7 @@ function ListingCard({ listing }: { listing: Listing }) {
         </div>
       </div>
     </article>
+    </Link>
   );
 }
 
