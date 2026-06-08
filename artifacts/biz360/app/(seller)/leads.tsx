@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { TourRequest } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings, PendingListing } from "@/lib/adminStore";
+import { getPendingListings, isMySubmission, PendingListing } from "@/lib/adminStore";
 import { getThreads, formatThreadTime, Thread } from "@/lib/messageStore";
 import { getTourRequests, REQUEST_CATEGORIES } from "@/lib/tourStore";
 
@@ -76,7 +76,7 @@ export default function SellerLeads() {
           getThreads(),
         ]);
         if (!active) return;
-        const mine      = allListings.filter((p) => p.submittedBy === user.id);
+        const mine      = allListings.filter((p) => isMySubmission(p.submittedBy, user.id));
         const myIds     = new Set(mine.map((p) => p.listingId));
         const myThreads = allThreads.filter((t) => myIds.has(t.listingId));
         setMyListings(mine);

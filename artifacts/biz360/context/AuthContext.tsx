@@ -50,7 +50,7 @@ const DEMO_USERS: Record<UserRole, User> = {
     displayName: "Alex",
   },
   seller: {
-    id:          "u-61414631463-1779893721125",
+    id:          "u-61414631463",
     name:        "Shaun",
     email:       "+61414631463",
     role:        "seller",

@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { AudioTrigger, DEFAULT_TOUR_SETTINGS, PinAnimation, PopupContent, PopupSection, TourPin, TourSettings, TourSpace } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings, PendingListing } from "@/lib/adminStore";
+import { getPendingListings, isMySubmission, PendingListing } from "@/lib/adminStore";
 import { getTourSettings, getTourSpaces, saveTourSettings, saveTourSpaces } from "@/lib/tourStore";
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -405,7 +405,7 @@ export default function ToursScreen() {
         // Brokers can manage tours for any approved listing; sellers see only their own
         const mine = user.role === "broker"
           ? all.filter((p) => p.status === "approved")
-          : all.filter((p) => p.submittedBy === user.id);
+          : all.filter((p) => isMySubmission(p.submittedBy, user.id));
         setListings(mine);
         setListingsLoading(false);
         if (mine.length > 0) {

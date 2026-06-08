@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings, PendingListing, savePendingListings } from "@/lib/adminStore";
+import { getPendingListings, isMySubmission, PendingListing, savePendingListings } from "@/lib/adminStore";
 import { apiGet } from "@/lib/apiStore";
 
 function fmtStat(
@@ -67,7 +67,7 @@ export default function SellerListings() {
       let active = true;
       (async () => {
         const all  = await getPendingListings();
-        const mine = all.filter((p) => p.submittedBy === user!.id);
+        const mine = all.filter((p) => isMySubmission(p.submittedBy, user!.id));
         if (!active) return;
         setListings(mine);
         // Load first available photo (listing photo or tour space photo) per listing

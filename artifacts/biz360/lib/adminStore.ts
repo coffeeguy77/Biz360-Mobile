@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiSet } from "./apiStore";
 
+/**
+ * Returns true if a listing was submitted by `userId`.
+ * Also matches the legacy demo-login pattern where the ID has a timestamp suffix
+ * (e.g. "u-61414631463-1779893721125") but the phone-auth ID is "u-61414631463".
+ */
+export function isMySubmission(submittedBy: string, userId: string): boolean {
+  return submittedBy === userId || submittedBy.startsWith(userId + "-");
+}
+
 export interface AdminUser {
   id: string;
   name: string;

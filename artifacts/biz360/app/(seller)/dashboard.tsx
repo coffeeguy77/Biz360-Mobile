@@ -9,7 +9,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { getUsers, PendingListing, getPendingListings, saveUsers } from "@/lib/adminStore";
+import { getUsers, isMySubmission, PendingListing, getPendingListings, saveUsers } from "@/lib/adminStore";
 import { aggregateAnalytics, getMultiAnalytics, ListingAnalytics } from "@/lib/analyticsStore";
 
 const API_BASE = (() => { try { const d = (global as any).__replit_dev_domain; return d ? `https://${d}` : ""; } catch { return ""; } })();
@@ -250,7 +250,7 @@ export default function SellerDashboard() {
       setAnalyticsLoading(true);
 
       getPendingListings().then(async (all) => {
-        const mine = all.filter((p) => p.submittedBy === user.id);
+        const mine = all.filter((p) => isMySubmission(p.submittedBy, user.id));
         setListings(mine);
 
         if (mine.length === 0) {

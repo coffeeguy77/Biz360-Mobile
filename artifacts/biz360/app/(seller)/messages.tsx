@@ -6,7 +6,7 @@ import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, Touchab
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { getPendingListings } from "@/lib/adminStore";
+import { getPendingListings, isMySubmission } from "@/lib/adminStore";
 import { deleteThread, formatThreadTime, Thread, useThreadList } from "@/lib/messageStore";
 
 function initials(name: string) {
@@ -82,7 +82,7 @@ export default function SellerMessages() {
       refresh();
       if (!user?.id) return;
       getPendingListings().then((all) => {
-        setMyListingIds(all.filter((p) => p.submittedBy === user.id).map((p) => p.listingId));
+        setMyListingIds(all.filter((p) => isMySubmission(p.submittedBy, user.id)).map((p) => p.listingId));
       });
     }, [user?.id, refresh]),
   );
