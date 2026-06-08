@@ -227,6 +227,17 @@ export default function ListingDetailScreen() {
   };
 
   const handleMessage = (threadId: string, listingName: string, sellerName: string, listingId?: string) => {
+    if (!user) {
+      Alert.alert(
+        "Sign in required",
+        "You need an account to message sellers.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Sign In", onPress: () => router.push("/(auth)/login" as any) },
+        ],
+      );
+      return;
+    }
     if (id) trackEvent(id, "message", buyerId);
     const lid = listingId ?? threadId;
     router.push(`/thread/${threadId}?listingName=${encodeURIComponent(listingName)}&sellerName=${encodeURIComponent(sellerName)}&listingId=${encodeURIComponent(lid)}&buyerId=${encodeURIComponent(buyerId)}` as any);

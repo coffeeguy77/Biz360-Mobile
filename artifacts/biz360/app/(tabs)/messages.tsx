@@ -95,6 +95,34 @@ export default function MessagesScreen() {
   const myThreads   = threads.filter((t) => t.buyerId === user?.id);
   const totalUnread = myThreads.reduce((sum, t) => sum + (t.unreadBuyer ?? 0), 0);
 
+  if (!user) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Messages</Text>
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 16 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary + "20", alignItems: "center", justifyContent: "center" }}>
+            <Feather name="message-circle" size={28} color={colors.primary} />
+          </View>
+          <Text style={{ color: colors.foreground, fontSize: 18, fontFamily: "Inter_700Bold" }}>Sign in to message sellers</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 }}>
+            Create a free account to contact sellers directly and track your enquiries.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, width: "100%", alignItems: "center" }}
+            onPress={() => router.push("/(auth)/login" as any)}
+          >
+            <Text style={{ color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" }}>Sign In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/(auth)/register" as any)}>
+            <Text style={{ color: colors.primary, fontSize: 14, fontFamily: "Inter_600SemiBold" }}>Create Account</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>

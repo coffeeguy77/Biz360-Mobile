@@ -15,7 +15,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "@/context/AuthContext";
+import { DEMO_USERS, useAuth } from "@/context/AuthContext";
+import type { UserRole } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { getSavedIds } from "@/lib/savedStore";
 
@@ -32,7 +33,7 @@ type Section = "alerts" | "documents" | "ndas" | "settings" | "help" | null;
 export default function ProfileScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
-  const { user, realUser, restoreReal, logout, updateProfile } = useAuth();
+  const { user, realUser, login, restoreReal, logout, updateProfile } = useAuth();
 
   const [savedCount,    setSavedCount]    = useState(0);
   const [expanded,      setExpanded]      = useState<Section>(null);
@@ -78,7 +79,7 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await logout();
-    router.replace("/(auth)/welcome");
+    router.replace("/(tabs)/discover" as any);
   };
 
   const handleRestoreReal = async () => {
@@ -92,6 +93,32 @@ export default function ProfileScreen() {
     .join("")
     .slice(0, 2)
     .toUpperCase() ?? "?";
+
+  // ── Unauthenticated gate ────────────────────────────────────────────────────
+  if (!user) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 16 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary + "20", alignItems: "center", justifyContent: "center" }}>
+            <Feather name="user" size={28} color={colors.primary} />
+          </View>
+          <Text style={[styles.title, { color: colors.foreground, textAlign: "center" }]}>Your Profile</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 }}>
+            Sign in to save listings, message sellers, and manage your enquiries.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, width: "100%", alignItems: "center" }}
+            onPress={() => router.push("/(auth)/login" as any)}
+          >
+            <Text style={{ color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" }}>Sign In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/(auth)/register" as any)}>
+            <Text style={{ color: colors.primary, fontSize: 14, fontFamily: "Inter_600SemiBold" }}>Create Account</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -158,6 +185,55 @@ export default function ProfileScreen() {
             </View>
           ))}
         </View>
+
+        {/* ── Dev role switcher (owner only) ── */}
+        {realUser?.email === "+61414631463" && (
+          <View style={[styles.devCard, { backgroundColor: "#130A2A", borderColor: "#6B21A8" }]}>
+            <View style={styles.devHeader}>
+              <Feather name="zap" size={13} color="#A855F7" />
+              <Text style={[styles.devTitle, { color: "#A855F7" }]}>Dev · Switch Role</Text>
+              {isDemo && (
+                <View style={[styles.devActivePill, { backgroundColor: "#6B21A820", borderColor: "#A855F740" }]}>
+                  <Text style={[styles.devActivePillText, { color: "#A855F7" }]}>Demo mode</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.devRoles}>
+              {([
+                { key: "buyer"  as UserRole, label: "Buyer",     icon: "search"    },
+                { key: "seller" as UserRole, label: "My Seller", icon: "tag"       },
+                { key: "broker" as UserRole, label: "Broker",    icon: "briefcase" },
+                { key: "admin"  as UserRole, label: "Admin",     icon: "shield"    },
+              ]).map(({ key, label, icon }) => {
+                const isMySeller = key === "seller";
+                const active = isMySeller
+                  ? user?.id === realUser?.id
+                  : isDemo && user?.role === key;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.devRole, { backgroundColor: active ? "#6B21A8" : "#1E0A4A", borderColor: active ? "#A855F7" : "#3B1A7A" }]}
+                    onPress={async () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      if (isMySeller) {
+                        await restoreReal();
+                        router.replace("/(seller)/dashboard" as any);
+                      } else {
+                        await login(DEMO_USERS[key]);
+                        if (key === "buyer")  router.replace("/(tabs)/discover" as any);
+                        if (key === "broker") router.replace("/(broker)/dashboard" as any);
+                        if (key === "admin")  router.replace("/(admin)/listings" as any);
+                      }
+                    }}
+                  >
+                    <Feather name={icon as any} size={14} color={active ? "#fff" : "#C084FC"} />
+                    <Text style={[styles.devRoleLabel, { color: active ? "#fff" : "#C084FC" }]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* ── Menu sections ── */}
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -471,6 +547,14 @@ const styles = StyleSheet.create({
   statVal:          { fontSize: 22, fontFamily: "Inter_700Bold" },
   statLbl:          { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   menuCard:         { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  devCard:          { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
+  devHeader:        { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
+  devTitle:         { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5, flex: 1 },
+  devActivePill:    { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
+  devActivePillText:{ fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  devRoles:         { flexDirection: "row", gap: 8 },
+  devRole:          { flex: 1, borderRadius: 10, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 4, alignItems: "center", gap: 5 },
+  devRoleLabel:     { fontSize: 10, fontFamily: "Inter_600SemiBold", textAlign: "center" },
   menuRow:          { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
   menuIcon:         { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   menuText:         { flex: 1 },
