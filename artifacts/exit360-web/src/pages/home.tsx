@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { PanoramaViewer } from "@/components/PanoramaViewer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,9 +42,11 @@ export function Home() {
             The premium marketplace for verified businesses. Experience immersive 360° tours enriched with financial data, equipment specs, and lease details. Due diligence starts here.
           </p>
           <div className="flex flex-wrap gap-4 pt-4">
-            <Button size="lg" className="h-14 px-8 text-base">
-              Browse Listings
-            </Button>
+            <Link href="/listings">
+              <Button size="lg" className="h-14 px-8 text-base" data-testid="button-browse-listings">
+                Browse Listings
+              </Button>
+            </Link>
             <Button size="lg" variant="outline" className="h-14 px-8 text-base">
               <Play className="mr-2" size={18} /> Watch Video
             </Button>
@@ -185,7 +188,7 @@ export function Home() {
           <div>
             <h4 className="font-semibold mb-4">Platform</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground">Browse Listings</a></li>
+              <li><Link href="/listings" className="hover:text-foreground">Browse Listings</Link></li>
               <li><a href="#" className="hover:text-foreground">Sell a Business</a></li>
               <li><a href="#" className="hover:text-foreground">Pricing</a></li>
             </ul>
