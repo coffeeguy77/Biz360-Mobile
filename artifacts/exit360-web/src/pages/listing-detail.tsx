@@ -74,9 +74,10 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[]): string {
 <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"><\/script>
 <style>
   html,body,#pano{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-  .pnlm-hotspot.pnlm-scene::before{background:rgba(59,130,246,0.85);border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 0 4px rgba(59,130,246,0.25);border-radius:50%;animation:navPulse 2s infinite}
-  @keyframes navPulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,0.5)}70%{box-shadow:0 0 0 12px rgba(59,130,246,0)}100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}}
-  .pnlm-hotspot.pnlm-scene span.pnlm-tooltip{background:rgba(59,130,246,0.9);color:#fff;font-size:12px;font-weight:600;padding:5px 10px;border-radius:20px;white-space:nowrap}
+  @keyframes kfPinBounce{0%,100%{transform:translateX(-50%) translateY(0)}35%{transform:translateX(-50%) translateY(-14px)}60%{transform:translateX(-50%) translateY(-6px)}}
+  @keyframes kfPinShadow{0%,100%{transform:translateX(-50%) scaleX(1);opacity:0.28}35%{transform:translateX(-50%) scaleX(0.52);opacity:0.09}60%{transform:translateX(-50%) scaleX(0.76);opacity:0.18}}
+  .nav-pin-label{position:absolute;top:-26px;left:50%;transform:translateX(-50%);background:rgba(37,99,235,0.92);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .18s}
+  .pnlm-nav-pin-wrap:hover .nav-pin-label{opacity:1!important}
   .pnlm-audio-hs{width:32px;height:32px;background:rgba(16,163,74,0.85);border:2px solid rgba(255,255,255,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:0 0 0 4px rgba(16,163,74,0.2);transition:background .2s;user-select:none}
   .pnlm-audio-hs:hover{background:rgba(16,163,74,1)}
   .pnlm-audio-hs.active{background:#ea580c;box-shadow:0 0 0 6px rgba(234,88,12,0.3)}
@@ -90,6 +91,28 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[]): string {
 var SPACES=${spacesJson};
 function xToYaw(x){return(x-0.5)*360}
 function yToPitch(y){return(0.5-y)*180}
+function createNavPin(container,args){
+  container.style.width='40px';
+  container.style.height='58px';
+  container.style.marginLeft='-20px';
+  container.style.marginTop='-54px';
+  container.style.position='relative';
+  container.style.cursor='pointer';
+  container.style.overflow='visible';
+  container.innerHTML=
+    '<div style="position:absolute;top:0;left:50%;animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite">'+
+      '<svg width="34" height="44" viewBox="0 0 34 44" fill="none">'+
+        '<path d="M17 2C9.82 2 4 7.82 4 15c0 8.12 11.6 23.5 12.35 24.5a.85.85 0 001.3 0C18.4 38.5 30 23.12 30 15 30 7.82 24.18 2 17 2z" fill="#2563EB" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>'+
+        '<circle cx="17" cy="15" r="5.5" fill="white" opacity="0.95"/>'+
+      '</svg>'+
+    '</div>'+
+    '<div style="position:absolute;bottom:0;left:50%;width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite"></div>'+
+    '<span class="nav-pin-label">'+args.label+'</span>';
+  container.addEventListener('click',function(e){
+    e.stopPropagation();
+    try{viewer.loadScene(args.sceneId,0,0,100)}catch(err){}
+  });
+}
 function createAudioHotspot(div,args){
   div.classList.add('pnlm-audio-hs');
   div.innerHTML='🔊<span class="pnlm-audio-hs-tooltip">'+args.name+'</span>';
@@ -110,7 +133,7 @@ SPACES.forEach(function(s){
   var hotSpots=[];
   (s.pins||[]).forEach(function(pin){
     if(pin.type==='navigation'&&validIds.has(pin.targetSpaceId)){
-      hotSpots.push({pitch:yToPitch(pin.position.y),yaw:xToYaw(pin.position.x),type:'scene',text:pin.title,sceneId:pin.targetSpaceId,targetPitch:0,targetYaw:0,targetHfov:100});
+      hotSpots.push({pitch:yToPitch(pin.position.y),yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title}});
     } else if(pin.type==='audio'&&pin.audioUrl){
       hotSpots.push({pitch:yToPitch(pin.position.y),yaw:xToYaw(pin.position.x),type:'custom',text:pin.title,cssClass:'pnlm-audio-hs-wrap',createTooltipFunc:createAudioHotspot,createTooltipArgs:{url:pin.audioUrl,name:pin.audioName||pin.title}});
     }
