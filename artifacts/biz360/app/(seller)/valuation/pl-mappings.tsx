@@ -17,10 +17,11 @@ interface PLRow {
   amount: number;
   included: boolean;
   section?: string;
+  isIncome?: boolean;
   assignedToUnitId?: string | null;
   assignedToUnitName?: string | null;
 }
-interface PLSection { title: string; rows: PLRow[]; total: number }
+interface PLSection { title: string; isIncome: boolean; rows: PLRow[]; total: number }
 
 export default function PLMappingsScreen() {
   const colors = useColors();
@@ -46,23 +47,37 @@ export default function PLMappingsScreen() {
   }, [selectedCafe?.id, unitId]));
 
   const toggleRow = (sectionIdx: number, rowIdx: number) => {
-    setSections((prev) => {
-      const next = prev.map((s, si) => si !== sectionIdx ? s : {
+    setSections((prev) =>
+      prev.map((s, si) => si !== sectionIdx ? s : {
         ...s,
         rows: s.rows.map((r, ri) => ri !== rowIdx ? r : { ...r, included: !r.included }),
-      });
-      return next;
-    });
+      })
+    );
   };
 
   const handleSave = async () => {
     if (!selectedCafe) return;
     setSaving(true);
-    const mappings = sections.flatMap((s) =>
-      s.rows
-        .filter((r) => !r.assignedToUnitId)
-        .map((r) => ({ name: r.name, included: r.included, section: s.title }))
-    );
+
+    let mappings: { name: string; included: boolean; section: string }[];
+
+    if (unitId) {
+      // Unit-scoped: only send rows the unit is claiming (included=true).
+      // Unclaimed accounts (included=false) are simply omitted — presence = ownership.
+      // Rows locked by another unit are skipped entirely.
+      mappings = sections.flatMap((s) =>
+        s.rows
+          .filter((r) => r.included && !r.assignedToUnitId)
+          .map((r) => ({ name: r.name, included: true, section: s.title }))
+      );
+    } else {
+      // Parent view: send all rows (true/false toggle has meaning here)
+      mappings = sections.flatMap((s) =>
+        s.rows
+          .map((r) => ({ name: r.name, included: r.included, section: s.title }))
+      );
+    }
+
     await fetch(`${API_BASE}/api/valuation/xero/pl-mappings`, {
       method: "PATCH",
       headers: authHeaders(),
@@ -72,12 +87,15 @@ export default function PLMappingsScreen() {
     router.back();
   };
 
-  const screenTitle = unitId ? `${unitName ?? "Division"} — Income` : "P&L Mapping";
+  const screenTitle = unitId ? `${unitName ?? "Division"} — Accounts` : "P&L Mapping";
   const hasAnyRows = sections.some(s => s.rows.length > 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={colors.foreground} />
@@ -89,7 +107,7 @@ export default function PLMappingsScreen() {
           <View style={[styles.infoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="info" size={14} color={colors.mutedForeground} />
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-              Toggle on the Xero income accounts that belong to this division. Accounts claimed by another division are shown greyed out.
+              Toggle on the Xero accounts that belong to this division — both income and expense. Accounts claimed by another division are locked.
             </Text>
           </View>
         )}
@@ -108,7 +126,16 @@ export default function PLMappingsScreen() {
         ) : (
           sections.map((section, si) => (
             <View key={si} style={{ gap: 8 }}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{section.title || "Other"}</Text>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{section.title || "Other"}</Text>
+                {unitId && (
+                  <View style={[styles.sectionBadge, { backgroundColor: section.isIncome ? colors.primary + "20" : "#F59E0B20" }]}>
+                    <Text style={[styles.sectionBadgeText, { color: section.isIncome ? colors.primary : "#F59E0B" }]}>
+                      {section.isIncome ? "Income" : "Expense"}
+                    </Text>
+                  </View>
+                )}
+              </View>
               {section.rows.map((row, ri) => {
                 const isLockedByOther = !!row.assignedToUnitId;
                 return (
@@ -116,7 +143,11 @@ export default function PLMappingsScreen() {
                     key={ri}
                     style={[
                       styles.rowCard,
-                      { backgroundColor: isLockedByOther ? colors.card + "80" : colors.card, borderColor: row.included ? colors.primary + "60" : colors.border, opacity: isLockedByOther ? 0.6 : 1 },
+                      {
+                        backgroundColor: isLockedByOther ? colors.card + "80" : colors.card,
+                        borderColor: row.included ? (section.isIncome ? colors.primary + "60" : "#F59E0B60") : colors.border,
+                        opacity: isLockedByOther ? 0.55 : 1,
+                      },
                     ]}
                   >
                     <View style={{ flex: 1 }}>
@@ -132,7 +163,7 @@ export default function PLMappingsScreen() {
                       value={row.included}
                       onValueChange={() => !isLockedByOther && toggleRow(si, ri)}
                       disabled={isLockedByOther}
-                      trackColor={{ true: colors.primary }}
+                      trackColor={{ true: section.isIncome ? colors.primary : "#F59E0B" }}
                     />
                   </View>
                 );
@@ -154,24 +185,27 @@ export default function PLMappingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container:     { flex: 1 },
-  scroll:        { paddingHorizontal: 16, gap: 16 },
-  header:        { flexDirection: "row", alignItems: "center", gap: 12 },
-  backBtn:       { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  title:         { fontSize: 20, fontFamily: "Inter_700Bold", flex: 1 },
-  infoBox:       { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
-  infoText:      { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
-  sectionTitle:  { fontSize: 15, fontFamily: "Inter_700Bold" },
-  rowCard:       { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 12, borderWidth: 1 },
-  rowName:       { fontSize: 13, fontFamily: "Inter_500Medium" },
-  rowAmount:     { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  assignedLabel: { fontSize: 11, fontFamily: "Inter_500Medium", marginTop: 3 },
-  empty:         { alignItems: "center", paddingVertical: 60, gap: 12 },
-  emptyTitle:    { fontSize: 18, fontFamily: "Inter_700Bold" },
-  emptyText:     { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, maxWidth: 280 },
-  connectBtn:    { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 4 },
-  connectBtnText:{ color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  footer:        { position: "absolute", bottom: 0, left: 0, right: 0, padding: 16, borderTopWidth: 1 },
-  saveBtn:       { paddingVertical: 14, borderRadius: 14, alignItems: "center" },
-  saveBtnText:   { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  container:       { flex: 1 },
+  scroll:          { paddingHorizontal: 16, gap: 16 },
+  header:          { flexDirection: "row", alignItems: "center", gap: 12 },
+  backBtn:         { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  title:           { fontSize: 20, fontFamily: "Inter_700Bold", flex: 1 },
+  infoBox:         { flexDirection: "row", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  infoText:        { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  sectionHeaderRow:{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle:    { fontSize: 15, fontFamily: "Inter_700Bold" },
+  sectionBadge:    { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  sectionBadgeText:{ fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  rowCard:         { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 12, borderWidth: 1 },
+  rowName:         { fontSize: 13, fontFamily: "Inter_500Medium" },
+  rowAmount:       { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  assignedLabel:   { fontSize: 11, fontFamily: "Inter_500Medium", marginTop: 3 },
+  empty:           { alignItems: "center", paddingVertical: 60, gap: 12 },
+  emptyTitle:      { fontSize: 18, fontFamily: "Inter_700Bold" },
+  emptyText:       { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, maxWidth: 280 },
+  connectBtn:      { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 4 },
+  connectBtnText:  { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  footer:          { position: "absolute", bottom: 0, left: 0, right: 0, padding: 16, borderTopWidth: 1 },
+  saveBtn:         { paddingVertical: 14, borderRadius: 14, alignItems: "center" },
+  saveBtnText:     { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
