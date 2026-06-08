@@ -380,6 +380,7 @@ export default function ToursScreen() {
   const [audioUploadingScene,   setAudioUploadingScene]   = useState(false);
   const [audioUploadingPin,     setAudioUploadingPin]     = useState(false);
   const [imageUploadingLook,    setImageUploadingLook]    = useState(false);
+  const [navDegText,            setNavDegText]            = useState("");
   const [deleteMode,            setDeleteMode]            = useState(false);
   const [pendingDeleteSpaceId,  setPendingDeleteSpaceId]  = useState<string | null>(null);
   const [pendingDeletePinId,    setPendingDeletePinId]    = useState<string | null>(null);
@@ -490,6 +491,7 @@ export default function ToursScreen() {
   const openAddPin = () => {
     const newPin = { ...EMPTY_PIN, id: `pin-${Date.now()}` };
     setDraftPin(newPin);
+    setNavDegText("");
     setEditingPinId(null);
     setShowRichPopup(false);
     if ((draftSpace.dirMode === "panorama" || draftSpace.dirMode === "single") && draftSpace.panoramaUri) { setPinPlaceMode(true); }
@@ -498,6 +500,7 @@ export default function ToursScreen() {
 
   const openEditPin = (pin: DraftPin) => {
     setDraftPin(pin);
+    setNavDegText(pin.targetYaw !== undefined ? String(pin.targetYaw) : "");
     setEditingPinId(pin.id);
     setActivePinId(pin.id);
     setShowRichPopup(!!(pin.popupContent?.sections?.length || pin.popupContent?.docLinks?.length || pin.popupContent?.images?.some(Boolean)));
@@ -1748,27 +1751,82 @@ export default function ToursScreen() {
                     { label: "NW", yaw: 315 },
                   ];
                   const currentYaw = draftPin.targetYaw;
+                  const presetMatch = DIRS.find((d) => d.yaw === currentYaw);
                   return (
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                      {DIRS.map(({ label, yaw }) => {
-                        const active = currentYaw === yaw;
-                        return (
-                          <TouchableOpacity
-                            key={label}
-                            onPress={() => setDraftPin((p) => ({ ...p, targetYaw: active ? undefined : yaw }))}
-                            style={{
-                              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5,
-                              backgroundColor: active ? "#2563EB18" : colors.card,
-                              borderColor: active ? "#2563EB" : colors.border,
-                              minWidth: 52, alignItems: "center",
+                    <View style={{ marginBottom: 16 }}>
+                      {/* Compass presets */}
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                        {DIRS.map(({ label, yaw }) => {
+                          const active = currentYaw === yaw;
+                          return (
+                            <TouchableOpacity
+                              key={label}
+                              onPress={() => {
+                                const newYaw = active ? undefined : yaw;
+                                setDraftPin((p) => ({ ...p, targetYaw: newYaw }));
+                                setNavDegText(newYaw !== undefined ? String(newYaw) : "");
+                              }}
+                              style={{
+                                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5,
+                                backgroundColor: active ? "#2563EB18" : colors.card,
+                                borderColor: active ? "#2563EB" : colors.border,
+                                minWidth: 52, alignItems: "center",
+                              }}
+                            >
+                              <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: active ? "#2563EB" : colors.foreground }}>
+                                {label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      {/* Exact degree input */}
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={{
+                          flex: 1, flexDirection: "row", alignItems: "center",
+                          borderWidth: 1.5, borderRadius: 8,
+                          borderColor: currentYaw !== undefined && !presetMatch ? "#2563EB" : colors.border,
+                          backgroundColor: currentYaw !== undefined && !presetMatch ? "#2563EB10" : colors.card,
+                          paddingHorizontal: 12, paddingVertical: 0,
+                        }}>
+                          <TextInput
+                            style={{ flex: 1, fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.foreground, paddingVertical: 8 }}
+                            placeholder="0 – 359"
+                            placeholderTextColor={colors.mutedForeground}
+                            keyboardType="number-pad"
+                            value={navDegText}
+                            onChangeText={(t) => {
+                              setNavDegText(t);
+                              const parsed = parseInt(t, 10);
+                              if (!isNaN(parsed) && parsed >= 0 && parsed <= 359) {
+                                setDraftPin((p) => ({ ...p, targetYaw: parsed }));
+                              } else if (t === "") {
+                                setDraftPin((p) => ({ ...p, targetYaw: undefined }));
+                              }
                             }}
-                          >
-                            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: active ? "#2563EB" : colors.foreground }}>
-                              {label}
+                            onBlur={() => {
+                              const parsed = parseInt(navDegText, 10);
+                              if (isNaN(parsed) || parsed < 0 || parsed > 359) {
+                                setNavDegText(currentYaw !== undefined ? String(currentYaw) : "");
+                              }
+                            }}
+                            returnKeyType="done"
+                            maxLength={3}
+                          />
+                          <Text style={{ fontSize: 14, color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }}>°</Text>
+                        </View>
+                        {currentYaw !== undefined && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB18", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: "#2563EB40" }}>
+                            <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: "#2563EB" }}>
+                              {presetMatch ? presetMatch.label : (() => {
+                                const labels = ["N","NE","E","SE","S","SW","W","NW"];
+                                return labels[Math.round(currentYaw / 45) % 8];
+                              })()}
                             </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                            <Text style={{ fontSize: 11, color: "#2563EB99", fontFamily: "Inter_400Regular" }}>{currentYaw}°</Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
                   );
                 })()}
