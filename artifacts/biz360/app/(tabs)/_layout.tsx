@@ -6,20 +6,24 @@ import { Feather } from "@expo/vector-icons";
 import { SymbolView } from "expo-symbols";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function NativeTabLayout() {
+  const { user } = useAuth();
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="discover">
         <Icon sf={{ default: "magnifyingglass.circle", selected: "magnifyingglass.circle.fill" }} />
         <Label>Discover</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="saved">
-        <Icon sf={{ default: "bookmark", selected: "bookmark.fill" }} />
-        <Label>Saved</Label>
-      </NativeTabs.Trigger>
+      {user && (
+        <NativeTabs.Trigger name="saved">
+          <Icon sf={{ default: "bookmark", selected: "bookmark.fill" }} />
+          <Label>Saved</Label>
+        </NativeTabs.Trigger>
+      )}
       <NativeTabs.Trigger name="compare">
         <Icon sf={{ default: "square.split.2x1", selected: "square.split.2x1.fill" }} />
         <Label>Compare</Label>
@@ -38,6 +42,7 @@ function NativeTabLayout() {
 
 function ClassicTabLayout() {
   const colors = useColors();
+  const { user } = useAuth();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
@@ -81,6 +86,7 @@ function ClassicTabLayout() {
           title: "Saved",
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="bookmark" tintColor={color} size={24} /> : <Feather name="bookmark" size={22} color={color} />,
+          tabBarButton: user ? undefined : () => null,
         }}
       />
       <Tabs.Screen
