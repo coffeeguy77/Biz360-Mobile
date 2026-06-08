@@ -17,6 +17,7 @@ import { ListingCard } from "@/components/ListingCard";
 import { FilterSheet, FilterState } from "@/components/FilterSheet";
 import { Listing } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/context/AuthContext";
 import { getPendingListings } from "@/lib/adminStore";
 import { pendingToListing } from "@/lib/listingUtils";
 import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
@@ -29,6 +30,7 @@ const DEFAULT_FILTERS: FilterState = {
 export default function DiscoverScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [search,      setSearch]      = useState("");
   const [filters,     setFilters]     = useState<FilterState>(DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
@@ -156,8 +158,8 @@ export default function DiscoverScreen() {
         renderItem={({ item }) => (
           <ListingCard
             listing={item}
-            onSave={toggleSave}
-            isSaved={savedIds.includes(item.id)}
+            onSave={user ? toggleSave : undefined}
+            isSaved={user ? savedIds.includes(item.id) : false}
             onLongPress={handleLongPress}
           />
         )}
