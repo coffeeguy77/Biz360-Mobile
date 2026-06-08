@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -37,6 +37,21 @@ export default function WelcomeScreen() {
   const [selected, setSelected] = useState<UserRole>("buyer");
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<LiveStats | null>(null);
+  const [devMode, setDevMode] = useState(false);
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLogoTap = () => {
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      setDevMode((v) => !v);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 2000);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -93,9 +108,11 @@ export default function WelcomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.logoRow}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>360</Text>
-          </View>
+          <TouchableOpacity onPress={handleLogoTap} activeOpacity={0.8}>
+            <View style={styles.logoBox}>
+              <Text style={styles.logoText}>360</Text>
+            </View>
+          </TouchableOpacity>
           <View>
             <Text style={styles.brand}>Biz360</Text>
             <Text style={styles.tagline}>See the business before you buy it.</Text>
@@ -122,73 +139,85 @@ export default function WelcomeScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionLabel}>Continue as</Text>
-        <View style={styles.roleGrid}>
-          {ROLES.map((r) => (
+        {devMode && (
+          <>
+            <Text style={styles.sectionLabel}>Continue as</Text>
+            <View style={styles.roleGrid}>
+              {ROLES.map((r) => (
+                <TouchableOpacity
+                  key={r.key}
+                  style={[
+                    styles.roleCard,
+                    {
+                      backgroundColor: selected === r.key ? "#2563EB" : "#0F2040",
+                      borderColor: selected === r.key ? "#3B82F6" : "#1E3A5C",
+                    },
+                  ]}
+                  onPress={() => {
+                    setSelected(r.key);
+                    Haptics.selectionAsync();
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.roleIcon,
+                      {
+                        backgroundColor:
+                          selected === r.key ? "rgba(255,255,255,0.2)" : "#162033",
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name={r.icon as any}
+                      size={20}
+                      color={selected === r.key ? "#fff" : "#3B82F6"}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.roleLabel,
+                      { color: selected === r.key ? "#fff" : "#E2E8F0" },
+                    ]}
+                  >
+                    {r.label}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.roleSub,
+                      { color: selected === r.key ? "rgba(255,255,255,0.7)" : "#8B9CB8" },
+                    ]}
+                  >
+                    {r.subtitle}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TouchableOpacity
-              key={r.key}
-              style={[
-                styles.roleCard,
-                {
-                  backgroundColor: selected === r.key ? "#2563EB" : "#0F2040",
-                  borderColor: selected === r.key ? "#3B82F6" : "#1E3A5C",
-                },
-              ]}
-              onPress={() => {
-                setSelected(r.key);
-                Haptics.selectionAsync();
-              }}
+              style={[styles.primaryBtn, { opacity: loading ? 0.7 : 1, marginBottom: 12 }]}
+              onPress={handleDemoLogin}
+              disabled={loading}
             >
-              <View
-                style={[
-                  styles.roleIcon,
-                  {
-                    backgroundColor:
-                      selected === r.key ? "rgba(255,255,255,0.2)" : "#162033",
-                  },
-                ]}
-              >
-                <Feather
-                  name={r.icon as any}
-                  size={20}
-                  color={selected === r.key ? "#fff" : "#3B82F6"}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.roleLabel,
-                  { color: selected === r.key ? "#fff" : "#E2E8F0" },
-                ]}
-              >
-                {r.label}
+              <Text style={styles.primaryBtnText}>
+                {loading ? "Loading..." : `Continue as ${ROLES.find((r) => r.key === selected)?.label}`}
               </Text>
-              <Text
-                style={[
-                  styles.roleSub,
-                  { color: selected === r.key ? "rgba(255,255,255,0.7)" : "#8B9CB8" },
-                ]}
-              >
-                {r.subtitle}
-              </Text>
+              <Feather name="arrow-right" size={18} color="#fff" />
             </TouchableOpacity>
-          ))}
-        </View>
+          </>
+        )}
 
         <TouchableOpacity
-          style={[styles.primaryBtn, { opacity: loading ? 0.7 : 1 }]}
-          onPress={handleDemoLogin}
-          disabled={loading}
+          style={[styles.primaryBtn, { opacity: 1 }, devMode && { backgroundColor: "#0F2040", borderWidth: 1, borderColor: "#1E3A5C" }]}
+          onPress={() => router.push("/(auth)/login")}
         >
-          <Text style={styles.primaryBtnText}>
-            {loading ? "Loading..." : `Continue as ${ROLES.find((r) => r.key === selected)?.label}`}
-          </Text>
-          <Feather name="arrow-right" size={18} color="#fff" />
+          <Feather name="smartphone" size={18} color="#fff" />
+          <Text style={styles.primaryBtnText}>Sign In</Text>
         </TouchableOpacity>
 
-        <View style={styles.loginRow}>
-          <Text style={[styles.loginText, { color: "#8B9CB8" }]}>Have an account? </Text>
-          <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
-            <Text style={[styles.loginLink, { color: "#3B82F6" }]}>Sign in</Text>
+        <View style={[styles.loginRow, { marginTop: 16 }]}>
+          <Text style={[styles.loginText, { color: "#8B9CB8" }]}>New to Biz360? </Text>
+          <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+            <Text style={[styles.loginLink, { color: "#3B82F6" }]}>Create account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

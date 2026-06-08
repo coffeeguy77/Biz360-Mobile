@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -38,6 +38,21 @@ export default function LoginScreen() {
   const [phone,    setPhone]    = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
+  const [devMode,  setDevMode]  = useState(false);
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleHeadingTap = () => {
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      setDevMode((v) => !v);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 2000);
+    }
+  };
 
   const switchMode = (m: "email" | "phone") => {
     setMode(m);
@@ -139,7 +154,9 @@ export default function LoginScreen() {
           <Feather name="arrow-left" size={22} color="#fff" />
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Welcome back</Text>
+        <TouchableOpacity onPress={handleHeadingTap} activeOpacity={1}>
+          <Text style={styles.heading}>Welcome back</Text>
+        </TouchableOpacity>
         <Text style={styles.sub}>Sign in to your Biz360 account</Text>
 
         {/* ── Mode toggle ── */}
@@ -246,8 +263,8 @@ export default function LoginScreen() {
           )}
         </View>
 
-        {/* ── Demo logins (email mode only) ── */}
-        {mode === "email" && (
+        {/* ── Demo logins (dev mode + email mode only) ── */}
+        {devMode && mode === "email" && (
           <>
             <View style={[styles.divider, { borderColor: "#1E3A5C" }]}>
               <Text style={[styles.dividerText, { color: "#8B9CB8" }]}>Demo logins</Text>
