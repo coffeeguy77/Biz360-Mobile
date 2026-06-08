@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, Eye, Phone, ShieldCheck, ChevronRight, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Eye, Phone, ShieldCheck, ChevronRight, Loader2, CheckCircle2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type Step = "phone" | "otp" | "success";
+type Step = "phone" | "otp" | "name" | "done";
 
 function toE164(raw: string): string {
   const digits = raw.replace(/\D/g, "");
@@ -13,9 +13,112 @@ function toE164(raw: string): string {
 }
 
 function formatDisplay(raw: string): string {
-  const digits = raw.replace(/\D/g, "").replace(/^0/, "");
-  const chunks = digits.match(/.{1,3}/g) || [];
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("0")) {
+    return [digits.slice(0, 4), digits.slice(4, 7), digits.slice(7, 10)]
+      .filter(Boolean).join(" ").trim();
+  }
+  const chunks = digits.match(/.{1,3}/g) ?? [];
   return chunks.join(" ").trim();
+}
+
+function toLocalFormat(e164: string): string {
+  const digits = e164.replace(/\D/g, "");
+  if (digits.startsWith("61")) {
+    const local = "0" + digits.slice(2);
+    return [local.slice(0, 4), local.slice(4, 7), local.slice(7, 10)]
+      .filter(Boolean).join(" ");
+  }
+  return e164;
+}
+
+const API = "/api/biz360";
+
+async function kvGet<T>(key: string): Promise<T | null> {
+  try {
+    const res = await fetch(`${API}/kv/${key}`);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch { return null; }
+}
+
+async function kvSet(key: string, value: unknown): Promise<void> {
+  await fetch(`${API}/kv/${key}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(value),
+  });
+}
+
+async function registerBuyer(userId: string, name: string, phone: string): Promise<void> {
+  const users: any[] = (await kvGet<any[]>("biz360_admin_users")) ?? [];
+  const exists = users.some((u) => u.id === userId || u.email === phone);
+  if (!exists) {
+    const newUser = {
+      id: userId,
+      name,
+      email: phone,
+      role: "buyer",
+      status: "active",
+      joined: new Date().toLocaleDateString("en-AU", { month: "short", year: "numeric" }),
+    };
+    await kvSet("biz360_admin_users", [newUser, ...users]);
+  } else {
+    const updated = users.map((u) =>
+      (u.id === userId || u.email === phone) && (!u.name || u.name === "User")
+        ? { ...u, name }
+        : u
+    );
+    await kvSet("biz360_admin_users", updated);
+  }
+  try {
+    localStorage.setItem("biz360_web_user", JSON.stringify({ userId, name, phone }));
+  } catch {}
+}
+
+async function createEnquiryThread(
+  userId: string,
+  name: string,
+  phone: string,
+  listingId: string,
+  listingName: string,
+  intent: string,
+): Promise<void> {
+  if (!listingId) return;
+  const threads: Record<string, any> =
+    (await kvGet<Record<string, any>>("biz360_threads_v3")) ?? {};
+  const threadId = `thread-${listingId}-${userId}`;
+  const localPhone = toLocalFormat(phone);
+  const text =
+    intent === "call"
+      ? `Hi, I'd like to arrange a call about ${listingName}. You can reach me at ${localPhone}. — ${name}`
+      : `Hi, I'm interested in ${listingName} and would love more details. My number is ${localPhone}. — ${name}`;
+
+  if (!threads[threadId]) {
+    threads[threadId] = {
+      id: threadId,
+      listingId,
+      listingName,
+      sellerName: "Seller",
+      buyerName: name,
+      buyerId: userId,
+      messages: [],
+      updatedAt: Date.now(),
+      unreadBuyer: 0,
+      unreadSeller: 0,
+    };
+  } else {
+    threads[threadId] = { ...threads[threadId], buyerName: name, buyerId: userId };
+  }
+
+  threads[threadId].messages = [
+    ...(threads[threadId].messages ?? []),
+    { id: `msg-${Date.now()}-web`, from: "buyer", text, timestamp: Date.now() },
+  ];
+  threads[threadId].updatedAt = Date.now();
+  threads[threadId].unreadSeller = (threads[threadId].unreadSeller ?? 0) + 1;
+
+  await kvSet("biz360_threads_v3", threads);
 }
 
 function OtpBoxes({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
@@ -85,19 +188,26 @@ export function SignIn() {
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
+  const [userId, setUserId] = useState("");
+  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const e164 = toE164(phone);
   const phoneValid = e164.replace(/\D/g, "").length >= 11;
   const otpFull = otp.every(Boolean);
+  const nameValid = name.trim().length >= 2;
 
-  // Auto-submit when all 6 digits entered
   useEffect(() => {
     if (step === "otp" && otpFull) handleVerify();
   }, [otp]);
+
+  useEffect(() => {
+    if (step === "name") setTimeout(() => nameInputRef.current?.focus(), 150);
+  }, [step]);
 
   useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
@@ -144,14 +254,36 @@ export function SignIn() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: e164, code: otp.join("") }),
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.message || "Invalid code — please try again");
-      }
-      setStep("success");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Invalid code — please try again");
+      setUserId(data.userId ?? "");
+      try {
+        const stored = localStorage.getItem("biz360_web_user");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.name && parsed.name !== "User") setName(parsed.name);
+        }
+      } catch {}
+      setStep("name");
     } catch (err: any) {
       setError(err.message ?? "Verification failed. Try again.");
       setOtp(Array(6).fill(""));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleComplete() {
+    if (!nameValid) return;
+    setLoading(true);
+    setError("");
+    try {
+      const trimmed = name.trim();
+      await registerBuyer(userId, trimmed, e164);
+      await createEnquiryThread(userId, trimmed, e164, listingId, listingName, intent);
+      setStep("done");
+    } catch {
+      setError("Something went wrong saving your details. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -181,10 +313,6 @@ export function SignIn() {
     intent === "call"
       ? "We'll pass your number to the seller so they can call you directly."
       : "We'll send your enquiry to the seller on your behalf.";
-  const successMessage =
-    intent === "call"
-      ? `The seller will call you at ${e164} within 1–2 business days.`
-      : `Your enquiry about ${listingName} has been sent to the seller.`;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -210,7 +338,7 @@ export function SignIn() {
       <div className="flex-1 flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-sm">
 
-          {/* Step: Phone */}
+          {/* ── Step: Phone ── */}
           {step === "phone" && (
             <div className="flex flex-col gap-7">
               <div className="text-center">
@@ -225,7 +353,6 @@ export function SignIn() {
                 </p>
               </div>
 
-              {/* Listing context */}
               {listingName && (
                 <div className="bg-card border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
                   <ShieldCheck size={14} className="text-green-400 flex-shrink-0" />
@@ -233,7 +360,6 @@ export function SignIn() {
                 </div>
               )}
 
-              {/* Phone input */}
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-2">Mobile Number</label>
                 <div className="flex items-center bg-card border-2 border-border rounded-xl overflow-hidden focus-within:border-primary/60 transition-colors">
@@ -244,13 +370,14 @@ export function SignIn() {
                   <input
                     type="tel"
                     autoFocus
-                    placeholder="04XX XXX XXX"
+                    placeholder="0412 XXX XXX"
                     value={formatDisplay(phone)}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
                     onKeyDown={(e) => { if (e.key === "Enter" && phoneValid) handleSendOtp(); }}
                     className="flex-1 px-3 py-3 bg-transparent text-foreground text-base placeholder:text-muted-foreground/40 outline-none"
                   />
                 </div>
+                <p className="mt-1.5 text-xs text-muted-foreground/60">Enter your number starting with 0 — e.g. 0412 708 337</p>
                 {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
               </div>
 
@@ -272,7 +399,7 @@ export function SignIn() {
             </div>
           )}
 
-          {/* Step: OTP */}
+          {/* ── Step: OTP ── */}
           {step === "otp" && (
             <div className="flex flex-col gap-7">
               <div className="text-center">
@@ -281,7 +408,7 @@ export function SignIn() {
                 </div>
                 <h1 className="text-2xl font-bold mb-2">Enter your code</h1>
                 <p className="text-muted-foreground text-sm">
-                  Sent to <span className="text-foreground font-medium">{e164}</span>
+                  Sent to <span className="text-foreground font-medium">{toLocalFormat(e164)}</span>
                 </p>
               </div>
 
@@ -321,8 +448,56 @@ export function SignIn() {
             </div>
           )}
 
-          {/* Step: Success */}
-          {step === "success" && (
+          {/* ── Step: Name ── */}
+          {step === "name" && (
+            <div className="flex flex-col gap-7">
+              <div className="text-center">
+                <div className="w-14 h-14 bg-green-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <User size={24} className="text-green-400" />
+                </div>
+                <h1 className="text-2xl font-bold mb-2">What's your name?</h1>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  So the seller knows who's getting in touch.
+                </p>
+              </div>
+
+              <div className="bg-card border border-border rounded-xl px-4 py-3 text-sm flex items-center gap-2">
+                <ShieldCheck size={14} className="text-green-400 flex-shrink-0" />
+                <span className="text-muted-foreground">Verified:</span>
+                <span className="font-medium">{toLocalFormat(e164)}</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-2">Your Name</label>
+                <input
+                  ref={nameInputRef}
+                  type="text"
+                  autoComplete="name"
+                  placeholder="e.g. Sarah Johnson"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && nameValid) handleComplete(); }}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground/40 outline-none focus:border-primary/60 transition-colors"
+                />
+                {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+              </div>
+
+              <Button
+                onClick={handleComplete}
+                disabled={!nameValid || loading}
+                className="w-full h-12 text-base font-semibold gap-2"
+              >
+                {loading ? (
+                  <><Loader2 size={16} className="animate-spin" /> {intent === "call" ? "Requesting call…" : "Sending enquiry…"}</>
+                ) : (
+                  <>{intent === "call" ? "Request Call" : "Send Enquiry"} <ChevronRight size={16} /></>
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* ── Step: Done ── */}
+          {step === "done" && (
             <div className="flex flex-col gap-7 text-center">
               <div>
                 <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -331,14 +506,23 @@ export function SignIn() {
                 <h1 className="text-2xl font-bold mb-3">
                   {intent === "call" ? "Call Requested!" : "Enquiry Sent!"}
                 </h1>
-                <p className="text-muted-foreground text-sm leading-relaxed">{successMessage}</p>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {intent === "call"
+                    ? `The seller will call you at ${toLocalFormat(e164)} within 1–2 business days.`
+                    : `Your message about ${listingName} has been sent to the seller. They'll be in touch soon.`}
+                </p>
               </div>
 
               <div className="bg-card border border-border rounded-xl p-4 text-left space-y-2">
                 <div className="flex items-center gap-2 text-sm">
+                  <User size={14} className="text-primary" />
+                  <span className="text-muted-foreground">Name:</span>
+                  <span className="font-medium">{name.trim()}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
                   <ShieldCheck size={14} className="text-green-400" />
                   <span className="text-muted-foreground">Verified number:</span>
-                  <span className="font-medium">{e164}</span>
+                  <span className="font-medium">{toLocalFormat(e164)}</span>
                 </div>
                 {listingName && (
                   <div className="flex items-center gap-2 text-sm">
@@ -359,6 +543,7 @@ export function SignIn() {
               </Link>
             </div>
           )}
+
         </div>
       </div>
     </div>
