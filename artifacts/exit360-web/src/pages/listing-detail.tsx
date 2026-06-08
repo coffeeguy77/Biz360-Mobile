@@ -70,11 +70,11 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[]): string {
 <html>
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
 <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"><\/script>
 <style>
-  html,body,#pano{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+  #pano{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none;user-select:none;-webkit-user-select:none}
   @keyframes kfPinBounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-13px)}60%{transform:translateY(-6px)}}
   @keyframes kfPinShadow{0%,100%{transform:scaleX(1);opacity:0.28}35%{transform:scaleX(0.55);opacity:0.10}60%{transform:scaleX(0.78);opacity:0.18}}
   .nav-pin-label{position:absolute;top:-30px;left:50%;transform:translateX(-50%);background:rgba(37,99,235,0.92);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .18s}
@@ -143,7 +143,7 @@ SPACES.forEach(function(s){
   if(typeof s.groundPitch==='number')sc.groundPitch=s.groundPitch;
   scenesConfig[s.id]=sc;
 });
-var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100},scenes:scenesConfig});
+var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:150},scenes:scenesConfig});
 viewer.on('scenechange',function(id){try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}});
 window.addEventListener('message',function(e){if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{viewer.loadScene(e.data.sceneId,0,0,100)}catch(e2){}});
 <\/script>
