@@ -213,6 +213,7 @@ interface DraftPin {
   mediaUri?: string;
   // Navigation
   targetSpaceId?: string;
+  targetYaw?: number;
   // Look pin — dedicated photo
   imageUrl?: string;
   // Document / External link
@@ -666,6 +667,7 @@ export default function ToursScreen() {
       pinOpacity:     p.pinOpacity,
       pinColor:       p.pinColor,
       targetSpaceId:  p.targetSpaceId,
+      targetYaw:      p.targetYaw,
       imageUrl:       p.imageUrl,
       documentUrl:    p.documentUrl,
       externalUrl:    p.externalUrl,
@@ -814,6 +816,7 @@ export default function ToursScreen() {
         },
       };
       if (dp.targetSpaceId)           pin.targetSpaceId  = dp.targetSpaceId;
+      if (dp.targetYaw !== undefined) pin.targetYaw      = dp.targetYaw;
       if (dp.imageUrl?.trim())        pin.imageUrl       = dp.imageUrl.trim();
       if (dp.documentUrl?.trim())     pin.documentUrl    = dp.documentUrl.trim();
       if (dp.externalUrl?.trim())     pin.externalUrl    = dp.externalUrl.trim();
@@ -1728,6 +1731,47 @@ export default function ToursScreen() {
                     })}
                   </View>
                 )}
+                {/* Entry direction picker */}
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>FACING DIRECTION ON ARRIVAL</Text>
+                <Text style={{ fontSize: 12, color: colors.mutedForeground, marginBottom: 8, marginTop: -4 }}>
+                  Which way should the viewer face when they enter this space?
+                </Text>
+                {(() => {
+                  const DIRS = [
+                    { label: "N",  yaw: 0   },
+                    { label: "NE", yaw: 45  },
+                    { label: "E",  yaw: 90  },
+                    { label: "SE", yaw: 135 },
+                    { label: "S",  yaw: 180 },
+                    { label: "SW", yaw: 225 },
+                    { label: "W",  yaw: 270 },
+                    { label: "NW", yaw: 315 },
+                  ];
+                  const currentYaw = draftPin.targetYaw;
+                  return (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                      {DIRS.map(({ label, yaw }) => {
+                        const active = currentYaw === yaw;
+                        return (
+                          <TouchableOpacity
+                            key={label}
+                            onPress={() => setDraftPin((p) => ({ ...p, targetYaw: active ? undefined : yaw }))}
+                            style={{
+                              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5,
+                              backgroundColor: active ? "#2563EB18" : colors.card,
+                              borderColor: active ? "#2563EB" : colors.border,
+                              minWidth: 52, alignItems: "center",
+                            }}
+                          >
+                            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: active ? "#2563EB" : colors.foreground }}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>DESCRIPTION (OPTIONAL)</Text>
                 <TextInput
                   style={[styles.nameInput, styles.textArea, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}

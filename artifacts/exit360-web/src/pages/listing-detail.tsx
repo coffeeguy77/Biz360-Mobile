@@ -109,7 +109,7 @@ function createNavPin(container,args){
     '</svg>';
   pinDiv.addEventListener('click',function(e){
     e.stopPropagation();
-    try{viewer.loadScene(args.sceneId,0,0,100)}catch(err){}
+    try{viewer.loadScene(args.sceneId,0,args.targetYaw||0,100)}catch(err){}
   });
   container.appendChild(pinDiv);
   /* Shadow */
@@ -143,7 +143,7 @@ SPACES.forEach(function(s){
   var hotSpots=[];
   (s.pins||[]).forEach(function(pin){
     if(pin.type==='navigation'&&validIds.has(pin.targetSpaceId)){
-      hotSpots.push({pitch:40,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title}});
+      hotSpots.push({pitch:40,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title,targetYaw:typeof pin.targetYaw==='number'?pin.targetYaw:0}});
     } else if(pin.type==='audio'&&pin.audioUrl){
       hotSpots.push({pitch:Math.max(10,yToPitch(pin.position.y)),yaw:xToYaw(pin.position.x),type:'custom',text:pin.title,cssClass:'pnlm-audio-hs-wrap',createTooltipFunc:createAudioHotspot,createTooltipArgs:{url:pin.audioUrl,name:pin.audioName||pin.title}});
     }

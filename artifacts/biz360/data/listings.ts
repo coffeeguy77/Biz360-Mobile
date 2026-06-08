@@ -80,6 +80,8 @@ export interface TourPin {
   requiresNDA?: boolean;
   // Navigation hotspot
   targetSpaceId?: string;
+  // Yaw (degrees) the viewer faces when arriving in the target scene (0 = panorama default, undefined = 0)
+  targetYaw?: number;
   // Look pin — dedicated feature photo
   imageUrl?: string;
   // Ground-mounted pin (deprecated — use heightMetres instead)
