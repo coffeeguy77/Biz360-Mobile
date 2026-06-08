@@ -28,10 +28,20 @@ router.post("/square/sync", async (req, res) => {
 });
 
 async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: string, fromDate: Date, toDate: Date) {
+  // Fetch all active location IDs for this merchant — required by Square Orders Search
+  let locationIds: string[] = [];
+  try {
+    const locRes = await fetch("https://connect.squareup.com/v2/locations", { headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17" } });
+    if (locRes.ok) {
+      const locData = await locRes.json() as any;
+      locationIds = (locData.locations ?? []).filter((l: any) => l.status === "ACTIVE").map((l: any) => l.id as string);
+    }
+  } catch {}
+  if (locationIds.length === 0) { logger.warn({ cafeId }, "Square: no active locations found, skipping sync"); return; }
   let cursor: string | undefined;
   const dailyTotals: Record<string, { gross: number; net: number; count: number }> = {};
   do {
-    const body: any = { location_ids: [], query: { filter: { date_time_filter: { created_at: { start_at: fromDate.toISOString(), end_at: toDate.toISOString() } }, state_filter: { states: ["COMPLETED"] } } }, limit: 500 };
+    const body: any = { location_ids: locationIds, query: { filter: { date_time_filter: { created_at: { start_at: fromDate.toISOString(), end_at: toDate.toISOString() } }, state_filter: { states: ["COMPLETED"] } } }, limit: 500 };
     if (cursor) body.cursor = cursor;
     const r = await fetch("https://connect.squareup.com/v2/orders/search", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17", "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!r.ok) break;

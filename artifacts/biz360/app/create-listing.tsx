@@ -274,14 +274,14 @@ export default function CreateListing() {
       if (editId) {
         const updated = existing.map((p) =>
           p.id === editId
-            ? { ...p, ...fieldData, status: "pending" as const, submittedAt: Date.now() }
+            ? { ...p, ...fieldData, submittedAt: Date.now() }
             : p,
         );
         await savePendingListings(updated);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
           "Listing Updated!",
-          `"${form.businessName.trim()}" has been resubmitted for review.`,
+          `"${form.businessName.trim()}" has been saved.`,
           [{ text: "Done", onPress: () => router.back() }],
         );
       } else {
@@ -688,7 +688,7 @@ export default function CreateListing() {
               <Feather name="info" size={16} color={colors.primary} />
               <Text style={[styles.infoText, { color: colors.foreground }]}>
                 {editId
-                  ? "Your updated listing will be re-reviewed before going live. Status will reset to Pending."
+                  ? "Edits are saved immediately. Your listing status is not affected."
                   : "Your listing will be reviewed by the Biz360 team before going live. Once submitted it will appear in your listings with a Pending status."
                 }
               </Text>
