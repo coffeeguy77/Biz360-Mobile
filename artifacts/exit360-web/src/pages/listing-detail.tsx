@@ -70,11 +70,13 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[]): string {
 <html>
 <head>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
 <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"><\/script>
 <style>
+  *{box-sizing:border-box}
   html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-  #pano{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none;user-select:none;-webkit-user-select:none}
+  #pano{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;background:#000}
   @keyframes kfPinBounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-13px)}60%{transform:translateY(-6px)}}
   @keyframes kfPinShadow{0%,100%{transform:scaleX(1);opacity:0.28}35%{transform:scaleX(0.55);opacity:0.10}60%{transform:scaleX(0.78);opacity:0.18}}
   .nav-pin-label{position:absolute;top:-30px;left:50%;transform:translateX(-50%);background:rgba(37,99,235,0.92);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .18s}
@@ -139,7 +141,7 @@ SPACES.forEach(function(s){
       hotSpots.push({pitch:yToPitch(pin.position.y),yaw:xToYaw(pin.position.x),type:'custom',text:pin.title,cssClass:'pnlm-audio-hs-wrap',createTooltipFunc:createAudioHotspot,createTooltipArgs:{url:pin.audioUrl,name:pin.audioName||pin.title}});
     }
   });
-  var sc={type:'equirectangular',panorama:s.panoramaUrl,title:s.name,hotSpots:hotSpots};
+  var sc={type:'equirectangular',panorama:s.panoramaUrl,title:s.name,hotSpots:hotSpots,pitch:0,yaw:typeof s.panoramaStartYaw==='number'?s.panoramaStartYaw:0};
   if(typeof s.groundPitch==='number')sc.groundPitch=s.groundPitch;
   scenesConfig[s.id]=sc;
 });
@@ -169,7 +171,7 @@ function TourViewer({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative rounded-2xl overflow-hidden bg-black" style={{ height: "clamp(260px, 50vw, 460px)" }}>
+      <div className="relative rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "16/9", maxHeight: 460, minHeight: 220 }}>
         <iframe
           ref={iframeRef}
           srcDoc={srcdoc}
@@ -546,10 +548,10 @@ export function ListingDetail() {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="grid lg:grid-cols-3 gap-10">
-          {/* Left: main content */}
-          <div className="lg:col-span-2 flex flex-col gap-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <div className="grid lg:grid-cols-3 gap-6 lg:gap-10">
+          {/* Left: main content — on mobile appears second (below sidebar) */}
+          <div className="lg:col-span-2 flex flex-col gap-6 sm:gap-8 order-2 lg:order-1">
             <div>
               <div className="flex items-center gap-3 mb-3 flex-wrap">
                 {listing.isRealListing && (
@@ -633,9 +635,9 @@ export function ListingDetail() {
             </div>
           </div>
 
-          {/* Right: sticky sidebar */}
-          <div className="flex flex-col gap-5">
-            <div className="sticky top-24 flex flex-col gap-4">
+          {/* Right: sticky sidebar — on mobile appears first (above panorama) */}
+          <div className="flex flex-col gap-5 order-1 lg:order-2">
+            <div className="lg:sticky lg:top-24 flex flex-col gap-4">
               {/* Price card */}
               <div className="bg-card border border-border rounded-2xl p-6 flex flex-col gap-4">
                 <div className="text-center">
