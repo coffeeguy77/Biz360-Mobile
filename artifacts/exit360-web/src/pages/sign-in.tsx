@@ -308,10 +308,15 @@ export function SignIn() {
     }
   }
 
-  const intentLabel = intent === "call" ? "Request a Call" : "Send Enquiry";
+  const intentLabel =
+    intent === "call" ? "Request a Call" :
+    intent === "signup" ? "Create Buyer Profile" :
+    "Send Enquiry";
   const intentDesc =
     intent === "call"
       ? "We'll pass your number to the seller so they can call you directly."
+      : intent === "signup"
+      ? "Verify your number to create your free buyer profile and get access to exclusive listings."
       : "We'll send your enquiry to the seller on your behalf.";
 
   return (
@@ -353,7 +358,7 @@ export function SignIn() {
                 </p>
               </div>
 
-              {listingName && (
+              {listingName && intent !== "signup" && (
                 <div className="bg-card border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
                   <ShieldCheck size={14} className="text-green-400 flex-shrink-0" />
                   <span className="truncate">{listingName}</span>
@@ -504,11 +509,13 @@ export function SignIn() {
                   <CheckCircle2 size={32} className="text-green-400" />
                 </div>
                 <h1 className="text-2xl font-bold mb-3">
-                  {intent === "call" ? "Call Requested!" : "Enquiry Sent!"}
+                  {intent === "call" ? "Call Requested!" : intent === "signup" ? "Profile Created!" : "Enquiry Sent!"}
                 </h1>
                 <p className="text-muted-foreground text-sm leading-relaxed">
                   {intent === "call"
                     ? `The seller will call you at ${toLocalFormat(e164)} within 1–2 business days.`
+                    : intent === "signup"
+                    ? `Your buyer profile is live. You can now enquire on any listing and the seller will see your verified number.`
                     : `Your message about ${listingName} has been sent to the seller. They'll be in touch soon.`}
                 </p>
               </div>
@@ -524,7 +531,7 @@ export function SignIn() {
                   <span className="text-muted-foreground">Verified number:</span>
                   <span className="font-medium">{toLocalFormat(e164)}</span>
                 </div>
-                {listingName && (
+                {listingName && intent !== "signup" && (
                   <div className="flex items-center gap-2 text-sm">
                     <Eye size={14} className="text-primary" />
                     <span className="text-muted-foreground">Listing:</span>
@@ -533,14 +540,18 @@ export function SignIn() {
                 )}
               </div>
 
-              <Link href={returnPath}>
-                <Button variant="outline" className="w-full h-12">Back to Listing</Button>
+              <Link href={intent === "signup" ? "/listings" : returnPath}>
+                <Button variant="outline" className="w-full h-12">
+                  {intent === "signup" ? "Browse Listings" : "Back to Listing"}
+                </Button>
               </Link>
-              <Link href="/listings">
-                <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Browse other listings
-                </button>
-              </Link>
+              {intent !== "signup" && (
+                <Link href="/listings">
+                  <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    Browse other listings
+                  </button>
+                </Link>
+              )}
             </div>
           )}
 

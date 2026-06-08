@@ -166,7 +166,9 @@ export function Home() {
               Join 12,000+ buyers already using EXIT360 to find premium businesses.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Button size="lg" className="h-14 px-8 text-base">Create Buyer Profile</Button>
+              <Link href="/sign-in?intent=signup">
+                <Button size="lg" className="h-14 px-8 text-base">Create Buyer Profile</Button>
+              </Link>
               <Button size="lg" variant="outline" className="h-14 px-8 text-base">List a Business</Button>
             </div>
           </div>
