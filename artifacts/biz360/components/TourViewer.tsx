@@ -58,9 +58,10 @@ interface Props {
   focusPin?: TourPin | null;
   onFocusPinHandled?: () => void;
   tourSettings?: TourSettings;
+  onYawChange?: (deg: number) => void;
 }
 
-export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings }: Props) {
+export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings, onYawChange }: Props) {
   if (space.dirMode === "single" && space.panoramaUrl) {
     return <SinglePhotoViewer space={space} onPinPress={onPinPress} focusPin={focusPin} onFocusPinHandled={onFocusPinHandled} />;
   }
@@ -72,10 +73,11 @@ export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled, tou
         focusPin={focusPin}
         onFocusPinHandled={onFocusPinHandled}
         tourSettings={tourSettings}
+        onYawChange={onYawChange}
       />
     );
   }
-  return <DirectionalStrip space={space} onPinPress={onPinPress} focusPin={focusPin} onFocusPinHandled={onFocusPinHandled} />;
+  return <DirectionalStrip space={space} onPinPress={onPinPress} focusPin={focusPin} onFocusPinHandled={onFocusPinHandled} onYawChange={onYawChange} />;
 }
 
 // ── Single flat-photo viewer with pin overlays ──────────────────────────────
@@ -120,7 +122,7 @@ const svStyles = StyleSheet.create({
 
 const PHOTO_W = SW;
 
-function DirectionalStrip({ space, onPinPress, focusPin, onFocusPinHandled }: Props) {
+function DirectionalStrip({ space, onPinPress, focusPin, onFocusPinHandled, onYawChange }: Props) {
   const N = Math.max(space.photos.length, 1);
   const dirLabels     = N >= 8 ? DIRECTION_LABELS_8 : DIRECTION_LABELS_4;
   const compassLabels = N >= 8 ? COMPASS_LABELS_8   : COMPASS_LABELS_4;
@@ -168,6 +170,12 @@ function DirectionalStrip({ space, onPinPress, focusPin, onFocusPinHandled }: Pr
       if (finished && !isGesture.current) settle(best);
     });
   };
+
+  // ── Emit live yaw whenever photo index changes ────────────────────────────
+  useEffect(() => {
+    if (N <= 0) return;
+    onYawChange?.(Math.round((photoIdx / N) * 360));
+  }, [photoIdx]);
 
   // ── Pan to focusPin then open it ──────────────────────────────────────────
   const snapToIdxRef = useRef(snapToIdx);

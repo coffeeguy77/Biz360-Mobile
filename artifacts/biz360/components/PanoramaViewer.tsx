@@ -270,7 +270,7 @@ function buildSinglePanoHtml(
       });
     }
 
-    pannellum.viewer('pano', {
+    var viewer = pannellum.viewer('pano', {
       type: 'equirectangular', panorama: '${panoramaUrl}',
       haov: ${haov}, vaov: ${vaov},
       autoLoad: true, showControls: false, compass: false,
@@ -289,6 +289,13 @@ function buildSinglePanoHtml(
         };
       })
     });
+    setInterval(function() {
+      if (window.ReactNativeWebView) {
+        var raw = viewer.getYaw();
+        var normalized = ((raw % 360) + 360) % 360;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'yaw', yaw: Math.round(normalized) }));
+      }
+    }, 200);
   </script>
 </body></html>`;
 }
@@ -706,9 +713,10 @@ interface Props {
   focusPin?: TourPin | null;
   onFocusPinHandled?: () => void;
   tourSettings?: TourSettings;
+  onYawChange?: (deg: number) => void;
 }
 
-export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings }: Props) {
+export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings, onYawChange }: Props) {
   const webRef = useRef<WebView>(null);
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
@@ -830,6 +838,8 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled,
       if (data.type === "pinTap") {
         const pin = space.pins.find((p) => p.id === data.id);
         if (pin) onPinPress(pin);
+      } else if (data.type === "yaw" && typeof data.yaw === "number") {
+        onYawChange?.(data.yaw);
       }
     } catch { /* ignore */ }
   };

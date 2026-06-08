@@ -69,6 +69,11 @@ function fmtMs(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+const YAW_LABELS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+function yawToLabel(deg: number): string {
+  return YAW_LABELS[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+}
+
 // ── Pulsing animated navigation arrow ────────────────────────────────────────
 // Three chevrons wave sequentially (like a scroll-indicator) to gently invite
 // the user to navigate, without the visual weight of a pill button.
@@ -188,6 +193,7 @@ export default function TourScreen() {
   const [activePin,      setActivePin]      = useState<TourPin | null>(null);
   const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
   const [showRoomNav,       setShowRoomNav]       = useState(false);
+  const [liveYaw,           setLiveYaw]           = useState(0);
   const [showAudioOnboarding, setShowAudioOnboarding] = useState(false);
   const [showTourGuide,     setShowTourGuide]     = useState(false);
   const arrowAnim = useRef(new Animated.Value(0)).current;
@@ -470,6 +476,12 @@ export default function TourScreen() {
               <Text style={[styles.navPillText, { color: showRoomNav ? "#fff" : "rgba(255,255,255,0.5)" }]}>NAV</Text>
             </TouchableOpacity>
           )}
+          {showRoomNav && (
+            <View style={styles.compassPill}>
+              <Text style={styles.compassDir}>{yawToLabel(liveYaw)}</Text>
+              <Text style={styles.compassDeg}>{Math.round(liveYaw)}°</Text>
+            </View>
+          )}
           <TouchableOpacity style={styles.iconBtn} onPress={() => setShowTourGuide(true)}>
             <Feather name="help-circle" size={18} color="#fff" />
           </TouchableOpacity>
@@ -501,6 +513,7 @@ export default function TourScreen() {
         focusPin={focusPin}
         onFocusPinHandled={() => setFocusPin(null)}
         tourSettings={tourSettings}
+        onYawChange={setLiveYaw}
       />
 
       {/* ── Audio hotspot pin (hotspot trigger) ── */}
@@ -788,6 +801,9 @@ const styles = StyleSheet.create({
   iconBtn:         { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
   navPill:         { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
   navPillText:     { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
+  compassPill:     { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: "rgba(59,130,246,0.4)", minWidth: 44 },
+  compassDir:      { color: "#60A5FA", fontSize: 13, fontFamily: "Inter_700Bold", lineHeight: 16 },
+  compassDeg:      { color: "rgba(255,255,255,0.55)", fontSize: 9, fontFamily: "Inter_400Regular", lineHeight: 12 },
   tourInfo:        { flex: 1, alignItems: "center", gap: 2 },
   tourTitle:       { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   tourSpace:       { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
