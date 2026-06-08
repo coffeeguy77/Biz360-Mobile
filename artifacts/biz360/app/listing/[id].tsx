@@ -10,8 +10,12 @@ import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing } from "@/lib/adminStore";
 import { trackEvent } from "@/lib/analyticsStore";
 import { apiGet } from "@/lib/apiStore";
+
 import { useAuth } from "@/context/AuthContext";
 import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
+
+const _domain = (global as any).__replit_dev_domain as string | undefined;
+const LISTING_API_BASE = _domain ? `https://${_domain}` : "";
 
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -20,6 +24,95 @@ function safeFormatPrice(price: number | undefined | null): string {
   if (!price || price <= 0) return "Price TBC";
   return formatPrice(price);
 }
+
+// ── Verified Financials inline section ─────────────────────────────────────────
+
+function VerifiedFinancialsSection({
+  listingId,
+  valSnapshot,
+  valTabIdx,
+  setValTabIdx,
+}: {
+  listingId: string;
+  valSnapshot: { combined: any; units: { unit: any; snapshot: any }[] };
+  valTabIdx: number;
+  setValTabIdx: (i: number) => void;
+}) {
+  const tabs = [
+    { label: "Combined", snap: valSnapshot.combined },
+    ...valSnapshot.units.map(({ unit, snapshot }) => ({ label: unit.name as string, snap: snapshot })),
+  ];
+  const active = tabs[valTabIdx] ?? tabs[0];
+  const snap = active?.snap;
+  const fmt = (v: any) => v != null && v !== "" ? `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—";
+  const rows: { label: string; value: string; highlight?: boolean }[] = [
+    { label: "Gross Revenue",   value: fmt(snap?.grossRevenue) },
+    { label: "COGS",            value: fmt(snap?.cogs) },
+    { label: "Gross Profit",    value: fmt(snap?.grossProfit) },
+    { label: "EBITDA",          value: fmt(snap?.ebitda) },
+    { label: "Adjusted EBITDA", value: fmt(snap?.adjustedEbitda), highlight: true },
+    { label: "Equipment Value", value: fmt(snap?.totalEquipmentValue) },
+    { label: "Valuation",       value: fmt(snap?.valuationMidpoint), highlight: true },
+  ];
+  return (
+    <View style={[vfStyles.section, { backgroundColor: "#0A1628", borderColor: "#16A34A30" }]}>
+      <View style={vfStyles.header}>
+        <View style={[vfStyles.icon, { backgroundColor: "#16A34A20" }]}>
+          <Feather name="shield" size={18} color="#16A34A" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={vfStyles.title}>Verified Financials</Text>
+          <Text style={vfStyles.sub}>Seller-connected revenue &amp; valuation data</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => router.push(`/listing/valuation-report?listingId=${listingId}` as any)}
+          style={[vfStyles.fullBtn, { borderColor: "#16A34A50" }]}
+        >
+          <Text style={{ color: "#16A34A", fontSize: 11, fontFamily: "Inter_600SemiBold" }}>Full Report</Text>
+        </TouchableOpacity>
+      </View>
+      {tabs.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }} contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}>
+          {tabs.map((t, i) => (
+            <TouchableOpacity
+              key={i}
+              onPress={() => setValTabIdx(i)}
+              style={[vfStyles.tab, valTabIdx === i && { backgroundColor: "#16A34A20", borderColor: "#16A34A60" }]}
+            >
+              <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: valTabIdx === i ? "#16A34A" : "#8B9CB8" }}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+      {snap && (
+        <View>
+          {rows.map(({ label, value, highlight }) => (
+            <View key={label} style={vfStyles.row}>
+              <Text style={{ color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", flex: 1 }}>{label}</Text>
+              <Text style={{ color: highlight ? "#16A34A" : "#E2E8F0", fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{value}</Text>
+            </View>
+          ))}
+          {snap.snapshotDate != null && (
+            <Text style={{ color: "#4A5568", fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 8, textAlign: "right" }}>
+              Snapshot: {snap.snapshotDate} · {snap.periodMonths}mo period
+            </Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const vfStyles = StyleSheet.create({
+  section: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 12 },
+  header:  { flexDirection: "row", alignItems: "center", gap: 12 },
+  icon:    { width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  title:   { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  sub:     { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  fullBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  tab:     { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderColor: "#1E2D40" },
+  row:     { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#1E2D40" },
+});
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
@@ -32,6 +125,9 @@ export default function ListingDetailScreen() {
 
   const [isSaved,       setIsSaved]       = useState(false);
   const [hasTour,       setHasTour]       = useState(false);
+  const [valSnapshot,   setValSnapshot]   = useState<null | { combined: any; units: { unit: any; snapshot: any }[] }>(null);
+  const [valLoading,    setValLoading]    = useState(false);
+  const [valTabIdx,     setValTabIdx]     = useState(0);
   const viewFiredRef = useRef(false);
 
   // 1. Try DEMO_LISTINGS first (synchronous)
@@ -63,6 +159,21 @@ export default function ListingDetailScreen() {
       setHasTour(Array.isArray(spaces) && spaces.length > 0);
     });
   }, [id, pendingItem]);
+
+  // Fetch public valuation snapshot (no auth required) when listing has a listingId
+  useEffect(() => {
+    const listingId = pendingItem?.listingId;
+    if (!listingId) return;
+    setValLoading(true);
+    fetch(`${LISTING_API_BASE}/api/valuation/listing/${listingId}/snapshot`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && data.combined) setValSnapshot(data);
+        else setValSnapshot(null);
+      })
+      .catch(() => setValSnapshot(null))
+      .finally(() => setValLoading(false));
+  }, [pendingItem?.listingId]);
 
   // Track listing view — fires once when a KV listing resolves
   useEffect(() => {
@@ -443,6 +554,16 @@ export default function ListingDetailScreen() {
             </View>
           )}
 
+          {/* ── Verified Financials: only shown once snapshot is confirmed to exist ── */}
+          {item.listingId && !valLoading && valSnapshot != null && (
+            <VerifiedFinancialsSection
+              listingId={item.listingId}
+              valSnapshot={valSnapshot}
+              valTabIdx={valTabIdx}
+              setValTabIdx={setValTabIdx}
+            />
+          )}
+
           <View style={[styles.infoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="info" size={15} color={colors.primary} />
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
@@ -509,6 +630,16 @@ const styles = StyleSheet.create({
   infoPrice:       { fontSize: 30, fontFamily: "Inter_700Bold" },
   infoName:        { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 2 },
   infoMeta:        { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 1 },
+  verifiedFinancials: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 14, borderWidth: 1 },
+  verifiedIcon:    { width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  verifiedTitle:   { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  verifiedSub:     { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  snapSection:     { borderRadius: 14, borderWidth: 1, padding: 16, gap: 12 },
+  snapHeader:      { flexDirection: "row", alignItems: "center", gap: 12 },
+  snapViewFull:    { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  snapTab:         { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderColor: "#1E2D40" },
+  snapRow:         { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#1E2D40" },
+  snapEmpty:       { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 8 },
   infoBox:         { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
   infoText:        { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   footer:          { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, gap: 8 },

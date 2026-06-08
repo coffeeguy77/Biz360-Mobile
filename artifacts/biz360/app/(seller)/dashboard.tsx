@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useState } from "react";
 import {
   Alert, ActivityIndicator, Modal, Platform, Pressable,
@@ -10,6 +11,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { getUsers, PendingListing, getPendingListings, saveUsers } from "@/lib/adminStore";
 import { aggregateAnalytics, getMultiAnalytics, ListingAnalytics } from "@/lib/analyticsStore";
+
+const API_BASE = (() => { try { const d = (global as any).__replit_dev_domain; return d ? `https://${d}` : ""; } catch { return ""; } })();
 
 // ─── Plan definitions ──────────────────────────────────────────────────────────
 
@@ -238,6 +241,8 @@ export default function SellerDashboard() {
   const [featuredAnalytics, setFeaturedAnalytics] = useState<ListingAnalytics | null>(null);
   const [analyticsLoading,  setAnalyticsLoading]  = useState(true);
   const [upgradeVisible,    setUpgradeVisible]    = useState(false);
+  const [valMidpoint,       setValMidpoint]       = useState<number | null>(null);
+  const [valCafeId,         setValCafeId]         = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -265,6 +270,27 @@ export default function SellerDashboard() {
 
         setAnalyticsLoading(false);
       });
+
+      // Fetch combined valuation midpoint from latest snapshot
+      (async () => {
+        try {
+          const token = await AsyncStorage.getItem("biz360_auth_token");
+          if (!token || !API_BASE) return;
+          const headers = { Authorization: `Bearer ${token}` };
+          const cafesRes = await fetch(`${API_BASE}/api/valuation/cafes`, { headers });
+          if (!cafesRes.ok) return;
+          const cafes = await cafesRes.json();
+          if (!cafes?.length) return;
+          const cafe = cafes[0];
+          setValCafeId(cafe.id);
+          const snapRes = await fetch(`${API_BASE}/api/valuation/cafes/${cafe.id}/snapshots/latest`, { headers });
+          if (!snapRes.ok) return;
+          const snap = await snapRes.json();
+          // /snapshots/latest returns { combined, units }
+          const midpoint = snap?.combined?.valuationMidpoint;
+          if (midpoint != null) setValMidpoint(Number(midpoint));
+        } catch {}
+      })();
     }, [user?.id]),
   );
 
@@ -431,6 +457,31 @@ export default function SellerDashboard() {
           })}
         </View>
 
+        {/* ── Valuation card ── */}
+        <TouchableOpacity
+          style={[styles.valuationCard, { backgroundColor: "#0F1F35", borderColor: "#1E3A5C" }]}
+          onPress={() => {
+            const lid = featuredListing?.listingId;
+            router.push(`/(seller)/valuation${lid ? `?listingId=${lid}` : ""}` as any);
+          }}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.valuationIconWrap, { backgroundColor: "#2563EB20" }]}>
+            <Feather name="trending-up" size={22} color="#2563EB" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.valuationTitle}>Business Valuation</Text>
+            {valMidpoint != null ? (
+              <Text style={[styles.valuationSub, { color: "#16A34A", fontFamily: "Inter_600SemiBold" }]}>
+                ${valMidpoint.toLocaleString(undefined, { maximumFractionDigits: 0 })} midpoint
+              </Text>
+            ) : (
+              <Text style={styles.valuationSub}>Not yet synced · Tap to set up</Text>
+            )}
+          </View>
+          <Feather name="chevron-right" size={18} color="#8B9CB8" />
+        </TouchableOpacity>
+
         {/* ── Create listing CTA ── */}
         <TouchableOpacity
           style={[styles.createBtn, { backgroundColor: colors.primary }]}
@@ -481,6 +532,10 @@ const styles = StyleSheet.create({
   statChange:       { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   createBtn:        { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14 },
   createBtnText:    { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  valuationCard:    { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 16, padding: 18, borderWidth: 1 },
+  valuationIconWrap:{ width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  valuationTitle:   { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  valuationSub:     { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
 
   // ── Modal ──
   modalBackdrop:    { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.65)" },

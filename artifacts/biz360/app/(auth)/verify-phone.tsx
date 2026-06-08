@@ -92,7 +92,7 @@ export default function VerifyPhoneScreen() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ phone, code: otp }),
       });
-      const json = await res.json() as { ok?: boolean; error?: string };
+      const json = await res.json() as { ok?: boolean; error?: string; token?: string; userId?: string };
 
       if (!res.ok || !json.ok) {
         setError(json.error ?? "Incorrect code. Please try again.");
@@ -105,9 +105,14 @@ export default function VerifyPhoneScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+      if (json.token) {
+        const { default: AsyncStorage } = await import("@react-native-async-storage/async-storage");
+        await AsyncStorage.setItem("biz360_auth_token", json.token);
+      }
+
       const allUsers = await getUsers().catch(() => [] as AdminUser[]);
       const prevUser = allUsers.find((u) => u.email === phone);
-      const userId   = prevUser?.id ?? `u-${phone?.replace(/\D/g, "")}`;
+      const userId   = json.userId ?? prevUser?.id ?? `u-${phone?.replace(/\D/g, "")}`;
 
       registerInAdminStore(userId);
 

@@ -266,7 +266,19 @@ router.post("/biz360/auth/verify-otp", async (req, res): Promise<void> => {
       .services(getVerifyServiceSid())
       .verificationChecks.create({ to: phone, code });
     if (check.status === "approved") {
-      res.json({ ok: true });
+      const userId = `u-${phone.replace(/\D/g, "")}`;
+      let token: string | null = null;
+      const jwtSecret = process.env.JWT_SECRET;
+      if (jwtSecret) {
+        const { SignJWT } = await import("jose");
+        const secret = new TextEncoder().encode(jwtSecret);
+        token = await new SignJWT({ sub: userId })
+          .setProtectedHeader({ alg: "HS256" })
+          .setIssuedAt()
+          .setExpirationTime("90d")
+          .sign(secret);
+      }
+      res.json({ ok: true, token, userId });
     } else {
       res.status(400).json({ error: "Incorrect or expired code" });
     }
