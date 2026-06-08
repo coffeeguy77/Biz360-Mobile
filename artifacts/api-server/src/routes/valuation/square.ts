@@ -3,7 +3,7 @@ import { eq, and, gte, isNull } from "drizzle-orm";
 import { db, cafeIntegrationsTable, squareOrdersCacheTable, valuationSnapshotsTable, ownerAdjustmentsTable, cafeEquipmentTable, xeroPLMappingsTable, xeroSupplierMappingsTable, businessUnitsTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { assertCafeOwner } from "./cafes";
-import { computeGrossRevenue, computeGrossProfit, computeEbitda, computeAdjustedEbitda, computeValuationMidpoint, computeUnitValuation } from "../../lib/valuation";
+import { computeGrossProfit, computeEbitda, computeAdjustedEbitda, computeValuationMidpoint } from "../../lib/valuation";
 import { getValidXeroToken, getXeroFinancials, getXeroSupplierSpend } from "./xero";
 
 const router: IRouter = Router();
@@ -65,107 +65,161 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
   const fromDate = new Date();
   fromDate.setMonth(fromDate.getMonth() - periodMonths);
   const fromStr = fromDate.toISOString().slice(0, 10);
-  const squareCacheRows = await db.select().from(squareOrdersCacheTable).where(and(eq(squareOrdersCacheTable.cafeId, cafeId), gte(squareOrdersCacheTable.orderDate, fromStr)));
-  const squareRevenue = squareCacheRows.reduce((s, r) => s + Number(r.grossAmount ?? 0), 0);
-  const [adjustmentRows, equipmentRows, plMappingRows, supplierMappingRows, units] = await Promise.all([
+
+  // Fetch all base data in parallel
+  const [squareCacheRows, adjustmentRows, equipmentRows, plMappingRows, supplierMappingRows, units] = await Promise.all([
+    db.select().from(squareOrdersCacheTable).where(and(eq(squareOrdersCacheTable.cafeId, cafeId), gte(squareOrdersCacheTable.orderDate, fromStr))),
     db.select().from(ownerAdjustmentsTable).where(eq(ownerAdjustmentsTable.cafeId, cafeId)),
     db.select().from(cafeEquipmentTable).where(and(eq(cafeEquipmentTable.cafeId, cafeId), eq(cafeEquipmentTable.suspended, false))),
     db.select().from(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId)),
     db.select().from(xeroSupplierMappingsTable).where(eq(xeroSupplierMappingsTable.cafeId, cafeId)),
     db.select().from(businessUnitsTable).where(eq(businessUnitsTable.cafeId, cafeId)),
   ]);
-  const incomeMap: Record<string, boolean> = {};
-  for (const m of plMappingRows) { if (m.accountName) incomeMap[m.accountName] = m.isIncluded ?? true; }
-  const cogsMap: Record<string, boolean> = {};
-  for (const m of supplierMappingRows) { if (m.contactName && !m.unitId) cogsMap[m.contactName] = m.isCogs ?? false; }
-  let xeroAdditionalRevenue = 0, cogsSuppliersTotal = 0, xeroTotalRevenue = 0, xeroTotalExpenses = 0;
-  let supplierSpend: any[] = [];
+
+  const squareRevenue = squareCacheRows.reduce((s, r) => s + Number(r.grossAmount ?? 0), 0);
+
+  // Fetch Xero data
+  let financials: { incomeRows: { name: string; amount: number }[]; totalRevenue: number; totalExpenses: number } | null = null;
+  let supplierSpend: { name: string; contactId: string; total: number }[] = [];
+  let xeroTotalRevenue = 0, xeroTotalExpenses = 0;
+
   const [xeroInt] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "xero"), eq(cafeIntegrationsTable.status, "connected")));
   if (xeroInt) {
     try {
       const accessToken = await getValidXeroToken(xeroInt, cafeId);
       const tenantId = xeroInt.metadata && typeof xeroInt.metadata === "object" ? (xeroInt.metadata as any).tenant_id : null;
       if (accessToken && tenantId) {
-        const [financials, spend] = await Promise.all([getXeroFinancials(accessToken, tenantId, periodMonths).catch(() => null), getXeroSupplierSpend(accessToken, tenantId, periodMonths).catch(() => [])]);
-        supplierSpend = spend as any[];
-        if (financials) { xeroTotalRevenue = financials.totalRevenue; xeroTotalExpenses = financials.totalExpenses; xeroAdditionalRevenue = financials.incomeRows.filter((r) => incomeMap[r.name] === true).reduce((s, r) => s + r.amount, 0); }
-        cogsSuppliersTotal = supplierSpend.filter((s: any) => cogsMap[s.name] === true).reduce((s: number, r: any) => s + r.total, 0);
+        [financials, supplierSpend] = await Promise.all([
+          getXeroFinancials(accessToken, tenantId, periodMonths).catch(() => null),
+          getXeroSupplierSpend(accessToken, tenantId, periodMonths).catch(() => []),
+        ]) as any;
+        if (financials) { xeroTotalRevenue = financials.totalRevenue; xeroTotalExpenses = financials.totalExpenses; }
       }
     } catch (err) { logger.warn({ cafeId, err }, "Xero data fetch failed during snapshot"); }
   }
-  const totalRevenue = computeGrossRevenue(squareRevenue, xeroAdditionalRevenue);
-  const grossProfit = computeGrossProfit(totalRevenue, cogsSuppliersTotal, cogsSuppliersTotal > 0);
+
+  // ── Parent-level maps (accounts with unit_id IS NULL) ──────────────────
+  const parentIncomeMap: Record<string, boolean> = {};
+  for (const m of plMappingRows) {
+    if (m.accountName && !m.unitId) parentIncomeMap[m.accountName] = m.isIncluded ?? true;
+  }
+  const parentCogsMap: Record<string, boolean> = {};
+  for (const m of supplierMappingRows) {
+    if (m.contactName && !m.unitId) parentCogsMap[m.contactName] = m.isCogs ?? false;
+  }
+
+  // Parent Xero income (accounts not assigned to any unit)
+  const parentXeroRevenue = financials
+    ? financials.incomeRows.filter(r => parentIncomeMap[r.name] === true).reduce((s, r) => s + r.amount, 0)
+    : 0;
+  const parentCOGS = supplierSpend.filter(s => parentCogsMap[s.name] === true).reduce((s, r) => s + r.total, 0);
+
+  // ── Combined totals (all included accounts regardless of unit assignment) ─
+  const allIncomeMap: Record<string, boolean> = {};
+  for (const m of plMappingRows) {
+    if (m.accountName && (m.isIncluded ?? true)) allIncomeMap[m.accountName] = true;
+  }
+  const allXeroRevenue = financials
+    ? financials.incomeRows.filter(r => allIncomeMap[r.name]).reduce((s, r) => s + r.amount, 0)
+    : 0;
+  const allCogsMap: Record<string, boolean> = {};
+  for (const m of supplierMappingRows) {
+    if (m.contactName && (m.isCogs ?? false)) allCogsMap[m.contactName] = true;
+  }
+  const allCOGS = supplierSpend.filter(s => allCogsMap[s.name]).reduce((s, r) => s + r.total, 0);
+  const totalRevenue = squareRevenue + allXeroRevenue;
+  const grossProfit = computeGrossProfit(totalRevenue, allCOGS, allCOGS > 0);
   const ebitda = computeEbitda(totalRevenue, xeroTotalExpenses, xeroTotalRevenue, !!xeroInt);
 
-  // Parent-level (unassigned) equipment and add-backs
-  const parentEquipmentValue = equipmentRows.filter((e) => !e.isLeased && !e.unitId).reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
-  const parentAdjustments = adjustmentRows.filter((a) => !a.unitId);
-  const parentAdjEbitda = computeAdjustedEbitda(ebitda, parentAdjustments.map((a) => ({ annualAmount: a.annualAmount ?? 0 })), periodMonths);
+  // Parent-level equipment and add-backs (not assigned to any unit)
+  const parentEquipmentValue = equipmentRows.filter(e => !e.isLeased && !e.unitId).reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+  const parentAdjustments = adjustmentRows.filter(a => !a.unitId);
+  const parentAdjEbitda = computeAdjustedEbitda(ebitda, parentAdjustments.map(a => ({ annualAmount: a.annualAmount ?? 0 })), periodMonths);
 
-  // Compute all unit snapshots first so we can sum them for the combined valuation
+  // ── Per-unit independent snapshots ──────────────────────────────────────
   const unitSnapshots: any[] = [];
+
   for (const unit of units) {
-    const unitRevSharePct = Number(unit.revenueSharePct ?? 0);
+    // Income accounts claimed by this unit
+    const unitIncomeMap: Record<string, boolean> = {};
+    for (const m of plMappingRows) {
+      if (m.accountName && m.unitId === unit.id) unitIncomeMap[m.accountName] = m.isIncluded ?? true;
+    }
+    const unitRevenue = financials
+      ? financials.incomeRows.filter(r => unitIncomeMap[r.name] === true).reduce((s, r) => s + r.amount, 0)
+      : 0;
+
+    // COGS suppliers assigned to this unit
     const unitCogsMap: Record<string, boolean> = {};
-    for (const m of supplierMappingRows) { if (m.contactName && m.unitId === unit.id) unitCogsMap[m.contactName] = m.isCogs ?? false; }
-    const unitCOGS = supplierSpend.filter((s: any) => unitCogsMap[s.name] === true).reduce((s: number, r: any) => s + r.total, 0);
-    const unitAdj = adjustmentRows.filter((a) => a.unitId === unit.id);
-    const unitEquip = equipmentRows.filter((e) => !e.isLeased && e.unitId === unit.id).reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
-    const calc = computeUnitValuation(unit, totalRevenue, xeroTotalExpenses, periodMonths, unitCOGS, unitCOGS > 0, unitAdj.map((a) => ({ annualAmount: a.annualAmount ?? 0 })), unitEquip);
+    for (const m of supplierMappingRows) {
+      if (m.contactName && m.unitId === unit.id) unitCogsMap[m.contactName] = m.isCogs ?? false;
+    }
+    const unitCOGS = supplierSpend.filter(s => unitCogsMap[s.name] === true).reduce((s, r) => s + r.total, 0);
+    const hasUnitCOGS = Object.values(unitCogsMap).some(v => v);
+
+    // Equipment and add-backs for this unit
+    const unitEquipValue = equipmentRows.filter(e => !e.isLeased && e.unitId === unit.id)
+      .reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+    const unitAdj = adjustmentRows.filter(a => a.unitId === unit.id);
+
+    // Independent P&L calculation
+    const unitGrossProfit = hasUnitCOGS ? Math.max(unitRevenue - unitCOGS, 0) : unitRevenue;
+    const unitAdjEBITDA = computeAdjustedEbitda(unitGrossProfit, unitAdj.map(a => ({ annualAmount: a.annualAmount ?? 0 })), periodMonths);
+    const unitValuationMidpoint = Math.max(unitAdjEBITDA, 0) * 2.5 + unitEquipValue;
+
     await db.delete(valuationSnapshotsTable).where(and(eq(valuationSnapshotsTable.cafeId, cafeId), eq(valuationSnapshotsTable.unitId, unit.id)));
     const [unitSnap] = await db.insert(valuationSnapshotsTable).values({
-      cafeId, ownerId, unitId: unit.id, snapshotDate: new Date().toISOString().slice(0, 10), periodMonths,
-      grossRevenue: String(Math.round(calc.unitRevenue * 100) / 100),
-      cogs: String(Math.round(calc.unitCOGS * 100) / 100),
-      grossProfit: String(Math.round(calc.unitGrossProfit * 100) / 100),
-      xeroTotalExpenses: String(Math.round(xeroTotalExpenses * (unitRevSharePct / 100) * 100) / 100),
+      cafeId, ownerId, unitId: unit.id,
+      snapshotDate: new Date().toISOString().slice(0, 10), periodMonths,
+      grossRevenue: String(Math.round(unitRevenue * 100) / 100),
+      cogs: String(Math.round(unitCOGS * 100) / 100),
+      grossProfit: String(Math.round(unitGrossProfit * 100) / 100),
+      xeroTotalExpenses: String(0),
       xeroTotalRevenue: String(Math.round(xeroTotalRevenue * 100) / 100),
-      ebitda: String(Math.round(calc.unitEBITDA * 100) / 100),
-      adjustedEbitda: String(Math.round(calc.unitAdjEBITDA * 100) / 100),
-      valuationMidpoint: String(Math.round(calc.unitValuation)),
-      totalEquipmentValue: String(Math.round(calc.unitEquipmentValue * 100) / 100),
-      squareRevenue: String(Math.round(squareRevenue * (unitRevSharePct / 100) * 100) / 100),
-      xeroRevenue: String(Math.round(xeroAdditionalRevenue * (unitRevSharePct / 100) * 100) / 100),
+      ebitda: String(Math.round(unitGrossProfit * 100) / 100),
+      adjustedEbitda: String(Math.round(unitAdjEBITDA * 100) / 100),
+      valuationMidpoint: String(Math.round(unitValuationMidpoint)),
+      totalEquipmentValue: String(Math.round(unitEquipValue * 100) / 100),
+      squareRevenue: String(0),
+      xeroRevenue: String(Math.round(unitRevenue * 100) / 100),
     }).returning();
     unitSnapshots.push({ unit, snapshot: unitSnap });
   }
 
-  // Combined valuation:
-  // - In split mode: sum of all unit valuations + parent-level equipment/add-backs
-  // - In non-split mode: standard whole-business calculation
-  let adjustedEbitda: number;
-  let totalEquipmentValue: number;
-  let valuationMidpoint: number;
+  // ── Combined snapshot ──────────────────────────────────────────────────
+  let combinedAdjEbitda: number;
+  let combinedEquipValue: number;
+  let combinedValuation: number;
+
   if (units.length > 0) {
+    // Sum of independent unit valuations + parent-level equipment/add-backs
     const sumUnitValuations = unitSnapshots.reduce((s, { snapshot: snap }) => s + Number(snap.valuationMidpoint ?? 0), 0);
-    // In split mode: combined = sum(unit valuations) + parent-only add-backs + parent equipment.
-    // Do NOT include whole-business EBITDA again (that's already split across units).
-    // Parent contribution = parentEquipmentValue + parent add-backs annualized to period.
     const parentAddbacksAnnualized = parentAdjustments.reduce((s, a) => s + Number(a.annualAmount ?? 0), 0);
     const parentAddbacksPeriod = (parentAddbacksAnnualized / 12) * periodMonths;
-    valuationMidpoint = sumUnitValuations + Math.max(parentAddbacksPeriod, 0) * 2.5 + parentEquipmentValue;
-    adjustedEbitda = parentAdjEbitda;
-    totalEquipmentValue = parentEquipmentValue;
+    combinedValuation = sumUnitValuations + Math.max(parentAddbacksPeriod, 0) * 2.5 + parentEquipmentValue;
+    combinedAdjEbitda = parentAdjEbitda;
+    combinedEquipValue = parentEquipmentValue;
   } else {
-    adjustedEbitda = parentAdjEbitda;
-    totalEquipmentValue = parentEquipmentValue;
-    valuationMidpoint = computeValuationMidpoint(adjustedEbitda, totalEquipmentValue);
+    combinedAdjEbitda = parentAdjEbitda;
+    combinedEquipValue = parentEquipmentValue;
+    combinedValuation = computeValuationMidpoint(combinedAdjEbitda, combinedEquipValue);
   }
 
   await db.delete(valuationSnapshotsTable).where(and(eq(valuationSnapshotsTable.cafeId, cafeId), isNull(valuationSnapshotsTable.unitId)));
   const [combined] = await db.insert(valuationSnapshotsTable).values({
-    cafeId, ownerId, unitId: null, snapshotDate: new Date().toISOString().slice(0, 10), periodMonths,
+    cafeId, ownerId, unitId: null,
+    snapshotDate: new Date().toISOString().slice(0, 10), periodMonths,
     grossRevenue: String(Math.round(totalRevenue * 100) / 100),
-    cogs: String(Math.round(cogsSuppliersTotal * 100) / 100),
+    cogs: String(Math.round(allCOGS * 100) / 100),
     grossProfit: String(Math.round(grossProfit * 100) / 100),
     xeroTotalExpenses: String(Math.round(xeroTotalExpenses * 100) / 100),
     xeroTotalRevenue: String(Math.round(xeroTotalRevenue * 100) / 100),
     ebitda: String(Math.round(ebitda * 100) / 100),
-    adjustedEbitda: String(Math.round(adjustedEbitda * 100) / 100),
-    valuationMidpoint: String(Math.round(valuationMidpoint)),
-    totalEquipmentValue: String(Math.round(totalEquipmentValue * 100) / 100),
+    adjustedEbitda: String(Math.round(combinedAdjEbitda * 100) / 100),
+    valuationMidpoint: String(Math.round(combinedValuation)),
+    totalEquipmentValue: String(Math.round(combinedEquipValue * 100) / 100),
     squareRevenue: String(Math.round(squareRevenue * 100) / 100),
-    xeroRevenue: String(Math.round(xeroAdditionalRevenue * 100) / 100),
+    xeroRevenue: String(Math.round(allXeroRevenue * 100) / 100),
   }).returning();
 
   return { snapshot: combined, units: unitSnapshots };

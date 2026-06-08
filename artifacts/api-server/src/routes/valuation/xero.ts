@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull } from "drizzle-orm";
-import { db, cafeIntegrationsTable, xeroPLMappingsTable, xeroSupplierMappingsTable } from "@workspace/db";
+import { db, cafeIntegrationsTable, xeroPLMappingsTable, xeroSupplierMappingsTable, businessUnitsTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { assertCafeOwner } from "./cafes";
 
@@ -90,9 +90,14 @@ function xeroDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+function isIncomeSection(title: string) {
+  const t = title.toLowerCase();
+  return t.includes("income") || t.includes("revenue") || t.includes("trading") || t.includes("sales");
+}
+
 router.get("/xero/reports", async (req, res) => {
   const userId = req.user!.id;
-  const { cafeId, months = "12" } = req.query as Record<string, string>;
+  const { cafeId, months = "12", unit_id } = req.query as Record<string, string>;
   if (!cafeId) return res.status(400).json({ error: "cafeId required" });
   await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
   if (res.headersSent) return;
@@ -106,38 +111,84 @@ router.get("/xero/reports", async (req, res) => {
   const toDate = new Date();
   const fromDate = new Date();
   fromDate.setMonth(fromDate.getMonth() - m);
-  const plMappings = await db.select().from(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId));
-  const mapping: Record<string, boolean> = {};
-  for (const row of plMappings) { if (row.accountName) mapping[row.accountName] = row.isIncluded ?? true; }
+
+  // Load ALL pl_mappings for this cafe (all units + parent), plus all units for name lookup
+  const [allPlMappings, allUnits] = await Promise.all([
+    db.select().from(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId)),
+    db.select().from(businessUnitsTable).where(eq(businessUnitsTable.cafeId, cafeId)),
+  ]);
+
+  // Build lookup: accountName → { unitId, isIncluded }
+  const accountOwnership: Record<string, { unitId: string | null; isIncluded: boolean }> = {};
+  for (const row of allPlMappings) {
+    if (row.accountName) accountOwnership[row.accountName] = { unitId: row.unitId ?? null, isIncluded: row.isIncluded ?? true };
+  }
+
+  // Unit name lookup
+  const unitNameMap: Record<string, string> = {};
+  for (const u of allUnits) unitNameMap[u.id] = u.name;
+
+  // Parent-level mapping (no unit_id) for the non-unit view
+  const parentMapping: Record<string, boolean> = {};
+  for (const row of allPlMappings) {
+    if (row.accountName && !row.unitId) parentMapping[row.accountName] = row.isIncluded ?? true;
+  }
+
   const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${xeroDateStr(fromDate)}&toDate=${xeroDateStr(toDate)}`;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, "xero-tenant-id": tenantId, Accept: "application/json" } });
   if (!r.ok) { const err = await r.text(); return res.status(502).json({ error: "Xero API error", detail: err.slice(0, 300) }); }
   const data = await r.json() as any;
   const report = data.Reports?.[0];
   if (!report) return res.json({ sections: [] });
-  const sections: { title: string; rows: { name: string; amount: number; included: boolean }[]; total: number }[] = [];
+
+  const sections: { title: string; rows: { name: string; amount: number; included: boolean; assignedToUnitId?: string | null; assignedToUnitName?: string | null }[]; total: number }[] = [];
+
   for (const row of report.Rows ?? []) {
     if (row.RowType !== "Section" && row.RowType !== "SummaryRow") continue;
     const title = row.Title ?? (row.RowType === "SummaryRow" ? "Summary" : "");
-    const sectionRows: { name: string; amount: number; included: boolean }[] = [];
+    const sectionIsIncome = isIncomeSection(title);
+
+    // When viewing per-unit, only show income sections
+    if (unit_id && !sectionIsIncome) continue;
+
+    const sectionRows: { name: string; amount: number; included: boolean; assignedToUnitId?: string | null; assignedToUnitName?: string | null }[] = [];
     let sectionTotal = 0;
-    const isIncomeSection = title.toLowerCase().includes("income") || title.toLowerCase().includes("revenue") || title.toLowerCase().includes("trading") || title.toLowerCase().includes("sales");
+
     for (const r2 of row.Rows ?? []) {
       if (r2.RowType === "Row") {
         const name = r2.Cells?.[0]?.Value ?? "";
         const amount = parseFloat(r2.Cells?.[1]?.Value ?? "0") || 0;
-        const included = isIncomeSection ? mapping[name] === true : mapping[name] !== false;
-        sectionRows.push({ name, amount, included });
+
+        if (unit_id) {
+          // Per-unit view: show assignment status
+          const ownership = accountOwnership[name];
+          const assignedToUnitId = ownership?.unitId ?? null;
+          const isAssignedToThisUnit = assignedToUnitId === unit_id;
+          const isAssignedToOtherUnit = assignedToUnitId !== null && assignedToUnitId !== unit_id;
+          sectionRows.push({
+            name,
+            amount,
+            included: isAssignedToThisUnit && (ownership?.isIncluded ?? true),
+            assignedToUnitId: isAssignedToOtherUnit ? assignedToUnitId : null,
+            assignedToUnitName: isAssignedToOtherUnit ? (unitNameMap[assignedToUnitId!] ?? null) : null,
+          });
+        } else {
+          // Parent/whole-business view
+          const included = sectionIsIncome ? parentMapping[name] === true : parentMapping[name] !== false;
+          sectionRows.push({ name, amount, included });
+        }
       } else if (r2.RowType === "SummaryRow") {
         sectionTotal = parseFloat(r2.Cells?.[1]?.Value ?? "0") || 0;
       }
     }
+
     if (row.RowType === "SummaryRow") {
       sections.push({ title: row.Cells?.[0]?.Value ?? "Total", rows: [], total: parseFloat(row.Cells?.[1]?.Value ?? "0") || 0 });
     } else if (title || sectionRows.length) {
       sections.push({ title, rows: sectionRows, total: sectionTotal });
     }
   }
+
   return res.json({ sections, period: { fromDate: xeroDateStr(fromDate), toDate: xeroDateStr(toDate), months: m } });
 });
 
@@ -169,12 +220,46 @@ router.get("/xero/suppliers", async (req, res) => {
 
 router.patch("/xero/pl-mappings", async (req, res) => {
   const userId = req.user!.id;
-  const { cafeId, mappings } = req.body as { cafeId?: string; mappings?: Array<{ name: string; included: boolean; section?: string }> };
+  const { cafeId, mappings, unit_id } = req.body as {
+    cafeId?: string;
+    mappings?: Array<{ name: string; included: boolean; section?: string }>;
+    unit_id?: string;
+  };
   if (!cafeId || !mappings) return res.status(400).json({ error: "cafeId and mappings required" });
   await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
   if (res.headersSent) return;
-  await db.delete(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId));
-  if (mappings.length > 0) await db.insert(xeroPLMappingsTable).values(mappings.map((m) => ({ cafeId, ownerId: userId, accountName: m.name, isIncluded: m.included, section: m.section ?? null })));
+
+  // Scope delete precisely by unit: unit-specific rows vs null-unit (whole-business) rows
+  if (unit_id) {
+    await db.delete(xeroPLMappingsTable).where(
+      and(eq(xeroPLMappingsTable.cafeId, cafeId), eq(xeroPLMappingsTable.unitId, unit_id))
+    );
+    // For accounts being claimed by this unit, also remove them from parent-level mappings
+    // to enforce single-ownership
+    const claimedNames = mappings.filter(m => m.included).map(m => m.name);
+    for (const name of claimedNames) {
+      await db.delete(xeroPLMappingsTable).where(
+        and(eq(xeroPLMappingsTable.cafeId, cafeId), eq(xeroPLMappingsTable.accountName, name), isNull(xeroPLMappingsTable.unitId))
+      );
+    }
+  } else {
+    await db.delete(xeroPLMappingsTable).where(
+      and(eq(xeroPLMappingsTable.cafeId, cafeId), isNull(xeroPLMappingsTable.unitId))
+    );
+  }
+
+  if (mappings.length > 0) {
+    await db.insert(xeroPLMappingsTable).values(
+      mappings.map((m) => ({
+        cafeId,
+        ownerId: userId,
+        unitId: unit_id || null,
+        accountName: m.name,
+        isIncluded: m.included,
+        section: m.section ?? null,
+      }))
+    );
+  }
   return res.json({ ok: true });
 });
 

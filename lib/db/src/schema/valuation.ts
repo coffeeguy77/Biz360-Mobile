@@ -178,6 +178,7 @@ export const xeroPLMappingsTable = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     cafeId: uuid("cafe_id").notNull(),
     ownerId: text("owner_id").notNull(),
+    unitId: uuid("unit_id"),
     accountCode: text("account_code"),
     accountName: text("account_name"),
     isIncluded: boolean("is_included").default(true),
@@ -185,6 +186,7 @@ export const xeroPLMappingsTable = pgTable(
   },
   (t) => [
     foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+    foreignKey({ columns: [t.unitId], foreignColumns: [businessUnitsTable.id] }).onDelete("cascade"),
   ]
 );
 

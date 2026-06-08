@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator, Platform, ScrollView, StyleSheet,
@@ -18,10 +18,11 @@ export default function SupplierMappingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { selectedCafe, businessUnits, fetchUnits, authToken } = useValuation();
+  const { unitId: paramUnitId, unitName: paramUnitName } = useLocalSearchParams<{ unitId?: string; unitName?: string }>();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(paramUnitId ?? null);
 
   const authHeaders = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${authToken}` });
 
@@ -57,6 +58,14 @@ export default function SupplierMappingsScreen() {
     router.back();
   };
 
+  const currentUnitName = selectedUnitId
+    ? (paramUnitId === selectedUnitId ? paramUnitName : businessUnits.find(u => u.id === selectedUnitId)?.name) ?? "Division"
+    : null;
+
+  const screenTitle = paramUnitId && !businessUnits.length
+    ? `${paramUnitName ?? "Division"} — COGS`
+    : "COGS Suppliers";
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
@@ -64,7 +73,7 @@ export default function SupplierMappingsScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>COGS Suppliers</Text>
+          <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>{screenTitle}</Text>
         </View>
 
         {businessUnits.length > 0 && (
@@ -82,7 +91,10 @@ export default function SupplierMappingsScreen() {
 
         <View style={[styles.infoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Feather name="info" size={14} color={colors.mutedForeground} />
-          <Text style={[styles.infoText, { color: colors.mutedForeground }]}>Toggle on any supplier whose spend should count as Cost of Goods Sold for {selectedUnitId ? businessUnits.find((u) => u.id === selectedUnitId)?.name ?? "this unit" : "the whole business"}.</Text>
+          <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+            Toggle on suppliers whose spend counts as Cost of Goods Sold for{" "}
+            {selectedUnitId ? (currentUnitName ?? "this division") : "the whole business"}.
+          </Text>
         </View>
 
         {loading ? (
@@ -125,7 +137,7 @@ const styles = StyleSheet.create({
   scroll:       { paddingHorizontal: 16, gap: 12 },
   header:       { flexDirection: "row", alignItems: "center", gap: 12 },
   backBtn:      { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  title:        { fontSize: 22, fontFamily: "Inter_700Bold" },
+  title:        { fontSize: 20, fontFamily: "Inter_700Bold", flex: 1 },
   unitPicker:   { gap: 8, paddingBottom: 4 },
   unitChip:     { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#1E3A5C" },
   unitChipText: { fontSize: 13, fontFamily: "Inter_500Medium", color: "#8B9CB8" },

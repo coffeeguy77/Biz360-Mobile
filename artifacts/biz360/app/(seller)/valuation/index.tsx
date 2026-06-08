@@ -3,7 +3,7 @@ import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
-  Switch, Text, TouchableOpacity, View,
+  Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -25,10 +25,9 @@ export default function ValuationIndex() {
   const { listingId } = useLocalSearchParams<{ listingId?: string }>();
   const {
     cafes, selectedCafe, loadingCafes, fetchCafes, createCafe,
-    latestSnapshot, fetchSnapshot, refresh, businessUnits, fetchUnits,
+    latestSnapshot, fetchSnapshot, businessUnits, fetchUnits,
     authToken,
   } = useValuation();
-  const [splitMode, setSplitMode] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -37,10 +36,6 @@ export default function ValuationIndex() {
       if (cafes.length > 0) { fetchSnapshot(); fetchUnits(); }
     });
   }, [authToken]));
-
-  useFocusEffect(useCallback(() => {
-    if (businessUnits.length > 0) setSplitMode(true);
-  }, [businessUnits.length]));
 
   const handleCreateCafe = async () => {
     if (!authToken) { Alert.alert("Not authenticated", "Please log in to use Valuation."); return; }
@@ -111,10 +106,10 @@ export default function ValuationIndex() {
                   <Text style={styles.snapshotDate}>as of {combined?.snapshotDate ?? "—"}</Text>
                 </>
               ) : (
-                <Text style={[styles.noSnapshot, { color: colors.mutedForeground }]}>No snapshot yet — tap Sync to generate your first valuation</Text>
+                <Text style={[styles.noSnapshot, { color: "#8B9CB8" }]}>No snapshot yet — tap Sync to generate your first valuation</Text>
               )}
               <TouchableOpacity
-                style={[styles.syncBtn, { backgroundColor: syncing ? "#1E3A5C" : colors.primary }]}
+                style={[styles.syncBtn, { backgroundColor: syncing ? "#1E3A5C" : "#3B82F6" }]}
                 onPress={handleSync}
                 disabled={syncing}
               >
@@ -123,41 +118,40 @@ export default function ValuationIndex() {
               </TouchableOpacity>
             </View>
 
-            <View style={[styles.switchRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.switchLabel, { color: colors.foreground }]}>Split Business Mode</Text>
-                <Text style={[styles.switchSub, { color: colors.mutedForeground }]}>Value separate units (Café, Roastery, Events…)</Text>
-              </View>
-              <Switch value={splitMode} onValueChange={(v) => { setSplitMode(v); if (v) router.push("/(seller)/valuation/units" as any); }} trackColor={{ true: colors.primary }} />
-            </View>
-
-            {splitMode && businessUnits.length > 0 && (
-              <View style={styles.unitsList}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Business Units</Text>
+            {businessUnits.length > 0 && (
+              <View style={styles.divisionsSection}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Divisions</Text>
+                  <TouchableOpacity onPress={() => router.push("/(seller)/valuation/units" as any)} style={styles.manageBtn}>
+                    <Feather name="sliders" size={14} color={colors.primary} />
+                    <Text style={[styles.manageBtnText, { color: colors.primary }]}>Manage</Text>
+                  </TouchableOpacity>
+                </View>
                 {businessUnits.map((unit) => {
                   const unitSnap = latestSnapshot.units.find((u) => u.unit.id === unit.id)?.snapshot;
                   return (
                     <View key={unit.id} style={[styles.unitCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.unitName, { color: colors.foreground }]}>{unit.name}</Text>
-                        <Text style={[styles.unitMeta, { color: colors.mutedForeground }]}>{unit.revenueSharePct}% revenue share</Text>
+                        {unitSnap?.grossRevenue && Number(unitSnap.grossRevenue) > 0 ? (
+                          <Text style={[styles.unitMeta, { color: colors.mutedForeground }]}>Revenue: {formatCurrency(unitSnap.grossRevenue)}</Text>
+                        ) : (
+                          <Text style={[styles.unitMeta, { color: colors.mutedForeground }]}>Assign income accounts to calculate</Text>
+                        )}
                       </View>
                       <Text style={[styles.unitVal, { color: colors.primary }]}>
-                        {unitSnap?.valuationMidpoint ? formatCurrency(unitSnap.valuationMidpoint) : "—"}
+                        {unitSnap?.valuationMidpoint && Number(unitSnap.valuationMidpoint) > 0 ? formatCurrency(unitSnap.valuationMidpoint) : "—"}
                       </Text>
                     </View>
                   );
                 })}
-                <TouchableOpacity style={[styles.manageUnitsBtn, { borderColor: colors.border }]} onPress={() => router.push("/(seller)/valuation/units" as any)}>
-                  <Feather name="sliders" size={16} color={colors.primary} />
-                  <Text style={[styles.manageUnitsBtnText, { color: colors.primary }]}>Manage Units</Text>
-                </TouchableOpacity>
               </View>
             )}
 
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Tools</Text>
             <View style={styles.toolGrid}>
               {[
+                { label: "Divisions", icon: "layers", route: "/(seller)/valuation/units" },
                 { label: "Equipment", icon: "tool", route: "/(seller)/valuation/equipment" },
                 { label: "Add-backs", icon: "plus-circle", route: "/(seller)/valuation/adjustments" },
                 { label: "Connections", icon: "link", route: "/(seller)/valuation/profile" },
@@ -193,37 +187,35 @@ export default function ValuationIndex() {
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1 },
-  scroll:         { paddingHorizontal: 16, gap: 16 },
-  header:         { flexDirection: "row", alignItems: "center", gap: 12 },
-  backBtn:        { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  title:          { fontSize: 22, fontFamily: "Inter_700Bold" },
-  card:           { borderRadius: 16, padding: 20, borderWidth: 1, gap: 6 },
-  cafeNameLabel:  { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
-  cafeName:       { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
-  valuationLabel: { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 12 },
-  valuationAmount:{ color: "#3B82F6", fontSize: 36, fontFamily: "Inter_700Bold" },
-  snapshotDate:   { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
-  noSnapshot:     { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20, marginTop: 8 },
-  syncBtn:        { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 12, marginTop: 12 },
-  syncBtnText:    { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  switchRow:      { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 14, borderWidth: 1 },
-  switchLabel:    { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  switchSub:      { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  sectionTitle:   { fontSize: 16, fontFamily: "Inter_700Bold" },
-  unitsList:      { gap: 10 },
-  unitCard:       { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 12, borderWidth: 1 },
-  unitName:       { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  unitMeta:       { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  unitVal:        { fontSize: 16, fontFamily: "Inter_700Bold" },
-  manageUnitsBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
-  manageUnitsBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  toolGrid:       { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  toolCard:       { width: "31%", padding: 16, borderRadius: 14, borderWidth: 1, alignItems: "center", gap: 8 },
-  toolLabel:      { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" },
-  empty:          { alignItems: "center", paddingVertical: 60, gap: 12 },
-  emptyTitle:     { fontSize: 20, fontFamily: "Inter_700Bold" },
-  emptyText:      { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, maxWidth: 300 },
-  createBtn:      { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14, marginTop: 8 },
-  createBtnText:  { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  container:        { flex: 1 },
+  scroll:           { paddingHorizontal: 16, gap: 16 },
+  header:           { flexDirection: "row", alignItems: "center", gap: 12 },
+  backBtn:          { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  title:            { fontSize: 22, fontFamily: "Inter_700Bold" },
+  card:             { borderRadius: 16, padding: 20, borderWidth: 1, gap: 6 },
+  cafeNameLabel:    { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
+  cafeName:         { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
+  valuationLabel:   { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 12 },
+  valuationAmount:  { color: "#3B82F6", fontSize: 36, fontFamily: "Inter_700Bold" },
+  snapshotDate:     { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
+  noSnapshot:       { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20, marginTop: 8 },
+  syncBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 12, marginTop: 12 },
+  syncBtnText:      { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  divisionsSection: { gap: 10 },
+  sectionHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle:     { fontSize: 16, fontFamily: "Inter_700Bold" },
+  manageBtn:        { flexDirection: "row", alignItems: "center", gap: 5 },
+  manageBtnText:    { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  unitCard:         { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 12, borderWidth: 1 },
+  unitName:         { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  unitMeta:         { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  unitVal:          { fontSize: 16, fontFamily: "Inter_700Bold" },
+  toolGrid:         { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  toolCard:         { width: "31%", padding: 16, borderRadius: 14, borderWidth: 1, alignItems: "center", gap: 8 },
+  toolLabel:        { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" },
+  empty:            { alignItems: "center", paddingVertical: 60, gap: 12 },
+  emptyTitle:       { fontSize: 20, fontFamily: "Inter_700Bold" },
+  emptyText:        { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, maxWidth: 300 },
+  createBtn:        { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14, marginTop: 8 },
+  createBtnText:    { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
