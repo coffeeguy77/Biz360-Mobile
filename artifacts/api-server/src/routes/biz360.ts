@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
-import { db, kvStore } from "@workspace/db";
+import { eq, and, desc, isNull } from "drizzle-orm";
+import { db, kvStore, cafesTable, valuationSnapshotsTable } from "@workspace/db";
 import twilio from "twilio";
 import { v2 as cloudinary } from "cloudinary";
 
@@ -43,6 +43,41 @@ router.put("/biz360/kv/:key", async (req, res): Promise<void> => {
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "DB error" });
+  }
+});
+
+// ─── Public listing data (no auth required) ───────────────────────────────────
+// Returns live asking price + published valuation snapshot for a listing ID.
+
+router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const kvValue = rows[0]?.value;
+    const allListings = Array.isArray(kvValue) ? kvValue : [];
+    const liveListing = allListings.find((l: any) => l.listingId === listingId) ?? null;
+
+    let snapshot = null;
+    const cafes = await db.select().from(cafesTable).where(eq(cafesTable.listingId, listingId));
+    if (cafes.length > 0) {
+      const [snap] = await db
+        .select()
+        .from(valuationSnapshotsTable)
+        .where(
+          and(
+            eq(valuationSnapshotsTable.cafeId, cafes[0].id),
+            eq(valuationSnapshotsTable.isPublished, true),
+            isNull(valuationSnapshotsTable.unitId),
+          ),
+        )
+        .orderBy(desc(valuationSnapshotsTable.createdAt))
+        .limit(1);
+      snapshot = snap ?? null;
+    }
+
+    res.json({ listing: liveListing, snapshot });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch listing data" });
   }
 });
 

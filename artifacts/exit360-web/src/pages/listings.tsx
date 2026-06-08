@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -153,6 +153,23 @@ export function Listings() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [state, setState] = useState("All States");
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const realListings = DEMO_LISTINGS.filter((l) => l.isRealListing);
+    Promise.all(
+      realListings.map((l) =>
+        fetch(`/api/public/listing/${l.id}`)
+          .then((r) => r.json())
+          .then((d) => ({ id: l.id, price: d?.listing?.askingPrice ?? null }))
+          .catch(() => ({ id: l.id, price: null }))
+      )
+    ).then((results) => {
+      const map: Record<string, number> = {};
+      results.forEach(({ id, price }) => { if (price != null) map[id] = price; });
+      setLivePrices(map);
+    });
+  }, []);
 
   const filtered = DEMO_LISTINGS.filter((l) => {
     const matchSearch =
@@ -244,7 +261,10 @@ export function Listings() {
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filtered.map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
+              <ListingCard
+                key={listing.id}
+                listing={livePrices[listing.id] != null ? { ...listing, askingPrice: livePrices[listing.id] } : listing}
+              />
             ))}
           </div>
         )}

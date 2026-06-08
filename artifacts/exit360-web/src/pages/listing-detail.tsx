@@ -394,6 +394,7 @@ export function ListingDetail() {
   const [spaces, setSpaces] = useState<TourSpace[]>([]);
   const [spacesLoading, setSpacesLoading] = useState(false);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+  const [liveData, setLiveData] = useState<{ listing: any; snapshot: any } | null>(null);
 
   // Audio state — lives here so it persists during navigation
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -412,6 +413,14 @@ export function ListingDetail() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [handleMessage]);
+
+  useEffect(() => {
+    if (!listing?.isRealListing) return;
+    fetch(`/api/public/listing/${listing.id}`)
+      .then((r) => r.json())
+      .then((d) => setLiveData(d))
+      .catch(() => {});
+  }, [listing?.id]);
 
   useEffect(() => {
     if (!listing?.isRealListing) return;
@@ -541,9 +550,16 @@ export function ListingDetail() {
     );
   }
 
-  const hasProfit = listing.adjustedProfit > 0;
-  const multiple = hasProfit ? (listing.askingPrice / listing.adjustedProfit).toFixed(1) + "×" : "—";
-  const annualRevenue = listing.weeklyRevenue * 52;
+  const liveAskingPrice: number = liveData?.listing?.askingPrice ?? listing.askingPrice;
+  const liveWeeklyRevenue: number = liveData?.listing?.weeklyRevenue ?? listing.weeklyRevenue;
+  const snap = liveData?.snapshot ?? null;
+  const liveAdjustedProfit: number =
+    snap?.adjustedEbitda != null && parseFloat(snap.adjustedEbitda) > 0
+      ? parseFloat(snap.adjustedEbitda)
+      : listing.adjustedProfit;
+  const hasProfit = liveAdjustedProfit > 0;
+  const multiple = hasProfit ? (liveAskingPrice / liveAdjustedProfit).toFixed(1) + "×" : "—";
+  const annualRevenue = liveWeeklyRevenue * 52;
 
   const audioGroups = spaces
     .filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"))
@@ -681,12 +697,12 @@ export function ListingDetail() {
               {/* Price card */}
               <div className="bg-card border border-border rounded-2xl p-6 flex flex-col gap-4">
                 <div className="text-center">
-                  <div className="text-3xl font-bold">{formatPrice(listing.askingPrice)}</div>
+                  <div className="text-3xl font-bold">{formatPrice(liveAskingPrice)}</div>
                   <div className="text-sm text-muted-foreground mt-1">Asking Price</div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-background rounded-xl p-3 text-center border border-border">
-                    <div className="text-base font-bold text-green-400">{formatRevenue(listing.weeklyRevenue)}</div>
+                    <div className="text-base font-bold text-green-400">{formatRevenue(liveWeeklyRevenue)}</div>
                     <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Weekly Revenue</div>
                   </div>
                   <div className="bg-background rounded-xl p-3 text-center border border-border">
@@ -711,6 +727,45 @@ export function ListingDetail() {
                   </Link>
                 </div>
               </div>
+
+              {/* Valuation report — shown when seller has published a snapshot */}
+              {listing.isRealListing && snap && (
+                <div className="bg-card border border-green-500/20 rounded-2xl p-5 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                    <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">Verified Financials</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {snap.valuationMidpoint != null && parseFloat(snap.valuationMidpoint) > 0 && (
+                      <div className="bg-background rounded-xl p-3 text-center border border-border col-span-2">
+                        <div className="text-lg font-bold text-amber-400">{formatPrice(parseFloat(snap.valuationMidpoint))}</div>
+                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Calculated Valuation</div>
+                      </div>
+                    )}
+                    {snap.adjustedEbitda != null && parseFloat(snap.adjustedEbitda) > 0 && (
+                      <div className="bg-background rounded-xl p-3 text-center border border-border">
+                        <div className="text-sm font-bold text-green-400">${(parseFloat(snap.adjustedEbitda) / 1000).toFixed(0)}K</div>
+                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Adj. EBITDA p.a.</div>
+                      </div>
+                    )}
+                    {snap.grossRevenue != null && parseFloat(snap.grossRevenue) > 0 && (
+                      <div className="bg-background rounded-xl p-3 text-center border border-border">
+                        <div className="text-sm font-bold">${(parseFloat(snap.grossRevenue) / 1000).toFixed(0)}K</div>
+                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Gross Revenue</div>
+                      </div>
+                    )}
+                    {snap.periodMonths != null && (
+                      <div className="bg-background rounded-xl p-3 text-center border border-border col-span-2">
+                        <div className="text-sm font-bold">{snap.periodMonths} months</div>
+                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Financial period analysed</div>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Financials verified by EXIT360 via connected accounting & POS integrations.
+                  </p>
+                </div>
+              )}
 
               {/* Audio directory — desktop only (mobile version is above the panorama) */}
               {listing.isRealListing && audioGroups.length > 0 && !spacesLoading && (
