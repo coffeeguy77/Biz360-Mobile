@@ -251,6 +251,8 @@ interface DraftSpace {
   audioTranscript?: string;
   // Start scene
   isStartScene?: boolean;
+  // Default facing direction when entering this space (0=N…315=NW)
+  defaultYaw?: number;
 }
 
 const EMPTY_SPACE: DraftSpace = {
@@ -686,6 +688,7 @@ export default function ToursScreen() {
       audioTrigger:   space.audioTrigger ?? "button",
       audioTranscript:space.audioTranscript ?? "",
       isStartScene:   space.isStartScene ?? false,
+      defaultYaw:     space.defaultYaw,
     });
     setEditingSpaceId(space.id);
     setShowSpaceModal(true);
@@ -751,6 +754,7 @@ export default function ToursScreen() {
       audioTrigger:    draftSpace.audioTrigger,
       audioTranscript: draftSpace.audioTranscript?.trim() || undefined,
       isStartScene:    draftSpace.isStartScene ?? false,
+      defaultYaw:      draftSpace.defaultYaw,
     };
 
     try {
@@ -1110,6 +1114,59 @@ export default function ToursScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Default Facing Direction */}
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>DEFAULT FACING DIRECTION</Text>
+            <Text style={{ fontSize: 12, color: colors.mutedForeground, marginBottom: 8, marginTop: -4 }}>
+              Which way buyers face when they first enter this space (nav-pin direction overrides this)
+            </Text>
+            {(() => {
+              const DIRS = [
+                { label: "N",  yaw: 0   },
+                { label: "NE", yaw: 45  },
+                { label: "E",  yaw: 90  },
+                { label: "SE", yaw: 135 },
+                { label: "S",  yaw: 180 },
+                { label: "SW", yaw: 225 },
+                { label: "W",  yaw: 270 },
+                { label: "NW", yaw: 315 },
+              ];
+              const currentYaw = draftSpace.defaultYaw;
+              return (
+                <View style={{ marginBottom: 16 }}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                    {DIRS.map(({ label, yaw }) => {
+                      const active = currentYaw === yaw;
+                      return (
+                        <TouchableOpacity
+                          key={label}
+                          onPress={() => setDraftSpace((p) => ({ ...p, defaultYaw: active ? undefined : yaw }))}
+                          style={{
+                            paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5,
+                            backgroundColor: active ? "#3B82F618" : colors.card,
+                            borderColor: active ? "#3B82F6" : colors.border,
+                            minWidth: 52, alignItems: "center",
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: active ? "#3B82F6" : colors.foreground }}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {currentYaw !== undefined && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: -4 }}>
+                      <Feather name="compass" size={13} color="#3B82F6" />
+                      <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#3B82F6" }}>
+                        {DIRS.find((d) => d.yaw === currentYaw)?.label ?? (() => { const ls = ["N","NE","E","SE","S","SW","W","NW"]; return ls[Math.round(currentYaw / 45) % 8]; })()}
+                        {"  "}<Text style={{ fontSize: 11, color: "#3B82F699", fontFamily: "Inter_400Regular" }}>{currentYaw}°</Text>
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PHOTO MODE</Text>
 

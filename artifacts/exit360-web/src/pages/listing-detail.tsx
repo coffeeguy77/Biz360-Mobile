@@ -52,6 +52,7 @@ interface TourSpace {
   audioName?: string;
   groundPitch?: number;
   panoramaStartYaw?: number;
+  defaultYaw?: number;
   pins: TourPin[];
 }
 
@@ -109,7 +110,11 @@ function createNavPin(container,args){
     '</svg>';
   pinDiv.addEventListener('click',function(e){
     e.stopPropagation();
-    try{viewer.loadScene(args.sceneId,0,args.targetYaw||0,100)}catch(err){}
+    try{
+      var sp=SPACES.find(function(s){return s.id===args.sceneId});
+      var resolvedYaw=typeof args.targetYaw==='number'?args.targetYaw:(sp&&typeof sp.defaultYaw==='number'?sp.defaultYaw:0);
+      viewer.loadScene(args.sceneId,0,resolvedYaw,100);
+    }catch(err){}
   });
   container.appendChild(pinDiv);
   /* Shadow */
@@ -143,12 +148,12 @@ SPACES.forEach(function(s){
   var hotSpots=[];
   (s.pins||[]).forEach(function(pin){
     if(pin.type==='navigation'&&validIds.has(pin.targetSpaceId)){
-      hotSpots.push({pitch:40,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title,targetYaw:typeof pin.targetYaw==='number'?pin.targetYaw:0}});
+      hotSpots.push({pitch:40,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title,targetYaw:typeof pin.targetYaw==='number'?pin.targetYaw:null}});
     } else if(pin.type==='audio'&&pin.audioUrl){
       hotSpots.push({pitch:Math.max(10,yToPitch(pin.position.y)),yaw:xToYaw(pin.position.x),type:'custom',text:pin.title,cssClass:'pnlm-audio-hs-wrap',createTooltipFunc:createAudioHotspot,createTooltipArgs:{url:pin.audioUrl,name:pin.audioName||pin.title}});
     }
   });
-  var sc={type:'equirectangular',panorama:s.panoramaUrl,title:s.name,hotSpots:hotSpots,pitch:0,yaw:typeof s.panoramaStartYaw==='number'?s.panoramaStartYaw:0};
+  var sc={type:'equirectangular',panorama:s.panoramaUrl,title:s.name,hotSpots:hotSpots,pitch:0,yaw:typeof s.defaultYaw==='number'?s.defaultYaw:(typeof s.panoramaStartYaw==='number'?s.panoramaStartYaw:0)};
   if(typeof s.groundPitch==='number')sc.groundPitch=s.groundPitch;
   scenesConfig[s.id]=sc;
 });
@@ -158,7 +163,13 @@ function doResize(){try{viewer.resize()}catch(e){}}
 window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
 window.addEventListener('resize',doResize);
 viewer.on('scenechange',function(id){try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}});
-window.addEventListener('message',function(e){if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{viewer.loadScene(e.data.sceneId,0,0,100)}catch(e2){}});
+window.addEventListener('message',function(e){
+  if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{
+    var gotoSp=SPACES.find(function(s){return s.id===e.data.sceneId});
+    var gotoYaw=typeof e.data.yaw==='number'?e.data.yaw:(gotoSp&&typeof gotoSp.defaultYaw==='number'?gotoSp.defaultYaw:(gotoSp&&typeof gotoSp.panoramaStartYaw==='number'?gotoSp.panoramaStartYaw:0));
+    viewer.loadScene(e.data.sceneId,0,gotoYaw,100);
+  }catch(e2){}
+});
 <\/script>
 </body>
 </html>`;
@@ -418,6 +429,7 @@ export function ListingDetail() {
           audioName: s.audioName,
           groundPitch: s.groundPitch,
           panoramaStartYaw: s.panoramaStartYaw ?? 0,
+          defaultYaw: typeof s.defaultYaw === "number" ? s.defaultYaw : undefined,
           pins: Array.isArray(s.pins) ? s.pins : [],
         }));
         setSpaces(mapped);

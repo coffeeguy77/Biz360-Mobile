@@ -59,9 +59,10 @@ interface Props {
   onFocusPinHandled?: () => void;
   tourSettings?: TourSettings;
   onYawChange?: (deg: number) => void;
+  startYaw?: number;
 }
 
-export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings, onYawChange }: Props) {
+export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings, onYawChange, startYaw }: Props) {
   if (space.dirMode === "single" && space.panoramaUrl) {
     return <SinglePhotoViewer space={space} onPinPress={onPinPress} focusPin={focusPin} onFocusPinHandled={onFocusPinHandled} />;
   }
@@ -74,6 +75,7 @@ export function TourViewer({ space, onPinPress, focusPin, onFocusPinHandled, tou
         onFocusPinHandled={onFocusPinHandled}
         tourSettings={tourSettings}
         onYawChange={onYawChange}
+        startYaw={startYaw}
       />
     );
   }

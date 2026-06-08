@@ -80,7 +80,8 @@ export interface TourPin {
   requiresNDA?: boolean;
   // Navigation hotspot
   targetSpaceId?: string;
-  // Yaw (degrees) the viewer faces when arriving in the target scene (0 = panorama default, undefined = 0)
+  // Yaw (degrees) the viewer faces when arriving in the target scene.
+  // Priority: pin targetYaw → space defaultYaw → panoramaStartYaw → 0
   targetYaw?: number;
   // Look pin — dedicated feature photo
   imageUrl?: string;
@@ -114,6 +115,9 @@ export interface TourSpace {
   panoramaUrl?: string;
   panoramaStartYaw?: number;
   groundPitch?: number;    // degrees, e.g. -50 = floor appears 50° below horizon
+  // Default facing direction when entering this space (0=N, 90=E, 180=S, 270=W).
+  // Nav-pin targetYaw overrides this; falls back to panoramaStartYaw then 0.
+  defaultYaw?: number;
   pins: TourPin[];
   dirMode?: 4 | 8 | "panorama" | "single";
   // Scene-level audio narration

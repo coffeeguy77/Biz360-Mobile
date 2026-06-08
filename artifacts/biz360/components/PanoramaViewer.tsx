@@ -714,9 +714,10 @@ interface Props {
   onFocusPinHandled?: () => void;
   tourSettings?: TourSettings;
   onYawChange?: (deg: number) => void;
+  startYaw?: number;
 }
 
-export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings, onYawChange }: Props) {
+export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled, tourSettings, onYawChange, startYaw }: Props) {
   const webRef = useRef<WebView>(null);
 
   const isLocalPano = !!space.panoramaUrl && space.panoramaUrl.startsWith("file://");
@@ -881,7 +882,7 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled,
   // Remote https:// URLs passed directly. vaov=180 for full Insta360 spheres.
   let html: string;
   if (space.panoramaUrl && panoDataUri) {
-    html = buildSinglePanoHtml(panoDataUri, space.panoramaStartYaw ?? 0, space.pins, tourSettings, 360, 180, space.groundPitch);
+    html = buildSinglePanoHtml(panoDataUri, startYaw ?? space.panoramaStartYaw ?? 0, space.pins, tourSettings, 360, 180, space.groundPitch);
   } else {
     html = buildFlatStripHtml(photoDataUris, space.pins);
   }

@@ -194,6 +194,7 @@ export default function TourScreen() {
   const [focusPin,       setFocusPin]       = useState<TourPin | null>(null);
   const [showRoomNav,       setShowRoomNav]       = useState(false);
   const [liveYaw,           setLiveYaw]           = useState(0);
+  const [overrideYaw,       setOverrideYaw]       = useState<number | undefined>(undefined);
   const [showAudioOnboarding, setShowAudioOnboarding] = useState(false);
   const [showTourGuide,     setShowTourGuide]     = useState(false);
   const arrowAnim = useRef(new Animated.Value(0)).current;
@@ -342,7 +343,18 @@ export default function TourScreen() {
   const handlePinPress = (pin: TourPin) => {
     if (pin.type === "navigation" && pin.targetSpaceId) {
       const targetIdx = allSpaces.findIndex((s) => s.id === pin.targetSpaceId);
-      if (targetIdx >= 0) { setActiveSpaceIdx(targetIdx); setFocusPin(null); return; }
+      if (targetIdx >= 0) {
+        const targetSpace = allSpaces[targetIdx];
+        const resolvedYaw = typeof pin.targetYaw === "number"
+          ? pin.targetYaw
+          : typeof targetSpace?.defaultYaw === "number"
+          ? targetSpace.defaultYaw
+          : undefined;
+        setOverrideYaw(resolvedYaw);
+        setActiveSpaceIdx(targetIdx);
+        setFocusPin(null);
+        return;
+      }
     }
     if (pin.type === "external_link" && pin.externalUrl) {
       if (/^https?:\/\//i.test(pin.externalUrl)) Linking.openURL(pin.externalUrl).catch(() => {});
@@ -494,7 +506,7 @@ export default function TourScreen() {
           direction="left"
           label={allSpaces[safeIdx - 1].name}
           bottom={bottomBase + 140}
-          onPress={() => { setActiveSpaceIdx(safeIdx - 1); setFocusPin(null); }}
+          onPress={() => { setOverrideYaw(undefined); setActiveSpaceIdx(safeIdx - 1); setFocusPin(null); }}
         />
       )}
       {showRoomNav && allSpaces.length > 1 && safeIdx < allSpaces.length - 1 && (
@@ -502,7 +514,7 @@ export default function TourScreen() {
           direction="right"
           label={allSpaces[safeIdx + 1].name}
           bottom={bottomBase + 140}
-          onPress={() => { setActiveSpaceIdx(safeIdx + 1); setFocusPin(null); }}
+          onPress={() => { setOverrideYaw(undefined); setActiveSpaceIdx(safeIdx + 1); setFocusPin(null); }}
         />
       )}
 
@@ -514,6 +526,7 @@ export default function TourScreen() {
         onFocusPinHandled={() => setFocusPin(null)}
         tourSettings={tourSettings}
         onYawChange={setLiveYaw}
+        startYaw={overrideYaw}
       />
 
       {/* ── Audio hotspot pin (hotspot trigger) ── */}
