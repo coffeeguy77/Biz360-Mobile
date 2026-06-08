@@ -74,6 +74,7 @@ function ClassicLayout() {
       <Tabs.Screen name="leads" options={{ title: "Leads", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.2" tintColor={color} size={24} /> : <Feather name="users" size={22} color={color} /> }} />
       <Tabs.Screen name="messages" options={{ title: "Messages", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="message" tintColor={color} size={24} /> : <Feather name="message-circle" size={22} color={color} /> }} />
       <Tabs.Screen name="help" options={{ title: "Help", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="book.pages" tintColor={color} size={24} /> : <Feather name="book-open" size={22} color={color} /> }} />
+      <Tabs.Screen name="valuation" options={{ href: null }} />
     </Tabs>
   );
 }
