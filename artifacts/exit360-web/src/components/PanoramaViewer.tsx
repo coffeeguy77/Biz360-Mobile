@@ -212,14 +212,20 @@ function buildPanoHtml(panoramaUrl: string, startYaw: number, pins: DemoPin[]): 
       container.style.overflow     = 'visible';
 
       if (anim === 'ripple') {
-        injectKf('kf-ripple','@keyframes kfRipple{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
-        var coreCol = args.isNav ? '#2563EB' : col;
-        var W = sz + 24; var HW = W >> 1;
-        container.style.width = W + 'px'; container.style.height = W + 'px';
-        container.style.marginLeft = '-' + HW + 'px'; container.style.marginTop = '-' + HW + 'px';
-        var R = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;border:2.5px solid rgba(59,130,246,0.9);top:50%;left:50%;margin:-12px 0 0 -12px;animation-name:kfRipple;animation-duration:2s;animation-timing-function:ease-out;animation-iteration-count:infinite;pointer-events:none';
-        var C = 'position:absolute;width:12px;height:12px;border-radius:50%;background:' + coreCol + ';top:50%;left:50%;margin:-6px 0 0 -6px;z-index:2;box-shadow:0 0 8px 3px ' + coreCol + '88';
-        container.innerHTML = '<div style="' + R + ';animation-delay:0s"></div><div style="' + R + ';animation-delay:0.67s"></div><div style="' + R + ';animation-delay:1.33s"></div><div style="' + C + '"></div>';
+        injectKf('kf-pin-bounce','@keyframes kfPinBounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-13px)}60%{transform:translateY(-6px)}}@keyframes kfPinShadow{0%,100%{transform:scaleX(1);opacity:0.28}35%{transform:scaleX(0.55);opacity:0.10}60%{transform:scaleX(0.78);opacity:0.18}}');
+        container.style.width  = '40px';
+        container.style.height = '58px';
+        container.style.marginLeft = '-20px';
+        container.style.marginTop  = '-54px';
+        container.style.position   = 'relative';
+        container.innerHTML =
+          '<div style="position:absolute;top:0;left:50%;transform:translateX(-50%);animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite">' +
+            '<svg width="34" height="44" viewBox="0 0 34 44" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+              '<path d="M17 2C9.82 2 4 7.82 4 15c0 8.12 11.6 23.5 12.35 24.5a.85.85 0 001.3 0C18.4 38.5 30 23.12 30 15 30 7.82 24.18 2 17 2z" fill="#2563EB" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>' +
+              '<circle cx="17" cy="15" r="5.5" fill="white" opacity="0.95"/>' +
+            '</svg>' +
+          '</div>' +
+          '<div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite"></div>';
       } else if (anim === 'pulse') {
         injectKf('kf-pulse','@keyframes kfPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
         var W2 = sz + 24; var HW2 = W2 >> 1;

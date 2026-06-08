@@ -1,0 +1,1187 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handwriting Font Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+<style>
+  :root{
+    --paper:#f4ecdc; --paper2:#efe5d0; --ink:#23303b; --ink-soft:#4a5a64;
+    --accent:#7c2d2d; --accent2:#2f5d50; --gold:#b48a3e; --line:#d8ccb0;
+    --good:#2f5d50; --warn:#a65a1e; --shadow:rgba(35,48,59,.18);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(120% 80% at 80% -10%, #f8f1e2 0%, transparent 60%),
+      radial-gradient(100% 90% at -10% 110%, #ece0c6 0%, transparent 55%),
+      var(--paper);
+    color:var(--ink);
+    font-family:'Spectral',Georgia,serif;
+    font-size:15px; line-height:1.5;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+  }
+  .wrap{position:relative;z-index:1;max-width:1320px;margin:0 auto;padding:24px 20px 80px}
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
+    border-bottom:1.5px solid var(--ink);padding-bottom:14px;margin-bottom:22px}
+  .brand h1{font-family:'Fraunces',serif;font-weight:600;font-size:34px;line-height:1;margin:0;letter-spacing:-.01em}
+  .brand .sub{font-style:italic;color:var(--ink-soft);margin-top:6px}
+  .brand .kicker{font-family:'Fraunces',serif;font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button,.btn{font-family:'Fraunces',serif;font-size:13px;font-weight:500;cursor:pointer;
+    border:1.5px solid var(--ink);background:transparent;color:var(--ink);
+    padding:8px 14px;border-radius:2px;transition:.15s;letter-spacing:.01em;white-space:nowrap}
+  button:hover,.btn:hover{background:var(--ink);color:var(--paper)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fdf6ea}
+  button.primary:hover{background:#5e2020}
+  button.ghost{border-color:var(--line)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.tiny{padding:5px 9px;font-size:11px}
+  .grid{display:grid;grid-template-columns:1.45fr 1fr;gap:22px;align-items:start}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+  .panel{background:linear-gradient(180deg,#fbf5e8,#f3e9d4);border:1.5px solid var(--ink);
+    border-radius:4px;box-shadow:0 18px 40px -28px var(--shadow);overflow:hidden}
+  .panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 16px;border-bottom:1.5px solid var(--ink);background:#efe4cd}
+  .panel-h h2{font-family:'Fraunces',serif;font-size:15px;margin:0;font-weight:600;letter-spacing:.02em}
+  .panel-h .hint{font-size:12px;color:var(--ink-soft);font-style:italic}
+  .panel-b{padding:16px}
+  /* stage */
+  #stageWrap{position:relative;background:#e7dbc0;border-radius:3px;overflow:auto;max-height:78vh;
+    border:1px solid var(--line);cursor:crosshair;display:flex;align-items:flex-start;justify-content:center}
+  #stageWrap.empty{align-items:center;min-height:340px;cursor:default}
+  .drop{ text-align:center;color:var(--ink-soft);padding:30px;max-width:360px}
+  .drop b{font-family:'Fraunces',serif;color:var(--ink);font-size:18px;display:block;margin-bottom:6px}
+  #stage{display:block;margin:auto}
+  #sel{position:absolute;border:1.5px dashed var(--accent);background:rgba(124,45,45,.12);pointer-events:none;display:none}
+  .pagebar{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;font-size:13px}
+  .pagebar input[type=number]{width:62px}
+  input[type=number],input[type=text]{font-family:'Spectral',serif;font-size:14px;color:var(--ink);
+    background:#fbf6ea;border:1.5px solid var(--line);border-radius:2px;padding:6px 8px}
+  input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--ink)}
+  .spacer{flex:1}
+  /* alphabet palette */
+  .legend{display:flex;gap:14px;font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;border:1px solid var(--ink)}
+  .palette{display:grid;grid-template-columns:repeat(13,1fr);gap:5px}
+  .glyph-cell{position:relative;aspect-ratio:1;border:1.5px solid var(--line);border-radius:3px;background:#fbf6ea;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;transition:.12s}
+  .glyph-cell .lab{position:absolute;top:2px;left:4px;font-size:9px;color:var(--ink-soft);font-family:'Fraunces',serif;z-index:2}
+  .glyph-cell .ph{font-family:'Fraunces',serif;font-size:18px;color:#c9bb9b}
+  .glyph-cell img{width:100%;height:100%;object-fit:contain;padding:3px}
+  .glyph-cell.filled{border-color:var(--accent2);background:#eef3ec}
+  .glyph-cell.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,45,45,.25)}
+  .glyph-cell:hover{border-color:var(--ink)}
+  .section-tab{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+  .section-tab button{padding:5px 10px;font-size:11px}
+  .section-tab button.on{background:var(--ink);color:var(--paper)}
+  /* capture editor */
+  #editor{display:none;gap:14px}
+  #editor.show{display:grid;grid-template-columns:150px 1fr;gap:16px}
+  .preview-box{border:1.5px solid var(--ink);border-radius:3px;background:
+     repeating-linear-gradient(180deg,#fbf6ea 0 31px,#efe4cd 31px 32px);
+     position:relative;height:150px;display:flex;align-items:center;justify-content:center}
+  .preview-box canvas{max-width:100%;max-height:100%}
+  .ctrl{margin-bottom:11px}
+  .ctrl label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);margin-bottom:3px}
+  .ctrl label b{color:var(--ink);font-family:'Fraunces',serif}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  select{font-family:'Spectral',serif;font-size:13px;padding:5px 6px;border:1.5px solid var(--line);
+    border-radius:2px;background:#fbf6ea;color:var(--ink);width:100%}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{flex:1}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .chip{font-size:11px;padding:3px 8px;border:1px solid var(--line);border-radius:20px;cursor:pointer}
+  .chip.on{background:var(--accent2);color:#fff;border-color:var(--accent2)}
+  /* type tester */
+  #tester{width:100%;font-family:'Spectral',serif;font-size:14px;border:1.5px solid var(--line);
+    border-radius:2px;background:#fbf6ea;padding:8px;resize:vertical;min-height:46px;color:var(--ink)}
+  #testCanvasWrap{margin-top:12px;border:1.5px solid var(--ink);border-radius:3px;overflow:auto;
+    background:repeating-linear-gradient(180deg,#fbf6ea 0 37px,#f1e6cf 37px 38px)}
+  #testCanvas{display:block}
+  .meta-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+  .meta-row .f{display:flex;flex-direction:column;gap:3px}
+  .meta-row label{font-size:11px;color:var(--ink-soft)}
+  .stat{font-size:12px;color:var(--ink-soft);font-style:italic}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:var(--paper);padding:11px 18px;border-radius:3px;font-size:13px;
+    box-shadow:0 12px 30px -10px var(--shadow);opacity:0;transition:.25s;z-index:50;pointer-events:none;font-family:'Fraunces',serif}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .ai-note{font-size:11px;color:var(--ink-soft);font-style:italic;margin-top:8px;line-height:1.4}
+  .divider{height:1px;background:var(--line);margin:16px 0}
+  details{margin-top:8px}
+  summary{cursor:pointer;font-family:'Fraunces',serif;font-size:12px;color:var(--accent)}
+  .empty-hint{color:var(--ink-soft);font-style:italic;font-size:13px;text-align:center;padding:18px}
+  a.dl{ text-decoration:none}
+  .flourish{font-family:'Fraunces',serif;color:var(--gold)}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="kicker">Heritage Typeface Workshop</div>
+      <h1>Handwriting&nbsp;Font&nbsp;Studio</h1>
+      <div class="sub">Turn a scanned hand into a real, installable OpenType font.</div>
+    </div>
+    <div class="toolbar">
+      <button class="ghost" id="loadPdfBtn">Load PDF / images</button>
+      <button class="ghost" id="importBtn">Open project</button>
+      <button class="ghost" id="saveBtn">Save project</button>
+      <button class="primary" id="exportBtn" disabled>Build font ↓</button>
+    </div>
+  </header>
+
+  <input type="file" id="pdfInput" accept="application/pdf,image/*" multiple hidden>
+  <input type="file" id="projInput" accept="application/json" hidden>
+
+  <div class="grid">
+    <!-- LEFT : source + capture -->
+    <div style="display:flex;flex-direction:column;gap:22px">
+      <div class="panel">
+        <div class="panel-h">
+          <h2>1 · The source page</h2>
+          <span class="hint" id="srcHint">Drag a box around one letter</span>
+        </div>
+        <div class="panel-b">
+          <div id="stageWrap" class="empty">
+            <div class="drop" id="dropZone">
+              <b>Drop the recipe book here</b>
+              A scanned PDF (like Mum's book) or photos of pages.
+              Everything runs in your browser — nothing is uploaded.
+            </div>
+            <canvas id="stage" hidden></canvas>
+            <div id="sel"></div>
+          </div>
+          <div class="pagebar" id="pagebar" style="display:none">
+            <button class="tiny" id="prevPg">‹ Prev</button>
+            <span>Page</span>
+            <input type="number" id="pgNum" min="1" value="1">
+            <span id="pgTotal">/ 1</span>
+            <button class="tiny" id="nextPg">Next ›</button>
+            <span class="spacer"></span>
+            <span>Zoom</span>
+            <button class="tiny" id="zoomOut">−</button>
+            <button class="tiny" id="zoomIn">+</button>
+            <span id="zoomLbl">Fit</span>
+            <button class="tiny" id="fitBtn">⤢ Fit page</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="capturePanel" style="display:none">
+        <div class="panel-h">
+          <h2>2 · Shape the letter</h2>
+          <span class="hint" id="capChar"></span>
+        </div>
+        <div class="panel-b">
+          <div id="editor">
+            <div>
+              <div class="preview-box"><canvas id="capPrev"></canvas></div>
+              <div style="margin-top:8px;display:flex;gap:6px">
+                <button class="tiny" id="aiGuess" style="flex:1">✦ Guess letter</button>
+              </div>
+              <div class="ai-note">AI reads the crop and jumps to that letter. You confirm.</div>
+            </div>
+            <div>
+              <div class="ctrl">
+                <label>Ink threshold <b id="thrVal">auto</b></label>
+                <input type="range" id="thr" min="20" max="240" value="128">
+              </div>
+              <div class="row">
+                <label class="chip" id="invChip">Invert (light ink)</label>
+                <label class="chip" id="largestChip">Keep largest blob only</label>
+                <label class="chip" id="smoothChip">Extra smoothing</label>
+              </div>
+              <div class="divider"></div>
+              <div class="ctrl">
+                <label>Letter role</label>
+                <select id="role">
+                  <option value="cap">Uppercase / digit (cap height)</option>
+                  <option value="x">Lowercase x-height (a c e m n o…)</option>
+                  <option value="asc">Has an ascender (b d h k l t…)</option>
+                  <option value="desc">Has a descender (g p q y…)</option>
+                  <option value="full">Tall + tail (f j)</option>
+                  <option value="punc">Punctuation / small</option>
+                </select>
+              </div>
+              <div class="ctrl">
+                <label>Vertical nudge <b id="nyVal">0</b></label>
+                <input type="range" id="ny" min="-400" max="500" value="0">
+              </div>
+              <div class="ctrl">
+                <label>Size <b id="scVal">100%</b></label>
+                <input type="range" id="sc" min="55" max="150" value="100">
+              </div>
+              <div class="row">
+                <div class="ctrl" style="flex:1">
+                  <label>Left space <b id="lsbVal">90</b></label>
+                  <input type="range" id="lsb" min="0" max="400" value="90">
+                </div>
+                <div class="ctrl" style="flex:1">
+                  <label>Right space <b id="rsbVal">90</b></label>
+                  <input type="range" id="rsb" min="0" max="400" value="90">
+                </div>
+              </div>
+              <div class="row" style="margin-top:4px">
+                <button id="assignBtn" class="primary">Save letter ↵</button>
+                <button id="clearGlyphBtn" class="ghost tiny" style="flex:0 0 auto">Delete</button>
+              </div>
+            </div>
+          </div>
+          <div id="noSel" class="empty-hint">Pick a letter on the right, then drag a box around it on the page above.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT : alphabet + tester -->
+    <div style="display:flex;flex-direction:column;gap:22px">
+      <div class="panel">
+        <div class="panel-h">
+          <h2>The alphabet</h2>
+          <span class="hint"><span id="filledCount">0</span> letters captured</span>
+        </div>
+        <div class="panel-b">
+          <div class="legend">
+            <span><i class="dot" style="background:#fbf6ea"></i> empty</span>
+            <span><i class="dot" style="background:#eef3ec;border-color:var(--accent2)"></i> captured</span>
+            <span><i class="dot" style="background:#fbf6ea;border-color:var(--accent)"></i> selected</span>
+          </div>
+          <div class="section-tab" id="sectionTabs"></div>
+          <div class="palette" id="palette"></div>
+          <button class="primary" id="autoScanBtn" style="width:100%;margin-top:10px">✦ Auto-scan this page → build letters</button>
+          <div class="ai-note">Reads the current page with AI and auto-fills empty letter slots. Run it across a few clear pages — each pass fills more. Joined-up words are skipped; refine any letter in step&nbsp;2.</div>
+          <details id="aiSettings">
+            <summary>AI settings (needed for the downloaded file)</summary>
+            <div class="ai-note" style="margin-top:6px">The ✦ AI features work automatically when this tool runs inside Claude.ai. When you've <b>downloaded</b> the file and open it locally, the browser can't authenticate for you — paste your own Anthropic API key below and it'll call Claude directly. The key stays in this browser tab only (never saved to the project file).</div>
+            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-top:6px">Anthropic API key</label>
+            <input type="password" id="aiKey" placeholder="sk-ant-…" style="width:100%;font-family:monospace">
+            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-top:6px">Model</label>
+            <input type="text" id="aiModel" value="claude-sonnet-4-6" style="width:100%;font-family:monospace">
+          </details>
+          <details>
+            <summary>Manual detect helper</summary>
+            <div class="ai-note">Click <b>Detect letters on page</b> to outline separated ink blobs on the
+            current page; click any blob to grab it into the selected slot. Joined words won't split — that's expected.</div>
+            <button class="tiny ghost" id="detectBtn" style="margin-top:8px">Detect letters on page</button>
+          </details>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">
+          <h2>3 · Test &amp; build</h2>
+          <span class="hint">Live preview</span>
+        </div>
+        <div class="panel-b">
+          <div class="meta-row">
+            <div class="f" style="flex:1.4">
+              <label>Font family name</label>
+              <input type="text" id="famName" value="Mum's Hand">
+            </div>
+            <div class="f">
+              <label>Letter spacing</label>
+              <input type="number" id="tracking" value="0" step="10" style="width:80px">
+            </div>
+          </div>
+          <textarea id="tester">the quick brown fox</textarea>
+          <div id="testCanvasWrap"><canvas id="testCanvas" width="600" height="120"></canvas></div>
+          <div class="stat" id="buildStat" style="margin-top:8px">Capture a few letters to see them here.</div>
+          <div class="divider"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="primary" id="exportBtn2" disabled>Download .otf</button>
+            <button class="ghost" id="exportTtf" disabled>Download .ttf</button>
+          </div>
+          <div class="ai-note">The .otf installs on Mac, Windows, iOS, Android and works in any app.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   Handwriting Font Studio  —  single-file builder
+   Pipeline: PDF/image → crop → threshold/clean → marching-squares
+   contour trace (+ holes) → smooth/simplify → opentype.js glyph → .otf
+   ============================================================ */
+
+const EM = 1000, BASELINE = 0, CAP = 700, XH = 500, ASC = 720, DESC = -250;
+const ASCENDER = 800, DESCENDER = -250;
+
+/* glyph set */
+const SETS = {
+  "A–Z": "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""),
+  "a–z": "abcdefghijklmnopqrstuvwxyz".split(""),
+  "0–9": "0123456789".split(""),
+  "Marks": ".,!?;:'\"-()&$%/@#".split("")
+};
+const ROLE_DEFAULT = {};
+"abcdefghijklmnopqrstuvwxyz".split("").forEach(c=>ROLE_DEFAULT[c]="x");
+"acemnorsuvwxz".split("").forEach(c=>ROLE_DEFAULT[c]="x");
+"bdhklt".split("").forEach(c=>ROLE_DEFAULT[c]="asc");
+"i".split("").forEach(c=>ROLE_DEFAULT[c]="asc");
+"gpqy".split("").forEach(c=>ROLE_DEFAULT[c]="desc");
+"fj".split("").forEach(c=>ROLE_DEFAULT[c]="full");
+"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("").forEach(c=>ROLE_DEFAULT[c]="cap");
+".,!?;:'\"-()&$%/@#".split("").forEach(c=>ROLE_DEFAULT[c]="punc");
+
+/* state */
+const glyphs = {};        // char -> { dataURL, thr, invert, largest, smooth, role, ny, sc, lsb, rsb }
+let pdfDoc=null, pageImg=null, scale=1.0, curPage=1, totalPages=1;
+let selectedChar=null;
+let lastCrop=null;        // {canvas, gray:Float, w,h}
+let curSection="A–Z";
+
+const $ = id=>document.getElementById(id);
+const toastEl = $("toast");
+function toast(msg){ toastEl.textContent=msg; toastEl.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>toastEl.classList.remove("show"),2200); }
+
+/* ---------- pdf.js worker ---------- */
+import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs").then(m=>{
+  window.pdfjsLib = m;
+  m.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
+}).catch(()=>{ /* opentype-only mode still works for image uploads */ });
+
+/* ============================================================
+   SOURCE LOADING
+   ============================================================ */
+$("loadPdfBtn").onclick=()=>$("pdfInput").click();
+$("dropZone").onclick=()=>$("pdfInput").click();
+$("pdfInput").onchange=e=>handleFiles(e.target.files);
+
+const stageWrap=$("stageWrap");
+["dragover","dragenter"].forEach(ev=>stageWrap.addEventListener(ev,e=>{e.preventDefault();stageWrap.style.outline="2px dashed var(--accent)";}));
+["dragleave","drop"].forEach(ev=>stageWrap.addEventListener(ev,e=>{e.preventDefault();stageWrap.style.outline="";}));
+stageWrap.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+
+let imageList=[]; // when images uploaded instead of pdf
+async function handleFiles(files){
+  files=[...files];
+  const pdf=files.find(f=>f.type==="application/pdf"||/\.pdf$/i.test(f.name));
+  if(pdf){
+    try{
+      if(!window.pdfjsLib){ toast("PDF engine still loading — try again in a second."); return; }
+      const buf=await pdf.arrayBuffer();
+      pdfDoc=await window.pdfjsLib.getDocument({data:buf}).promise;
+      totalPages=pdfDoc.numPages; curPage=1; imageList=[];
+      $("pgTotal").textContent="/ "+totalPages;
+      $("pgNum").max=totalPages; $("pgNum").value=1;
+      await renderPdfPage(); afterSourceLoaded();
+      toast(totalPages+" pages loaded — "+pdf.name);
+    }catch(err){ toast("Could not open PDF: "+err.message); }
+    return;
+  }
+  const imgs=files.filter(f=>/^image\//.test(f.type));
+  if(imgs.length){
+    pdfDoc=null; imageList=imgs; totalPages=imgs.length; curPage=1;
+    $("pgTotal").textContent="/ "+totalPages; $("pgNum").max=totalPages; $("pgNum").value=1;
+    await renderImagePage(); afterSourceLoaded();
+    toast(imgs.length+" image(s) loaded");
+  }
+}
+function afterSourceLoaded(){
+  stageWrap.classList.remove("empty");
+  $("dropZone").style.display="none";
+  $("stage").hidden=false;
+  $("pagebar").style.display="flex";
+  $("capturePanel").style.display="block";
+  applyDisplay();
+}
+
+const RENDER_TARGET_W = 1700;   // internal bitmap width — good DPI for crops
+async function renderPdfPage(){
+  const page=await pdfDoc.getPage(curPage);
+  const base=page.getViewport({scale:1});
+  const rs=RENDER_TARGET_W/base.width;
+  const vp=page.getViewport({scale:rs});
+  const cv=$("stage"); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
+  const ctx=cv.getContext("2d");
+  await page.render({canvasContext:ctx,viewport:vp}).promise;
+  applyDisplay(); pageImg=true; clearSel(); clearDetections();
+}
+async function renderImagePage(){
+  const file=imageList[curPage-1];
+  const url=URL.createObjectURL(file);
+  await new Promise(res=>{ const im=new Image(); im.onload=()=>{
+    const cv=$("stage");
+    const rw=Math.min(im.naturalWidth, Math.round(RENDER_TARGET_W*1.15));
+    const ratio=rw/im.naturalWidth;
+    cv.width=Math.round(im.naturalWidth*ratio); cv.height=Math.round(im.naturalHeight*ratio);
+    cv.getContext("2d").drawImage(im,0,0,cv.width,cv.height);
+    URL.revokeObjectURL(url); applyDisplay(); res();
+  }; im.src=url; });
+  pageImg=true; clearSel(); clearDetections();
+}
+async function renderPage(){ pdfDoc?await renderPdfPage():await renderImagePage(); }
+
+// scale==1 means "whole page fits the viewport"; >1 zooms in (scroll appears)
+function applyDisplay(){
+  const cv=$("stage"); if(!cv.width) return;
+  const wrap=$("stageWrap");
+  const availW=Math.max(140, wrap.clientWidth-2);
+  const availH=Math.max(220, Math.min(window.innerHeight*0.74, 900));
+  const aspect=cv.height/cv.width;
+  let baseW=availW, baseH=baseW*aspect;
+  if(baseH>availH){ baseH=availH; baseW=baseH/aspect; }
+  cv.style.width=(baseW*scale)+"px";
+  cv.style.height=(baseH*scale)+"px";
+  $("zoomLbl").textContent = scale<=1.001 ? "Fit" : Math.round(scale*100)+"%";
+}
+window.addEventListener("resize",()=>{ if(!$("stage").hidden) applyDisplay(); });
+
+$("prevPg").onclick=async()=>{ if(curPage>1){curPage--;$("pgNum").value=curPage;await renderPage();} };
+$("nextPg").onclick=async()=>{ if(curPage<totalPages){curPage++;$("pgNum").value=curPage;await renderPage();} };
+$("pgNum").onchange=async()=>{ let v=+$("pgNum").value; v=Math.max(1,Math.min(totalPages,v)); curPage=v;$("pgNum").value=v; await renderPage(); };
+$("zoomIn").onclick=()=>{ scale=Math.min(4,scale+0.25); applyDisplay(); clearDetections(); clearSel(); };
+$("zoomOut").onclick=()=>{ scale=Math.max(1,scale-0.25); applyDisplay(); clearDetections(); clearSel(); };
+$("fitBtn").onclick=()=>{ scale=1; applyDisplay(); clearDetections(); clearSel(); };
+
+/* ============================================================
+   SELECTION (drag a box over a letter)
+   ============================================================ */
+let dragging=false, startX=0, startY=0;
+const selBox=$("sel");
+function stageRectXY(e){
+  const r=$("stage").getBoundingClientRect();
+  return { x:(e.clientX-r.left)*($("stage").width/r.width),
+           y:(e.clientY-r.top)*($("stage").height/r.height), r };
+}
+stageWrap.addEventListener("mousedown",e=>{
+  if($("stage").hidden) return;
+  if(e.target.classList.contains("detbox")) return; // clicking a detection
+  const p=stageRectXY(e); dragging=true; startX=p.x; startY=p.y;
+  const r=$("stage").getBoundingClientRect();
+  selBox.style.display="block";
+  positionSel(startX,startY,startX,startY,r);
+});
+stageWrap.addEventListener("mousemove",e=>{
+  if(!dragging) return;
+  const p=stageRectXY(e);
+  positionSel(startX,startY,p.x,p.y,p.r);
+});
+window.addEventListener("mouseup",e=>{
+  if(!dragging) return; dragging=false;
+  const p=stageRectXY(e);
+  const x0=Math.min(startX,p.x),y0=Math.min(startY,p.y),x1=Math.max(startX,p.x),y1=Math.max(startY,p.y);
+  if(x1-x0<6||y1-y0<6){ selBox.style.display="none"; return; }
+  captureCrop(x0,y0,x1-x0,y1-y0);
+});
+function positionSel(ax,ay,bx,by,r){
+  const cv=$("stage"); const sx=r.width/cv.width, sy=r.height/cv.height;
+  const x=Math.min(ax,bx)*sx, y=Math.min(ay,by)*sy, w=Math.abs(bx-ax)*sx, h=Math.abs(by-ay)*sy;
+  const wrapR=stageWrap.getBoundingClientRect();
+  selBox.style.left=(r.left-wrapR.left+stageWrap.scrollLeft+x)+"px";
+  selBox.style.top=(r.top-wrapR.top+stageWrap.scrollTop+y)+"px";
+  selBox.style.width=w+"px"; selBox.style.height=h+"px";
+}
+function clearSel(){ selBox.style.display="none"; }
+
+function captureCrop(x,y,w,h){
+  const src=$("stage");
+  const tmp=document.createElement("canvas"); tmp.width=Math.round(w); tmp.height=Math.round(h);
+  tmp.getContext("2d").drawImage(src,x,y,w,h,0,0,tmp.width,tmp.height);
+  lastCrop={canvas:tmp};
+  if(!selectedChar){ toast("Pick a letter on the right first, then I'll know what this is."); }
+  openEditor(true);
+  processAndPreview();
+}
+
+/* ============================================================
+   IMAGE → BINARY MASK
+   ============================================================ */
+function otsu(hist,total){
+  let sum=0; for(let i=0;i<256;i++) sum+=i*hist[i];
+  let sumB=0,wB=0,max=0,thr=128;
+  for(let i=0;i<256;i++){ wB+=hist[i]; if(!wB)continue; const wF=total-wB; if(!wF)break;
+    sumB+=i*hist[i]; const mB=sumB/wB, mF=(sum-sumB)/wF; const between=wB*wF*(mB-mF)*(mB-mF);
+    if(between>max){max=between;thr=i;} }
+  return thr;
+}
+// returns {mask:Uint8Array(W*H), W,H} ink=1, padded by 1
+function cropToMask(canvas,opt){
+  const w=canvas.width,h=canvas.height;
+  const d=canvas.getContext("2d").getImageData(0,0,w,h).data;
+  const gray=new Uint8Array(w*h); const hist=new Uint32Array(256);
+  for(let i=0,j=0;i<gray.length;i++,j+=4){
+    const a=d[j+3]; let g=(0.299*d[j]+0.587*d[j+1]+0.114*d[j+2]);
+    if(a<128) g=255; // transparent -> background
+    gray[i]=g|0; hist[gray[i]]++;
+  }
+  let thr=opt.thr;
+  if(opt.thr===null||opt.thr===undefined){ thr=otsu(hist,gray.length); }
+  // ink dark by default; invert => ink light
+  const mask=new Uint8Array(w*h);
+  for(let i=0;i<gray.length;i++){
+    const ink = opt.invert ? gray[i]>thr : gray[i]<thr;
+    mask[i]=ink?1:0;
+  }
+  // despeckle / keep largest
+  cleanMask(mask,w,h,opt);
+  // trim
+  return trimMask(mask,w,h);
+}
+function cleanMask(mask,w,h,opt){
+  const lab=new Int32Array(w*h).fill(0); let id=0; const sizes=[0];
+  const stack=[];
+  for(let i=0;i<mask.length;i++){
+    if(mask[i]===1&&lab[i]===0){
+      id++; sizes[id]=0; stack.length=0; stack.push(i); lab[i]=id;
+      while(stack.length){ const p=stack.pop(); sizes[id]++;
+        const x=p%w,y=(p/w)|0;
+        if(x>0&&mask[p-1]&&!lab[p-1]){lab[p-1]=id;stack.push(p-1);}
+        if(x<w-1&&mask[p+1]&&!lab[p+1]){lab[p+1]=id;stack.push(p+1);}
+        if(y>0&&mask[p-w]&&!lab[p-w]){lab[p-w]=id;stack.push(p-w);}
+        if(y<h-1&&mask[p+w]&&!lab[p+w]){lab[p+w]=id;stack.push(p+w);}
+      }
+    }
+  }
+  if(id===0) return;
+  let maxId=1; for(let k=1;k<=id;k++) if(sizes[k]>sizes[maxId]) maxId=k;
+  const minArea=Math.max(8, Math.round(sizes[maxId]*0.02));
+  for(let i=0;i<mask.length;i++){
+    if(mask[i]){
+      if(opt.largest){ if(lab[i]!==maxId) mask[i]=0; }
+      else if(sizes[lab[i]]<minArea) mask[i]=0;
+    }
+  }
+}
+function trimMask(mask,w,h){
+  let minX=w,minY=h,maxX=-1,maxY=-1;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++) if(mask[y*w+x]){ if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y; }
+  if(maxX<0) return {mask:new Uint8Array(9),W:3,H:3,empty:true};
+  const pad=1, nw=(maxX-minX+1)+pad*2, nh=(maxY-minY+1)+pad*2;
+  const out=new Uint8Array(nw*nh);
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++)
+    if(mask[y*w+x]) out[(y-minY+pad)*nw+(x-minX+pad)]=1;
+  return {mask:out,W:nw,H:nh};
+}
+
+/* ============================================================
+   MARCHING SQUARES → CLOSED LOOPS (with holes)
+   samples at pixel centres; loops at half-integer coords
+   ============================================================ */
+function marchingSquares(mask,W,H){
+  const at=(x,y)=>(x<0||y<0||x>=W||y>=H)?0:mask[y*W+x];
+  // edge key: encode the midpoint between two pixels
+  const segs=new Map(); // startKey -> endKey  (directed, ink on left)
+  const key=(x,y)=>x+","+y; // coords are *2 to stay integer (half-steps)
+  function add(a,b){ segs.set(key(a[0],a[1]),[b[0],b[1]]); }
+  // iterate cells whose corners are (x,y),(x+1,y),(x+1,y+1),(x,y+1)
+  for(let y=-1;y<H;y++){
+    for(let x=-1;x<W;x++){
+      const tl=at(x,y), tr=at(x+1,y), br=at(x+1,y+1), bl=at(x,y+1);
+      const c=(tl<<3)|(tr<<2)|(br<<1)|bl;
+      // midpoints in *2 integer coords
+      const T=[2*x+1,2*y], R=[2*x+2,2*y+1], B=[2*x+1,2*y+2], L=[2*x,2*y+1];
+      switch(c){
+        case 1: add(B,L); break;          // bl
+        case 2: add(R,B); break;          // br
+        case 3: add(R,L); break;
+        case 4: add(T,R); break;          // tr
+        case 5: add(T,L); add(B,R); break;// saddle
+        case 6: add(T,B); break;
+        case 7: add(T,L); break;
+        case 8: add(L,T); break;          // tl
+        case 9: add(B,T); break;
+        case 10:add(L,B); add(R,T); break;// saddle
+        case 11:add(R,T); break;
+        case 12:add(L,R); break;
+        case 13:add(B,R); break;
+        case 14:add(L,B); break;
+      }
+    }
+  }
+  // stitch directed segments into closed loops
+  const loops=[];
+  while(segs.size){
+    const start=segs.keys().next().value;
+    let cur=start.split(",").map(Number);
+    const loop=[];
+    let guard=0;
+    while(true){
+      const k=key(cur[0],cur[1]);
+      const nxt=segs.get(k);
+      loop.push([cur[0]/2,cur[1]/2]);
+      segs.delete(k);
+      if(!nxt) break;
+      cur=nxt;
+      if(key(cur[0],cur[1])===start) break;
+      if(++guard>500000) break;
+    }
+    if(loop.length>=3) loops.push(loop);
+  }
+  return loops;
+}
+function signedArea(p){let a=0;for(let i=0;i<p.length;i++){const A=p[i],B=p[(i+1)%p.length];a+=A[0]*B[1]-B[0]*A[1];}return a/2;}
+function pointInPoly(pt,poly){
+  let inside=false; const x=pt[0],y=pt[1];
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function chaikin(p,iter){
+  for(let it=0;it<iter;it++){
+    const q=[];
+    for(let i=0;i<p.length;i++){
+      const a=p[i],b=p[(i+1)%p.length];
+      q.push([a[0]*0.75+b[0]*0.25, a[1]*0.75+b[1]*0.25]);
+      q.push([a[0]*0.25+b[0]*0.75, a[1]*0.25+b[1]*0.75]);
+    }
+    p=q;
+  }
+  return p;
+}
+function rdp(pts,eps){
+  if(pts.length<3) return pts;
+  const keep=new Array(pts.length).fill(false); keep[0]=keep[pts.length-1]=true;
+  const stack=[[0,pts.length-1]];
+  while(stack.length){
+    const [s,e]=stack.pop(); let dmax=0,idx=-1;
+    const [ax,ay]=pts[s],[bx,by]=pts[e]; const dx=bx-ax,dy=by-ay; const den=Math.hypot(dx,dy)||1;
+    for(let i=s+1;i<e;i++){ const [px,py]=pts[i];
+      const d=Math.abs(dy*px-dx*py+bx*ay-by*ax)/den;
+      if(d>dmax){dmax=d;idx=i;} }
+    if(dmax>eps&&idx>-1){ keep[idx]=true; stack.push([s,idx],[idx,e]); }
+  }
+  return pts.filter((_,i)=>keep[i]);
+}
+
+/* mask -> opentype.Path placed by role */
+function maskToPath(mask,W,H,role,nudge,sizePct){
+  let loops=marchingSquares(mask,W,H);
+  if(!loops.length) return null;
+  // smoothing + simplify in pixel space
+  const smoothIters = (role==="punc")?1:2;
+  loops=loops.map(L=>{ let s=chaikin(L,smoothIters); s=rdp(s,0.8); return s; }).filter(L=>L.length>=3);
+  if(!loops.length) return null;
+  // overall bbox
+  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  loops.forEach(L=>L.forEach(([x,y])=>{if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}));
+  const gw=(maxX-minX)||1, gh=(maxY-minY)||1;
+  // target height per role
+  const ranges={ cap:[BASELINE,CAP], x:[BASELINE,XH], asc:[BASELINE,ASC],
+                 desc:[DESC,XH], full:[DESC,ASC], punc:[BASELINE,CAP] };
+  let [lo,hi]=ranges[role]||ranges.cap;
+  let targetH=(hi-lo)*(sizePct/100);
+  const s=targetH/gh;
+  const yBottom=lo + nudge; // font units, baseline-relative bottom of glyph
+  // nesting -> winding
+  const reps=loops.map(L=>L[0]);
+  const path=new opentype.Path();
+  loops.forEach((L,i)=>{
+    let depth=0;
+    for(let j=0;j<loops.length;j++) if(j!==i && pointInPoly(reps[i],loops[j])) depth++;
+    let pts=L.map(([x,y])=>[ (x-minX)*s, yBottom + (maxY-y)*s ]); // flip Y, place
+    const a=signedArea(pts); const wantPos=(depth%2===0); // outer CCW(+), hole CW(-)
+    if((a>0)!==wantPos) pts.reverse();
+    pts.forEach(([x,y],k)=> k===0?path.moveTo(x,y):path.lineTo(x,y));
+    path.close();
+  });
+  return {path, glyphW:gw*s, role};
+}
+
+/* ============================================================
+   EDITOR  (controls + live crop preview)
+   ============================================================ */
+function openEditor(show){
+  $("editor").classList.toggle("show",show);
+  $("noSel").style.display=show?"none":"block";
+  $("capChar").textContent=selectedChar?("Letter:  "+selectedChar):"";
+  if(show&&selectedChar){
+    const g=glyphs[selectedChar]||{};
+    $("role").value = g.role || ROLE_DEFAULT[selectedChar] || "cap";
+    $("ny").value=g.ny??0; $("sc").value=g.sc??100;
+    $("lsb").value=g.lsb??90; $("rsb").value=g.rsb??90;
+    $("thr").value=g.thr??128; $("thrVal").textContent=(g.thr==null?"auto":g.thr);
+    $("invChip").classList.toggle("on",!!g.invert);
+    $("largestChip").classList.toggle("on",!!g.largest);
+    $("smoothChip").classList.toggle("on",!!g.smooth);
+    syncLabels();
+  }
+}
+function syncLabels(){
+  $("nyVal").textContent=$("ny").value;
+  $("scVal").textContent=$("sc").value+"%";
+  $("lsbVal").textContent=$("lsb").value;
+  $("rsbVal").textContent=$("rsb").value;
+}
+["ny","sc","lsb","rsb","role"].forEach(id=>$(id).addEventListener("input",()=>{syncLabels();processAndPreview();}));
+$("thr").addEventListener("input",()=>{$("thrVal").textContent=$("thr").value;processAndPreview();});
+$("invChip").onclick=()=>{$("invChip").classList.toggle("on");processAndPreview();};
+$("largestChip").onclick=()=>{$("largestChip").classList.toggle("on");processAndPreview();};
+$("smoothChip").onclick=()=>{$("smoothChip").classList.toggle("on");processAndPreview();};
+
+function curOpts(){
+  return { thr: ($("thrVal").textContent==="auto"&&$("thr").value==128)?null:(+$("thr").value),
+           invert:$("invChip").classList.contains("on"),
+           largest:$("largestChip").classList.contains("on"),
+           smooth:$("smoothChip").classList.contains("on") };
+}
+function processAndPreview(){
+  if(!lastCrop) return;
+  const opt=curOpts();
+  const {mask,W,H,empty}=cropToMask(lastCrop.canvas,opt);
+  const role=$("role").value, ny=+$("ny").value, sc=+$("sc").value;
+  const cv=$("capPrev"); const ctx=cv.getContext("2d");
+  const cw=140,ch=140; cv.width=cw;cv.height=ch; ctx.clearRect(0,0,cw,ch);
+  if(empty){ ctx.fillStyle="#c9bb9b";ctx.font="13px Fraunces";ctx.fillText("no ink found",26,72); lastCrop.built=null; return; }
+  const built=maskToPath(mask,W,H,role,ny,sc);
+  lastCrop.built=built; lastCrop.maskInfo={mask,W,H};
+  if(!built){ return; }
+  // draw to preview: map font units to box. show baseline + x-height guides
+  const top=ASCENDER, bot=DESCENDER, span=top-bot;
+  const sY=(ch-20)/span, ox=12, oy=10;
+  const f2y=v=> oy+(top-v)*sY;
+  // guides
+  ctx.strokeStyle="#d8ccb0";ctx.lineWidth=1;
+  [["base",BASELINE],["x",XH],["cap",CAP]].forEach(([_,v])=>{ ctx.beginPath();ctx.moveTo(0,f2y(v));ctx.lineTo(cw,f2y(v));ctx.stroke(); });
+  // path
+  const p=new opentype.Path();
+  built.path.commands.forEach(c=>{
+    const m={...c};
+    if("x" in m){ m.x=ox+m.x*sY; }
+    if("y" in m){ m.y=f2y(m.y); }
+    if("x1" in m){ m.x1=ox+m.x1*sY; m.y1=f2y(m.y1); }
+    if("x2" in m){ m.x2=ox+m.x2*sY; m.y2=f2y(m.y2); }
+    p.commands.push(m);
+  });
+  ctx.fillStyle="#23303b"; p.fill="#23303b"; p.draw(ctx);
+}
+
+/* assign / delete */
+$("assignBtn").onclick=()=>{
+  if(!selectedChar){ toast("Pick a letter slot first."); return; }
+  if(!lastCrop||!lastCrop.built){ toast("Nothing traced yet — drag a box around a letter."); return; }
+  glyphs[selectedChar]={
+    dataURL:lastCrop.canvas.toDataURL("image/png"),
+    thr:($("thrVal").textContent==="auto")?null:(+$("thr").value),
+    invert:$("invChip").classList.contains("on"),
+    largest:$("largestChip").classList.contains("on"),
+    smooth:$("smoothChip").classList.contains("on"),
+    role:$("role").value, ny:+$("ny").value, sc:+$("sc").value,
+    lsb:+$("lsb").value, rsb:+$("rsb").value
+  };
+  toast("Saved “"+selectedChar+"”.");
+  renderPalette(); advanceToNextEmpty(); refreshBuild();
+};
+$("clearGlyphBtn").onclick=()=>{ if(selectedChar&&glyphs[selectedChar]){ delete glyphs[selectedChar]; toast("Removed “"+selectedChar+"”."); renderPalette(); refreshBuild(); } };
+
+function advanceToNextEmpty(){
+  const arr=SETS[curSection];
+  const i=arr.indexOf(selectedChar);
+  for(let k=1;k<=arr.length;k++){ const c=arr[(i+k)%arr.length]; if(!glyphs[c]){ selectChar(c,false); return; } }
+}
+
+/* ============================================================
+   PALETTE
+   ============================================================ */
+function renderTabs(){
+  const t=$("sectionTabs"); t.innerHTML="";
+  Object.keys(SETS).forEach(name=>{
+    const b=document.createElement("button"); b.textContent=name;
+    b.className=name===curSection?"on":""; b.onclick=()=>{curSection=name;renderTabs();renderPalette();};
+    t.appendChild(b);
+  });
+}
+function renderPalette(){
+  const pal=$("palette"); pal.innerHTML="";
+  SETS[curSection].forEach(ch=>{
+    const cell=document.createElement("div");
+    cell.className="glyph-cell"+(glyphs[ch]?" filled":"")+(ch===selectedChar?" sel":"");
+    const lab=document.createElement("div"); lab.className="lab"; lab.textContent=ch===" "?"sp":ch; cell.appendChild(lab);
+    if(glyphs[ch]){ const im=document.createElement("img"); im.src=glyphs[ch].dataURL; cell.appendChild(im); }
+    else { const ph=document.createElement("div"); ph.className="ph"; ph.textContent=ch; cell.appendChild(ph); }
+    cell.onclick=()=>selectChar(ch,true);
+    pal.appendChild(cell);
+  });
+  $("filledCount").textContent=Object.keys(glyphs).length;
+}
+function selectChar(ch,loadExisting){
+  selectedChar=ch; renderPalette();
+  if(loadExisting && glyphs[ch]){
+    const im=new Image(); im.onload=()=>{
+      const c=document.createElement("canvas"); c.width=im.width;c.height=im.height;
+      c.getContext("2d").drawImage(im,0,0); lastCrop={canvas:c};
+      openEditor(true); processAndPreview();
+    }; im.src=glyphs[ch].dataURL;
+  } else {
+    openEditor(true);
+    if(lastCrop) processAndPreview();
+  }
+}
+
+/* ============================================================
+   FONT ASSEMBLY (opentype.js)
+   ============================================================ */
+function buildFont(){
+  const family=$("famName").value.trim()||"My Hand";
+  const tracking=+$("tracking").value||0;
+  const otGlyphs=[ new opentype.Glyph({name:".notdef",advanceWidth:Math.round(EM*0.4),path:new opentype.Path()}) ];
+  // space
+  otGlyphs.push(new opentype.Glyph({name:"space",unicode:32,advanceWidth:Math.round(EM*0.3),path:new opentype.Path()}));
+  const allChars=[].concat(...Object.values(SETS));
+  let built=0;
+  allChars.forEach(ch=>{
+    const g=glyphs[ch]; if(!g) return;
+    const info=rebuildGlyphPath(ch,g);
+    if(!info) return;
+    const lsb=(g.lsb??90), rsb=(g.rsb??90);
+    const adv=Math.round(lsb + info.glyphW + rsb + tracking);
+    // shift path right by lsb
+    info.path.commands.forEach(c=>{ if("x" in c)c.x+=lsb; if("x1" in c)c.x1+=lsb; if("x2" in c)c.x2+=lsb; });
+    otGlyphs.push(new opentype.Glyph({
+      name: glyphName(ch), unicode: ch.codePointAt(0),
+      advanceWidth: Math.max(adv,1), path: info.path }));
+    built++;
+  });
+  if(built===0) return null;
+  const font=new opentype.Font({
+    familyName:family, styleName:"Regular", unitsPerEm:EM,
+    ascender:ASCENDER, descender:DESCENDER, glyphs:otGlyphs });
+  return {font,built,family};
+}
+function rebuildGlyphPath(ch,g){
+  // re-derive from stored bitmap each build (keeps project portable)
+  if(!g._cacheCanvas){
+    return null; // resolved async elsewhere; see syncRebuild
+  }
+  const {mask,W,H,empty}=cropToMask(g._cacheCanvas,{thr:g.thr,invert:g.invert,largest:g.largest,smooth:g.smooth});
+  if(empty) return null;
+  return maskToPath(mask,W,H,g.role||ROLE_DEFAULT[ch]||"cap",g.ny||0,g.sc||100);
+}
+function glyphName(ch){
+  const map={" ":"space","!":"exclam",'"':"quotedbl","#":"numbersign","$":"dollar","%":"percent",
+    "&":"ampersand","'":"quotesingle","(":"parenleft",")":"parenright","-":"hyphen","/":"slash",
+    ".":"period",",":"comma",":":"colon",";":"semicolon","?":"question","@":"at"};
+  if(map[ch]) return map[ch];
+  if(/[0-9]/.test(ch)) return ["zero","one","two","three","four","five","six","seven","eight","nine"][+ch];
+  if(/[A-Z]/.test(ch)) return ch;
+  if(/[a-z]/.test(ch)) return ch;
+  return "uni"+ch.codePointAt(0).toString(16).padStart(4,"0");
+}
+
+/* decode stored dataURLs into canvases once, then enable build */
+function ensureCaches(cb){
+  const entries=Object.entries(glyphs).filter(([_,g])=>!g._cacheCanvas);
+  if(!entries.length){ cb(); return; }
+  let n=entries.length;
+  entries.forEach(([ch,g])=>{
+    const im=new Image(); im.onload=()=>{
+      const c=document.createElement("canvas"); c.width=im.width;c.height=im.height;
+      c.getContext("2d").drawImage(im,0,0); g._cacheCanvas=c; if(--n===0) cb();
+    }; im.onerror=()=>{ if(--n===0) cb(); }; im.src=g.dataURL;
+  });
+}
+
+/* live tester */
+let _testFont=null;
+function refreshBuild(){
+  ensureCaches(()=>{
+    const res=buildFont();
+    const has=Object.keys(glyphs).length;
+    $("exportBtn").disabled = !res;
+    $("exportBtn2").disabled = !res;
+    $("exportTtf").disabled = !res;
+    if(!res){ $("buildStat").textContent="Capture a few letters to see them here."; _testFont=null; drawTester(); return; }
+    _testFont=res.font;
+    $("buildStat").innerHTML="<span class='flourish'>✦</span> "+res.built+" glyphs ready · em "+EM+" · family “"+res.family+"”";
+    drawTester();
+  });
+}
+function drawTester(){
+  const cv=$("testCanvas"), ctx=cv.getContext("2d");
+  const text=$("tester").value||"";
+  const size=64; const W=Math.max(600, 40+ text.length*size*0.62 ); cv.width=W; cv.height=120;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(!_testFont){ ctx.fillStyle="#c9bb9b";ctx.font="italic 18px Spectral";ctx.fillText("…your letters will appear here",20,66); return; }
+  try{
+    const path=_testFont.getPath(text,20,80,size);
+    path.fill="#23303b"; path.draw(ctx);
+  }catch(e){ ctx.fillStyle="#a65a1e";ctx.fillText("preview error",20,66); }
+}
+$("tester").addEventListener("input",drawTester);
+$("tracking").addEventListener("input",refreshBuild);
+$("famName").addEventListener("input",()=>{ if(_testFont) refreshBuild(); });
+
+/* ============================================================
+   EXPORT
+   ============================================================ */
+function download(){
+  ensureCaches(()=>{
+    const res=buildFont(); if(!res){ toast("Add some letters first."); return; }
+    const ab=res.font.toArrayBuffer();
+    const blob=new Blob([ab],{type:"font/otf"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download=(res.family.replace(/[^a-z0-9]+/gi,"")||"MyHand")+".otf"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    toast("Downloaded "+res.built+"-glyph font.");
+  });
+}
+$("exportBtn").onclick=download; $("exportBtn2").onclick=download;
+$("exportTtf").onclick=()=>{ // opentype writes OTF/CFF; .ttf name kept for convenience
+  ensureCaches(()=>{ const res=buildFont(); if(!res){toast("Add letters first.");return;}
+    const blob=new Blob([res.font.toArrayBuffer()],{type:"font/otf"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download=(res.family.replace(/[^a-z0-9]+/gi,"")||"MyHand")+".otf";a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000); toast("Downloaded font.");
+  });
+};
+
+/* ============================================================
+   PROJECT SAVE / LOAD  (localStorage is unavailable in artifacts)
+   ============================================================ */
+$("saveBtn").onclick=()=>{
+  const clean={}; Object.entries(glyphs).forEach(([k,v])=>{ const{_cacheCanvas,...rest}=v; clean[k]=rest; });
+  const proj={ version:1, family:$("famName").value, tracking:+$("tracking").value, glyphs:clean };
+  const blob=new Blob([JSON.stringify(proj)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=(($("famName").value||"font").replace(/[^a-z0-9]+/gi,"")||"font")+"-project.json";a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000); toast("Project saved.");
+};
+$("importBtn").onclick=()=>$("projInput").click();
+$("projInput").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{
+    const proj=JSON.parse(await f.text());
+    Object.keys(glyphs).forEach(k=>delete glyphs[k]);
+    Object.entries(proj.glyphs||{}).forEach(([k,v])=>glyphs[k]=v);
+    $("famName").value=proj.family||"Mum's Hand"; $("tracking").value=proj.tracking||0;
+    renderPalette(); refreshBuild(); toast("Project loaded — "+Object.keys(glyphs).length+" letters.");
+  }catch(err){ toast("Could not read project file."); }
+};
+
+/* ============================================================
+   AI ASSIST  (Claude) — keyless inside Claude.ai, or your own key locally
+   ============================================================ */
+// Returns the assistant text. Uses keyless artifact call if no key is set,
+// otherwise calls the API directly with the user's key (browser-access header).
+async function callClaude(content){
+  const key=($("aiKey")?.value||"").trim();
+  const model=($("aiModel")?.value||"").trim();
+  const headers={"Content-Type":"application/json"};
+  const body={ max_tokens:1000, messages:[{role:"user",content}] };
+  if(key){
+    body.model = model || "claude-sonnet-4-6";
+    headers["x-api-key"]=key;
+    headers["anthropic-version"]="2023-06-01";
+    headers["anthropic-dangerous-direct-browser-access"]="true";
+  } else {
+    body.model = "claude-sonnet-4-20250514"; // handled/authenticated inside Claude.ai
+  }
+  const r=await fetch("https://api.anthropic.com/v1/messages",
+    { method:"POST", headers, body:JSON.stringify(body) });
+  if(!r.ok){ let m=""; try{ m=(await r.json())?.error?.message||""; }catch(_){}
+    throw new Error(r.status+(m?" · "+m:"")); }
+  const data=await r.json();
+  return (data.content||[]).filter(c=>c.type==="text").map(c=>c.text).join("").trim();
+}
+function aiErr(err){
+  const key=($("aiKey")?.value||"").trim();
+  if(key) return "AI error: "+err.message+" — check the key/model in AI settings.";
+  return "AI needs a key when running the downloaded file. Open “AI settings”, paste your Anthropic API key (or use the tool inside Claude.ai).";
+}
+
+$("aiGuess").onclick=async()=>{
+  if(!lastCrop){ toast("Drag a box around a letter first."); return; }
+  $("aiGuess").disabled=true; $("aiGuess").textContent="✦ reading…";
+  try{
+    const b64=lastCrop.canvas.toDataURL("image/png").split(",")[1];
+    const txt=await callClaude([
+      {type:"image",source:{type:"base64",media_type:"image/png",data:b64}},
+      {type:"text",text:"This is a crop from handwriting. If it is a SINGLE character, reply with ONLY that one character (letter, digit or punctuation). If it shows more than one letter or is unclear, reply with the single word: MULTI. No other text."}
+    ]);
+    if(!txt||/multi/i.test(txt)){ toast("Looks like more than one letter — try a tighter box."); }
+    else {
+      const ch=[...txt][0];
+      // find which section holds it & select
+      for(const [name,arr] of Object.entries(SETS)){ if(arr.includes(ch)){ curSection=name; renderTabs(); break; } }
+      selectChar(ch,false); toast("AI says: “"+ch+"”. Adjust and save.");
+    }
+  }catch(err){ toast(aiErr(err)); }
+  $("aiGuess").disabled=false; $("aiGuess").textContent="✦ Guess letter";
+};
+
+/* ============================================================
+   AUTO-SCAN  (segment page → AI reads a montage → fills slots)
+   ============================================================ */
+function median(a){ if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y); const m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
+
+// returns candidate boxes in FULL-RES stage coords, in reading order
+function segmentPage(maxN){
+  const cv=$("stage"); const W=cv.width,H=cv.height;
+  const d=cv.getContext("2d").getImageData(0,0,W,H).data;
+  const SC=Math.max(1,Math.round(Math.max(W,H)/900));
+  const gw=Math.floor(W/SC),gh=Math.floor(H/SC);
+  const g2=new Uint8Array(gw*gh); const sat=new Uint8Array(gw*gh); const hist=new Uint32Array(256);
+  for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){ const j=((y*SC)*W+(x*SC))*4;
+    const R=d[j],G=d[j+1],B=d[j+2];
+    const lum=(0.299*R+0.587*G+0.114*B)|0; g2[y*gw+x]=lum; hist[lum]++;
+    sat[y*gw+x]=Math.max(R,G,B)-Math.min(R,G,B); }
+  const thr=otsu(hist,gw*gh);
+  const m=new Uint8Array(gw*gh); for(let i=0;i<g2.length;i++) m[i]=g2[i]<thr?1:0;
+  const lab=new Int32Array(gw*gh); let id=0; const boxes=[]; const st=[];
+  for(let i=0;i<m.length;i++) if(m[i]&&!lab[i]){ id++; st.length=0; st.push(i); lab[i]=id;
+    let x0=gw,y0=gh,x1=0,y1=0,area=0,satSum=0;
+    while(st.length){ const p=st.pop(); area++; satSum+=sat[p]; const x=p%gw,y=(p/gw)|0;
+      if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
+      if(x>0&&m[p-1]&&!lab[p-1]){lab[p-1]=id;st.push(p-1);}
+      if(x<gw-1&&m[p+1]&&!lab[p+1]){lab[p+1]=id;st.push(p+1);}
+      if(y>0&&m[p-gw]&&!lab[p-gw]){lab[p-gw]=id;st.push(p-gw);}
+      if(y<gh-1&&m[p+gw]&&!lab[p+gw]){lab[p+gw]=id;st.push(p+gw);}
+    }
+    const bw=(x1-x0+1)*SC, bh=(y1-y0+1)*SC;
+    // keep letter-sized, near-grayscale ink; drop dust, lines, wide joined runs, colour photos
+    if(area>15 && bh>H*0.013 && bh<H*0.10 && bw>H*0.004 && bw<W*0.085 && (satSum/area)<45)
+      boxes.push([x0*SC,y0*SC,bw,bh]);
+  }
+  const rowH=(boxes.length?median(boxes.map(b=>b[3])):40)*1.2 || 40;
+  boxes.sort((a,b)=> (Math.round(a[1]/rowH)-Math.round(b[1]/rowH)) || (a[0]-b[0]));
+  if(boxes.length>maxN){ const step=boxes.length/maxN, out=[]; for(let i=0;i<maxN;i++) out.push(boxes[Math.floor(i*step)]); return out; }
+  return boxes;
+}
+function cropFromStage(bx,by,bw,bh){
+  const src=$("stage");
+  const pad=Math.round(Math.min(bw,bh)*0.14)+2;
+  const x=Math.max(0,bx-pad), y=Math.max(0,by-pad);
+  const w=Math.min(src.width-x, bw+pad*2), h=Math.min(src.height-y, bh+pad*2);
+  const c=document.createElement("canvas"); c.width=Math.max(1,w); c.height=Math.max(1,h);
+  c.getContext("2d").drawImage(src,x,y,w,h,0,0,c.width,c.height);
+  return c;
+}
+function buildMontage(cands){
+  const cols=10, cell=74, top=15, pad=5;
+  const rows=Math.ceil(cands.length/cols);
+  const cv=document.createElement("canvas"); cv.width=cols*cell; cv.height=rows*cell;
+  const ctx=cv.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,cv.width,cv.height);
+  cands.forEach((b,i)=>{
+    const cx=(i%cols)*cell, cy=((i/cols)|0)*cell;
+    const crop=cropFromStage(b[0],b[1],b[2],b[3]);
+    const avail=cell-pad*2-top, r=Math.min(avail/crop.width, avail/crop.height);
+    const dw=crop.width*r, dh=crop.height*r;
+    ctx.drawImage(crop, cx+(cell-dw)/2, cy+top+(avail-dh)/2+pad, dw, dh);
+    ctx.fillStyle="#1140aa"; ctx.font="bold 11px monospace"; ctx.fillText(String(i+1), cx+4, cy+12);
+    ctx.strokeStyle="#e2e2e2"; ctx.strokeRect(cx+0.5,cy+0.5,cell-1,cell-1);
+  });
+  return cv;
+}
+function autoAddGlyph(ch,cropCanvas){
+  if(glyphs[ch]) return false;
+  const opt={thr:null,invert:false,largest:true,smooth:false};
+  const {mask,W,H,empty}=cropToMask(cropCanvas,opt);
+  if(empty) return false;
+  const role=ROLE_DEFAULT[ch]||"cap";
+  if(!maskToPath(mask,W,H,role,0,100)) return false;
+  glyphs[ch]={ dataURL:cropCanvas.toDataURL("image/png"),
+    thr:null, invert:false, largest:true, smooth:false,
+    role, ny:0, sc:100, lsb:90, rsb:90 };
+  return true;
+}
+$("autoScanBtn").onclick=async()=>{
+  if($("stage").hidden){ toast("Load a page first."); return; }
+  const btn=$("autoScanBtn"); const label=btn.textContent;
+  btn.disabled=true; btn.textContent="✦ reading the page…";
+  try{
+    const cands=segmentPage(80);
+    if(!cands.length){ toast("No letter-sized marks found here — try another page."); }
+    else {
+    const b64=buildMontage(cands).toDataURL("image/png").split(",")[1];
+    const prompt="This image is a numbered grid of small crops taken from a page of handwriting. "+
+      "For EACH numbered cell, decide whether it shows exactly ONE clearly readable character "+
+      "(a letter A-Z or a-z, a digit 0-9, or common punctuation . , ! ? ; : ' \" - ( ) & $ % / @ #). "+
+      "Return ONLY a JSON object mapping the cell number as a string to that single character, "+
+      'e.g. {"1":"a","2":"H","7":"3"}. OMIT any cell that shows more than one letter, a joined word, '+
+      "a partial stroke, or anything ambiguous. No prose, no markdown, no code fences.";
+    let txt=await callClaude([
+      {type:"image",source:{type:"base64",media_type:"image/png",data:b64}},
+      {type:"text",text:prompt}
+    ]);
+    txt=txt.replace(/```json|```/g,"").trim();
+    let map={}; try{ map=JSON.parse(txt); }catch(e){ const mm=txt.match(/\{[\s\S]*\}/); if(mm){ try{map=JSON.parse(mm[0]);}catch(_){} } }
+    const allChars=new Set([].concat(...Object.values(SETS)));
+    let added=0; const filled=[]; const sectionsTouched=new Set();
+    for(const [k,vRaw] of Object.entries(map)){
+      const idx=(+k)-1; if(!(idx>=0&&idx<cands.length)) continue;
+      const ch=[...String(vRaw)][0]; if(!ch||!allChars.has(ch)||glyphs[ch]) continue;
+      const crop=cropFromStage(cands[idx][0],cands[idx][1],cands[idx][2],cands[idx][3]);
+      if(autoAddGlyph(ch,crop)){ added++; filled.push(ch);
+        for(const [name,arr] of Object.entries(SETS)) if(arr.includes(ch)) sectionsTouched.add(name);
+      }
+    }
+    renderPalette(); refreshBuild();
+    if(added){
+      if(!glyphs[selectedChar]) { /* keep current selection */ }
+      const empties=[].concat(...Object.values(SETS)).filter(c=>!glyphs[c]).length;
+      toast("✦ Auto-filled "+added+" letter"+(added>1?"s":"")+": "+filled.join(" ")+
+            "  ·  "+empties+" slots still empty — scan more pages or grab them by hand.");
+    } else {
+      toast("Couldn't confidently read new letters on this page. Try a clearer page, zoom is not needed — or grab a few manually.");
+    }
+    }
+  }catch(err){ toast(aiErr(err)); }
+  btn.disabled=false; btn.textContent=label;
+};
+
+
+let detections=[];
+function clearDetections(){ document.querySelectorAll(".detbox").forEach(n=>n.remove()); detections=[]; }
+$("detectBtn").onclick=()=>{
+  if($("stage").hidden){ toast("Load a page first."); return; }
+  clearDetections();
+  const cv=$("stage"); const w=cv.width,h=cv.height;
+  const d=cv.getContext("2d").getImageData(0,0,w,h).data;
+  // downsample for speed
+  const SC=Math.max(1,Math.round(Math.max(w,h)/700));
+  const gw=Math.floor(w/SC),gh=Math.floor(h/SC); const m=new Uint8Array(gw*gh); const hist=new Uint32Array(256);
+  const g2=new Uint8Array(gw*gh);
+  for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){ const j=((y*SC)*w+(x*SC))*4; const lum=(0.299*d[j]+0.587*d[j+1]+0.114*d[j+2])|0; g2[y*gw+x]=lum; hist[lum]++; }
+  const thr=otsu(hist,gw*gh);
+  for(let i=0;i<g2.length;i++) m[i]=g2[i]<thr?1:0;
+  // connected comps
+  const lab=new Int32Array(gw*gh); let id=0; const box=[];
+  const st=[];
+  for(let i=0;i<m.length;i++) if(m[i]&&!lab[i]){ id++; st.length=0; st.push(i); lab[i]=id;
+    let x0=gw,y0=gh,x1=0,y1=0,area=0;
+    while(st.length){ const p=st.pop(); area++; const x=p%gw,y=(p/gw)|0;
+      if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
+      if(x>0&&m[p-1]&&!lab[p-1]){lab[p-1]=id;st.push(p-1);}
+      if(x<gw-1&&m[p+1]&&!lab[p+1]){lab[p+1]=id;st.push(p+1);}
+      if(y>0&&m[p-gw]&&!lab[p-gw]){lab[p-gw]=id;st.push(p-gw);}
+      if(y<gh-1&&m[p+gw]&&!lab[p+gw]){lab[p+gw]=id;st.push(p+gw);}
+    }
+    const bw=(x1-x0+1)*SC, bh=(y1-y0+1)*SC;
+    if(area>12 && bh>14*0.6 && bh<h*0.18 && bw<w*0.12) box.push([x0*SC,y0*SC,bw,bh]);
+  }
+  const wrapR=stageWrap.getBoundingClientRect(); const cvR=cv.getBoundingClientRect();
+  const sx=cvR.width/cv.width, sy=cvR.height/cv.height;
+  box.slice(0,400).forEach(([bx,by,bw,bh])=>{
+    const el=document.createElement("div"); el.className="detbox";
+    el.style.cssText=`position:absolute;border:1px solid rgba(47,93,80,.8);background:rgba(47,93,80,.08);cursor:pointer;`;
+    el.style.left=(cvR.left-wrapR.left+stageWrap.scrollLeft+bx*sx)+"px"; el.style.top=(cvR.top-wrapR.top+stageWrap.scrollTop+by*sy)+"px";
+    el.style.width=(bw*sx)+"px"; el.style.height=(bh*sy)+"px";
+    el.title="Grab this blob";
+    el.onclick=ev=>{ ev.stopPropagation(); captureCrop(bx-2,by-2,bw+4,bh+4); };
+    stageWrap.appendChild(el);
+  });
+  toast(box.length+" ink blobs found — click one to grab it. (Joined words stay joined.)");
+};
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function waitForOpentype(){
+  if(window.opentype){ renderTabs(); renderPalette(); drawTester(); selectedChar="A"; selectChar("A",false); }
+  else setTimeout(waitForOpentype,80);
+}
+waitForOpentype();
+</script>

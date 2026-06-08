@@ -199,6 +199,7 @@ function AudioDirectory({
   spaces,
   iframeRef,
   playingId,
+  pausedId,
   onPlay,
   onNavigate,
   playAllActive,
@@ -208,6 +209,7 @@ function AudioDirectory({
   spaces: TourSpace[];
   iframeRef: React.RefObject<HTMLIFrameElement>;
   playingId: string | null;
+  pausedId: string | null;
   onPlay: (track: AudioTrack) => void;
   onNavigate: (spaceId: string) => void;
   playAllActive: boolean;
@@ -279,20 +281,30 @@ function AudioDirectory({
             {/* Tracks */}
             {tracks.map((track) => {
               const isPlaying = playingId === track.id;
+              const isPaused  = pausedId  === track.id;
+              const isActive  = isPlaying || isPaused;
               return (
                 <button
                   key={track.id}
                   onClick={() => onPlay(track)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 pl-8 transition-all hover:bg-white/[0.04] ${
-                    isPlaying ? "bg-primary/5" : ""
+                    isPlaying ? "bg-primary/5" : isPaused ? "bg-amber-500/5" : ""
                   }`}
                 >
                   <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
-                    isPlaying ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    isPlaying ? "bg-primary text-primary-foreground"
+                    : isPaused ? "bg-amber-500/20 text-amber-400"
+                    : "bg-muted text-muted-foreground"
                   }`}>
-                    {isPlaying ? <Pause size={10} /> : track.isSpaceNarration ? <Mic size={10} /> : <Volume2 size={10} />}
+                    {isPlaying ? <Pause size={10} />
+                     : isPaused ? <Play size={10} />
+                     : track.isSpaceNarration ? <Mic size={10} /> : <Volume2 size={10} />}
                   </div>
-                  <span className={`text-xs flex-1 text-left leading-snug line-clamp-2 ${isPlaying ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                  <span className={`text-xs flex-1 text-left leading-snug line-clamp-2 ${
+                    isPlaying ? "text-primary font-medium"
+                    : isPaused ? "text-amber-400 font-medium"
+                    : "text-muted-foreground"
+                  }`}>
                     {track.name}
                   </span>
                   {isPlaying && (
@@ -301,6 +313,9 @@ function AudioDirectory({
                         <span key={i} className="w-0.5 bg-primary rounded-full animate-pulse" style={{ height: 10 + i * 4, animationDelay: `${i * 0.15}s` }} />
                       ))}
                     </span>
+                  )}
+                  {isPaused && (
+                    <span className="flex-shrink-0 text-[9px] text-amber-400 font-medium">paused</span>
                   )}
                 </button>
               );
@@ -334,6 +349,7 @@ export function ListingDetail() {
 
   // Audio state — lives here so it persists during navigation
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [pausedId,  setPausedId]  = useState<string | null>(null);
   const [playAllActive, setPlayAllActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -381,6 +397,13 @@ export function ListingDetail() {
   function stopCurrentAudio() {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.onended = null; audioRef.current = null; }
     setPlayingId(null);
+    setPausedId(null);
+  }
+
+  function pauseCurrentAudio() {
+    if (audioRef.current) audioRef.current.pause();
+    setPausedId(playingId);
+    setPlayingId(null);
   }
 
   function navigateToSpace(spaceId: string) {
@@ -403,12 +426,20 @@ export function ListingDetail() {
   }
 
   function handlePlay(track: AudioTrack) {
-    // If same track playing → stop it
     if (playingId === track.id) {
-      stopCurrentAudio();
+      // Same track playing → pause it (keep position)
+      pauseCurrentAudio();
       setPlayAllActive(false);
       return;
     }
+    if (pausedId === track.id) {
+      // Same track paused → resume from where it left off
+      audioRef.current?.play().catch(() => {});
+      setPlayingId(track.id);
+      setPausedId(null);
+      return;
+    }
+    // Different track → stop current and play new
     setPlayAllActive(false);
     playTrack(track);
   }
@@ -621,6 +652,7 @@ export function ListingDetail() {
                   spaces={spaces}
                   iframeRef={iframeRef}
                   playingId={playingId}
+                  pausedId={pausedId}
                   onPlay={handlePlay}
                   onNavigate={navigateToSpace}
                   playAllActive={playAllActive}
