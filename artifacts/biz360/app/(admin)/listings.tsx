@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "@/context/AuthContext";
+import { DEMO_USERS, useAuth } from "@/context/AuthContext";
 import { DEMO_LISTINGS } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { CleanupSettings, DEFAULT_CLEANUP_SETTINGS, getCleanupSettings, PendingListing, useAdminPending } from "@/lib/adminStore";
@@ -80,7 +80,7 @@ async function deleteCloudinaryFolder(submittedBy: string, listingId: string) {
 export default function AdminListings() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, logout, login, restoreReal } = useAuth();
   const { data: pending, setData: setPending } = useAdminPending();
   const [tab, setTab]                       = useState<Tab>("pending");
   const [cleanupSettings, setCleanupSettings] = useState<CleanupSettings>(DEFAULT_CLEANUP_SETTINGS);
@@ -100,7 +100,12 @@ export default function AdminListings() {
 
   const showAccountMenu = () => {
     Alert.alert(user?.name ?? "Admin", user?.email ?? "", [
-      { text: "Switch Account", onPress: () => router.replace("/(auth)/welcome" as any) },
+      { text: "Switch Account", onPress: () => Alert.alert("Switch Role", "Choose a demo account to test with:", [
+          { text: "Buyer",     onPress: async () => { await login(DEMO_USERS.buyer);  router.replace("/(tabs)/discover" as any); } },
+          { text: "My Seller", onPress: async () => { await restoreReal();             router.replace("/(seller)/dashboard" as any); } },
+          { text: "Broker",    onPress: async () => { await login(DEMO_USERS.broker); router.replace("/(broker)/dashboard" as any); } },
+          { text: "Cancel", style: "cancel" },
+        ]) },
       {
         text: "Sign Out", style: "destructive", onPress: async () => {
           await logout();

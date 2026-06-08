@@ -4,7 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "@/context/AuthContext";
+import { DEMO_USERS, useAuth } from "@/context/AuthContext";
 import { formatPrice } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { getBrokers, getPendingListings, PendingListing } from "@/lib/adminStore";
@@ -22,7 +22,7 @@ const PLAN_COLORS: Record<string, string> = {
 export default function BrokerDashboard() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, logout, login, restoreReal } = useAuth();
   const { leads } = useLeads();
 
   const [myListings, setMyListings]       = useState<PendingListing[]>([]);
@@ -95,7 +95,12 @@ export default function BrokerDashboard() {
   const showAccountMenu = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert(user?.name ?? "Account", user?.email ?? "", [
-      { text: "Switch Account", onPress: () => router.replace("/(auth)/welcome" as any) },
+      { text: "Switch Account", onPress: () => Alert.alert("Switch Role", "Choose a demo account to test with:", [
+          { text: "Buyer",     onPress: async () => { await login(DEMO_USERS.buyer);  router.replace("/(tabs)/discover" as any); } },
+          { text: "My Seller", onPress: async () => { await restoreReal();             router.replace("/(seller)/dashboard" as any); } },
+          { text: "Admin",     onPress: async () => { await login(DEMO_USERS.admin);  router.replace("/(admin)/listings" as any); } },
+          { text: "Cancel", style: "cancel" },
+        ]) },
       { text: "Sign Out", style: "destructive", onPress: async () => { await logout(); router.replace("/(auth)/welcome" as any); } },
       { text: "Cancel", style: "cancel" },
     ]);
