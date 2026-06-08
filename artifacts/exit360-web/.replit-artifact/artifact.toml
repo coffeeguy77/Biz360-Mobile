@@ -1,31 +1,32 @@
 kind = "web"
-previewPath = "/exit360/"
-title = "EXIT360 — Business Marketplace"
-version = "1.0.0"
-id = "artifacts/exit360-web"
-router = "path"
+  previewPath = "/"
+  title = "EXIT360 — Business Marketplace"
+  version = "1.0.0"
+  id = "artifacts/exit360-web"
+  router = "path"
 
-[[integratedSkills]]
-name = "react-vite"
-version = "1.0.0"
+  [[integratedSkills]]
+  name = "react-vite"
+  version = "1.0.0"
 
-[[services]]
-name = "web"
-paths = [ "/exit360/" ]
-localPort = 25700
+  [[services]]
+  name = "web"
+  paths = [ "/" ]
+  localPort = 25700
 
-[services.development]
-run = "pnpm --filter @workspace/exit360-web run dev"
+  [services.development]
+  run = "pnpm --filter @workspace/exit360-web run dev"
 
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/exit360-web", "run", "build" ]
-publicDir = "artifacts/exit360-web/dist/public"
-serve = "static"
+  [services.production]
+  build = [ "pnpm", "--filter", "@workspace/exit360-web", "run", "build" ]
+  publicDir = "artifacts/exit360-web/dist/public"
+  serve = "static"
 
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+  [[services.production.rewrites]]
+  from = "/*"
+  to = "/index.html"
 
-[services.env]
-PORT = "25700"
-BASE_PATH = "/exit360/"
+  [services.env]
+  PORT = "25700"
+  BASE_PATH = "/"
+  
