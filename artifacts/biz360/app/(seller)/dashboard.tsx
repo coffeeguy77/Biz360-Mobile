@@ -314,6 +314,7 @@ export default function SellerDashboard() {
     Alert.alert(user?.name ?? "Account", user?.email ?? "", [
       { text: "Switch Account", onPress: () => Alert.alert("Switch Role", "Choose a demo account to test with:", [
           { text: "Buyer",     onPress: async () => { await login(DEMO_USERS.buyer);  router.replace("/(tabs)/discover" as any); } },
+          { text: "My Seller", onPress: async () => { await restoreReal();             router.replace("/(seller)/dashboard" as any); } },
           { text: "Broker",    onPress: async () => { await login(DEMO_USERS.broker); router.replace("/(broker)/dashboard" as any); } },
           { text: "Admin",     onPress: async () => { await login(DEMO_USERS.admin);  router.replace("/(admin)/listings" as any); } },
           { text: "Cancel", style: "cancel" },
