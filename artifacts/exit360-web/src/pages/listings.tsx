@@ -18,7 +18,7 @@ import {
 import { DEMO_LISTINGS, formatPrice, formatRevenue, type Listing } from "@/data/listings";
 
 const CATEGORIES = ["All", "Food & Beverage", "Health & Beauty", "Health & Fitness", "Services"];
-const STATES = ["All States", "VIC", "NSW", "QLD", "WA", "SA"];
+const STATES = ["All States", "ACT", "VIC", "NSW", "QLD", "WA", "SA"];
 
 const BADGE_CONFIG: Record<string, { label: string; color: string }> = {
   identity:   { label: "ID Verified",    color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
@@ -31,13 +31,17 @@ const BADGE_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 function ListingCard({ listing }: { listing: Listing }) {
-  const annualProfit = listing.adjustedProfit;
-  const multiple = listing.askingPrice / annualProfit;
+  const hasProfit = listing.adjustedProfit > 0;
+  const multiple = hasProfit ? (listing.askingPrice / listing.adjustedProfit).toFixed(1) + "×" : "—";
 
   return (
     <article
       data-testid={`card-listing-${listing.id}`}
-      className="group bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/40 transition-all duration-300 hover:shadow-[0_0_40px_rgba(59,130,246,0.08)] flex flex-col"
+      className={`group bg-card border rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-[0_0_40px_rgba(59,130,246,0.08)] flex flex-col ${
+        listing.isRealListing
+          ? "border-amber-500/40 hover:border-amber-400/60 shadow-[0_0_20px_rgba(217,119,6,0.07)]"
+          : "border-border hover:border-primary/40"
+      }`}
     >
       {/* Image */}
       <div className="relative h-48 overflow-hidden bg-muted">
@@ -54,7 +58,12 @@ function ListingCard({ listing }: { listing: Listing }) {
           </div>
         )}
         {/* Overlay badges */}
-        <div className="absolute top-3 left-3 flex gap-2">
+        <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
+          {listing.isRealListing && (
+            <span className="flex items-center gap-1 bg-amber-500 text-black text-xs font-bold px-2.5 py-1 rounded-full shadow-lg">
+              ✦ Live Listing
+            </span>
+          )}
           {listing.hasTour && (
             <span className="flex items-center gap-1 bg-primary text-primary-foreground text-xs font-semibold px-2 py-1 rounded-full">
               <Camera size={11} /> 360° Tour
@@ -99,7 +108,7 @@ function ListingCard({ listing }: { listing: Listing }) {
             <div className="text-[11px] text-muted-foreground font-medium mt-0.5">Revenue p.a.</div>
           </div>
           <div className="bg-background rounded-xl p-3 text-center border border-border">
-            <div className="text-lg font-bold text-foreground">{multiple.toFixed(1)}×</div>
+            <div className={`text-lg font-bold ${hasProfit ? "text-foreground" : "text-muted-foreground"}`}>{multiple}</div>
             <div className="text-[11px] text-muted-foreground font-medium mt-0.5">Profit Multiple</div>
           </div>
         </div>

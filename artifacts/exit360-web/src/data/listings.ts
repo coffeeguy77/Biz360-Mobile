@@ -8,6 +8,7 @@ export interface Listing {
   askingPrice: number;
   weeklyRevenue: number;
   adjustedProfit: number;
+  isRealListing?: boolean;
   rent: number;
   leaseExpiry: string;
   staffCount: number;
@@ -25,6 +26,33 @@ export interface Listing {
 }
 
 export const DEMO_LISTINGS: Listing[] = [
+  {
+    id: "user-listing-1779894194896",
+    businessName: "Bean Culture Espresso Bar",
+    category: "Food & Beverage",
+    subcategory: "Specialty Coffee Roastery & Espresso Bar",
+    state: "ACT",
+    suburb: "Mitchell",
+    askingPrice: 300000,
+    weeklyRevenue: 15000,
+    adjustedProfit: 0,
+    rent: 0,
+    leaseExpiry: "",
+    staffCount: 4,
+    ownerHours: 40,
+    verified: true,
+    badges: ["identity", "abn", "financials", "lease", "equipment", "tour", "broker", "accountant"],
+    hasTour: true,
+    confidential: false,
+    heroColor: "#D97706",
+    imageUrl: "https://res.cloudinary.com/dzx6x1hou/image/upload/v1780049037/biz360/u-61414631463-1779893721125/user-listing-1779894194896/pano_1780049035695.jpg",
+    description:
+      "Speciality coffee company roastery and espresso bar. 23-space virtual tour including roastery floor, hydroponic coffee farm, barista stations, retail and development rooms. Relocating interstate.",
+    savedCount: 0,
+    viewCount: 84,
+    tourStarts: 181,
+    isRealListing: true,
+  },
   {
     id: "listing-cafe-001",
     businessName: "The Daily Press Espresso Bar",
