@@ -488,12 +488,19 @@ export default function TourScreen() {
               <Text style={[styles.navPillText, { color: showRoomNav ? "#fff" : "rgba(255,255,255,0.5)" }]}>NAV</Text>
             </TouchableOpacity>
           )}
-          {showRoomNav && (
-            <View style={styles.compassPill}>
-              <Text style={styles.compassDir}>{yawToLabel(liveYaw)}</Text>
-              <Text style={styles.compassDeg}>{Math.round(liveYaw)}°</Text>
-            </View>
-          )}
+          {showRoomNav && (() => {
+            const northOffset = activeSpace?.trueNorthYaw ?? 0;
+            const calibratedYaw = northOffset !== 0
+              ? ((liveYaw - northOffset) % 360 + 360) % 360
+              : liveYaw;
+            return (
+              <View style={styles.compassPill}>
+                {northOffset !== 0 && <Text style={{ fontSize: 10, marginRight: 2 }}>🧭</Text>}
+                <Text style={styles.compassDir}>{yawToLabel(calibratedYaw)}</Text>
+                <Text style={styles.compassDeg}>{Math.round(calibratedYaw)}°</Text>
+              </View>
+            );
+          })()}
           <TouchableOpacity style={styles.iconBtn} onPress={() => setShowTourGuide(true)}>
             <Feather name="help-circle" size={18} color="#fff" />
           </TouchableOpacity>

@@ -118,6 +118,9 @@ export interface TourSpace {
   // Default facing direction when entering this space (0=N, 90=E, 180=S, 270=W).
   // Nav-pin targetYaw overrides this; falls back to panoramaStartYaw then 0.
   defaultYaw?: number;
+  // True North calibration: panorama yaw that corresponds to real-world North (0°).
+  // Compass display formula: realDeg = (panoramaYaw − trueNorthYaw + 360) % 360
+  trueNorthYaw?: number;
   pins: TourPin[];
   dirMode?: 4 | 8 | "panorama" | "single";
   // Scene-level audio narration

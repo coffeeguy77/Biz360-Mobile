@@ -253,6 +253,8 @@ interface DraftSpace {
   isStartScene?: boolean;
   // Default facing direction when entering this space (0=N…315=NW)
   defaultYaw?: number;
+  // True North calibration: panorama yaw that maps to real-world North
+  trueNorthYaw?: number;
 }
 
 const EMPTY_SPACE: DraftSpace = {
@@ -383,6 +385,8 @@ export default function ToursScreen() {
   const [audioUploadingPin,     setAudioUploadingPin]     = useState(false);
   const [imageUploadingLook,    setImageUploadingLook]    = useState(false);
   const [navDegText,            setNavDegText]            = useState("");
+  const [defaultYawDegText,     setDefaultYawDegText]     = useState("");
+  const [trueNorthPlaceMode,    setTrueNorthPlaceMode]    = useState(false);
   const [deleteMode,            setDeleteMode]            = useState(false);
   const [pendingDeleteSpaceId,  setPendingDeleteSpaceId]  = useState<string | null>(null);
   const [pendingDeletePinId,    setPendingDeletePinId]    = useState<string | null>(null);
@@ -689,7 +693,9 @@ export default function ToursScreen() {
       audioTranscript:space.audioTranscript ?? "",
       isStartScene:   space.isStartScene ?? false,
       defaultYaw:     space.defaultYaw,
+      trueNorthYaw:   space.trueNorthYaw,
     });
+    setDefaultYawDegText(space.defaultYaw !== undefined ? String(space.defaultYaw) : "");
     setEditingSpaceId(space.id);
     setShowSpaceModal(true);
   };
@@ -755,6 +761,7 @@ export default function ToursScreen() {
       audioTranscript: draftSpace.audioTranscript?.trim() || undefined,
       isStartScene:    draftSpace.isStartScene ?? false,
       defaultYaw:      draftSpace.defaultYaw,
+      trueNorthYaw:    draftSpace.trueNorthYaw,
     };
 
     try {
@@ -1140,7 +1147,11 @@ export default function ToursScreen() {
                       return (
                         <TouchableOpacity
                           key={label}
-                          onPress={() => setDraftSpace((p) => ({ ...p, defaultYaw: active ? undefined : yaw }))}
+                          onPress={() => {
+                            const newYaw = active ? undefined : yaw;
+                            setDraftSpace((p) => ({ ...p, defaultYaw: newYaw }));
+                            setDefaultYawDegText(newYaw !== undefined ? String(newYaw) : "");
+                          }}
                           style={{
                             paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5,
                             backgroundColor: active ? "#3B82F618" : colors.card,
@@ -1155,15 +1166,51 @@ export default function ToursScreen() {
                       );
                     })}
                   </View>
-                  {currentYaw !== undefined && (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: -4 }}>
-                      <Feather name="compass" size={13} color="#3B82F6" />
-                      <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#3B82F6" }}>
-                        {DIRS.find((d) => d.yaw === currentYaw)?.label ?? (() => { const ls = ["N","NE","E","SE","S","SW","W","NW"]; return ls[Math.round(currentYaw / 45) % 8]; })()}
-                        {"  "}<Text style={{ fontSize: 11, color: "#3B82F699", fontFamily: "Inter_400Regular" }}>{currentYaw}°</Text>
-                      </Text>
+                  {/* Exact degree input */}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <View style={{
+                      flex: 1, flexDirection: "row", alignItems: "center",
+                      borderWidth: 1.5, borderRadius: 8,
+                      borderColor: currentYaw !== undefined && !DIRS.find((d) => d.yaw === currentYaw) ? "#3B82F6" : colors.border,
+                      backgroundColor: currentYaw !== undefined && !DIRS.find((d) => d.yaw === currentYaw) ? "#3B82F610" : colors.card,
+                      paddingHorizontal: 12, paddingVertical: 0,
+                    }}>
+                      <TextInput
+                        style={{ flex: 1, fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.foreground, paddingVertical: 8 }}
+                        placeholder="0 – 359  (exact°)"
+                        placeholderTextColor={colors.mutedForeground}
+                        keyboardType="number-pad"
+                        value={defaultYawDegText}
+                        onChangeText={(t) => {
+                          setDefaultYawDegText(t);
+                          const parsed = parseInt(t, 10);
+                          if (!isNaN(parsed) && parsed >= 0 && parsed <= 359) {
+                            setDraftSpace((p) => ({ ...p, defaultYaw: parsed }));
+                          } else if (t === "") {
+                            setDraftSpace((p) => ({ ...p, defaultYaw: undefined }));
+                          }
+                        }}
+                        onBlur={() => {
+                          const parsed = parseInt(defaultYawDegText, 10);
+                          if (isNaN(parsed) || parsed < 0 || parsed > 359) {
+                            setDefaultYawDegText(currentYaw !== undefined ? String(currentYaw) : "");
+                          }
+                        }}
+                        returnKeyType="done"
+                        maxLength={3}
+                      />
+                      <Text style={{ fontSize: 14, color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }}>°</Text>
                     </View>
-                  )}
+                    {currentYaw !== undefined && (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#3B82F618", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: "#3B82F640" }}>
+                        <Feather name="compass" size={12} color="#3B82F6" />
+                        <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: "#3B82F6" }}>
+                          {DIRS.find((d) => d.yaw === currentYaw)?.label ?? (["N","NE","E","SE","S","SW","W","NW"][Math.round(((currentYaw % 360) + 360) % 360 / 45) % 8])}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: "#3B82F699", fontFamily: "Inter_400Regular" }}>{currentYaw}°</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               );
             })()}
@@ -1347,6 +1394,48 @@ export default function ToursScreen() {
                         );
                       })}
                     </ScrollView>
+
+                    {/* ── True North calibration ── */}
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 12 }]}>TRUE NORTH CALIBRATION</Text>
+                    <Text style={[styles.modeHint, { color: colors.mutedForeground, marginBottom: 8, fontSize: 11 }]}>
+                      Mark which direction in your panorama faces real-world North — buyers will then see accurate compass bearings during the tour
+                    </Text>
+                    {draftSpace.trueNorthYaw !== undefined ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#FBBF2415", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: "#FBBF2480" }}>
+                          <Text style={{ fontSize: 18 }}>🧭</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#FBBF24" }}>North calibrated</Text>
+                            <Text style={{ fontSize: 11, color: "#FBBF2490", fontFamily: "Inter_400Regular" }}>
+                              Panorama yaw {draftSpace.trueNorthYaw}° · tap Adjust to fine-tune
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={{ backgroundColor: colors.card, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: colors.border }}
+                          onPress={() => setTrueNorthPlaceMode(true)}
+                        >
+                          <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: colors.foreground }}>Adjust</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={{ padding: 8 }} onPress={() => setDraftSpace((p) => ({ ...p, trueNorthYaw: undefined }))}>
+                          <Feather name="x" size={16} color={colors.mutedForeground} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.card, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1.5, borderColor: colors.border, marginBottom: 4 }}
+                        onPress={() => setTrueNorthPlaceMode(true)}
+                      >
+                        <Text style={{ fontSize: 18 }}>🧭</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground }}>Mark True North</Text>
+                          <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                            Open the panorama and tap where North is
+                          </Text>
+                        </View>
+                        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+                      </TouchableOpacity>
+                    )}
                   </>
                 )}
               </>
@@ -1695,6 +1784,67 @@ export default function ToursScreen() {
             </View>
           )}
 
+          {/* ── True North placement overlay ── */}
+          {trueNorthPlaceMode && draftSpace.panoramaUri && (
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: "#000", zIndex: 260 }]}
+              onLayout={(e) => setPanoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+            >
+              <Image source={{ uri: draftSpace.panoramaUri }} style={StyleSheet.absoluteFill} resizeMode="stretch" />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.3)" }]} pointerEvents="none" />
+              {/* North marker */}
+              {draftSpace.trueNorthYaw !== undefined && (
+                <View
+                  style={{
+                    position: "absolute",
+                    left: (draftSpace.trueNorthYaw / 360 + 0.5) * panoLayout.width - 20,
+                    top: panoLayout.height * 0.45 - 20,
+                    width: 40, height: 40,
+                    backgroundColor: "#FBBF24",
+                    borderRadius: 20,
+                    alignItems: "center", justifyContent: "center",
+                    borderWidth: 3, borderColor: "#fff",
+                    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4,
+                  }}
+                  pointerEvents="none"
+                >
+                  <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: "#000" }}>N</Text>
+                </View>
+              )}
+              {/* Tap catcher */}
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                activeOpacity={1}
+                onPress={(e) => {
+                  const { locationX } = e.nativeEvent;
+                  const yaw = Math.round((locationX / panoLayout.width - 0.5) * 360);
+                  setDraftSpace((p) => ({ ...p, trueNorthYaw: yaw }));
+                }}
+              />
+              {/* Top bar */}
+              <View style={styles.pinPlaceTopBar}>
+                <TouchableOpacity style={styles.pinPlaceBack} onPress={() => setTrueNorthPlaceMode(false)}>
+                  <Feather name="arrow-left" size={18} color="#fff" />
+                  <Text style={styles.pinPlaceBackText}>Back</Text>
+                </TouchableOpacity>
+                <Text style={styles.pinPlaceTitle}>Tap where North is ↑</Text>
+                <TouchableOpacity style={styles.pinPlaceConfirm} onPress={() => setTrueNorthPlaceMode(false)}>
+                  <Text style={styles.pinPlaceConfirmText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              {/* Bottom hint */}
+              <View style={{ position: "absolute", bottom: 32, left: 0, right: 0, alignItems: "center" }}>
+                <View style={{ backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 13, color: "#fff", fontFamily: "Inter_400Regular", textAlign: "center" }}>
+                    {draftSpace.trueNorthYaw !== undefined
+                      ? `🧭 North marked at ${draftSpace.trueNorthYaw}° — tap Done or tap again to adjust`
+                      : "Tap the part of the panorama that faces real-world North"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* ── Pin config (inline overlay — avoids iOS double-modal freeze) ── */}
           {showPinModal && (
             <View style={[StyleSheet.absoluteFill, { zIndex: 300, backgroundColor: colors.background }]}>
@@ -1797,7 +1947,7 @@ export default function ToursScreen() {
                   Which way should the viewer face when they enter this space?
                 </Text>
                 {(() => {
-                  const DIRS = [
+                  const BASE_DIRS = [
                     { label: "N",  yaw: 0   },
                     { label: "NE", yaw: 45  },
                     { label: "E",  yaw: 90  },
@@ -1807,10 +1957,28 @@ export default function ToursScreen() {
                     { label: "W",  yaw: 270 },
                     { label: "NW", yaw: 315 },
                   ];
+                  const targetSpace = allSpaces.find((s) => s.id === draftPin.targetSpaceId);
+                  const northOffset = targetSpace?.trueNorthYaw ?? 0;
+                  const DIRS = northOffset !== 0
+                    ? BASE_DIRS.map((d) => ({ label: d.label, yaw: ((d.yaw + northOffset) % 360 + 360) % 360 }))
+                    : BASE_DIRS;
                   const currentYaw = draftPin.targetYaw;
                   const presetMatch = DIRS.find((d) => d.yaw === currentYaw);
+                  const YAW_LBLS = ["N","NE","E","SE","S","SW","W","NW"];
+                  const realWorldLabel = northOffset !== 0 && currentYaw !== undefined
+                    ? YAW_LBLS[Math.round(((((currentYaw - northOffset) % 360) + 360) % 360) / 45) % 8]
+                    : presetMatch?.label ?? (currentYaw !== undefined ? YAW_LBLS[Math.round(((currentYaw % 360) + 360) % 360 / 45) % 8] : undefined);
                   return (
                     <View style={{ marginBottom: 16 }}>
+                      {/* Calibrated indicator */}
+                      {northOffset !== 0 && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: "#FBBF2412", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#FBBF2440" }}>
+                          <Text style={{ fontSize: 13 }}>🧭</Text>
+                          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#FBBF24" }}>
+                            Labels show real-world compass (True North calibrated for this space)
+                          </Text>
+                        </View>
+                      )}
                       {/* Compass presets */}
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                         {DIRS.map(({ label, yaw }) => {
@@ -1875,10 +2043,7 @@ export default function ToursScreen() {
                         {currentYaw !== undefined && (
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#2563EB18", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: "#2563EB40" }}>
                             <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: "#2563EB" }}>
-                              {presetMatch ? presetMatch.label : (() => {
-                                const labels = ["N","NE","E","SE","S","SW","W","NW"];
-                                return labels[Math.round(currentYaw / 45) % 8];
-                              })()}
+                              {realWorldLabel ?? ""}
                             </Text>
                             <Text style={{ fontSize: 11, color: "#2563EB99", fontFamily: "Inter_400Regular" }}>{currentYaw}°</Text>
                           </View>
