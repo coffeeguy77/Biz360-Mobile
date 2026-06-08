@@ -70,15 +70,16 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[]): string {
 <html>
 <head>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
 <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"><\/script>
 <style>
   html,body,#pano{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-  @keyframes kfPinBounce{0%,100%{transform:translateX(-50%) translateY(0)}35%{transform:translateX(-50%) translateY(-14px)}60%{transform:translateX(-50%) translateY(-6px)}}
-  @keyframes kfPinShadow{0%,100%{transform:translateX(-50%) scaleX(1);opacity:0.28}35%{transform:translateX(-50%) scaleX(0.52);opacity:0.09}60%{transform:translateX(-50%) scaleX(0.76);opacity:0.18}}
-  .nav-pin-label{position:absolute;top:-26px;left:50%;transform:translateX(-50%);background:rgba(37,99,235,0.92);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .18s}
-  .pnlm-nav-pin-wrap:hover .nav-pin-label{opacity:1!important}
-  .pnlm-hotspot.pnlm-nav-pin-wrap{background:transparent!important;border:none!important;box-shadow:none!important;width:40px!important;height:58px!important;overflow:visible!important}
+  @keyframes kfPinBounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-13px)}60%{transform:translateY(-6px)}}
+  @keyframes kfPinShadow{0%,100%{transform:scaleX(1);opacity:0.28}35%{transform:scaleX(0.55);opacity:0.10}60%{transform:scaleX(0.78);opacity:0.18}}
+  .nav-pin-label{position:absolute;top:-30px;left:50%;transform:translateX(-50%);background:rgba(37,99,235,0.92);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .18s}
+  .pnlm-nav-pin-wrap:hover .nav-pin-label,.pnlm-nav-pin-wrap:active .nav-pin-label{opacity:1!important}
+  .pnlm-hotspot.pnlm-nav-pin-wrap{background:transparent!important;border:none!important;box-shadow:none!important;width:0!important;height:0!important;overflow:visible!important}
   .pnlm-hotspot.pnlm-nav-pin-wrap::before{display:none!important}
   .pnlm-audio-hs{width:32px;height:32px;background:rgba(16,163,74,0.85);border:2px solid rgba(255,255,255,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:0 0 0 4px rgba(16,163,74,0.2);transition:background .2s;user-select:none}
   .pnlm-audio-hs:hover{background:rgba(16,163,74,1)}
@@ -94,22 +95,20 @@ var SPACES=${spacesJson};
 function xToYaw(x){return(x-0.5)*360}
 function yToPitch(y){return(0.5-y)*180}
 function createNavPin(container,args){
-  container.style.width='40px';
-  container.style.height='58px';
-  container.style.marginLeft='-20px';
-  container.style.marginTop='-54px';
-  container.style.position='relative';
-  container.style.cursor='pointer';
-  container.style.overflow='visible';
+  /* 0×0 anchor at the exact hotspot coordinate — children overflow freely */
+  container.style.cssText='width:0;height:0;overflow:visible;cursor:pointer;position:relative';
   container.innerHTML=
-    '<div style="position:absolute;top:0;left:50%;animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite">'+
+    /* SVG pin: top:-44px so the bottom tip aligns with the anchor (hotspot) */
+    '<div style="position:absolute;top:-44px;left:-17px;pointer-events:none;animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite">'+
       '<svg width="34" height="44" viewBox="0 0 34 44" fill="none">'+
         '<path d="M17 2C9.82 2 4 7.82 4 15c0 8.12 11.6 23.5 12.35 24.5a.85.85 0 001.3 0C18.4 38.5 30 23.12 30 15 30 7.82 24.18 2 17 2z" fill="#2563EB" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>'+
         '<circle cx="17" cy="15" r="5.5" fill="white" opacity="0.95"/>'+
       '</svg>'+
     '</div>'+
-    '<div style="position:absolute;bottom:0;left:50%;width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite"></div>'+
-    '<span class="nav-pin-label">'+args.label+'</span>';
+    /* Shadow: just below the anchor */
+    '<div style="position:absolute;top:2px;left:-8px;width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;pointer-events:none;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite"></div>'+
+    /* Label: above the pin, shown on hover */
+    '<span class="nav-pin-label" style="bottom:50px">'+args.label+'</span>';
   container.addEventListener('click',function(e){
     e.stopPropagation();
     try{viewer.loadScene(args.sceneId,0,0,100)}catch(err){}
@@ -170,7 +169,7 @@ function TourViewer({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative rounded-2xl overflow-hidden bg-black" style={{ height: 460 }}>
+      <div className="relative rounded-2xl overflow-hidden bg-black" style={{ height: "clamp(260px, 50vw, 460px)" }}>
         <iframe
           ref={iframeRef}
           srcDoc={srcdoc}
