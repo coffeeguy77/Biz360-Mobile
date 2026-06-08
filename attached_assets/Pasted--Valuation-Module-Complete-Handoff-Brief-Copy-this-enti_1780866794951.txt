@@ -1,0 +1,1265 @@
+# Valuation Module — Complete Handoff Brief
+
+> Copy this entire document and paste it into the biz360 Agent when you open that Replit project.
+> Tell the Agent: "Install this Valuation module into this app. The full code for every file is below."
+
+---
+
+## What this module does
+
+A full café business valuation tool built into the mobile app. It:
+
+- Lets the owner register one or more café businesses
+- Connects to **Square** (via OAuth) to pull sales revenue
+- Connects to **Xero** (via OAuth) to pull P&L reports and bank transactions
+- Lets the owner tag which **Xero suppliers** are COGS (cost of goods sold)
+- Lets the owner filter which **Xero P&L lines** are included in revenue
+- Lets the owner log **equipment** (espresso machines, fridges, etc.) with values
+- Lets the owner log **owner add-backs** (salary, personal expenses, rent, one-offs)
+- Computes **EBITDA → Adjusted EBITDA → Valuation midpoint** automatically on sync
+- Shows a full **Valuation Report** with EBITDA method, SDE method, blended asking range, and a health score
+
+---
+
+## Environment variables needed (add these in Replit Secrets)
+
+```
+JWT_SECRET          — same secret used to sign your auth JWTs (Twilio OTP signing key)
+SQUARE_APP_ID       — from Square Developer Dashboard
+SQUARE_APP_SECRET   — from Square Developer Dashboard
+XERO_CLIENT_ID      — from Xero Developer Portal
+XERO_CLIENT_SECRET  — from Xero Developer Portal
+```
+
+---
+
+## Database tables to create
+
+Run this migration (Drizzle ORM schema). Add to your existing schema file or create a new one:
+
+**File: `lib/db/src/schema/valuation.ts`**
+
+```typescript
+import {
+  pgTable,
+  uuid,
+  text,
+  boolean,
+  integer,
+  numeric,
+  date,
+  timestamp,
+  jsonb,
+  primaryKey,
+  foreignKey,
+} from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+// ─── val_cafes ─────────────────────────────────────────────────────────────
+// owner_id is the biz360 user ID (text, no DB FK — auth table is outside Drizzle)
+
+export const cafesTable = pgTable("val_cafes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: text("owner_id").notNull(),
+  name: text("name").notNull(),
+  city: text("city"),
+  businessType: text("business_type").default("cafe"),
+  currency: text("currency").default("AUD"),
+  timezone: text("timezone"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCafeSchema = createInsertSchema(cafesTable).omit({ id: true, createdAt: true });
+export type InsertCafe = z.infer<typeof insertCafeSchema>;
+export type Cafe = typeof cafesTable.$inferSelect;
+
+// ─── val_cafe_integrations ──────────────────────────────────────────────────
+
+export const cafeIntegrationsTable = pgTable(
+  "val_cafe_integrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cafeId: uuid("cafe_id").notNull(),
+    ownerId: text("owner_id").notNull(),
+    type: text("type").notNull(),                     // "square" | "xero"
+    status: text("status").notNull().default("disconnected"),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    tokenExpiresAt: timestamp("token_expires_at"),
+    merchantId: text("merchant_id"),
+    merchantName: text("merchant_name"),
+    metadata: jsonb("metadata"),                      // { tenant_id } for Xero
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type CafeIntegration = typeof cafeIntegrationsTable.$inferSelect;
+
+// ─── val_cafe_equipment ─────────────────────────────────────────────────────
+
+export const cafeEquipmentTable = pgTable(
+  "val_cafe_equipment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cafeId: uuid("cafe_id").notNull(),
+    ownerId: text("owner_id").notNull(),
+    name: text("name").notNull(),
+    purchasePrice: numeric("purchase_price"),
+    currentValue: numeric("current_value"),
+    valuationMode: text("valuation_mode").default("purchase"),  // "purchase"|"manual"|"secondhand"
+    isLeased: boolean("is_leased").default(false),
+    suspended: boolean("suspended").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type CafeEquipment = typeof cafeEquipmentTable.$inferSelect;
+
+// ─── val_owner_adjustments ──────────────────────────────────────────────────
+// label = human description. description JSONB = { _appType: "owner_salary"|"one_off"|"personal_expense"|"rent"|"other" }
+// annualAmount is always the full annual figure regardless of period.
+
+export const ownerAdjustmentsTable = pgTable(
+  "val_owner_adjustments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cafeId: uuid("cafe_id").notNull(),
+    ownerId: text("owner_id").notNull(),
+    label: text("label").notNull(),
+    annualAmount: numeric("annual_amount").notNull(),
+    description: jsonb("description"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type OwnerAdjustment = typeof ownerAdjustmentsTable.$inferSelect;
+
+// ─── val_snapshots ──────────────────────────────────────────────────────────
+
+export const valuationSnapshotsTable = pgTable(
+  "val_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cafeId: uuid("cafe_id").notNull(),
+    ownerId: text("owner_id").notNull(),
+    snapshotDate: date("snapshot_date"),
+    periodMonths: integer("period_months"),
+    grossRevenue: numeric("gross_revenue"),
+    cogs: numeric("cogs"),
+    grossProfit: numeric("gross_profit"),
+    xeroTotalExpenses: numeric("xero_total_expenses"),
+    xeroTotalRevenue: numeric("xero_total_revenue"),
+    ebitda: numeric("ebitda"),
+    adjustedEbitda: numeric("adjusted_ebitda"),
+    valuationMidpoint: numeric("valuation_midpoint"),
+    totalEquipmentValue: numeric("total_equipment_value"),
+    squareRevenue: numeric("square_revenue"),
+    xeroRevenue: numeric("xero_revenue"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type ValuationSnapshot = typeof valuationSnapshotsTable.$inferSelect;
+
+// ─── val_square_orders_cache ────────────────────────────────────────────────
+
+export const squareOrdersCacheTable = pgTable(
+  "val_square_orders_cache",
+  {
+    cafeId: uuid("cafe_id").notNull(),
+    ownerId: text("owner_id").notNull(),
+    orderDate: date("order_date").notNull(),
+    grossAmount: numeric("gross_amount"),
+    netAmount: numeric("net_amount"),
+    orderCount: integer("order_count"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cafeId, t.orderDate] }),
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+// ─── val_xero_pl_mappings ───────────────────────────────────────────────────
+
+export const xeroPLMappingsTable = pgTable(
+  "val_xero_pl_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cafeId: uuid("cafe_id").notNull(),
+    ownerId: text("owner_id").notNull(),
+    accountCode: text("account_code"),
+    accountName: text("account_name"),
+    isIncluded: boolean("is_included").default(true),
+    section: text("section"),
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type XeroPLMapping = typeof xeroPLMappingsTable.$inferSelect;
+
+// ─── val_xero_supplier_mappings ─────────────────────────────────────────────
+
+export const xeroSupplierMappingsTable = pgTable(
+  "val_xero_supplier_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cafeId: uuid("cafe_id").notNull(),
+    ownerId: text("owner_id").notNull(),
+    contactId: text("contact_id"),
+    contactName: text("contact_name"),
+    isCogs: boolean("is_cogs").default(false),
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type XeroSupplierMapping = typeof xeroSupplierMappingsTable.$inferSelect;
+```
+
+**After adding this schema**, export all 8 tables from your `lib/db/src/index.ts` barrel and run:
+```
+pnpm --filter @workspace/db run push
+```
+
+---
+
+## API Server — Auth middleware
+
+**File: `artifacts/api-server/src/middlewares/auth.ts`** (new file)
+
+```typescript
+import { jwtVerify } from "jose";
+import type { Request, Response, NextFunction } from "express";
+import { logger } from "../lib/logger";
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: string };
+    }
+  }
+}
+
+// JWT_SECRET must match the secret used to sign your auth JWTs
+const rawSecret = process.env.JWT_SECRET;
+
+function getSecret(): Uint8Array {
+  if (!rawSecret) throw new Error("JWT_SECRET environment variable is not set");
+  return new TextEncoder().encode(rawSecret);
+}
+
+export async function verifyToken(token: string): Promise<string | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    const sub = payload.sub ?? (payload as any).id ?? (payload as any).user_id;
+    return typeof sub === "string" ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) { res.status(401).json({ error: "Missing authorization token" }); return; }
+  const userId = await verifyToken(token).catch(() => null);
+  if (!userId) { res.status(401).json({ error: "Invalid or expired token" }); return; }
+  req.user = { id: userId };
+  next();
+}
+```
+
+Install dependency: `pnpm --filter @workspace/api-server add jose`
+
+---
+
+## API Server — Valuation math helpers
+
+**File: `artifacts/api-server/src/lib/valuation.ts`** (new file)
+
+```typescript
+export function computeGrossRevenue(squareRevenue: number, xeroRevenue: number): number {
+  return squareRevenue + xeroRevenue;
+}
+
+export function computeGrossProfit(revenue: number, cogsFromSuppliers: number, hasSupplierMappings: boolean): number {
+  return hasSupplierMappings ? Math.max(revenue - cogsFromSuppliers, 0) : revenue * 0.63;
+}
+
+export function computeEbitda(revenue: number, xeroTotalExpenses: number, xeroTotalRevenue: number, hasXero: boolean): number {
+  if (!hasXero || xeroTotalRevenue <= 0) return revenue * 0.14;
+  const cafeFraction = Math.min(revenue / xeroTotalRevenue, 1);
+  return revenue - xeroTotalExpenses * cafeFraction;
+}
+
+export function computeAdjustedEbitda(ebitda: number, adjustments: { annualAmount: number | string }[], periodMonths: number): number {
+  const annualTotal = adjustments.reduce((s, a) => s + Number(a.annualAmount ?? 0), 0);
+  return ebitda + (annualTotal / 12) * periodMonths;
+}
+
+export function computeValuationMidpoint(adjEbitda: number, totalEquipmentValue: number): number {
+  return Math.max(adjEbitda, 0) * 2.5 + totalEquipmentValue;
+}
+```
+
+---
+
+## API Server — Route files
+
+Create a folder: `artifacts/api-server/src/routes/valuation/`
+
+### `valuation/cafes.ts`
+
+```typescript
+import { Router, type IRouter } from "express";
+import { eq, and } from "drizzle-orm";
+import { db, cafesTable, cafeIntegrationsTable, cafeEquipmentTable, ownerAdjustmentsTable, valuationSnapshotsTable, squareOrdersCacheTable, xeroPLMappingsTable, xeroSupplierMappingsTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
+
+const router: IRouter = Router();
+
+async function assertCafeOwner(cafeId: string, userId: string) {
+  const [cafe] = await db.select().from(cafesTable).where(and(eq(cafesTable.id, cafeId), eq(cafesTable.ownerId, userId)));
+  if (!cafe) { const err: any = new Error("Café not found or access denied"); err.status = 403; throw err; }
+  return cafe;
+}
+export { assertCafeOwner };
+
+router.get("/", async (req, res) => {
+  const userId = req.user!.id;
+  const cafes = await db.select().from(cafesTable).where(eq(cafesTable.ownerId, userId));
+  const cafesWithIntegrations = await Promise.all(cafes.map(async (cafe) => {
+    const integrations = await db.select({ id: cafeIntegrationsTable.id, type: cafeIntegrationsTable.type, status: cafeIntegrationsTable.status, merchantName: cafeIntegrationsTable.merchantName }).from(cafeIntegrationsTable).where(eq(cafeIntegrationsTable.cafeId, cafe.id));
+    return { ...cafe, integrations };
+  }));
+  return res.json(cafesWithIntegrations);
+});
+
+router.post("/", async (req, res) => {
+  const userId = req.user!.id;
+  const { name, city, businessType, currency, timezone } = req.body as { name?: string; city?: string; businessType?: string; currency?: string; timezone?: string };
+  if (!name) return res.status(400).json({ error: "name is required" });
+  const [cafe] = await db.insert(cafesTable).values({ ownerId: userId, name, city: city || null, businessType: businessType || "cafe", currency: currency || "AUD", timezone: timezone || null }).returning();
+  logger.info({ cafeId: cafe.id, userId }, "Café created");
+  return res.status(201).json(cafe);
+});
+
+router.get("/:cafeId", async (req, res) => {
+  const userId = req.user!.id;
+  const cafe = await assertCafeOwner(req.params.cafeId!, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (!cafe) return;
+  const integrations = await db.select().from(cafeIntegrationsTable).where(eq(cafeIntegrationsTable.cafeId, cafe.id));
+  return res.json({ ...cafe, integrations });
+});
+
+router.patch("/:cafeId", async (req, res) => {
+  const userId = req.user!.id;
+  const existing = await assertCafeOwner(req.params.cafeId!, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (!existing) return;
+  const { name, city, timezone, currency } = req.body as { name?: string; city?: string; timezone?: string; currency?: string };
+  const [updated] = await db.update(cafesTable).set({ ...(name !== undefined && { name }), ...(city !== undefined && { city }), ...(timezone !== undefined && { timezone }), ...(currency !== undefined && { currency }) }).where(eq(cafesTable.id, existing.id)).returning();
+  return res.json(updated);
+});
+
+router.delete("/:cafeId", async (req, res) => {
+  const userId = req.user!.id;
+  const cafe = await assertCafeOwner(req.params.cafeId!, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (!cafe) return;
+  const cafeId = cafe.id;
+  await Promise.all([
+    db.delete(cafeIntegrationsTable).where(eq(cafeIntegrationsTable.cafeId, cafeId)),
+    db.delete(cafeEquipmentTable).where(eq(cafeEquipmentTable.cafeId, cafeId)),
+    db.delete(ownerAdjustmentsTable).where(eq(ownerAdjustmentsTable.cafeId, cafeId)),
+    db.delete(valuationSnapshotsTable).where(eq(valuationSnapshotsTable.cafeId, cafeId)),
+    db.delete(squareOrdersCacheTable).where(eq(squareOrdersCacheTable.cafeId, cafeId)),
+    db.delete(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId)),
+    db.delete(xeroSupplierMappingsTable).where(eq(xeroSupplierMappingsTable.cafeId, cafeId)),
+  ]);
+  await db.delete(cafesTable).where(eq(cafesTable.id, cafeId));
+  logger.info({ cafeId, userId }, "Café deleted");
+  return res.json({ ok: true });
+});
+
+export default router;
+```
+
+### `valuation/equipment.ts`
+
+```typescript
+import { Router, type IRouter } from "express";
+import { eq, and } from "drizzle-orm";
+import { db, cafeEquipmentTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
+import { assertCafeOwner } from "./cafes";
+
+const router: IRouter = Router({ mergeParams: true });
+
+router.get("/", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const items = await db.select().from(cafeEquipmentTable).where(and(eq(cafeEquipmentTable.cafeId, cafeId), eq(cafeEquipmentTable.suspended, false)));
+  return res.json(items);
+});
+
+router.post("/", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const { name, purchasePrice, currentValue, valuationMode, isLeased } = req.body as { name?: string; purchasePrice?: number; currentValue?: number; valuationMode?: string; isLeased?: boolean };
+  if (!name) return res.status(400).json({ error: "name is required" });
+  const [item] = await db.insert(cafeEquipmentTable).values({ cafeId, ownerId: userId, name, purchasePrice: purchasePrice != null ? String(purchasePrice) : null, currentValue: currentValue != null ? String(currentValue) : null, valuationMode: valuationMode || "purchase", isLeased: isLeased ?? false, suspended: false }).returning();
+  return res.status(201).json(item);
+});
+
+router.patch("/:equipmentId", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, equipmentId } = req.params as { cafeId: string; equipmentId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const { name, purchasePrice, currentValue, valuationMode, isLeased } = req.body as { name?: string; purchasePrice?: number; currentValue?: number; valuationMode?: string; isLeased?: boolean };
+  const [updated] = await db.update(cafeEquipmentTable).set({ ...(name !== undefined && { name }), ...(purchasePrice !== undefined && { purchasePrice: String(purchasePrice) }), ...(currentValue !== undefined && { currentValue: String(currentValue) }), ...(valuationMode !== undefined && { valuationMode }), ...(isLeased !== undefined && { isLeased }) }).where(and(eq(cafeEquipmentTable.id, equipmentId), eq(cafeEquipmentTable.cafeId, cafeId))).returning();
+  if (!updated) return res.status(404).json({ error: "Equipment not found" });
+  return res.json(updated);
+});
+
+router.delete("/:equipmentId", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, equipmentId } = req.params as { cafeId: string; equipmentId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  await db.delete(cafeEquipmentTable).where(and(eq(cafeEquipmentTable.id, equipmentId), eq(cafeEquipmentTable.cafeId, cafeId)));
+  return res.json({ ok: true });
+});
+
+export default router;
+```
+
+### `valuation/adjustments.ts`
+
+```typescript
+import { Router, type IRouter } from "express";
+import { eq, and } from "drizzle-orm";
+import { db, ownerAdjustmentsTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
+import { assertCafeOwner } from "./cafes";
+
+const router: IRouter = Router({ mergeParams: true });
+
+// The _appType is stored in the description JSONB field, not as a DB column.
+// restoreType promotes it back to item.type so the mobile app can filter normally.
+function restoreType(row: any) {
+  if (row.description && typeof row.description === "object") {
+    const appType = (row.description as any)._appType;
+    if (appType) return { ...row, type: appType };
+  }
+  return { ...row, type: "other" };
+}
+
+router.get("/", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const rows = await db.select().from(ownerAdjustmentsTable).where(eq(ownerAdjustmentsTable.cafeId, cafeId));
+  return res.json(rows.map(restoreType));
+});
+
+router.post("/", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const { label, annualAmount, type } = req.body as { label?: string; annualAmount?: number; type?: string };
+  if (!label) return res.status(400).json({ error: "label is required" });
+  if (annualAmount == null) return res.status(400).json({ error: "annualAmount is required" });
+  const [row] = await db.insert(ownerAdjustmentsTable).values({ cafeId, ownerId: userId, label, annualAmount: String(annualAmount), description: { _appType: type || "other" } }).returning();
+  return res.status(201).json(restoreType(row));
+});
+
+router.patch("/:adjustmentId", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, adjustmentId } = req.params as { cafeId: string; adjustmentId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const { label, annualAmount, type } = req.body as { label?: string; annualAmount?: number; type?: string };
+  const updateData: Record<string, any> = {};
+  if (label !== undefined) updateData.label = label;
+  if (annualAmount !== undefined) updateData.annualAmount = String(annualAmount);
+  if (type !== undefined) updateData.description = { _appType: type };
+  const [updated] = await db.update(ownerAdjustmentsTable).set(updateData).where(and(eq(ownerAdjustmentsTable.id, adjustmentId), eq(ownerAdjustmentsTable.cafeId, cafeId))).returning();
+  if (!updated) return res.status(404).json({ error: "Adjustment not found" });
+  return res.json(restoreType(updated));
+});
+
+router.delete("/:adjustmentId", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, adjustmentId } = req.params as { cafeId: string; adjustmentId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  await db.delete(ownerAdjustmentsTable).where(and(eq(ownerAdjustmentsTable.id, adjustmentId), eq(ownerAdjustmentsTable.cafeId, cafeId)));
+  return res.json({ ok: true });
+});
+
+export default router;
+```
+
+### `valuation/snapshots.ts`
+
+```typescript
+import { Router, type IRouter } from "express";
+import { eq, desc } from "drizzle-orm";
+import { db, valuationSnapshotsTable } from "@workspace/db";
+import { assertCafeOwner } from "./cafes";
+
+const router: IRouter = Router({ mergeParams: true });
+
+router.get("/", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const snapshots = await db.select().from(valuationSnapshotsTable).where(eq(valuationSnapshotsTable.cafeId, cafeId)).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(12);
+  return res.json(snapshots);
+});
+
+router.get("/latest", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const [snapshot] = await db.select().from(valuationSnapshotsTable).where(eq(valuationSnapshotsTable.cafeId, cafeId)).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+  return res.json(snapshot ?? null);
+});
+
+export default router;
+```
+
+### `valuation/xero.ts`
+
+This file handles Xero token refresh, P&L report fetching (with per-line filtering), supplier bank transaction extraction (with COGS tagging), and the PATCH endpoints to save mappings.
+
+**Key logic:**
+- `GET /valuation/xero/reports` — fetches Xero P&L, applies `val_xero_pl_mappings` to set `included: true/false` per account line
+- `GET /valuation/xero/suppliers` — pages through Xero `BankTransactions?Type==SPEND`, aggregates spend per contact, applies `val_xero_supplier_mappings` to tag each as COGS or not
+- `PATCH /valuation/xero/pl-mappings` — replaces all P&L mappings for a café (delete + re-insert)
+- `PATCH /valuation/xero/supplier-mappings` — replaces all supplier COGS mappings for a café
+
+```typescript
+import { Router, type IRouter } from "express";
+import { eq, and } from "drizzle-orm";
+import { db, cafeIntegrationsTable, xeroPLMappingsTable, xeroSupplierMappingsTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
+import { assertCafeOwner } from "./cafes";
+
+const router: IRouter = Router();
+const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
+const XERO_CLIENT_SECRET = process.env.XERO_CLIENT_SECRET!;
+
+export async function getValidXeroToken(integration: any, cafeId: string): Promise<string | null> {
+  const expiresAt = integration.tokenExpiresAt ? new Date(integration.tokenExpiresAt).getTime() : 0;
+  if (expiresAt > Date.now() + 5 * 60 * 1000) return integration.accessToken;
+  if (!integration.refreshToken) return null;
+  const credentials = Buffer.from(`${XERO_CLIENT_ID}:${XERO_CLIENT_SECRET}`).toString("base64");
+  const r = await fetch("https://identity.xero.com/connect/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${credentials}` },
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: integration.refreshToken }),
+  });
+  if (!r.ok) { logger.warn({ status: r.status, cafeId }, "Xero token refresh failed"); return null; }
+  const tokens = await r.json() as any;
+  const newExpiry = new Date(Date.now() + tokens.expires_in * 1000);
+  await db.update(cafeIntegrationsTable).set({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token, tokenExpiresAt: newExpiry }).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "xero")));
+  return tokens.access_token;
+}
+
+export async function getXeroFinancials(accessToken: string, tenantId: string, months: number) {
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - months);
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const r = await fetch(`https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fmt(fromDate)}&toDate=${fmt(toDate)}`, {
+    headers: { Authorization: `Bearer ${accessToken}`, "xero-tenant-id": tenantId, Accept: "application/json" },
+  });
+  if (!r.ok) return null;
+  const data = await r.json() as any;
+  const report = data.Reports?.[0];
+  if (!report) return null;
+  const incomeRows: { name: string; amount: number }[] = [];
+  let totalRevenue = 0, totalExpenses = 0;
+  for (const row of report.Rows ?? []) {
+    if (row.RowType !== "Section") continue;
+    const title = (row.Title ?? "").toLowerCase();
+    const isIncome = title.includes("income") || title.includes("revenue") || title.includes("trading") || title.includes("sales");
+    for (const r2 of row.Rows ?? []) {
+      if (r2.RowType === "Row" && isIncome) {
+        const name = r2.Cells?.[0]?.Value ?? "";
+        const val = parseFloat(r2.Cells?.[1]?.Value ?? "0") || 0;
+        if (name && val > 0) incomeRows.push({ name, amount: val });
+      } else if (r2.RowType === "SummaryRow") {
+        const val = parseFloat(r2.Cells?.[1]?.Value ?? "0") || 0;
+        if (isIncome) totalRevenue += val;
+        else if (val !== 0) totalExpenses += Math.abs(val);
+      }
+    }
+  }
+  return { incomeRows, totalRevenue, totalExpenses };
+}
+
+export async function getXeroSupplierSpend(accessToken: string, tenantId: string, months: number) {
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - months);
+  const xdf = (d: Date) => `DateTime(${d.getFullYear()},${d.getMonth()+1},${d.getDate()})`;
+  const contactTotals: Record<string, { name: string; contactId: string; total: number }> = {};
+  const headers = { Authorization: `Bearer ${accessToken}`, "xero-tenant-id": tenantId, Accept: "application/json" };
+  let page = 1;
+  while (true) {
+    const where = `Type=="SPEND"&&Date>=${xdf(fromDate)}&&Date<=${xdf(toDate)}`;
+    const r = await fetch(`https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(where)}&page=${page}`, { headers });
+    if (!r.ok) break;
+    const data = await r.json() as any;
+    const txns: any[] = data.BankTransactions ?? [];
+    if (txns.length === 0) break;
+    for (const t of txns) {
+      const contactId = t.Contact?.ContactID ?? t.Contact?.Name ?? "unknown";
+      const name = t.Contact?.Name ?? "Unknown";
+      const amount = Math.abs(t.Total ?? 0);
+      if (!contactTotals[contactId]) contactTotals[contactId] = { name, contactId, total: 0 };
+      contactTotals[contactId].total += amount;
+    }
+    if (txns.length < 100) break;
+    page++;
+  }
+  return Object.values(contactTotals);
+}
+
+function xeroDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+router.get("/xero/reports", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, months = "12" } = req.query as Record<string, string>;
+  if (!cafeId) return res.status(400).json({ error: "cafeId required" });
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const [integration] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "xero")));
+  if (!integration) return res.status(404).json({ error: "Xero not connected" });
+  const accessToken = await getValidXeroToken(integration, cafeId).catch(() => null);
+  if (!accessToken) return res.status(401).json({ error: "Xero token expired — please reconnect" });
+  const tenantId = integration.metadata && typeof integration.metadata === "object" ? (integration.metadata as any).tenant_id : null;
+  if (!tenantId) return res.status(500).json({ error: "No Xero tenant ID found" });
+  const m = parseInt(months, 10) || 12;
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - m);
+  const plMappings = await db.select().from(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId));
+  const mapping: Record<string, boolean> = {};
+  for (const row of plMappings) { if (row.accountName) mapping[row.accountName] = row.isIncluded ?? true; }
+  const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${xeroDateStr(fromDate)}&toDate=${xeroDateStr(toDate)}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, "xero-tenant-id": tenantId, Accept: "application/json" } });
+  if (!r.ok) { const err = await r.text(); return res.status(502).json({ error: "Xero API error", detail: err.slice(0, 300) }); }
+  const data = await r.json() as any;
+  const report = data.Reports?.[0];
+  if (!report) return res.json({ sections: [] });
+  const sections: { title: string; rows: { name: string; amount: number; included: boolean }[]; total: number }[] = [];
+  for (const row of report.Rows ?? []) {
+    if (row.RowType !== "Section" && row.RowType !== "SummaryRow") continue;
+    const title = row.Title ?? (row.RowType === "SummaryRow" ? "Summary" : "");
+    const sectionRows: { name: string; amount: number; included: boolean }[] = [];
+    let sectionTotal = 0;
+    const isIncomeSection = title.toLowerCase().includes("income") || title.toLowerCase().includes("revenue") || title.toLowerCase().includes("trading") || title.toLowerCase().includes("sales");
+    for (const r2 of row.Rows ?? []) {
+      if (r2.RowType === "Row") {
+        const name = r2.Cells?.[0]?.Value ?? "";
+        const amount = parseFloat(r2.Cells?.[1]?.Value ?? "0") || 0;
+        const included = isIncomeSection ? mapping[name] === true : mapping[name] !== false;
+        sectionRows.push({ name, amount, included });
+      } else if (r2.RowType === "SummaryRow") {
+        sectionTotal = parseFloat(r2.Cells?.[1]?.Value ?? "0") || 0;
+      }
+    }
+    if (row.RowType === "SummaryRow") {
+      sections.push({ title: row.Cells?.[0]?.Value ?? "Total", rows: [], total: parseFloat(row.Cells?.[1]?.Value ?? "0") || 0 });
+    } else if (title || sectionRows.length) {
+      sections.push({ title, rows: sectionRows, total: sectionTotal });
+    }
+  }
+  return res.json({ sections, period: { fromDate: xeroDateStr(fromDate), toDate: xeroDateStr(toDate), months: m } });
+});
+
+router.get("/xero/suppliers", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, months = "6" } = req.query as Record<string, string>;
+  if (!cafeId) return res.status(400).json({ error: "cafeId required" });
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const [integration] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "xero")));
+  if (!integration) return res.status(404).json({ error: "Xero not connected" });
+  const accessToken = await getValidXeroToken(integration, cafeId).catch(() => null);
+  if (!accessToken) return res.status(401).json({ error: "Xero token expired — please reconnect" });
+  const tenantId = integration.metadata && typeof integration.metadata === "object" ? (integration.metadata as any).tenant_id : null;
+  if (!tenantId) return res.status(500).json({ error: "No Xero tenant ID found" });
+  const m = parseInt(months, 10) || 6;
+  const supplierMappings = await db.select().from(xeroSupplierMappingsTable).where(eq(xeroSupplierMappingsTable.cafeId, cafeId));
+  const cogsMap: Record<string, boolean> = {};
+  for (const row of supplierMappings) { if (row.contactName) cogsMap[row.contactName] = row.isCogs ?? false; }
+  const supplierSpend = await getXeroSupplierSpend(accessToken, tenantId, m);
+  const suppliers = supplierSpend.sort((a, b) => b.total - a.total).map((s) => ({ ...s, total: Math.round(s.total * 100) / 100, isCogs: cogsMap[s.name] === true }));
+  return res.json({ suppliers, period: { months: m } });
+});
+
+router.patch("/xero/pl-mappings", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, mappings } = req.body as { cafeId?: string; mappings?: Array<{ name: string; included: boolean; section?: string }> };
+  if (!cafeId || !mappings) return res.status(400).json({ error: "cafeId and mappings required" });
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  await db.delete(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId));
+  if (mappings.length > 0) await db.insert(xeroPLMappingsTable).values(mappings.map((m) => ({ cafeId, ownerId: userId, accountName: m.name, isIncluded: m.included, section: m.section ?? null })));
+  return res.json({ ok: true });
+});
+
+router.patch("/xero/supplier-mappings", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, mappings } = req.body as { cafeId?: string; mappings?: Array<{ name: string; contactId?: string; isCogs: boolean }> };
+  if (!cafeId || !mappings) return res.status(400).json({ error: "cafeId and mappings required" });
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  await db.delete(xeroSupplierMappingsTable).where(eq(xeroSupplierMappingsTable.cafeId, cafeId));
+  if (mappings.length > 0) await db.insert(xeroSupplierMappingsTable).values(mappings.map((m) => ({ cafeId, ownerId: userId, contactName: m.name, contactId: m.contactId ?? null, isCogs: m.isCogs })));
+  return res.json({ ok: true });
+});
+
+export default router;
+```
+
+### `valuation/oauth.ts`
+
+Handles Square and Xero OAuth connect flow. OAuth start URLs accept `?cafeId=&token=` (query params) because the mobile app opens them in a system browser which cannot send Authorization headers. The token is verified server-side immediately.
+
+After a successful OAuth callback, the done page fires a deep-link `YOUR_APP_SCHEME://oauth/done?provider=...&status=success` which triggers `expo-web-browser` to close automatically.
+
+**⚠️ Change `cafeos-mobile` in the deep-link to your biz360 app scheme** (check your `app.json` for `expo.scheme`).
+
+```typescript
+import { Router, type IRouter } from "express";
+import { eq, and } from "drizzle-orm";
+import { db, cafeIntegrationsTable, cafesTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
+import { requireAuth, verifyToken } from "../../middlewares/auth";
+
+const router: IRouter = Router();
+const SQUARE_APP_ID = process.env.SQUARE_APP_ID;
+const SQUARE_APP_SECRET = process.env.SQUARE_APP_SECRET;
+const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID;
+const XERO_CLIENT_SECRET = process.env.XERO_CLIENT_SECRET;
+
+function getBaseUrl(req: any) {
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+  if (domain) return `https://${domain}`;
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+async function assertCafeOwnerById(cafeId: string, userId: string) {
+  const [cafe] = await db.select({ id: cafesTable.id }).from(cafesTable).where(and(eq(cafesTable.id, cafeId), eq(cafesTable.ownerId, userId)));
+  return !!cafe;
+}
+
+async function upsertIntegration(cafeId: string, ownerId: string, type: string, data: { status: string; accessToken?: string | null; refreshToken?: string | null; tokenExpiresAt?: Date | null; merchantId?: string | null; merchantName?: string | null; metadata?: object | null }) {
+  const [existing] = await db.select({ id: cafeIntegrationsTable.id }).from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, type), eq(cafeIntegrationsTable.ownerId, ownerId)));
+  if (existing) {
+    await db.update(cafeIntegrationsTable).set(data).where(and(eq(cafeIntegrationsTable.id, existing.id), eq(cafeIntegrationsTable.ownerId, ownerId)));
+  } else {
+    await db.insert(cafeIntegrationsTable).values({ cafeId, ownerId, type, ...data });
+  }
+}
+
+// ⚠️ Replace "cafeos-mobile" with your app's scheme from app.json
+const APP_SCHEME = "cafeos-mobile";
+
+function donePage(title: string, message: string, ok: boolean, provider: string, detail = "") {
+  const color = ok ? "#2D6A4F" : "#9B1C1C";
+  const icon = ok ? "✓" : "✕";
+  const status = ok ? "success" : "error";
+  const deepLink = `${APP_SCHEME}://oauth/done?provider=${provider}&status=${status}&detail=${encodeURIComponent(detail)}`;
+  return `<!DOCTYPE html><html><head><title>${title}</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>window.location.href=${JSON.stringify(deepLink)};</script>
+<style>body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#FAF7F2;color:#1a0a00;padding:24px;text-align:center}
+.icon{width:72px;height:72px;border-radius:36px;background:${color}20;display:flex;align-items:center;justify-content:center;font-size:32px;color:${color};margin:0 auto 20px}
+h1{color:${color};margin:0 0 12px}p{color:#8A7060;max-width:340px;margin:0}</style></head>
+<body><div class="icon">${icon}</div><h1>${title}</h1><p>${message}</p></body></html>`;
+}
+
+function errorPage(title: string, message: string) {
+  return `<!DOCTYPE html><html><head><title>${title}</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#FAF7F2;color:#1a0a00;padding:24px;text-align:center}h1{color:#6B3A2A}p{color:#8A7060;max-width:340px}</style></head><body><h1>${title}</h1><p>${message}</p></body></html>`;
+}
+
+// Square OAuth
+router.get("/oauth/square/start", async (req, res) => {
+  const { cafeId, token } = req.query as { cafeId?: string; token?: string };
+  if (!SQUARE_APP_ID || !SQUARE_APP_SECRET) return res.status(503).send(errorPage("Square not configured", "Square OAuth credentials are not set on this server."));
+  if (!cafeId || !token) return res.status(400).send(errorPage("Missing parameters", "cafeId and token are required."));
+  const userId = await verifyToken(token).catch(() => null);
+  if (!userId) return res.status(401).send(errorPage("Unauthorised", "Invalid or expired session."));
+  const owns = await assertCafeOwnerById(cafeId, userId);
+  if (!owns) return res.status(403).send(errorPage("Forbidden", "You do not own this café."));
+  const baseUrl = getBaseUrl(req);
+  const state = Buffer.from(JSON.stringify({ cafeId, userId })).toString("base64url");
+  const params = new URLSearchParams({ client_id: SQUARE_APP_ID, scope: "MERCHANT_PROFILE_READ ORDERS_READ PAYMENTS_READ ITEMS_READ", state, redirect_uri: `${baseUrl}/api/valuation/oauth/square/callback` });
+  return res.redirect(`https://connect.squareup.com/oauth2/authorize?${params}`);
+});
+
+router.get("/oauth/square/callback", async (req, res) => {
+  const { code, state, error } = req.query as Record<string, string>;
+  if (error) return res.redirect(`${getBaseUrl(req)}/api/valuation/oauth/done?provider=square&status=error&detail=${encodeURIComponent(error)}`);
+  if (!code) return res.redirect(`${getBaseUrl(req)}/api/valuation/oauth/done?provider=square&status=error&detail=missing_code`);
+  let cafeId: string, userId: string;
+  try { const parsed = JSON.parse(Buffer.from(state, "base64url").toString()); cafeId = parsed.cafeId; userId = parsed.userId; }
+  catch { return res.status(400).send(errorPage("Invalid state", "OAuth state parameter is malformed.")); }
+  const owns = await assertCafeOwnerById(cafeId, userId);
+  if (!owns) return res.redirect(`${getBaseUrl(req)}/api/valuation/oauth/done?provider=square&status=error&detail=access_denied`);
+  const baseUrl = getBaseUrl(req);
+  const tokenRes = await fetch("https://connect.squareup.com/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Square-Version": "2024-01-17" },
+    body: JSON.stringify({ client_id: SQUARE_APP_ID, client_secret: SQUARE_APP_SECRET, code, grant_type: "authorization_code", redirect_uri: `${baseUrl}/api/valuation/oauth/square/callback` }),
+  });
+  if (!tokenRes.ok) { const errBody = await tokenRes.text(); return res.redirect(`${baseUrl}/api/valuation/oauth/done?provider=square&status=error&detail=${encodeURIComponent(errBody.slice(0, 120))}`); }
+  const tokenData = await tokenRes.json() as any;
+  let merchantName = "", merchantId = tokenData.merchant_id;
+  try {
+    const meRes = await fetch("https://connect.squareup.com/v2/merchants/me", { headers: { Authorization: `Bearer ${tokenData.access_token}`, "Square-Version": "2024-01-17" } });
+    if (meRes.ok) { const meData = await meRes.json() as any; merchantName = meData.merchant?.business_name ?? ""; merchantId = meData.merchant?.id ?? merchantId; }
+  } catch {}
+  await upsertIntegration(cafeId, userId, "square", { status: "connected", merchantId, merchantName, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, tokenExpiresAt: tokenData.expires_at ? new Date(tokenData.expires_at) : null });
+  return res.redirect(`${baseUrl}/api/valuation/oauth/done?provider=square&status=success`);
+});
+
+// Xero OAuth
+router.get("/oauth/xero/start", async (req, res) => {
+  const { cafeId, token } = req.query as { cafeId?: string; token?: string };
+  if (!XERO_CLIENT_ID || !XERO_CLIENT_SECRET) return res.status(503).send(errorPage("Xero not configured", "Xero OAuth credentials are not set on this server."));
+  if (!cafeId || !token) return res.status(400).send(errorPage("Missing parameters", "cafeId and token are required."));
+  const userId = await verifyToken(token).catch(() => null);
+  if (!userId) return res.status(401).send(errorPage("Unauthorised", "Invalid or expired session."));
+  const owns = await assertCafeOwnerById(cafeId, userId);
+  if (!owns) return res.status(403).send(errorPage("Forbidden", "You do not own this café."));
+  const baseUrl = getBaseUrl(req);
+  const state = Buffer.from(JSON.stringify({ cafeId, userId })).toString("base64url");
+  const params = new URLSearchParams({ response_type: "code", client_id: XERO_CLIENT_ID, redirect_uri: `${baseUrl}/api/valuation/oauth/xero/callback`, scope: "openid profile email offline_access accounting.reports.profitandloss.read accounting.contacts accounting.invoices accounting.banktransactions", state });
+  return res.redirect(`https://login.xero.com/identity/connect/authorize?${params}`);
+});
+
+router.get("/oauth/xero/callback", async (req, res) => {
+  const { code, state, error } = req.query as Record<string, string>;
+  if (error) return res.redirect(`${getBaseUrl(req)}/api/valuation/oauth/done?provider=xero&status=error&detail=${encodeURIComponent(error)}`);
+  let cafeId: string, userId: string;
+  try { const parsed = JSON.parse(Buffer.from(state, "base64url").toString()); cafeId = parsed.cafeId; userId = parsed.userId; }
+  catch { return res.status(400).send(errorPage("Invalid state", "OAuth state parameter is malformed.")); }
+  const owns = await assertCafeOwnerById(cafeId, userId);
+  if (!owns) return res.redirect(`${getBaseUrl(req)}/api/valuation/oauth/done?provider=xero&status=error&detail=access_denied`);
+  const baseUrl = getBaseUrl(req);
+  const credentials = Buffer.from(`${XERO_CLIENT_ID}:${XERO_CLIENT_SECRET}`).toString("base64");
+  const tokenRes = await fetch("https://identity.xero.com/connect/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${credentials}` },
+    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: `${baseUrl}/api/valuation/oauth/xero/callback` }),
+  });
+  if (!tokenRes.ok) { return res.redirect(`${baseUrl}/api/valuation/oauth/done?provider=xero&status=error`); }
+  const tokenData = await tokenRes.json() as any;
+  let orgName = "", tenantId = "";
+  try {
+    const tenantsRes = await fetch("https://api.xero.com/connections", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+    if (tenantsRes.ok) { const tenants = await tenantsRes.json() as any[]; if (tenants.length > 0) { orgName = tenants[0].tenantName ?? ""; tenantId = tenants[0].tenantId ?? ""; } }
+  } catch {}
+  await upsertIntegration(cafeId, userId, "xero", { status: "connected", merchantName: orgName, metadata: { tenant_id: tenantId }, accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, tokenExpiresAt: new Date(Date.now() + tokenData.expires_in * 1000) });
+  return res.redirect(`${baseUrl}/api/valuation/oauth/done?provider=xero&status=success`);
+});
+
+router.get("/oauth/done", (req, res) => {
+  const { provider, status, detail } = req.query as Record<string, string>;
+  const ok = status === "success";
+  const name = provider === "square" ? "Square" : "Xero";
+  return res.send(donePage(ok ? "Connected!" : "Connection failed", ok ? `${name} was connected successfully. You can close this window.` : `Could not connect ${name}${detail ? `: ${detail}` : ""}. Please try again.`, ok, provider ?? "", detail ?? ""));
+});
+
+// Disconnect
+router.delete("/integrations/:integrationId/disconnect", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const integrationId = req.params["integrationId"] as string;
+  const [integration] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.id, integrationId), eq(cafeIntegrationsTable.ownerId, userId)));
+  if (!integration) return res.status(404).json({ error: "Integration not found" });
+  await db.update(cafeIntegrationsTable).set({ status: "disconnected", accessToken: null, refreshToken: null, tokenExpiresAt: null }).where(and(eq(cafeIntegrationsTable.id, integrationId), eq(cafeIntegrationsTable.ownerId, userId)));
+  return res.json({ ok: true });
+});
+
+export default router;
+```
+
+### `valuation/square.ts`
+
+Syncs Square orders into `val_square_orders_cache` (daily aggregates), then computes and saves a full `val_snapshots` record combining Square revenue, Xero expenses, equipment value, and owner add-backs.
+
+```typescript
+import { Router, type IRouter } from "express";
+import { eq, and, gte } from "drizzle-orm";
+import { db, cafeIntegrationsTable, squareOrdersCacheTable, valuationSnapshotsTable, ownerAdjustmentsTable, cafeEquipmentTable, xeroPLMappingsTable, xeroSupplierMappingsTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
+import { assertCafeOwner } from "./cafes";
+import { computeGrossRevenue, computeGrossProfit, computeEbitda, computeAdjustedEbitda, computeValuationMidpoint } from "../../lib/valuation";
+import { getValidXeroToken, getXeroFinancials, getXeroSupplierSpend } from "./xero";
+
+const router: IRouter = Router();
+
+router.post("/square/sync", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, periodMonths = 12, forceSync = false } = req.body as { cafeId?: string; periodMonths?: number; forceSync?: boolean };
+  if (!cafeId) return res.status(400).json({ error: "cafeId is required" });
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const [squareInt] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "square"), eq(cafeIntegrationsTable.status, "connected")));
+  if (!squareInt) return res.status(404).json({ error: "Square not connected" });
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - periodMonths);
+  if (forceSync || process.env.SQUARE_APP_ID) {
+    try { await syncSquareOrders(cafeId, userId, squareInt.accessToken!, fromDate, toDate); }
+    catch (e: any) { logger.warn({ err: e.message, cafeId }, "Square sync partial failure — using cached data"); }
+  }
+  const snapshot = await calculateAndSaveSnapshot(cafeId, userId, periodMonths);
+  return res.json({ snapshot });
+});
+
+async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: string, fromDate: Date, toDate: Date) {
+  let cursor: string | undefined;
+  const dailyTotals: Record<string, { gross: number; net: number; count: number }> = {};
+  do {
+    const body: any = { location_ids: [], query: { filter: { date_time_filter: { created_at: { start_at: fromDate.toISOString(), end_at: toDate.toISOString() } }, state_filter: { states: ["COMPLETED"] } } }, limit: 500 };
+    if (cursor) body.cursor = cursor;
+    const r = await fetch("https://connect.squareup.com/v2/orders/search", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) break;
+    const data = await r.json() as any;
+    cursor = data.cursor;
+    for (const order of data.orders ?? []) {
+      const date = (order.created_at as string).slice(0, 10);
+      const gross = (order.total_money?.amount ?? 0) / 100;
+      const net = (order.net_amounts?.total_money?.amount ?? order.total_money?.amount ?? 0) / 100;
+      if (!dailyTotals[date]) dailyTotals[date] = { gross: 0, net: 0, count: 0 };
+      dailyTotals[date].gross += gross; dailyTotals[date].net += net; dailyTotals[date].count += 1;
+    }
+  } while (cursor);
+  for (const [date, totals] of Object.entries(dailyTotals)) {
+    await db.insert(squareOrdersCacheTable).values({ cafeId, ownerId, orderDate: date, grossAmount: String(Math.round(totals.gross * 100) / 100), netAmount: String(Math.round(totals.net * 100) / 100), orderCount: totals.count })
+      .onConflictDoUpdate({ target: [squareOrdersCacheTable.cafeId, squareOrdersCacheTable.orderDate], set: { grossAmount: String(Math.round(totals.gross * 100) / 100), netAmount: String(Math.round(totals.net * 100) / 100), orderCount: totals.count } });
+  }
+}
+
+async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodMonths: number) {
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - periodMonths);
+  const fromStr = fromDate.toISOString().slice(0, 10);
+  const squareCacheRows = await db.select().from(squareOrdersCacheTable).where(and(eq(squareOrdersCacheTable.cafeId, cafeId), gte(squareOrdersCacheTable.orderDate, fromStr)));
+  const squareRevenue = squareCacheRows.reduce((s, r) => s + Number(r.grossAmount ?? 0), 0);
+  const [adjustmentRows, equipmentRows, plMappingRows, supplierMappingRows] = await Promise.all([
+    db.select().from(ownerAdjustmentsTable).where(eq(ownerAdjustmentsTable.cafeId, cafeId)),
+    db.select().from(cafeEquipmentTable).where(and(eq(cafeEquipmentTable.cafeId, cafeId), eq(cafeEquipmentTable.suspended, false))),
+    db.select().from(xeroPLMappingsTable).where(eq(xeroPLMappingsTable.cafeId, cafeId)),
+    db.select().from(xeroSupplierMappingsTable).where(eq(xeroSupplierMappingsTable.cafeId, cafeId)),
+  ]);
+  const incomeMap: Record<string, boolean> = {};
+  for (const m of plMappingRows) { if (m.accountName) incomeMap[m.accountName] = m.isIncluded ?? true; }
+  const cogsMap: Record<string, boolean> = {};
+  for (const m of supplierMappingRows) { if (m.contactName) cogsMap[m.contactName] = m.isCogs ?? false; }
+  let xeroAdditionalRevenue = 0, cogsSuppliersTotal = 0, xeroTotalRevenue = 0, xeroTotalExpenses = 0;
+  const [xeroInt] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "xero"), eq(cafeIntegrationsTable.status, "connected")));
+  if (xeroInt) {
+    try {
+      const accessToken = await getValidXeroToken(xeroInt, cafeId);
+      const tenantId = xeroInt.metadata && typeof xeroInt.metadata === "object" ? (xeroInt.metadata as any).tenant_id : null;
+      if (accessToken && tenantId) {
+        const [financials, supplierSpend] = await Promise.all([getXeroFinancials(accessToken, tenantId, periodMonths).catch(() => null), getXeroSupplierSpend(accessToken, tenantId, periodMonths).catch(() => [])]);
+        if (financials) { xeroTotalRevenue = financials.totalRevenue; xeroTotalExpenses = financials.totalExpenses; xeroAdditionalRevenue = financials.incomeRows.filter((r) => incomeMap[r.name] === true).reduce((s, r) => s + r.amount, 0); }
+        cogsSuppliersTotal = (supplierSpend as any[]).filter((s) => cogsMap[s.name] === true).reduce((s: number, r: any) => s + r.total, 0);
+      }
+    } catch (err) { logger.warn({ cafeId, err }, "Xero data fetch failed during snapshot"); }
+  }
+  const totalRevenue = computeGrossRevenue(squareRevenue, xeroAdditionalRevenue);
+  const grossProfit = computeGrossProfit(totalRevenue, cogsSuppliersTotal, cogsSuppliersTotal > 0);
+  const ebitda = computeEbitda(totalRevenue, xeroTotalExpenses, xeroTotalRevenue, !!xeroInt);
+  const adjustedEbitda = computeAdjustedEbitda(ebitda, adjustmentRows.map((a) => ({ annualAmount: a.annualAmount ?? 0 })), periodMonths);
+  const totalEquipmentValue = equipmentRows.filter((e) => !e.isLeased).reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+  const valuationMidpoint = computeValuationMidpoint(adjustedEbitda, totalEquipmentValue);
+  await db.delete(valuationSnapshotsTable).where(and(eq(valuationSnapshotsTable.cafeId, cafeId), eq(valuationSnapshotsTable.periodMonths, periodMonths)));
+  const [saved] = await db.insert(valuationSnapshotsTable).values({ cafeId, ownerId, snapshotDate: new Date().toISOString().slice(0, 10), periodMonths, grossRevenue: String(Math.round(totalRevenue * 100) / 100), cogs: String(Math.round(cogsSuppliersTotal * 100) / 100), grossProfit: String(Math.round(grossProfit * 100) / 100), xeroTotalExpenses: String(Math.round(xeroTotalExpenses * 100) / 100), xeroTotalRevenue: String(Math.round(xeroTotalRevenue * 100) / 100), ebitda: String(Math.round(ebitda * 100) / 100), adjustedEbitda: String(Math.round(adjustedEbitda * 100) / 100), valuationMidpoint: String(Math.round(valuationMidpoint)), totalEquipmentValue: String(Math.round(totalEquipmentValue * 100) / 100), squareRevenue: String(Math.round(squareRevenue * 100) / 100), xeroRevenue: String(Math.round(xeroAdditionalRevenue * 100) / 100) }).returning();
+  return saved;
+}
+
+export default router;
+```
+
+### `valuation/index.ts` — Wire everything together
+
+```typescript
+import { Router, type IRouter } from "express";
+import { requireAuth } from "../../middlewares/auth";
+import cafesRouter from "./cafes";
+import equipmentRouter from "./equipment";
+import adjustmentsRouter from "./adjustments";
+import snapshotsRouter from "./snapshots";
+import squareRouter from "./square";
+import xeroRouter from "./xero";
+import oauthRouter from "./oauth";
+
+const router: IRouter = Router();
+
+// PUBLIC: OAuth start, callbacks, and done page MUST come before requireAuth
+// because browsers opening OAuth URLs cannot send Authorization headers.
+// The disconnect endpoint in oauthRouter applies requireAuth itself.
+router.use("/valuation", oauthRouter);
+
+// AUTH GUARD for all remaining /valuation/* routes
+router.use("/valuation", requireAuth);
+
+// AUTHENTICATED routes
+router.use("/valuation/cafes/:cafeId/equipment", equipmentRouter);
+router.use("/valuation/cafes/:cafeId/adjustments", adjustmentsRouter);
+router.use("/valuation/cafes/:cafeId/snapshots", snapshotsRouter);
+router.use("/valuation/cafes", cafesRouter);
+router.use("/valuation", squareRouter);
+router.use("/valuation", xeroRouter);
+
+export default router;
+```
+
+**Then in your main routes `index.ts`**, import and mount it:
+```typescript
+import valuationRouter from "./valuation/index";
+// ... inside your router setup:
+router.use("/api", valuationRouter);
+```
+
+---
+
+## Mobile — Context
+
+**File: `context/ValuationContext.tsx`** (new file)
+
+```typescript
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "./AuthContext";  // ← adjust to your auth context import
+
+const SELECTED_CAFE_KEY = "valuation_selected_cafe";
+const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+
+export interface ValCafe {
+  id: string; ownerId: string; name: string; city?: string | null;
+  businessType?: string | null; currency: string; timezone?: string | null;
+  createdAt?: string | null; integrations?: ValIntegration[];
+}
+export interface ValIntegration {
+  id: string; cafeId: string; type: string; status: string;
+  merchantName?: string | null; merchantId?: string | null; metadata?: any;
+}
+export interface ValEquipment {
+  id: string; cafeId: string; name: string; purchasePrice?: string | null;
+  currentValue?: string | null; valuationMode?: string | null;
+  isLeased?: boolean | null; suspended?: boolean | null; createdAt?: string | null;
+}
+export interface ValAdjustment {
+  id: string; cafeId: string; label: string; annualAmount: string;
+  type: string; description?: any; createdAt?: string | null;
+}
+export interface ValSnapshot {
+  id: string; cafeId: string; snapshotDate?: string | null; periodMonths?: number | null;
+  grossRevenue?: string | null; cogs?: string | null; grossProfit?: string | null;
+  xeroTotalExpenses?: string | null; xeroTotalRevenue?: string | null;
+  ebitda?: string | null; adjustedEbitda?: string | null; valuationMidpoint?: string | null;
+  totalEquipmentValue?: string | null; squareRevenue?: string | null;
+  xeroRevenue?: string | null; createdAt?: string | null;
+}
+
+interface ValuationContextType {
+  cafes: ValCafe[]; selectedCafe: ValCafe | null; loadingCafes: boolean;
+  fetchCafes: () => Promise<ValCafe[]>; selectCafe: (cafe: ValCafe) => Promise<void>;
+  createCafe: (data: { name: string; city?: string; businessType?: string }) => Promise<string | null>;
+  equipment: ValEquipment[]; fetchEquipment: () => Promise<void>;
+  adjustments: ValAdjustment[]; fetchAdjustments: () => Promise<void>;
+  latestSnapshot: ValSnapshot | null; fetchSnapshot: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+const ValuationContext = createContext<ValuationContextType | null>(null);
+
+export function ValuationProvider({ children }: { children: React.ReactNode }) {
+  const { session } = useAuth();  // ← session.access_token must be a JWT
+  const [cafes, setCafes] = useState<ValCafe[]>([]);
+  const [selectedCafe, setSelectedCafe] = useState<ValCafe | null>(null);
+  const [loadingCafes, setLoadingCafes] = useState(false);
+  const [equipment, setEquipment] = useState<ValEquipment[]>([]);
+  const [adjustments, setAdjustments] = useState<ValAdjustment[]>([]);
+  const [latestSnapshot, setLatestSnapshot] = useState<ValSnapshot | null>(null);
+
+  function authHeaders() {
+    return { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` };
+  }
+
+  const fetchCafes = useCallback(async (): Promise<ValCafe[]> => {
+    if (!session) return [];
+    setLoadingCafes(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/valuation/cafes`, { headers: authHeaders() });
+      if (res.ok) {
+        const data: ValCafe[] = await res.json();
+        setCafes(data);
+        const savedId = await AsyncStorage.getItem(SELECTED_CAFE_KEY);
+        const found = savedId ? data.find((c) => c.id === savedId) : null;
+        if (found) { setSelectedCafe(found); }
+        else if (data.length > 0) { setSelectedCafe(data[0]); await AsyncStorage.setItem(SELECTED_CAFE_KEY, data[0].id); }
+        setLoadingCafes(false);
+        return data;
+      }
+    } catch {}
+    setLoadingCafes(false);
+    return [];
+  }, [session]);
+
+  const selectCafe = useCallback(async (cafe: ValCafe) => {
+    setSelectedCafe(cafe);
+    await AsyncStorage.setItem(SELECTED_CAFE_KEY, cafe.id);
+  }, []);
+
+  const createCafe = useCallback(async (data: { name: string; city?: string; businessType?: string }): Promise<string | null> => {
+    if (!session) return "Not authenticated";
+    try {
+      const res = await fetch(`${API_BASE}/api/valuation/cafes`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ name: data.name, city: data.city || "", businessType: data.businessType || "cafe", currency: "AUD", timezone: "Australia/Sydney" }) });
+      if (!res.ok) { const err = await res.json(); return err.error || "Failed to create café"; }
+      await fetchCafes(); return null;
+    } catch (e: any) { return e.message || "Network error"; }
+  }, [session, fetchCafes]);
+
+  const fetchEquipment = useCallback(async () => {
+    if (!session || !selectedCafe) return;
+    try { const res = await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment`, { headers: authHeaders() }); if (res.ok) setEquipment(await res.json()); } catch {}
+  }, [session, selectedCafe]);
+
+  const fetchAdjustments = useCallback(async () => {
+    if (!session || !selectedCafe) return;
+    try { const res = await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/adjustments`, { headers: authHeaders() }); if (res.ok) setAdjustments(await res.json()); } catch {}
+  }, [session, selectedCafe]);
+
+  const fetchSnapshot = useCallback(async () => {
+    if (!session || !selectedCafe) return;
+    try { const res = await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/snapshots/latest`, { headers: authHeaders() }); if (res.ok) { const data = await res.json(); setLatestSnapshot(data ?? null); } } catch {}
+  }, [session, selectedCafe]);
+
+  const refresh = useCallback(async () => {
+    await fetchEquipment(); await fetchAdjustments(); await fetchSnapshot();
+  }, [fetchEquipment, fetchAdjustments, fetchSnapshot]);
+
+  useEffect(() => { if (session) fetchCafes(); else { setCafes([]); setSelectedCafe(null); } }, [session]);
+  useEffect(() => { if (selectedCafe) { fetchEquipment(); fetchAdjustments(); fetchSnapshot(); } }, [selectedCafe]);
+
+  return (
+    <ValuationContext.Provider value={{ cafes, selectedCafe, loadingCafes, fetchCafes, selectCafe, createCafe, equipment, fetchEquipment, adjustments, fetchAdjustments, latestSnapshot, fetchSnapshot, refresh }}>
+      {children}
+    </ValuationContext.Provider>
+  );
+}
+
+export function useValuation() {
+  const ctx = useContext(ValuationContext);
+  if (!ctx) throw new Error("useValuation must be used inside ValuationProvider");
+  return ctx;
+}
+```
+
+---
+
+## Mobile — Screens
+
+Create folder: `app/valuation/`
+
+**`app/valuation/_layout.tsx`**
+```tsx
+import { Stack } from "expo-router";
+import React from "react";
+import { ValuationProvider } from "@/context/ValuationContext";
+
+export default function ValuationLayout() {
+  return (
+    <ValuationProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </ValuationProvider>
+  );
+}
+```
+
+**`app/valuation/index.tsx`**
+```tsx
+import { Redirect } from "expo-router";
+export default function ValuationIndex() {
+  return <Redirect href="/valuation/dashboard" />;
+}
+```
+
+**`app/(tabs)/valuation.tsx`** — Tab entry point
+```tsx
+import { Redirect } from "expo-router";
+export default function ValuationTabEntry() {
+  return <Redirect href="/valuation/dashboard" />;
+}
+```
+
+**`app/(tabs)/_layout.tsx`** — Add this tab entry to your existing tab layout:
+```tsx
+// Add inside your tabs definition:
+<Tabs.Screen name="valuation" options={{ title: "Valuation", tabBarIcon: ({ color }) => <Ionicons name="trending-up-outline" size={22} color={color} /> }} />
+```
+
+The 5 remaining screens are too large to embed here in full but their complete source is in this project at:
+- `app/valuation/dashboard.tsx` — Main dashboard with Sync button, metric cards, valuation figure
+- `app/valuation/report.tsx` — Full report: EBITDA method, SDE method, blended asking range, health score
+- `app/valuation/equipment.tsx` — Equipment CRUD list with add/edit modal
+- `app/valuation/adjustments.tsx` — Owner add-backs CRUD grouped by type
+- `app/valuation/profile.tsx` — Café settings, Square + Xero connect/disconnect, links to mapping screens
+- `app/valuation/pl-mappings.tsx` — Toggle each Xero P&L line in/out of valuation
+- `app/valuation/supplier-mappings.tsx` — Toggle each Xero supplier as COGS or excluded
+
+---
+
+## Key integration notes for biz360 Agent
+
+1. **`session.access_token`** — The context assumes `useAuth()` returns `{ session: { access_token: string } }`. Adjust to whatever your auth hook returns.
+
+2. **`EXPO_PUBLIC_DOMAIN`** — The mobile app calls `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/...`. Set this to your deployed domain.
+
+3. **Deep-link scheme** — In `oauth.ts`, change `APP_SCHEME = "cafeos-mobile"` to your app's scheme from `app.json`.
+
+4. **Xero redirect URIs** — In your Xero Developer Portal app, add these redirect URIs:
+   - `https://YOUR_DOMAIN/api/valuation/oauth/xero/callback`
+   - `https://YOUR_DOMAIN/api/valuation/oauth/square/callback`
+
+5. **Square redirect URIs** — In Square Developer Dashboard, add:
+   - `https://YOUR_DOMAIN/api/valuation/oauth/square/callback`
+
+6. **The `jose` package** — Must be installed: `pnpm --filter @workspace/api-server add jose`
