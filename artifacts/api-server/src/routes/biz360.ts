@@ -1,8 +1,15 @@
 import { Router } from "express";
 import { eq, and, desc, isNull } from "drizzle-orm";
-import { db, kvStore, cafesTable, valuationSnapshotsTable } from "@workspace/db";
+import {
+  db, kvStore, cafesTable, valuationSnapshotsTable,
+  reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
+} from "@workspace/db";
 import twilio from "twilio";
 import { v2 as cloudinary } from "cloudinary";
+import {
+  signReportAccessToken, verifyReportAccessToken, checkPwd,
+} from "./valuation/report-access";
+import { verifyToken } from "../middlewares/auth";
 
 cloudinary.config({
   cloud_name:  process.env.CLOUDINARY_CLOUD_NAME,
@@ -257,6 +264,146 @@ router.post("/biz360/cleanup", async (_req, res): Promise<void> => {
 export { runCleanup };
 
 // ─── Twilio Verify — phone OTP ─────────────────────────────────────────────────
+
+// ─── Public report access endpoints ──────────────────────────────────────────
+
+router.get("/public/listing/:listingId/access-check", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  try {
+    const [settings] = await db.select().from(reportAccessSettingsTable)
+      .where(eq(reportAccessSettingsTable.listingId, listingId));
+
+    if (!settings || settings.accessMode === "public") {
+      res.json({ mode: "public", hasAccess: true });
+      return;
+    }
+
+    let viewerPhone: string | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const userId = await verifyToken(authHeader.slice(7)).catch(() => null);
+      if (userId) viewerPhone = userId.replace(/^u-/, "").replace(/^(\d+)$/, "+$1");
+    }
+
+    const reportToken = req.headers["x-report-token"] as string | undefined;
+
+    if (settings.accessMode === "password") {
+      const tokenOk = reportToken ? await verifyReportAccessToken(reportToken, listingId) : false;
+      res.json({
+        mode: "password",
+        hasAccess: tokenOk,
+        smsUnlockEnabled: settings.smsUnlockEnabled,
+      });
+      return;
+    }
+
+    if (settings.accessMode === "users") {
+      let granted = false;
+      if (viewerPhone) {
+        const normalised = viewerPhone.replace(/\s/g, "");
+        const [grant] = await db.select().from(reportAccessGrantsTable).where(
+          and(
+            eq(reportAccessGrantsTable.listingId, listingId),
+            eq(reportAccessGrantsTable.phone, normalised),
+          )
+        );
+        granted = !!grant;
+      }
+      res.json({ mode: "users", hasAccess: granted });
+      return;
+    }
+
+    if (settings.accessMode === "users_and_password") {
+      let granted = false;
+      if (viewerPhone) {
+        const normalised = viewerPhone.replace(/\s/g, "");
+        const [grant] = await db.select().from(reportAccessGrantsTable).where(
+          and(
+            eq(reportAccessGrantsTable.listingId, listingId),
+            eq(reportAccessGrantsTable.phone, normalised),
+          )
+        );
+        granted = !!grant;
+      }
+      if (!granted && reportToken) {
+        granted = await verifyReportAccessToken(reportToken, listingId);
+      }
+      res.json({
+        mode: "users_and_password",
+        hasAccess: granted,
+        smsUnlockEnabled: settings.smsUnlockEnabled,
+      });
+      return;
+    }
+
+    res.json({ mode: settings.accessMode, hasAccess: false });
+  } catch {
+    res.status(500).json({ error: "Access check failed" });
+  }
+});
+
+router.post("/public/listing/:listingId/verify-password", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const { password } = req.body as { password?: string };
+  if (!password) { res.status(400).json({ error: "password required" }); return; }
+  try {
+    const [settings] = await db.select().from(reportAccessSettingsTable)
+      .where(eq(reportAccessSettingsTable.listingId, listingId));
+    if (!settings?.passwordHash) { res.status(403).json({ error: "No password set" }); return; }
+    const ok = await checkPwd(password, settings.passwordHash);
+    if (!ok) { res.status(403).json({ error: "Incorrect password" }); return; }
+    const token = await signReportAccessToken(listingId);
+    res.json({ ok: true, token });
+  } catch {
+    res.status(500).json({ error: "Verification failed" });
+  }
+});
+
+router.post("/public/listing/:listingId/request-sms-password", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const { phone } = req.body as { phone?: string };
+  if (!phone) { res.status(400).json({ error: "phone required" }); return; }
+  try {
+    const [settings] = await db.select().from(reportAccessSettingsTable)
+      .where(eq(reportAccessSettingsTable.listingId, listingId));
+    if (!settings?.smsUnlockEnabled || !settings.passwordHash) {
+      res.status(403).json({ error: "SMS unlock not enabled" }); return;
+    }
+    const client = getTwilioClient();
+    await client.messages.create({
+      to: phone,
+      from: process.env.TWILIO_PHONE_NUMBER ?? undefined,
+      messagingServiceSid: process.env.TWILIO_MESSAGING_SID ?? undefined,
+      body: `Your EXIT360 report password has been requested. Please contact the listing agent or use the password provided to you.`,
+    }).catch(() => null);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "SMS failed" });
+  }
+});
+
+router.post("/public/listing/:listingId/log-view", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const { phone, documentType } = req.body as { phone?: string; documentType?: string };
+  try {
+    let viewerPhone = phone ?? null;
+    const authHeader = req.headers.authorization;
+    if (!viewerPhone && authHeader?.startsWith("Bearer ")) {
+      const userId = await verifyToken(authHeader.slice(7)).catch(() => null);
+      if (userId) viewerPhone = userId.replace(/^u-/, "").replace(/^(\d+)$/, "+$1");
+    }
+    await db.insert(reportViewEventsTable).values({
+      listingId,
+      viewerPhone,
+      viewerIp: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+      documentType: documentType ?? "financials",
+    });
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
+});
 
 function getTwilioClient() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;

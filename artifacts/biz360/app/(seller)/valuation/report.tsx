@@ -164,6 +164,13 @@ export default function ReportScreen() {
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.foreground }]}>Valuation Report</Text>
+          <TouchableOpacity
+            onPress={() => router.push("/(seller)/valuation/report-access" as any)}
+            style={[styles.accessBtn, { backgroundColor: "#1E3A5C" }]}
+          >
+            <Feather name="lock" size={15} color={colors.foreground} />
+            <Text style={[styles.accessBtnText, { color: colors.foreground }]}>Access</Text>
+          </TouchableOpacity>
         </View>
 
         {tabs.length > 1 && (
@@ -258,4 +265,6 @@ const styles = StyleSheet.create({
   publishedText:  { fontSize: 13, fontFamily: "Inter_500Medium", color: "#16A34A" },
   publishBtn:     { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, paddingVertical: 16 },
   publishBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  accessBtn:      { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginLeft: "auto" },
+  accessBtnText:  { fontSize: 13, fontFamily: "Inter_500Medium" },
 });

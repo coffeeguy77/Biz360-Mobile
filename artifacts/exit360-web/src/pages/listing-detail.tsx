@@ -17,6 +17,9 @@ import {
   Mic,
   SkipForward,
   ListMusic,
+  Lock,
+  KeyRound,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DEMO_LISTINGS, formatPrice, formatRevenue, type Listing } from "@/data/listings";
@@ -396,6 +399,19 @@ export function ListingDetail() {
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
   const [liveData, setLiveData] = useState<{ listing: any; snapshot: any } | null>(null);
 
+  // Report access gate state
+  const [accessInfo, setAccessInfo] = useState<{ mode: string; hasAccess: boolean; smsUnlockEnabled?: boolean } | null>(null);
+  const [accessChecking, setAccessChecking] = useState(false);
+  const [pwdInput, setPwdInput] = useState("");
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdChecking, setPwdChecking] = useState(false);
+  const [otpPhone, setOtpPhone] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpStep, setOtpStep] = useState<"phone" | "code" | null>(null);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [viewLogged, setViewLogged] = useState(false);
+
   // Audio state — lives here so it persists during navigation
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [pausedId,  setPausedId]  = useState<string | null>(null);
@@ -421,6 +437,106 @@ export function ListingDetail() {
       .then((d) => setLiveData(d))
       .catch(() => {});
   }, [listing?.id]);
+
+  const checkAccess = useCallback(async (lid: string) => {
+    setAccessChecking(true);
+    try {
+      const headers: Record<string, string> = {};
+      const webAuth = localStorage.getItem("biz360_web_auth_token");
+      if (webAuth) headers["Authorization"] = `Bearer ${webAuth}`;
+      const reportToken = localStorage.getItem(`report_token_${lid}`);
+      if (reportToken) headers["X-Report-Token"] = reportToken;
+      const res = await fetch(`/api/public/listing/${lid}/access-check`, { headers });
+      if (res.ok) setAccessInfo(await res.json());
+    } finally {
+      setAccessChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!listing?.isRealListing || !liveData?.snapshot) return;
+    checkAccess(listing.id);
+  }, [listing?.id, liveData?.snapshot, checkAccess]);
+
+  const logView = useCallback(async (lid: string) => {
+    if (viewLogged) return;
+    setViewLogged(true);
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const webAuth = localStorage.getItem("biz360_web_auth_token");
+    if (webAuth) headers["Authorization"] = `Bearer ${webAuth}`;
+    fetch(`/api/public/listing/${lid}/log-view`, {
+      method: "POST", headers,
+      body: JSON.stringify({ documentType: "financials" }),
+    }).catch(() => {});
+  }, [viewLogged]);
+
+  async function handlePasswordUnlock(lid: string) {
+    if (!pwdInput) return;
+    setPwdChecking(true);
+    setPwdError(null);
+    try {
+      const res = await fetch(`/api/public/listing/${lid}/verify-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pwdInput }),
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        localStorage.setItem(`report_token_${lid}`, data.token);
+        setPwdInput("");
+        await checkAccess(lid);
+      } else {
+        setPwdError(data.error ?? "Incorrect password");
+      }
+    } finally {
+      setPwdChecking(false);
+    }
+  }
+
+  async function handleOtpSend(lid: string) {
+    if (!otpPhone.trim()) return;
+    setOtpLoading(true);
+    setOtpError(null);
+    try {
+      const res = await fetch("/api/biz360/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: otpPhone.trim() }),
+      });
+      if (res.ok) {
+        setOtpStep("code");
+      } else {
+        const d = await res.json();
+        setOtpError(d.error ?? "Failed to send code");
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function handleOtpVerify(lid: string) {
+    if (!otpCode.trim()) return;
+    setOtpLoading(true);
+    setOtpError(null);
+    try {
+      const res = await fetch("/api/biz360/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: otpPhone.trim(), code: otpCode.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        localStorage.setItem("biz360_web_auth_token", data.token);
+        setOtpStep(null);
+        setOtpCode("");
+        await checkAccess(lid);
+      } else {
+        setOtpError(data.error ?? "Incorrect code");
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!listing?.isRealListing) return;
@@ -728,44 +844,166 @@ export function ListingDetail() {
                 </div>
               </div>
 
-              {/* Valuation report — shown when seller has published a snapshot */}
-              {listing.isRealListing && snap && (
-                <div className="bg-card border border-green-500/20 rounded-2xl p-5 flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                    <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">Verified Financials</span>
+              {/* Valuation report — access-gated */}
+              {listing.isRealListing && snap && (() => {
+                const lid = listing.id;
+                const mode = accessInfo?.mode ?? "public";
+                const hasAccess = accessInfo?.hasAccess ?? true;
+                const smsUnlock = accessInfo?.smsUnlockEnabled ?? false;
+                const needsPassword = (mode === "password" || mode === "users_and_password") && !hasAccess;
+                const needsUser = (mode === "users") && !hasAccess;
+
+                if (hasAccess && accessInfo && !viewLogged) logView(lid);
+
+                const FinancialsContent = () => (
+                  <div className="bg-card border border-green-500/20 rounded-2xl p-5 flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                      <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">Verified Financials</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {snap.valuationMidpoint != null && parseFloat(snap.valuationMidpoint) > 0 && (
+                        <div className="bg-background rounded-xl p-3 text-center border border-border col-span-2">
+                          <div className="text-lg font-bold text-amber-400">{formatPrice(parseFloat(snap.valuationMidpoint))}</div>
+                          <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Calculated Valuation</div>
+                        </div>
+                      )}
+                      {snap.adjustedEbitda != null && parseFloat(snap.adjustedEbitda) > 0 && (
+                        <div className="bg-background rounded-xl p-3 text-center border border-border">
+                          <div className="text-sm font-bold text-green-400">${(parseFloat(snap.adjustedEbitda) / 1000).toFixed(0)}K</div>
+                          <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Adj. EBITDA p.a.</div>
+                        </div>
+                      )}
+                      {snap.grossRevenue != null && parseFloat(snap.grossRevenue) > 0 && (
+                        <div className="bg-background rounded-xl p-3 text-center border border-border">
+                          <div className="text-sm font-bold">${(parseFloat(snap.grossRevenue) / 1000).toFixed(0)}K</div>
+                          <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Gross Revenue</div>
+                        </div>
+                      )}
+                      {snap.periodMonths != null && (
+                        <div className="bg-background rounded-xl p-3 text-center border border-border col-span-2">
+                          <div className="text-sm font-bold">{snap.periodMonths} months</div>
+                          <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Financial period analysed</div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      Financials verified by EXIT360 via connected accounting & POS integrations.
+                    </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {snap.valuationMidpoint != null && parseFloat(snap.valuationMidpoint) > 0 && (
-                      <div className="bg-background rounded-xl p-3 text-center border border-border col-span-2">
-                        <div className="text-lg font-bold text-amber-400">{formatPrice(parseFloat(snap.valuationMidpoint))}</div>
-                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Calculated Valuation</div>
+                );
+
+                if (accessChecking && !accessInfo) {
+                  return (
+                    <div className="bg-card border border-green-500/20 rounded-2xl p-5 flex items-center gap-3">
+                      <Loader2 size={16} className="animate-spin text-green-400" />
+                      <span className="text-xs text-muted-foreground">Checking access…</span>
+                    </div>
+                  );
+                }
+
+                if (hasAccess || mode === "public") return <FinancialsContent />;
+
+                if (needsPassword) return (
+                  <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-4">
+                    <div className="flex items-center gap-2">
+                      <Lock size={14} className="text-amber-400" />
+                      <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Verified Financials</span>
+                    </div>
+                    <div className="text-center py-2">
+                      <KeyRound size={28} className="mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-foreground font-medium">Password required</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">Enter the password provided by the seller to view the financials.</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="password"
+                        placeholder="Enter password"
+                        value={pwdInput}
+                        onChange={(e) => { setPwdInput(e.target.value); setPwdError(null); }}
+                        onKeyDown={(e) => e.key === "Enter" && handlePasswordUnlock(lid)}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                      />
+                      {pwdError && <p className="text-xs text-red-400">{pwdError}</p>}
+                      <button
+                        onClick={() => handlePasswordUnlock(lid)}
+                        disabled={pwdChecking || !pwdInput}
+                        className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {pwdChecking ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
+                        Unlock Financials
+                      </button>
+                      {smsUnlock && mode === "users_and_password" && (
+                        <p className="text-[10px] text-muted-foreground text-center">
+                          No password? Sign in with your phone below.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+
+                if (needsUser || (mode === "users_and_password" && !hasAccess)) return (
+                  <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-4">
+                    <div className="flex items-center gap-2">
+                      <Lock size={14} className="text-amber-400" />
+                      <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Verified Financials</span>
+                    </div>
+                    <div className="text-center py-2">
+                      <Lock size={28} className="mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-foreground font-medium">Verify your identity</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {mode === "users" ? "Verify your phone to check if you have access." : "Sign in with your phone to unlock."}
+                      </p>
+                    </div>
+                    {otpStep === null && (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="tel"
+                          placeholder="+61 400 000 000"
+                          value={otpPhone}
+                          onChange={(e) => { setOtpPhone(e.target.value); setOtpError(null); }}
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                        />
+                        {otpError && <p className="text-xs text-red-400">{otpError}</p>}
+                        <button
+                          onClick={() => handleOtpSend(lid)}
+                          disabled={otpLoading || !otpPhone.trim()}
+                          className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {otpLoading ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
+                          Send verification code
+                        </button>
                       </div>
                     )}
-                    {snap.adjustedEbitda != null && parseFloat(snap.adjustedEbitda) > 0 && (
-                      <div className="bg-background rounded-xl p-3 text-center border border-border">
-                        <div className="text-sm font-bold text-green-400">${(parseFloat(snap.adjustedEbitda) / 1000).toFixed(0)}K</div>
-                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Adj. EBITDA p.a.</div>
-                      </div>
-                    )}
-                    {snap.grossRevenue != null && parseFloat(snap.grossRevenue) > 0 && (
-                      <div className="bg-background rounded-xl p-3 text-center border border-border">
-                        <div className="text-sm font-bold">${(parseFloat(snap.grossRevenue) / 1000).toFixed(0)}K</div>
-                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Gross Revenue</div>
-                      </div>
-                    )}
-                    {snap.periodMonths != null && (
-                      <div className="bg-background rounded-xl p-3 text-center border border-border col-span-2">
-                        <div className="text-sm font-bold">{snap.periodMonths} months</div>
-                        <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Financial period analysed</div>
+                    {otpStep === "code" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[11px] text-muted-foreground text-center">Code sent to {otpPhone}</p>
+                        <input
+                          type="text"
+                          placeholder="Enter 6-digit code"
+                          value={otpCode}
+                          maxLength={6}
+                          onChange={(e) => { setOtpCode(e.target.value); setOtpError(null); }}
+                          onKeyDown={(e) => e.key === "Enter" && handleOtpVerify(lid)}
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-center tracking-widest"
+                        />
+                        {otpError && <p className="text-xs text-red-400">{otpError}</p>}
+                        <button
+                          onClick={() => handleOtpVerify(lid)}
+                          disabled={otpLoading || otpCode.length < 4}
+                          className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {otpLoading ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                          Verify & Unlock
+                        </button>
+                        <button onClick={() => { setOtpStep(null); setOtpCode(""); setOtpError(null); }} className="text-[11px] text-muted-foreground underline text-center">Change phone number</button>
                       </div>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    Financials verified by EXIT360 via connected accounting & POS integrations.
-                  </p>
-                </div>
-              )}
+                );
+
+                return <FinancialsContent />;
+              })()}
 
               {/* Audio directory — desktop only (mobile version is above the panorama) */}
               {listing.isRealListing && audioGroups.length > 0 && !spacesLoading && (
