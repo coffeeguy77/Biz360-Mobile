@@ -20,9 +20,12 @@ import {
   Lock,
   KeyRound,
   Loader2,
+  FileText,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DEMO_LISTINGS, formatPrice, formatRevenue, type Listing } from "@/data/listings";
+import { NdaDocument } from "@/components/NdaDocument";
 
 const BADGE_CONFIG: Record<string, { label: string; color: string }> = {
   identity:        { label: "ID Verified",    color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
@@ -418,6 +421,13 @@ export function ListingDetail() {
   const [smsOtpLoading, setSmsOtpLoading] = useState(false);
   const [smsOtpError, setSmsOtpError] = useState<string | null>(null);
   const [viewLogged, setViewLogged] = useState(false);
+  // NDA signing state
+  const [ndaPhone, setNdaPhone] = useState("");
+  const [ndaCode, setNdaCode] = useState("");
+  const [ndaStep, setNdaStep] = useState<"phone" | "code" | null>(null);
+  const [ndaLoading, setNdaLoading] = useState(false);
+  const [ndaError, setNdaError] = useState<string | null>(null);
+  const [ndaSigned, setNdaSigned] = useState(false);
 
   // Audio state — lives here so it persists during navigation
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -483,10 +493,15 @@ export function ListingDetail() {
     checkAccess(listing.id);
   }, [listing?.id, checkAccess]);
 
-  // Reset access state when listing changes
+  // Reset access + NDA state when listing changes
   useEffect(() => {
     setAccessInfo(null);
     setViewLogged(false);
+    setNdaPhone("");
+    setNdaCode("");
+    setNdaStep(null);
+    setNdaError(null);
+    setNdaSigned(localStorage.getItem(`nda_signed_${listing?.id ?? ""}`) === "1");
   }, [listing?.id]);
 
   // Log view when access becomes visible — in effect, not in render
@@ -621,6 +636,57 @@ export function ListingDetail() {
     } finally {
       setSmsOtpLoading(false);
     }
+  }
+
+  async function handleNdaSend(lid: string) {
+    if (!ndaPhone.trim()) return;
+    setNdaLoading(true);
+    setNdaError(null);
+    try {
+      const res = await fetch(`/api/public/listing/${lid}/nda/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: ndaPhone.trim() }),
+      });
+      if (res.ok) {
+        setNdaStep("code");
+      } else {
+        const d = await res.json();
+        setNdaError(d.error ?? "Failed to send code");
+      }
+    } finally {
+      setNdaLoading(false);
+    }
+  }
+
+  async function handleNdaVerify(lid: string) {
+    if (!ndaCode.trim()) return;
+    setNdaLoading(true);
+    setNdaError(null);
+    try {
+      const res = await fetch(`/api/public/listing/${lid}/nda/sign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: ndaPhone.trim(), code: ndaCode.trim() }),
+      });
+      if (res.ok) {
+        localStorage.setItem(`nda_signed_${lid}`, "1");
+        setNdaSigned(true);
+        setNdaStep(null);
+        setNdaCode("");
+        await checkAccess(lid);
+      } else {
+        const d = await res.json();
+        setNdaError(d.error ?? "Incorrect code");
+      }
+    } finally {
+      setNdaLoading(false);
+    }
+  }
+
+  function handleThirdPartyNdaAcknowledge(lid: string) {
+    localStorage.setItem(`nda_signed_${lid}`, "1");
+    setNdaSigned(true);
   }
 
   useEffect(() => {
@@ -931,8 +997,101 @@ export function ListingDetail() {
               </div>
 
               {/* Valuation report — access-gated */}
-              {listing.isRealListing && (snap || snapshotGated) && (() => {
+              {listing.isRealListing && (() => {
                 const lid = listing.id;
+                const ndaMode = (liveData as any)?.ndaMode ?? "none";
+                const ndaThirdPartyUrl = (liveData as any)?.ndaThirdPartyUrl ?? null;
+
+                if (ndaMode === "required" && !ndaSigned) {
+                  return (
+                    <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-4">
+                      <div className="flex items-center gap-2">
+                        <FileText size={14} className="text-blue-400" />
+                        <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Confidentiality Agreement</span>
+                      </div>
+                      <p className="text-sm text-foreground font-medium">Sign NDA to view financials</p>
+                      <p className="text-[11px] text-muted-foreground">This listing requires a Non-Disclosure Agreement before viewing verified financial data.</p>
+                      <NdaDocument businessName={listing.businessName} />
+                      {ndaStep === null && (
+                        <div className="flex flex-col gap-2">
+                          <input
+                            type="tel"
+                            placeholder="+61 400 000 000"
+                            value={ndaPhone}
+                            onChange={(e) => { setNdaPhone(e.target.value); setNdaError(null); }}
+                            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          />
+                          {ndaError && <p className="text-xs text-red-400">{ndaError}</p>}
+                          <button
+                            onClick={() => handleNdaSend(lid)}
+                            disabled={ndaLoading || !ndaPhone.trim()}
+                            className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {ndaLoading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                            I Agree — Verify via SMS
+                          </button>
+                        </div>
+                      )}
+                      {ndaStep === "code" && (
+                        <div className="flex flex-col gap-2">
+                          <p className="text-[11px] text-muted-foreground text-center">Code sent to {ndaPhone}</p>
+                          <input
+                            type="text"
+                            placeholder="Enter 6-digit code"
+                            value={ndaCode}
+                            maxLength={6}
+                            onChange={(e) => { setNdaCode(e.target.value); setNdaError(null); }}
+                            onKeyDown={(e) => e.key === "Enter" && handleNdaVerify(lid)}
+                            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-center tracking-widest"
+                          />
+                          {ndaError && <p className="text-xs text-red-400">{ndaError}</p>}
+                          <button
+                            onClick={() => handleNdaVerify(lid)}
+                            disabled={ndaLoading || ndaCode.length < 4}
+                            className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {ndaLoading ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                            Confirm Signature
+                          </button>
+                          <button onClick={() => { setNdaStep(null); setNdaCode(""); setNdaError(null); }} className="text-[11px] text-muted-foreground underline text-center">
+                            Change phone number
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (ndaMode === "third_party" && !ndaSigned) {
+                  return (
+                    <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-4">
+                      <div className="flex items-center gap-2">
+                        <FileText size={14} className="text-blue-400" />
+                        <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">NDA Required</span>
+                      </div>
+                      <p className="text-sm text-foreground font-medium">Sign the seller's NDA first</p>
+                      <p className="text-[11px] text-muted-foreground">The seller requires a Non-Disclosure Agreement before accessing the verified financials.</p>
+                      {ndaThirdPartyUrl && (
+                        <a
+                          href={ndaThirdPartyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2"
+                        >
+                          <ExternalLink size={14} /> Open NDA Document
+                        </a>
+                      )}
+                      <button
+                        onClick={() => handleThirdPartyNdaAcknowledge(lid)}
+                        className="text-[11px] text-primary underline text-center mt-1"
+                      >
+                        I have signed the NDA →
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (!snap && !snapshotGated) return null;
                 const mode = accessInfo?.mode ?? "locked";
                 const hasAccess = accessInfo?.hasAccess ?? false;
                 const smsUnlock = (accessInfo as any)?.smsUnlockEnabled ?? false;

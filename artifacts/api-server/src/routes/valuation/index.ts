@@ -11,6 +11,7 @@ import squareRouter from "./square";
 import xeroRouter from "./xero";
 import oauthRouter from "./oauth";
 import reportAccessRouter from "./report-access";
+import ndaRouter from "./nda";
 
 const router: IRouter = Router();
 
@@ -45,6 +46,7 @@ router.use("/valuation/cafes/:cafeId/equipment", equipmentRouter);
 router.use("/valuation/cafes/:cafeId/adjustments", adjustmentsRouter);
 router.use("/valuation/cafes/:cafeId/snapshots", snapshotsRouter);
 router.use("/valuation/cafes/:cafeId/report-access", reportAccessRouter);
+router.use("/valuation/cafes/:cafeId/nda-settings", ndaRouter);
 router.use("/valuation/cafes", cafesRouter);
 router.use("/valuation", squareRouter);
 router.use("/valuation", xeroRouter);

@@ -18,6 +18,7 @@ async function getToken(): Promise<string | null> {
 }
 
 type AccessMode = "public" | "users" | "password" | "users_and_password";
+type NdaMode = "none" | "required" | "third_party";
 
 interface AccessSettings {
   id: string;
@@ -42,6 +43,13 @@ interface BuyerAnalytic {
   documentType: string;
 }
 
+interface NdaSignature {
+  id: string;
+  buyerPhone: string;
+  signedAt: string | null;
+  ndaVersion: string;
+}
+
 const MODE_LABELS: Record<AccessMode, string> = {
   public: "Public",
   users: "Specific Users",
@@ -56,18 +64,34 @@ const MODE_DESCRIPTIONS: Record<AccessMode, string> = {
   users_and_password: "Approved users or anyone with the password.",
 };
 
+const NDA_LABELS: Record<NdaMode, string> = {
+  none: "No NDA",
+  required: "Required (SMS signed)",
+  third_party: "Third-Party Link",
+};
+
+const NDA_DESCRIPTIONS: Record<NdaMode, string> = {
+  none: "No NDA required before viewing financials.",
+  required: "Buyers must sign an NDA via SMS verification.",
+  third_party: "Buyers are redirected to your own NDA document.",
+};
+
 export default function ReportAccessScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { selectedCafe } = useValuation();
 
-  const [tab, setTab] = useState<"settings" | "analytics">("settings");
+  const [tab, setTab] = useState<"settings" | "analytics" | "nda">("settings");
   const [settings, setSettings] = useState<AccessSettings | null>(null);
   const [grants, setGrants] = useState<AccessGrant[]>([]);
   const [buyers, setBuyers] = useState<BuyerAnalytic[]>([]);
   const [totalViews, setTotalViews] = useState(0);
+  const [ndaMode, setNdaMode] = useState<NdaMode>("none");
+  const [ndaThirdPartyUrl, setNdaThirdPartyUrl] = useState("");
+  const [ndaSignatures, setNdaSignatures] = useState<NdaSignature[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [ndaSaving, setNdaSaving] = useState(false);
 
   const [selectedMode, setSelectedMode] = useState<AccessMode>("public");
   const [newPassword, setNewPassword] = useState("");
@@ -84,11 +108,17 @@ export default function ReportAccessScreen() {
     if (!token) return;
     setLoading(true);
     try {
-      const [settingsRes, analyticsRes] = await Promise.all([
+      const [settingsRes, analyticsRes, ndaSettingsRes, ndaSignaturesRes] = await Promise.all([
         fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/report-access`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/report-access/analytics`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/nda-settings`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/nda-settings/signatures`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -105,6 +135,18 @@ export default function ReportAccessScreen() {
         const data = await analyticsRes.json();
         setBuyers(data.buyers ?? []);
         setTotalViews(data.totalViews ?? 0);
+      }
+      if (ndaSettingsRes.ok) {
+        const data = await ndaSettingsRes.json();
+        const s = data.settings;
+        if (s) {
+          setNdaMode(s.ndaMode as NdaMode);
+          setNdaThirdPartyUrl(s.thirdPartyUrl ?? "");
+        }
+      }
+      if (ndaSignaturesRes.ok) {
+        const data = await ndaSignaturesRes.json();
+        setNdaSignatures(data.signatures ?? []);
       }
     } finally {
       setLoading(false);
@@ -140,6 +182,32 @@ export default function ReportAccessScreen() {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleNdaSave() {
+    if (!cafeId) return;
+    const token = await getToken();
+    if (!token) return;
+    if (ndaMode === "third_party" && !ndaThirdPartyUrl.trim()) {
+      Alert.alert("Error", "Please enter the third-party NDA URL.");
+      return;
+    }
+    setNdaSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/nda-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ndaMode, thirdPartyUrl: ndaThirdPartyUrl.trim() || null }),
+      });
+      if (res.ok) {
+        Alert.alert("Saved", "NDA settings updated.");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert("Error", err.error ?? "Failed to save NDA settings");
+      }
+    } finally {
+      setNdaSaving(false);
     }
   }
 
@@ -212,14 +280,14 @@ export default function ReportAccessScreen() {
         </View>
 
         <View style={styles.tabRow}>
-          {(["settings", "analytics"] as const).map((t) => (
+          {(["settings", "analytics", "nda"] as const).map((t) => (
             <TouchableOpacity
               key={t}
               style={[styles.tabBtn, tab === t && { backgroundColor: colors.primary }]}
               onPress={() => setTab(t)}
             >
               <Text style={[styles.tabBtnText, tab === t && { color: "#fff" }]}>
-                {t === "settings" ? "Access Settings" : `Analytics (${totalViews})`}
+                {t === "settings" ? "Access" : t === "analytics" ? `Views (${totalViews})` : `NDA (${ndaSignatures.length})`}
               </Text>
             </TouchableOpacity>
           ))}
@@ -344,7 +412,7 @@ export default function ReportAccessScreen() {
                 : <><Feather name="check" size={16} color="#fff" /><Text style={styles.saveBtnText}>Save Settings</Text></>}
             </TouchableOpacity>
           </View>
-        ) : (
+        ) : tab === "analytics" ? (
           <View style={{ gap: 12 }}>
             {buyers.length === 0 ? (
               <View style={styles.emptyState}>
@@ -378,6 +446,93 @@ export default function ReportAccessScreen() {
               </>
             )}
           </View>
+        ) : (
+          <View style={{ gap: 16 }}>
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>NDA REQUIREMENT</Text>
+            {(["none", "required", "third_party"] as NdaMode[]).map((mode) => (
+              <TouchableOpacity
+                key={mode}
+                style={[
+                  styles.modeCard,
+                  { backgroundColor: colors.card, borderColor: ndaMode === mode ? colors.primary : colors.border },
+                ]}
+                onPress={() => setNdaMode(mode)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modeTitle, { color: colors.foreground }]}>{NDA_LABELS[mode]}</Text>
+                  <Text style={[styles.modeDesc, { color: colors.mutedForeground }]}>{NDA_DESCRIPTIONS[mode]}</Text>
+                </View>
+                <View style={[
+                  styles.radioOuter,
+                  { borderColor: ndaMode === mode ? colors.primary : colors.border },
+                ]}>
+                  {ndaMode === mode && (
+                    <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            {ndaMode === "third_party" && (
+              <View style={{ gap: 6 }}>
+                <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>THIRD-PARTY NDA URL</Text>
+                <View style={[styles.inputRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.input, { color: colors.foreground, flex: 1 }]}
+                    placeholder="https://your-nda-service.com/sign/..."
+                    placeholderTextColor={colors.mutedForeground}
+                    value={ndaThirdPartyUrl}
+                    onChangeText={setNdaThirdPartyUrl}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </View>
+                <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+                  Buyers will be directed to this URL before accessing the financials.
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.saveBtn, { opacity: ndaSaving ? 0.6 : 1 }]}
+              onPress={handleNdaSave}
+              disabled={ndaSaving}
+            >
+              {ndaSaving
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <><Feather name="check" size={16} color="#fff" /><Text style={styles.saveBtnText}>Save NDA Settings</Text></>}
+            </TouchableOpacity>
+
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 8 }]}>
+              NDA SIGNATURES ({ndaSignatures.length})
+            </Text>
+            {ndaSignatures.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Feather name="file-text" size={36} color={colors.mutedForeground} />
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No signatures yet</Text>
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                  {ndaMode === "none"
+                    ? "Enable NDA requirement above to start collecting signatures."
+                    : "Signatures will appear here once buyers sign the NDA."}
+                </Text>
+              </View>
+            ) : (
+              ndaSignatures.map((sig) => (
+                <View key={sig.id} style={[styles.grantRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Feather name="file-text" size={16} color={colors.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.grantPhone, { color: colors.foreground }]}>{sig.buyerPhone}</Text>
+                    <Text style={[styles.grantDate, { color: colors.mutedForeground }]}>
+                      Signed {formatDate(sig.signedAt)} · NDA {sig.ndaVersion}
+                    </Text>
+                  </View>
+                  <View style={[styles.badgeCount, { backgroundColor: "#22c55e22" }]}>
+                    <Feather name="check" size={12} color="#22c55e" />
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
         )}
       </ScrollView>
     </View>
@@ -392,7 +547,7 @@ const styles = StyleSheet.create({
   title:        { fontSize: 22, fontFamily: "Inter_700Bold" },
   tabRow:       { flexDirection: "row", gap: 8 },
   tabBtn:       { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: "#1E3A5C", alignItems: "center" },
-  tabBtnText:   { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#8B9CB8" },
+  tabBtnText:   { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#8B9CB8" },
   sectionLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 1, marginTop: 4 },
   modeCard:     { borderRadius: 14, padding: 16, borderWidth: 1.5, flexDirection: "row", alignItems: "center", gap: 12 },
   modeTitle:    { fontSize: 14, fontFamily: "Inter_600SemiBold" },

@@ -3,6 +3,7 @@ import { eq, and, desc, isNull } from "drizzle-orm";
 import {
   db, kvStore, cafesTable, valuationSnapshotsTable,
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
+  ndaSettingsTable, ndaSignaturesTable,
 } from "@workspace/db";
 import twilio from "twilio";
 import { v2 as cloudinary } from "cloudinary";
@@ -105,6 +106,7 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
     const liveListing = allListings.find((l: any) => l.listingId === listingId) ?? null;
 
     let snapshot = null;
+    let snapshotGated = false;
     const cafes = await db.select().from(cafesTable).where(eq(cafesTable.listingId, listingId));
     if (cafes.length > 0) {
       const [snap] = await db
@@ -120,7 +122,6 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
         .orderBy(desc(valuationSnapshotsTable.createdAt))
         .limit(1);
 
-      let snapshotGated = false;
       if (snap) {
         const canAccess = await hasListingAccess(
           listingId,
@@ -130,12 +131,17 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
         if (canAccess) {
           snapshot = snap;
         } else {
-          snapshotGated = true; // snapshot exists but is access-restricted
+          snapshotGated = true;
         }
       }
     }
 
-    res.json({ listing: liveListing, snapshot, snapshotGated });
+    const [ndaRow] = await db.select().from(ndaSettingsTable)
+      .where(eq(ndaSettingsTable.listingId, listingId));
+    const ndaMode = ndaRow?.ndaMode ?? "none";
+    const ndaThirdPartyUrl = ndaRow?.thirdPartyUrl ?? null;
+
+    res.json({ listing: liveListing, snapshot, snapshotGated, ndaMode, ndaThirdPartyUrl });
   } catch {
     res.status(500).json({ error: "Failed to fetch listing data" });
   }
@@ -456,6 +462,60 @@ router.post("/public/listing/:listingId/sms-unlock/verify", async (req, res): Pr
     res.json({ ok: true, token });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Verification failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+// ─── NDA signing — public buyer endpoints ─────────────────────────────────────
+
+router.post("/public/listing/:listingId/nda/send-otp", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const { phone } = req.body as { phone?: string };
+  if (!phone) { res.status(400).json({ error: "phone required" }); return; }
+  try {
+    const [ndaSettings] = await db.select().from(ndaSettingsTable)
+      .where(eq(ndaSettingsTable.listingId, listingId));
+    if (!ndaSettings || ndaSettings.ndaMode !== "required") {
+      res.status(403).json({ error: "NDA signing not required for this listing" }); return;
+    }
+    const client = getTwilioClient();
+    await client.verify.v2
+      .services(getVerifyServiceSid())
+      .verifications.create({ to: phone, channel: "sms" });
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to send code";
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.post("/public/listing/:listingId/nda/sign", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const { phone, code } = req.body as { phone?: string; code?: string };
+  if (!phone || !code) { res.status(400).json({ error: "phone and code required" }); return; }
+  try {
+    const [ndaSettings] = await db.select().from(ndaSettingsTable)
+      .where(eq(ndaSettingsTable.listingId, listingId));
+    if (!ndaSettings || ndaSettings.ndaMode !== "required") {
+      res.status(403).json({ error: "NDA signing not required for this listing" }); return;
+    }
+    const client = getTwilioClient();
+    const check = await client.verify.v2
+      .services(getVerifyServiceSid())
+      .verificationChecks.create({ to: phone, code });
+    if (check.status !== "approved") {
+      res.status(400).json({ error: "Incorrect or expired code" }); return;
+    }
+    const [signature] = await db.insert(ndaSignaturesTable).values({
+      listingId,
+      buyerPhone: phone.replace(/\s/g, ""),
+      buyerIp: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+      ndaVersion: "v1",
+    }).returning();
+    res.json({ ok: true, signedAt: signature.signedAt });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to verify";
     res.status(400).json({ error: msg });
   }
 });
