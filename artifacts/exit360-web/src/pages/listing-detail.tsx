@@ -164,14 +164,25 @@ SPACES.forEach(function(s){
   if(typeof s.groundPitch==='number')sc.groundPitch=s.groundPitch;
   scenesConfig[s.id]=sc;
 });
+var userInteracted=false;
 var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:150},scenes:scenesConfig});
-(function(){var sp0=SPACES.find(function(s){return s.id===firstScene});if(AUTOPAN_ALL||(sp0&&sp0.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}})();
+(function(){
+  var panoEl=document.getElementById('pano');
+  function markInteracted(){userInteracted=true;}
+  if(panoEl){
+    panoEl.addEventListener('mousedown',markInteracted,{once:true,capture:true});
+    panoEl.addEventListener('touchstart',markInteracted,{once:true,capture:true,passive:true});
+  }
+  var sp0=SPACES.find(function(s){return s.id===firstScene});
+  if(AUTOPAN_ALL||(sp0&&sp0.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}
+})();
 /* Force remeasure on mobile — canvas size may not be settled at init time */
 function doResize(){try{viewer.resize()}catch(e){}}
 window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
 window.addEventListener('resize',doResize);
 viewer.on('scenechange',function(id){
   try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}
+  if(userInteracted)return;
   var scSp=SPACES.find(function(s){return s.id===id});
   if(AUTOPAN_ALL||(scSp&&scSp.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}
   else{try{viewer.stopAutoRotate()}catch(e){}}

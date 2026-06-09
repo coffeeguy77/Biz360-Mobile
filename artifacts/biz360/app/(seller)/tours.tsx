@@ -251,6 +251,8 @@ interface DraftSpace {
   audioTranscript?: string;
   // Start scene
   isStartScene?: boolean;
+  // Auto-pan: slowly rotates on load; stops on first buyer touch
+  autoPan?: boolean;
   // Default facing direction when entering this space (0=N…315=NW)
   defaultYaw?: number;
   // True North calibration: panorama yaw that maps to real-world North
@@ -259,7 +261,7 @@ interface DraftSpace {
 
 const EMPTY_SPACE: DraftSpace = {
   name: "", dirMode: "panorama", photos: {}, pins: [],
-  audioName: "", audioUrl: "", audioTrigger: "button", audioTranscript: "", isStartScene: false,
+  audioName: "", audioUrl: "", audioTrigger: "button", audioTranscript: "", isStartScene: false, autoPan: false,
 };
 const EMPTY_PIN: DraftPin = {
   id: "", type: "navigation", title: "", description: "",
@@ -692,6 +694,7 @@ export default function ToursScreen() {
       audioTrigger:   space.audioTrigger ?? "button",
       audioTranscript:space.audioTranscript ?? "",
       isStartScene:   space.isStartScene ?? false,
+      autoPan:        space.autoPan ?? false,
       defaultYaw:     space.defaultYaw,
       trueNorthYaw:   space.trueNorthYaw,
     });
@@ -764,6 +767,7 @@ export default function ToursScreen() {
       audioTrigger:    draftSpace.audioTrigger,
       audioTranscript: draftSpace.audioTranscript?.trim() || undefined,
       isStartScene:    draftSpace.isStartScene ?? false,
+      autoPan:         draftSpace.autoPan ?? false,
       defaultYaw:      draftSpace.defaultYaw,
       trueNorthYaw:    draftSpace.trueNorthYaw,
     };
