@@ -1080,7 +1080,7 @@ export function ListingDetail() {
                   );
                 }
 
-                if (ndaMode === "third_party" && !ndaSigned) {
+                if (ndaMode === "third_party") {
                   return (
                     <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-4">
                       <div className="flex items-center gap-2">

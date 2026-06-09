@@ -53,6 +53,17 @@ router.put("/", async (req, res) => {
     return res.status(400).json({ error: "thirdPartyUrl is required when ndaMode is third_party" });
   }
 
+  if (thirdPartyUrl?.trim()) {
+    try {
+      const parsed = new URL(thirdPartyUrl.trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return res.status(400).json({ error: "thirdPartyUrl must use http or https" });
+      }
+    } catch {
+      return res.status(400).json({ error: "thirdPartyUrl is not a valid URL" });
+    }
+  }
+
   const [existing] = await db.select().from(ndaSettingsTable)
     .where(eq(ndaSettingsTable.listingId, listingId));
 

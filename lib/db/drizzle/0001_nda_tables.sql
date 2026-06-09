@@ -16,5 +16,6 @@ CREATE TABLE "nda_signatures" (
   "buyer_ip" text,
   "user_agent" text,
   "nda_version" text NOT NULL DEFAULT 'v1',
+  "otp_verified" boolean NOT NULL DEFAULT true,
   "signed_at" timestamp DEFAULT now()
 );
