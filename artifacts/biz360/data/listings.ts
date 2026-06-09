@@ -42,6 +42,7 @@ export interface TourSettings {
   showNarrationBar: boolean;
   defaultHeightMetres: number;  // 0 = floor … 2.8 = ceiling
   defaultHotspotBehaviour: "tap" | "always";
+  autoPanAll?: boolean;         // overrides per-space autoPan for all panorama spaces
 }
 
 export const DEFAULT_TOUR_SETTINGS: TourSettings = {
@@ -130,6 +131,8 @@ export interface TourSpace {
   audioTranscript?: string;
   // Start scene designation
   isStartScene?: boolean;
+  // Auto-pan: panorama slowly rotates on load; stops on first buyer interaction
+  autoPan?: boolean;
 }
 
 // ─── Tour request (from buyer "Request More Info") ────────────────────────────

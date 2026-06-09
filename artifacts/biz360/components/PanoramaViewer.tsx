@@ -77,6 +77,7 @@ function buildSinglePanoHtml(
   haov = 360,
   vaov = 120,
   groundPitch?: number,
+  autoPan = false,
 ): string {
   const defAnim    = tourSettings?.defaultAnimation    ?? "none";
   const defSize    = tourSettings?.defaultPinSize      ?? 1.0;
@@ -276,6 +277,7 @@ function buildSinglePanoHtml(
       autoLoad: true, showControls: false, compass: false,
       yaw: ${startYaw}, pitch: 0, hfov: 100, minHfov: 40, maxHfov: 140,
       mouseZoom: true, touchPanSpeedCoeffFactor: 1.5, showFullscreenCtrl: false,
+      autoRotate: ${autoPan ? -2 : 0},
       hotSpots: PINS.map(function(p) {
         return {
           id: p.id, pitch: p.pitch, yaw: p.yaw,
@@ -881,8 +883,9 @@ export function PanoramaViewer({ space, onPinPress, focusPin, onFocusPinHandled,
   // Local files are converted to base64 data URIs (works in Expo Go sandbox).
   // Remote https:// URLs passed directly. vaov=180 for full Insta360 spheres.
   let html: string;
+  const effectiveAutoPan = !!(tourSettings && (tourSettings as any).autoPanAll) || !!space.autoPan;
   if (space.panoramaUrl && panoDataUri) {
-    html = buildSinglePanoHtml(panoDataUri, startYaw ?? space.defaultYaw ?? space.panoramaStartYaw ?? 0, space.pins, tourSettings, 360, 180, space.groundPitch);
+    html = buildSinglePanoHtml(panoDataUri, startYaw ?? space.defaultYaw ?? space.panoramaStartYaw ?? 0, space.pins, tourSettings, 360, 180, space.groundPitch, effectiveAutoPan);
   } else {
     html = buildFlatStripHtml(photoDataUris, space.pins);
   }

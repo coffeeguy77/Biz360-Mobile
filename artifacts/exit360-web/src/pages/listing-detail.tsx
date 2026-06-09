@@ -71,7 +71,7 @@ interface AudioTrack {
   isSpaceNarration: boolean;
 }
 
-function buildMultiSceneSrcdoc(spaces: TourSpace[]): string {
+function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): string {
   const spacesJson = JSON.stringify(spaces);
   return `<!DOCTYPE html>
 <html>
@@ -145,6 +145,7 @@ function createAudioHotspot(div,args){
     else{audio.play().catch(function(){});playing=true;div.classList.add('active');audio.onended=function(){playing=false;div.classList.remove('active')}}
   });
 }
+var AUTOPAN_ALL=${autoPanAll ? 'true' : 'false'};
 var validIds=new Set(SPACES.filter(function(s){return s.panoramaUrl&&s.panoramaUrl.indexOf('file://')!==0}).map(function(s){return s.id}));
 var firstScene=null,scenesConfig={};
 SPACES.forEach(function(s){
@@ -164,11 +165,17 @@ SPACES.forEach(function(s){
   scenesConfig[s.id]=sc;
 });
 var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:150},scenes:scenesConfig});
+(function(){var sp0=SPACES.find(function(s){return s.id===firstScene});if(AUTOPAN_ALL||(sp0&&sp0.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}})();
 /* Force remeasure on mobile — canvas size may not be settled at init time */
 function doResize(){try{viewer.resize()}catch(e){}}
 window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
 window.addEventListener('resize',doResize);
-viewer.on('scenechange',function(id){try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}});
+viewer.on('scenechange',function(id){
+  try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}
+  var scSp=SPACES.find(function(s){return s.id===id});
+  if(AUTOPAN_ALL||(scSp&&scSp.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}
+  else{try{viewer.stopAutoRotate()}catch(e){}}
+});
 window.addEventListener('message',function(e){
   if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{
     var gotoSp=SPACES.find(function(s){return s.id===e.data.sceneId});
@@ -186,14 +193,16 @@ function TourViewer({
   iframeRef,
   activeId,
   onSceneChange,
+  autoPanAll = false,
 }: {
   spaces: TourSpace[];
   iframeRef: React.RefObject<HTMLIFrameElement>;
   activeId: string | null;
   onSceneChange: (id: string) => void;
+  autoPanAll?: boolean;
 }) {
   const valid = spaces.filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"));
-  const srcdoc = valid.length > 0 ? buildMultiSceneSrcdoc(spaces) : "";
+  const srcdoc = valid.length > 0 ? buildMultiSceneSrcdoc(spaces, autoPanAll) : "";
 
   if (!valid.length) return null;
 
@@ -400,6 +409,7 @@ export function ListingDetail() {
   const [spaces, setSpaces] = useState<TourSpace[]>([]);
   const [spacesLoading, setSpacesLoading] = useState(false);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+  const [tourAutoPanAll, setTourAutoPanAll] = useState(false);
   const [liveData, setLiveData] = useState<{ listing: any; snapshot: any } | null>(null);
 
   // Report access gate state
@@ -705,15 +715,18 @@ export function ListingDetail() {
   useEffect(() => {
     if (!listing?.isRealListing) return;
     setSpacesLoading(true);
-    fetch(`/api/biz360/kv/biz360_tour_spaces_v2_${listing.id}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const arr = Array.isArray(data) ? data : (Array.isArray(data?.value) ? data.value : []);
+    Promise.all([
+      fetch(`/api/biz360/kv/biz360_tour_spaces_v2_${listing.id}`).then((r) => r.json()),
+      fetch(`/api/biz360/kv/biz360_tour_settings_v1_${listing.id}`).then((r) => r.json()).catch(() => null),
+    ])
+      .then(([spacesData, settingsData]) => {
+        const arr = Array.isArray(spacesData) ? spacesData : (Array.isArray(spacesData?.value) ? spacesData.value : []);
         const mapped: TourSpace[] = arr.map((s: any) => ({
           id: s.id,
           name: s.name,
           panoramaUrl: s.panoramaUrl ?? "",
           isStartScene: !!s.isStartScene,
+          autoPan: !!s.autoPan,
           audioUrl: s.audioUrl,
           audioName: s.audioName,
           groundPitch: s.groundPitch,
@@ -724,6 +737,8 @@ export function ListingDetail() {
         setSpaces(mapped);
         const start = mapped.find((s) => s.isStartScene) ?? mapped[0];
         if (start) setActiveSceneId(start.id);
+        const settingsVal = settingsData?.value ?? settingsData;
+        setTourAutoPanAll(!!(settingsVal?.autoPanAll));
       })
       .catch(() => setSpaces([]))
       .finally(() => setSpacesLoading(false));
@@ -908,6 +923,7 @@ export function ListingDetail() {
                   iframeRef={iframeRef}
                   activeId={activeSceneId}
                   onSceneChange={setActiveSceneId}
+                  autoPanAll={tourAutoPanAll}
                 />
               )
             ) : (

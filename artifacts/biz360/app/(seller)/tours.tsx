@@ -1126,6 +1126,24 @@ export default function ToursScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Auto-pan toggle */}
+            <View style={[styles.startToggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.startToggleLabel, { color: colors.foreground }]}>Auto-Pan</Text>
+                <Text style={[styles.startToggleHint, { color: colors.mutedForeground }]}>
+                  Panorama slowly rotates; stops when buyer touches the view
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.startToggleBtn, { backgroundColor: draftSpace.autoPan ? "#2563EB" : colors.muted }]}
+                onPress={() => setDraftSpace((p) => ({ ...p, autoPan: !p.autoPan }))}
+              >
+                <Text style={[styles.startToggleBtnText, { color: draftSpace.autoPan ? "#fff" : colors.mutedForeground }]}>
+                  {draftSpace.autoPan ? "ON" : "OFF"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Default Facing Direction */}
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>DEFAULT FACING DIRECTION</Text>
             <Text style={{ fontSize: 12, color: colors.mutedForeground, marginBottom: 8, marginTop: -4 }}>
@@ -2574,6 +2592,26 @@ export default function ToursScreen() {
                   {tourSettings.showNarrationBar ? "Visible" : "Hidden"}
                 </Text>
                 <Feather name={tourSettings.showNarrationBar ? "toggle-right" : "toggle-left"} size={22} color={tourSettings.showNarrationBar ? colors.primary : colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Auto-pan all spaces */}
+            <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <Feather name="rotate-cw" size={16} color={colors.primary} />
+                <Text style={[styles.settingsCardTitle, { color: colors.foreground }]}>Auto-Pan All Spaces</Text>
+              </View>
+              <Text style={[styles.settingsCardHint, { color: colors.mutedForeground }]}>
+                Every panorama slowly rotates on load. Buyers stop it by touching the view. Overrides the per-space Auto-Pan setting.
+              </Text>
+              <TouchableOpacity
+                style={[styles.settingsToggle, { backgroundColor: tourSettings.autoPanAll ? colors.primary + "18" : colors.background, borderColor: tourSettings.autoPanAll ? colors.primary : colors.border }]}
+                onPress={() => setTourSettings((s) => ({ ...s, autoPanAll: !s.autoPanAll }))}
+              >
+                <Text style={[styles.settingsToggleText, { color: tourSettings.autoPanAll ? colors.primary : colors.mutedForeground }]}>
+                  {tourSettings.autoPanAll ? "Enabled" : "Disabled"}
+                </Text>
+                <Feather name={tourSettings.autoPanAll ? "toggle-right" : "toggle-left"} size={22} color={tourSettings.autoPanAll ? colors.primary : colors.mutedForeground} />
               </TouchableOpacity>
             </View>
 
