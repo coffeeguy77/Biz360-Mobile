@@ -3,6 +3,7 @@ import {
   pgEnum,
   uuid,
   text,
+  boolean,
   timestamp,
 } from "drizzle-orm/pg-core";
 
@@ -25,6 +26,7 @@ export const ndaSignaturesTable = pgTable("nda_signatures", {
   buyerIp: text("buyer_ip"),
   userAgent: text("user_agent"),
   ndaVersion: text("nda_version").notNull().default("v1"),
+  otpVerified: boolean("otp_verified").notNull().default(true),
   signedAt: timestamp("signed_at").defaultNow(),
 });
 

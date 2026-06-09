@@ -508,6 +508,18 @@ export function ListingDetail() {
     setNdaSigned(!!sessionStorage.getItem(`nda_token_${listing?.id ?? ""}`));
   }, [listing?.id]);
 
+  // Reconcile local ndaSigned with server truth — clears stale/expired tokens
+  useEffect(() => {
+    if (!liveData || !listing?.id) return;
+    const ndaMode = (liveData as any)?.ndaMode ?? "none";
+    if (ndaMode !== "required") return;
+    const serverSigned = !!(liveData as any)?.ndaSigned;
+    setNdaSigned(serverSigned);
+    if (!serverSigned) {
+      sessionStorage.removeItem(`nda_token_${listing.id}`);
+    }
+  }, [liveData, listing?.id]);
+
   // Log view when access becomes visible — in effect, not in render
   useEffect(() => {
     if (!accessInfo?.hasAccess || !listing?.id || viewLogged) return;
@@ -1012,11 +1024,12 @@ export function ListingDetail() {
                       </div>
                       <p className="text-sm text-foreground font-medium">Sign NDA to view financials</p>
                       <p className="text-[11px] text-muted-foreground">This listing requires a Non-Disclosure Agreement before viewing verified financial data.</p>
-                      <NdaDocument businessName={listing.businessName} buyerPhone={ndaPhone} />
-                      <label className="flex items-start gap-2 cursor-pointer select-none">
-                        <input type="checkbox" checked={ndaAgreed} onChange={(e) => setNdaAgreed(e.target.checked)} className="mt-0.5 accent-primary flex-shrink-0" />
-                        <span className="text-[11px] text-muted-foreground">I have read and agree to this Non-Disclosure Agreement</span>
-                      </label>
+                      <NdaDocument
+                        listingName={listing.businessName}
+                        buyerPhone={ndaPhone}
+                        agreed={ndaAgreed}
+                        onAgreeChange={setNdaAgreed}
+                      />
                       {ndaStep === null && (
                         <div className="flex flex-col gap-2">
                           <input

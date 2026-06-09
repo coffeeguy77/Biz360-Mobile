@@ -1,22 +1,28 @@
 interface NdaDocumentProps {
-  businessName: string;
+  listingName: string;
   buyerPhone?: string;
+  agreed: boolean;
+  onAgreeChange: (agreed: boolean) => void;
 }
 
-export function NdaDocument({ businessName, buyerPhone }: NdaDocumentProps) {
-  const today = new Date().toLocaleDateString("en-AU", {
+export function NdaDocument({ listingName, buyerPhone, agreed, onAgreeChange }: NdaDocumentProps) {
+  const today = new Date().toLocaleString("en-AU", {
     day: "numeric",
     month: "long",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
   });
 
   return (
-    <div className="text-[11px] text-muted-foreground leading-relaxed space-y-2.5 max-h-48 overflow-y-auto pr-1 border border-border rounded-xl p-3 bg-background/50">
+    <div className="text-[11px] text-muted-foreground leading-relaxed space-y-2.5 max-h-60 overflow-y-auto pr-1 border border-border rounded-xl p-3 bg-background/50">
       <p className="font-semibold text-foreground text-xs">Non-Disclosure Agreement</p>
       <p>
         This Confidentiality Agreement ("Agreement") is entered into as of{" "}
         <strong>{today}</strong> between you ("Recipient") and the seller of{" "}
-        <strong>{businessName}</strong> ("Disclosing Party"), facilitated by EXIT360 Pty Ltd (ABN to be disclosed upon request).
+        <strong>{listingName}</strong> ("Disclosing Party"), facilitated by EXIT360 Pty Ltd
+        (ABN to be disclosed upon request).
       </p>
       <p>
         <strong>1. Confidential Information.</strong> "Confidential Information" means all
@@ -55,15 +61,38 @@ export function NdaDocument({ businessName, buyerPhone }: NdaDocumentProps) {
       </p>
       <p>
         <strong>7. Electronic Execution.</strong> This Agreement may be executed electronically.
-        Verification of your mobile number via SMS one-time password constitutes a valid and
+        Verification of your mobile number via one-time password (OTP) constitutes a valid and
         binding electronic signature under the <em>Electronic Transactions Act 1999</em> (Cth)
-        and equivalent state legislation. Your IP address, device user-agent, and mobile number
-        will be recorded as evidence of execution.
+        and equivalent state legislation.
       </p>
-      <p className="text-muted-foreground/70 italic border-t border-border pt-2">
-        Signed electronically via EXIT360 · {today}
-        {buyerPhone ? ` · Mobile: ${buyerPhone}` : ""}
+      <p>
+        <strong>8. Identity Verification.</strong> Recipient's identity is verified via an OTP
+        delivered to their Australian mobile number through a carrier operating under the{" "}
+        <em>Telecommunications Act 1997</em> (Cth). Delivery of the OTP to Recipient's registered
+        mobile device constitutes identity verification for the purposes of this Agreement.
       </p>
+
+      <div className="border-t border-border pt-2.5 space-y-1">
+        <p className="font-semibold text-foreground text-xs">Signature Block</p>
+        <p>Listing: <strong>{listingName}</strong></p>
+        {buyerPhone
+          ? <p>Mobile: <strong>{buyerPhone}</strong> — to be verified via SMS OTP</p>
+          : <p className="text-muted-foreground/60 italic">Enter your mobile number below to proceed</p>}
+        <p>Date / Time: <strong>{today}</strong></p>
+        <p className="text-muted-foreground/60 italic">Your IP address and device information will be recorded at time of signing.</p>
+      </div>
+
+      <label className="flex items-start gap-2 cursor-pointer select-none border border-border rounded-lg p-2.5 bg-primary/5 hover:bg-primary/10 transition-colors">
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(e) => onAgreeChange(e.target.checked)}
+          className="mt-0.5 accent-primary flex-shrink-0"
+        />
+        <span className="text-foreground font-medium">
+          I have read and agree to this Non-Disclosure Agreement. I understand my mobile number will be verified via SMS and my electronic signature will be permanently recorded.
+        </span>
+      </label>
     </div>
   );
 }

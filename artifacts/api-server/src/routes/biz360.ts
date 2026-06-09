@@ -567,6 +567,7 @@ router.post("/public/listing/:listingId/nda/sign", async (req, res): Promise<voi
       buyerIp: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null,
       userAgent: req.headers["user-agent"] ?? null,
       ndaVersion: "v1",
+      otpVerified: true,
     }).returning();
     const ndaToken = await signNdaToken(listingId, phone.replace(/\s/g, ""));
     res.json({ ok: true, signedAt: signature.signedAt, ndaToken });
