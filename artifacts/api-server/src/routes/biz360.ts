@@ -359,26 +359,51 @@ router.post("/public/listing/:listingId/verify-password", async (req, res): Prom
   }
 });
 
-router.post("/public/listing/:listingId/request-sms-password", async (req, res): Promise<void> => {
+// Step 1 of SMS unlock: send a Twilio Verify OTP to the buyer's phone
+router.post("/public/listing/:listingId/sms-unlock/send", async (req, res): Promise<void> => {
   const { listingId } = req.params;
   const { phone } = req.body as { phone?: string };
   if (!phone) { res.status(400).json({ error: "phone required" }); return; }
   try {
     const [settings] = await db.select().from(reportAccessSettingsTable)
       .where(eq(reportAccessSettingsTable.listingId, listingId));
-    if (!settings?.smsUnlockEnabled || !settings.passwordHash) {
+    if (!settings?.smsUnlockEnabled) {
+      res.status(403).json({ error: "SMS unlock not enabled for this listing" }); return;
+    }
+    const client = getTwilioClient();
+    await client.verify.v2
+      .services(getVerifyServiceSid())
+      .verifications.create({ to: phone, channel: "sms" });
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to send code";
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Step 2 of SMS unlock: verify the OTP and issue a 24h report access token
+router.post("/public/listing/:listingId/sms-unlock/verify", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const { phone, code } = req.body as { phone?: string; code?: string };
+  if (!phone || !code) { res.status(400).json({ error: "phone and code required" }); return; }
+  try {
+    const [settings] = await db.select().from(reportAccessSettingsTable)
+      .where(eq(reportAccessSettingsTable.listingId, listingId));
+    if (!settings?.smsUnlockEnabled) {
       res.status(403).json({ error: "SMS unlock not enabled" }); return;
     }
     const client = getTwilioClient();
-    await client.messages.create({
-      to: phone,
-      from: process.env.TWILIO_PHONE_NUMBER ?? undefined,
-      messagingServiceSid: process.env.TWILIO_MESSAGING_SID ?? undefined,
-      body: `Your EXIT360 report password has been requested. Please contact the listing agent or use the password provided to you.`,
-    }).catch(() => null);
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: "SMS failed" });
+    const check = await client.verify.v2
+      .services(getVerifyServiceSid())
+      .verificationChecks.create({ to: phone, code });
+    if (check.status !== "approved") {
+      res.status(400).json({ error: "Incorrect or expired code" }); return;
+    }
+    const token = await signReportAccessToken(listingId);
+    res.json({ ok: true, token });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Verification failed";
+    res.status(400).json({ error: msg });
   }
 });
 

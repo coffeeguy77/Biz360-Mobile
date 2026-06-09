@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { eq, and, desc } from "drizzle-orm";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
-import { promisify } from "util";
+import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
 import {
   db,
@@ -12,26 +11,19 @@ import {
 } from "@workspace/db";
 
 const router = Router({ mergeParams: true });
-const scryptAsync = promisify(scrypt);
 
-const getSecret = () => new TextEncoder().encode(process.env.JWT_SECRET ?? "");
+function getSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET environment variable is not set");
+  return new TextEncoder().encode(secret);
+}
 
 async function hashPwd(pw: string): Promise<string> {
-  const salt = randomBytes(16).toString("hex");
-  const key = (await scryptAsync(pw, salt, 64)) as Buffer;
-  return `${salt}:${key.toString("hex")}`;
+  return bcrypt.hash(pw, 12);
 }
 
 async function checkPwd(pw: string, hash: string): Promise<boolean> {
-  try {
-    const [salt, stored] = hash.split(":");
-    const key = (await scryptAsync(pw, salt, 64)) as Buffer;
-    const storedBuf = Buffer.from(stored, "hex");
-    if (key.length !== storedBuf.length) return false;
-    return timingSafeEqual(key, storedBuf);
-  } catch {
-    return false;
-  }
+  return bcrypt.compare(pw, hash);
 }
 
 function validatePwd(pw: string): string | null {
@@ -164,23 +156,49 @@ router.delete("/grants/:grantId", async (req, res) => {
 });
 
 // GET /valuation/cafes/:cafeId/report-access/analytics
+// Returns buyer analytics grouped by viewer_phone: count + lastOpenedAt
 router.get("/analytics", async (req, res) => {
   const { cafeId } = req.params as { cafeId: string };
   const ownerId = req.user!.id;
   const cafe = await requireCafeOwner(cafeId, ownerId);
   if (!cafe) return res.status(403).json({ error: "Forbidden" });
   const listingId = cafe.listingId;
-  if (!listingId) return res.json({ events: [], total: 0 });
+  if (!listingId) return res.json({ buyers: [], totalViews: 0 });
 
   const events = await db.select().from(reportViewEventsTable)
     .where(eq(reportViewEventsTable.listingId, listingId))
     .orderBy(desc(reportViewEventsTable.openedAt))
-    .limit(200);
+    .limit(500);
 
-  return res.json({ events, total: events.length });
+  // Group by viewer_phone (null = anonymous)
+  const grouped: Record<string, { phone: string | null; viewCount: number; lastOpenedAt: Date | null; documentType: string }> = {};
+  for (const e of events) {
+    const key = e.viewerPhone ?? `__anon__${e.viewerIp ?? e.id}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        phone: e.viewerPhone,
+        viewCount: 0,
+        lastOpenedAt: null,
+        documentType: e.documentType,
+      };
+    }
+    grouped[key].viewCount++;
+    const opened = e.openedAt ? new Date(e.openedAt) : null;
+    if (opened && (!grouped[key].lastOpenedAt || opened > grouped[key].lastOpenedAt!)) {
+      grouped[key].lastOpenedAt = opened;
+    }
+  }
+
+  const buyers = Object.values(grouped).sort((a, b) => {
+    if (!a.lastOpenedAt) return 1;
+    if (!b.lastOpenedAt) return -1;
+    return b.lastOpenedAt.getTime() - a.lastOpenedAt.getTime();
+  });
+
+  return res.json({ buyers, totalViews: events.length });
 });
 
-// ─── Public helper used by biz360 router ─────────────────────────────────────
+// ─── Public helpers used by biz360 router ────────────────────────────────────
 
 export async function signReportAccessToken(listingId: string): Promise<string> {
   return new SignJWT({ listingId, type: "report-access" })

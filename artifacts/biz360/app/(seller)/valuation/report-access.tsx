@@ -35,12 +35,11 @@ interface AccessGrant {
   createdAt: string | null;
 }
 
-interface ViewEvent {
-  id: string;
-  viewerPhone: string | null;
-  viewerIp: string | null;
+interface BuyerAnalytic {
+  phone: string | null;
+  viewCount: number;
+  lastOpenedAt: string | null;
   documentType: string;
-  openedAt: string | null;
 }
 
 const MODE_LABELS: Record<AccessMode, string> = {
@@ -65,7 +64,8 @@ export default function ReportAccessScreen() {
   const [tab, setTab] = useState<"settings" | "analytics">("settings");
   const [settings, setSettings] = useState<AccessSettings | null>(null);
   const [grants, setGrants] = useState<AccessGrant[]>([]);
-  const [events, setEvents] = useState<ViewEvent[]>([]);
+  const [buyers, setBuyers] = useState<BuyerAnalytic[]>([]);
+  const [totalViews, setTotalViews] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -103,7 +103,8 @@ export default function ReportAccessScreen() {
       }
       if (analyticsRes.ok) {
         const data = await analyticsRes.json();
-        setEvents(data.events ?? []);
+        setBuyers(data.buyers ?? []);
+        setTotalViews(data.totalViews ?? 0);
       }
     } finally {
       setLoading(false);
@@ -218,7 +219,7 @@ export default function ReportAccessScreen() {
               onPress={() => setTab(t)}
             >
               <Text style={[styles.tabBtnText, tab === t && { color: "#fff" }]}>
-                {t === "settings" ? "Access Settings" : `Analytics (${events.length})`}
+                {t === "settings" ? "Access Settings" : `Analytics (${totalViews})`}
               </Text>
             </TouchableOpacity>
           ))}
@@ -345,7 +346,7 @@ export default function ReportAccessScreen() {
           </View>
         ) : (
           <View style={{ gap: 12 }}>
-            {events.length === 0 ? (
+            {buyers.length === 0 ? (
               <View style={styles.emptyState}>
                 <Feather name="bar-chart-2" size={36} color={colors.mutedForeground} />
                 <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No views yet</Text>
@@ -353,19 +354,29 @@ export default function ReportAccessScreen() {
                   View events will appear here once buyers access the report.
                 </Text>
               </View>
-            ) : events.map((e) => (
-              <View key={e.id} style={[styles.eventRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Feather name="eye" size={16} color={colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.grantPhone, { color: colors.foreground }]}>
-                    {e.viewerPhone ?? "Anonymous"}
-                  </Text>
-                  <Text style={[styles.grantDate, { color: colors.mutedForeground }]}>
-                    {e.documentType} · {formatDate(e.openedAt)}
-                  </Text>
-                </View>
-              </View>
-            ))}
+            ) : (
+              <>
+                <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+                  {totalViews} TOTAL VIEW{totalViews !== 1 ? "S" : ""} · {buyers.length} UNIQUE BUYER{buyers.length !== 1 ? "S" : ""}
+                </Text>
+                {buyers.map((b, i) => (
+                  <View key={b.phone ?? `anon-${i}`} style={[styles.eventRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Feather name="user" size={16} color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.grantPhone, { color: colors.foreground }]}>
+                        {b.phone ?? "Anonymous"}
+                      </Text>
+                      <Text style={[styles.grantDate, { color: colors.mutedForeground }]}>
+                        {b.viewCount} open{b.viewCount !== 1 ? "s" : ""} · Last {formatDate(b.lastOpenedAt)}
+                      </Text>
+                    </View>
+                    <View style={[styles.badgeCount, { backgroundColor: colors.primary + "22" }]}>
+                      <Text style={[styles.badgeText, { color: colors.primary }]}>{b.viewCount}×</Text>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -405,4 +416,6 @@ const styles = StyleSheet.create({
   emptyState:   { alignItems: "center", paddingVertical: 60, gap: 12 },
   emptyTitle:   { fontSize: 18, fontFamily: "Inter_700Bold" },
   emptyText:    { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 18 },
+  badgeCount:   { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, alignItems: "center", justifyContent: "center" },
+  badgeText:    { fontSize: 12, fontFamily: "Inter_600SemiBold" },
 });

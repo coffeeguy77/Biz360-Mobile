@@ -405,11 +405,18 @@ export function ListingDetail() {
   const [pwdInput, setPwdInput] = useState("");
   const [pwdError, setPwdError] = useState<string | null>(null);
   const [pwdChecking, setPwdChecking] = useState(false);
+  // Identity OTP (for users / users_and_password modes)
   const [otpPhone, setOtpPhone] = useState("");
   const [otpCode, setOtpCode] = useState("");
-  const [otpStep, setOtpStep] = useState<"phone" | "code" | null>(null);
+  const [otpStep, setOtpStep] = useState<"phone" | "code" | "not_granted" | null>(null);
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
+  // SMS OTP unlock (for password / users_and_password modes with smsUnlockEnabled)
+  const [smsOtpPhone, setSmsOtpPhone] = useState("");
+  const [smsOtpCode, setSmsOtpCode] = useState("");
+  const [smsOtpStep, setSmsOtpStep] = useState<"phone" | "code" | null>(null);
+  const [smsOtpLoading, setSmsOtpLoading] = useState(false);
+  const [smsOtpError, setSmsOtpError] = useState<string | null>(null);
   const [viewLogged, setViewLogged] = useState(false);
 
   // Audio state — lives here so it persists during navigation
@@ -529,12 +536,64 @@ export function ListingDetail() {
         localStorage.setItem("biz360_web_auth_token", data.token);
         setOtpStep(null);
         setOtpCode("");
-        await checkAccess(lid);
+        const newAccess = await fetch(`/api/public/listing/${lid}/access-check`, {
+          headers: { Authorization: `Bearer ${data.token}` },
+        }).then((r) => r.json()).catch(() => null);
+        if (newAccess) {
+          setAccessInfo(newAccess);
+          if (!newAccess.hasAccess) setOtpStep("not_granted");
+        }
       } else {
         setOtpError(data.error ?? "Incorrect code");
       }
     } finally {
       setOtpLoading(false);
+    }
+  }
+
+  async function handleSmsUnlockSend(lid: string) {
+    if (!smsOtpPhone.trim()) return;
+    setSmsOtpLoading(true);
+    setSmsOtpError(null);
+    try {
+      const res = await fetch(`/api/public/listing/${lid}/sms-unlock/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: smsOtpPhone.trim() }),
+      });
+      if (res.ok) {
+        setSmsOtpStep("code");
+      } else {
+        const d = await res.json();
+        setSmsOtpError(d.error ?? "Failed to send code");
+      }
+    } finally {
+      setSmsOtpLoading(false);
+    }
+  }
+
+  async function handleSmsUnlockVerify(lid: string) {
+    if (!smsOtpCode.trim()) return;
+    setSmsOtpLoading(true);
+    setSmsOtpError(null);
+    try {
+      const res = await fetch(`/api/public/listing/${lid}/sms-unlock/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: smsOtpPhone.trim(), code: smsOtpCode.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        localStorage.setItem(`report_token_${lid}`, data.token);
+        setSmsOtpStep(null);
+        setSmsOtpCode("");
+        setSmsOtpPhone("");
+        await checkAccess(lid);
+      } else {
+        setSmsOtpError(data.error ?? "Incorrect code");
+      }
+    } finally {
+      setSmsOtpLoading(false);
     }
   }
 
@@ -915,30 +974,85 @@ export function ListingDetail() {
                       <p className="text-sm text-foreground font-medium">Password required</p>
                       <p className="text-[11px] text-muted-foreground mt-1">Enter the password provided by the seller to view the financials.</p>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <input
-                        type="password"
-                        placeholder="Enter password"
-                        value={pwdInput}
-                        onChange={(e) => { setPwdInput(e.target.value); setPwdError(null); }}
-                        onKeyDown={(e) => e.key === "Enter" && handlePasswordUnlock(lid)}
-                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                      />
-                      {pwdError && <p className="text-xs text-red-400">{pwdError}</p>}
-                      <button
-                        onClick={() => handlePasswordUnlock(lid)}
-                        disabled={pwdChecking || !pwdInput}
-                        className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
-                        {pwdChecking ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
-                        Unlock Financials
-                      </button>
-                      {smsUnlock && mode === "users_and_password" && (
-                        <p className="text-[10px] text-muted-foreground text-center">
-                          No password? Sign in with your phone below.
-                        </p>
-                      )}
-                    </div>
+                    {smsOtpStep === null && (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="password"
+                          placeholder="Enter password"
+                          value={pwdInput}
+                          onChange={(e) => { setPwdInput(e.target.value); setPwdError(null); }}
+                          onKeyDown={(e) => e.key === "Enter" && handlePasswordUnlock(lid)}
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                        />
+                        {pwdError && <p className="text-xs text-red-400">{pwdError}</p>}
+                        <button
+                          onClick={() => handlePasswordUnlock(lid)}
+                          disabled={pwdChecking || !pwdInput}
+                          className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {pwdChecking ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
+                          Unlock Financials
+                        </button>
+                        {smsUnlock && (
+                          <button
+                            onClick={() => setSmsOtpStep("phone")}
+                            className="text-[11px] text-primary underline text-center mt-1"
+                          >
+                            Don't have the password? Get it via SMS →
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {smsOtpStep === "phone" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[11px] text-muted-foreground text-center">Enter your mobile number to receive a one-time code</p>
+                        <input
+                          type="tel"
+                          placeholder="+61 400 000 000"
+                          value={smsOtpPhone}
+                          onChange={(e) => { setSmsOtpPhone(e.target.value); setSmsOtpError(null); }}
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                        />
+                        {smsOtpError && <p className="text-xs text-red-400">{smsOtpError}</p>}
+                        <button
+                          onClick={() => handleSmsUnlockSend(lid)}
+                          disabled={smsOtpLoading || !smsOtpPhone.trim()}
+                          className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {smsOtpLoading ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
+                          Send code via SMS
+                        </button>
+                        <button onClick={() => { setSmsOtpStep(null); setSmsOtpError(null); }} className="text-[11px] text-muted-foreground underline text-center">
+                          Back to password
+                        </button>
+                      </div>
+                    )}
+                    {smsOtpStep === "code" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[11px] text-muted-foreground text-center">Code sent to {smsOtpPhone}</p>
+                        <input
+                          type="text"
+                          placeholder="Enter 6-digit code"
+                          value={smsOtpCode}
+                          maxLength={6}
+                          onChange={(e) => { setSmsOtpCode(e.target.value); setSmsOtpError(null); }}
+                          onKeyDown={(e) => e.key === "Enter" && handleSmsUnlockVerify(lid)}
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-center tracking-widest"
+                        />
+                        {smsOtpError && <p className="text-xs text-red-400">{smsOtpError}</p>}
+                        <button
+                          onClick={() => handleSmsUnlockVerify(lid)}
+                          disabled={smsOtpLoading || smsOtpCode.length < 4}
+                          className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {smsOtpLoading ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                          Verify & Unlock
+                        </button>
+                        <button onClick={() => { setSmsOtpStep("phone"); setSmsOtpCode(""); setSmsOtpError(null); }} className="text-[11px] text-muted-foreground underline text-center">
+                          Change phone number
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
 
@@ -948,6 +1062,24 @@ export function ListingDetail() {
                       <Lock size={14} className="text-amber-400" />
                       <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Verified Financials</span>
                     </div>
+                    {otpStep === "not_granted" ? (
+                      <div className="text-center py-4 flex flex-col items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                          <Lock size={18} className="text-amber-400" />
+                        </div>
+                        <p className="text-sm text-foreground font-medium">Access not yet granted</p>
+                        <p className="text-[11px] text-muted-foreground max-w-[240px] text-center leading-relaxed">
+                          Your phone number ({otpPhone}) hasn't been added to the approved buyers list. Contact the seller to request access.
+                        </p>
+                        <button
+                          onClick={() => { setOtpStep(null); setOtpPhone(""); setOtpCode(""); }}
+                          className="text-[11px] text-primary underline"
+                        >
+                          Try a different number
+                        </button>
+                      </div>
+                    ) : (
+                    <>
                     <div className="text-center py-2">
                       <Lock size={28} className="mx-auto text-muted-foreground mb-2" />
                       <p className="text-sm text-foreground font-medium">Verify your identity</p>
@@ -998,6 +1130,8 @@ export function ListingDetail() {
                         </button>
                         <button onClick={() => { setOtpStep(null); setOtpCode(""); setOtpError(null); }} className="text-[11px] text-muted-foreground underline text-center">Change phone number</button>
                       </div>
+                    )}
+                    </>
                     )}
                   </div>
                 );
