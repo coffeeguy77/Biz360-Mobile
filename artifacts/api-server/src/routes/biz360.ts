@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { SignJWT, jwtVerify } from "jose";
 import { eq, and, desc, isNull } from "drizzle-orm";
 import {
   db, kvStore, cafesTable, valuationSnapshotsTable,
@@ -20,6 +21,30 @@ cloudinary.config({
 });
 
 const router = Router();
+
+// ─── NDA token helpers ────────────────────────────────────────────────────────
+
+function getNdaSecret(): Uint8Array {
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error("JWT_SECRET not set");
+  return new TextEncoder().encode(s);
+}
+
+async function signNdaToken(listingId: string, phone: string): Promise<string> {
+  return new SignJWT({ listingId, phone, type: "nda-signed" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("7d")
+    .sign(getNdaSecret());
+}
+
+async function verifyNdaToken(token: string, listingId: string): Promise<boolean> {
+  try {
+    const { payload } = await jwtVerify(token, getNdaSecret());
+    return (payload as any).listingId === listingId && (payload as any).type === "nda-signed";
+  } catch {
+    return false;
+  }
+}
 
 // ─── KV store ─────────────────────────────────────────────────────────────────
 
@@ -105,6 +130,22 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
     const allListings = Array.isArray(kvValue) ? kvValue : [];
     const liveListing = allListings.find((l: any) => l.listingId === listingId) ?? null;
 
+    const [ndaRow] = await db.select().from(ndaSettingsTable)
+      .where(eq(ndaSettingsTable.listingId, listingId));
+    const ndaMode = ndaRow?.ndaMode ?? "none";
+    const ndaThirdPartyUrl = ndaRow?.thirdPartyUrl ?? null;
+
+    // NDA gate: required mode must present a valid server-issued NDA JWT before any snapshot is returned
+    let ndaSigned = false;
+    if (ndaMode === "required") {
+      const ndaToken = req.headers["x-nda-token"] as string | undefined;
+      if (ndaToken) ndaSigned = await verifyNdaToken(ndaToken, listingId);
+      if (!ndaSigned) {
+        res.json({ listing: liveListing, snapshot: null, snapshotGated: false, ndaMode, ndaThirdPartyUrl, ndaSigned: false });
+        return;
+      }
+    }
+
     let snapshot = null;
     let snapshotGated = false;
     const cafes = await db.select().from(cafesTable).where(eq(cafesTable.listingId, listingId));
@@ -136,12 +177,7 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
       }
     }
 
-    const [ndaRow] = await db.select().from(ndaSettingsTable)
-      .where(eq(ndaSettingsTable.listingId, listingId));
-    const ndaMode = ndaRow?.ndaMode ?? "none";
-    const ndaThirdPartyUrl = ndaRow?.thirdPartyUrl ?? null;
-
-    res.json({ listing: liveListing, snapshot, snapshotGated, ndaMode, ndaThirdPartyUrl });
+    res.json({ listing: liveListing, snapshot, snapshotGated, ndaMode, ndaThirdPartyUrl, ndaSigned });
   } catch {
     res.status(500).json({ error: "Failed to fetch listing data" });
   }
@@ -466,6 +502,25 @@ router.post("/public/listing/:listingId/sms-unlock/verify", async (req, res): Pr
   }
 });
 
+// ─── NDA status ───────────────────────────────────────────────────────────────
+
+router.get("/public/listing/:listingId/nda", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  try {
+    const [ndaRow] = await db.select().from(ndaSettingsTable)
+      .where(eq(ndaSettingsTable.listingId, listingId));
+    const mode = ndaRow?.ndaMode ?? "none";
+    let hasSigned = false;
+    if (mode === "required") {
+      const ndaToken = req.headers["x-nda-token"] as string | undefined;
+      if (ndaToken) hasSigned = await verifyNdaToken(ndaToken, listingId);
+    }
+    res.json({ mode, hasSigned });
+  } catch {
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
 // ─── NDA signing — public buyer endpoints ─────────────────────────────────────
 
 router.post("/public/listing/:listingId/nda/send-otp", async (req, res): Promise<void> => {
@@ -513,7 +568,8 @@ router.post("/public/listing/:listingId/nda/sign", async (req, res): Promise<voi
       userAgent: req.headers["user-agent"] ?? null,
       ndaVersion: "v1",
     }).returning();
-    res.json({ ok: true, signedAt: signature.signedAt });
+    const ndaToken = await signNdaToken(listingId, phone.replace(/\s/g, ""));
+    res.json({ ok: true, signedAt: signature.signedAt, ndaToken });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to verify";
     res.status(400).json({ error: msg });

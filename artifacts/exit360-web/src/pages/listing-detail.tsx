@@ -428,6 +428,7 @@ export function ListingDetail() {
   const [ndaLoading, setNdaLoading] = useState(false);
   const [ndaError, setNdaError] = useState<string | null>(null);
   const [ndaSigned, setNdaSigned] = useState(false);
+  const [ndaAgreed, setNdaAgreed] = useState(false);
 
   // Audio state — lives here so it persists during navigation
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -453,6 +454,8 @@ export function ListingDetail() {
     if (webAuth) headers["Authorization"] = `Bearer ${webAuth}`;
     const reportToken = localStorage.getItem(`report_token_${lid}`);
     if (reportToken) headers["X-Report-Token"] = reportToken;
+    const ndaToken = sessionStorage.getItem(`nda_token_${lid}`);
+    if (ndaToken) headers["X-Nda-Token"] = ndaToken;
     const data = await fetch(`/api/public/listing/${lid}`, { headers }).then((r) => r.json()).catch(() => null);
     if (data) setLiveData(data);
   }, []);
@@ -501,7 +504,8 @@ export function ListingDetail() {
     setNdaCode("");
     setNdaStep(null);
     setNdaError(null);
-    setNdaSigned(localStorage.getItem(`nda_signed_${listing?.id ?? ""}`) === "1");
+    setNdaAgreed(false);
+    setNdaSigned(!!sessionStorage.getItem(`nda_token_${listing?.id ?? ""}`));
   }, [listing?.id]);
 
   // Log view when access becomes visible — in effect, not in render
@@ -670,10 +674,12 @@ export function ListingDetail() {
         body: JSON.stringify({ phone: ndaPhone.trim(), code: ndaCode.trim() }),
       });
       if (res.ok) {
-        localStorage.setItem(`nda_signed_${lid}`, "1");
+        const signed = await res.json();
+        sessionStorage.setItem(`nda_token_${lid}`, signed.ndaToken ?? "");
         setNdaSigned(true);
         setNdaStep(null);
         setNdaCode("");
+        await fetchLiveData(lid);
         await checkAccess(lid);
       } else {
         const d = await res.json();
@@ -682,11 +688,6 @@ export function ListingDetail() {
     } finally {
       setNdaLoading(false);
     }
-  }
-
-  function handleThirdPartyNdaAcknowledge(lid: string) {
-    localStorage.setItem(`nda_signed_${lid}`, "1");
-    setNdaSigned(true);
   }
 
   useEffect(() => {
@@ -1011,7 +1012,11 @@ export function ListingDetail() {
                       </div>
                       <p className="text-sm text-foreground font-medium">Sign NDA to view financials</p>
                       <p className="text-[11px] text-muted-foreground">This listing requires a Non-Disclosure Agreement before viewing verified financial data.</p>
-                      <NdaDocument businessName={listing.businessName} />
+                      <NdaDocument businessName={listing.businessName} buyerPhone={ndaPhone} />
+                      <label className="flex items-start gap-2 cursor-pointer select-none">
+                        <input type="checkbox" checked={ndaAgreed} onChange={(e) => setNdaAgreed(e.target.checked)} className="mt-0.5 accent-primary flex-shrink-0" />
+                        <span className="text-[11px] text-muted-foreground">I have read and agree to this Non-Disclosure Agreement</span>
+                      </label>
                       {ndaStep === null && (
                         <div className="flex flex-col gap-2">
                           <input
@@ -1024,7 +1029,7 @@ export function ListingDetail() {
                           {ndaError && <p className="text-xs text-red-400">{ndaError}</p>}
                           <button
                             onClick={() => handleNdaSend(lid)}
-                            disabled={ndaLoading || !ndaPhone.trim()}
+                            disabled={ndaLoading || !ndaPhone.trim() || !ndaAgreed}
                             className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
                           >
                             {ndaLoading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
@@ -1081,12 +1086,9 @@ export function ListingDetail() {
                           <ExternalLink size={14} /> Open NDA Document
                         </a>
                       )}
-                      <button
-                        onClick={() => handleThirdPartyNdaAcknowledge(lid)}
-                        className="text-[11px] text-primary underline text-center mt-1"
-                      >
-                        I have signed the NDA →
-                      </button>
+                      <p className="text-[11px] text-muted-foreground text-center border border-border rounded-xl p-3">
+                        Once you've signed the NDA, contact the seller directly to request access to the verified financials.
+                      </p>
                     </div>
                   );
                 }
