@@ -114,6 +114,54 @@ const vfStyles = StyleSheet.create({
   row:     { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#1E2D40" },
 });
 
+// ── Locked Financials card (access restricted) ──────────────────────────────
+
+const LOCKED_ROW_LABELS = ["Gross Revenue", "EBITDA", "Adjusted EBITDA", "Valuation"];
+
+function LockedFinancialsCard({ listingId }: { listingId: string }) {
+  return (
+    <View style={[lfStyles.section, { backgroundColor: "#0A1628", borderColor: "#F59E0B30" }]}>
+      <View style={lfStyles.header}>
+        <View style={[lfStyles.icon, { backgroundColor: "#F59E0B18" }]}>
+          <Feather name="lock" size={18} color="#F59E0B" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={lfStyles.title}>Verified Financials</Text>
+          <Text style={lfStyles.sub}>Access restricted by seller</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => router.push(`/listing/valuation-report?listingId=${listingId}` as any)}
+          style={lfStyles.unlockBtn}
+        >
+          <Feather name="unlock" size={12} color="#F59E0B" />
+          <Text style={{ color: "#F59E0B", fontSize: 11, fontFamily: "Inter_600SemiBold" }}>Unlock</Text>
+        </TouchableOpacity>
+      </View>
+      <View>
+        {LOCKED_ROW_LABELS.map((label) => (
+          <View key={label} style={lfStyles.row}>
+            <Text style={{ color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", flex: 1 }}>{label}</Text>
+            <View style={lfStyles.blurBar} />
+          </View>
+        ))}
+      </View>
+      <Text style={lfStyles.hint}>Tap Unlock to enter the seller-provided password</Text>
+    </View>
+  );
+}
+
+const lfStyles = StyleSheet.create({
+  section:   { borderRadius: 14, borderWidth: 1, padding: 16, gap: 12 },
+  header:    { flexDirection: "row", alignItems: "center", gap: 12 },
+  icon:      { width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  title:     { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  sub:       { color: "#F59E0B", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  unlockBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: "#F59E0B50", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  row:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#1E2D40" },
+  blurBar:   { width: 80, height: 12, borderRadius: 4, backgroundColor: "#1E3A5C" },
+  hint:      { color: "#4A5568", fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" },
+});
+
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
 export default function ListingDetailScreen() {
@@ -123,11 +171,12 @@ export default function ListingDetailScreen() {
   const { user } = useAuth();
   const buyerId  = user?.id ?? "guest";
 
-  const [isSaved,       setIsSaved]       = useState(false);
-  const [hasTour,       setHasTour]       = useState(false);
-  const [valSnapshot,   setValSnapshot]   = useState<null | { combined: any; units: { unit: any; snapshot: any }[] }>(null);
-  const [valLoading,    setValLoading]    = useState(false);
-  const [valTabIdx,     setValTabIdx]     = useState(0);
+  const [isSaved,           setIsSaved]           = useState(false);
+  const [hasTour,           setHasTour]           = useState(false);
+  const [valSnapshot,       setValSnapshot]       = useState<null | { combined: any; units: { unit: any; snapshot: any }[] }>(null);
+  const [valLoading,        setValLoading]        = useState(false);
+  const [valTabIdx,         setValTabIdx]         = useState(0);
+  const [valAccessRequired, setValAccessRequired] = useState(false);
   const viewFiredRef = useRef(false);
 
   // 1. Try DEMO_LISTINGS first (synchronous)
@@ -160,7 +209,7 @@ export default function ListingDetailScreen() {
     });
   }, [id, pendingItem]);
 
-  // Fetch public valuation snapshot (no auth required) when listing has a listingId
+  // Fetch valuation snapshot — respects report access settings
   useEffect(() => {
     const listingId = pendingItem?.listingId;
     if (!listingId) return;
@@ -168,10 +217,18 @@ export default function ListingDetailScreen() {
     fetch(`${LISTING_API_BASE}/api/valuation/listing/${listingId}/snapshot`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data && data.combined) setValSnapshot(data);
-        else setValSnapshot(null);
+        if (data?.requiresAccess) {
+          setValAccessRequired(true);
+          setValSnapshot(null);
+        } else if (data?.combined) {
+          setValAccessRequired(false);
+          setValSnapshot(data);
+        } else {
+          setValAccessRequired(false);
+          setValSnapshot(null);
+        }
       })
-      .catch(() => setValSnapshot(null))
+      .catch(() => { setValSnapshot(null); setValAccessRequired(false); })
       .finally(() => setValLoading(false));
   }, [pendingItem?.listingId]);
 
@@ -565,7 +622,10 @@ export default function ListingDetailScreen() {
             </View>
           )}
 
-          {/* ── Verified Financials: only shown once snapshot is confirmed to exist ── */}
+          {/* ── Verified Financials: locked or open depending on seller's access settings ── */}
+          {item.listingId && !valLoading && valAccessRequired && (
+            <LockedFinancialsCard listingId={item.listingId} />
+          )}
           {item.listingId && !valLoading && valSnapshot != null && (
             <VerifiedFinancialsSection
               listingId={item.listingId}

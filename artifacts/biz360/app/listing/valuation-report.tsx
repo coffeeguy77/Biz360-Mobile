@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 
@@ -36,13 +36,135 @@ export default function BuyerValuationReport() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
 
-  useEffect(() => {
+  const [requiresAccess, setRequiresAccess] = useState(false);
+  const [reportToken, setReportToken] = useState<string | null>(null);
+  const [pwInput, setPwInput] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+
+  const fetchSnapshot = useCallback((token: string | null) => {
     if (!listingId) return;
-    fetch(`${API_BASE}/api/valuation/listing/${listingId}/snapshot`)
+    setLoading(true);
+    const headers: Record<string, string> = {};
+    if (token) headers["x-report-token"] = token;
+    fetch(`${API_BASE}/api/valuation/listing/${listingId}/snapshot`, { headers })
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { setData(d ?? null); })
+      .then((d) => {
+        if (d?.requiresAccess) {
+          setRequiresAccess(true);
+          setData(null);
+        } else {
+          setRequiresAccess(false);
+          setData(d ?? null);
+        }
+      })
+      .catch(() => { setData(null); })
       .finally(() => setLoading(false));
   }, [listingId]);
+
+  useEffect(() => {
+    fetchSnapshot(null);
+  }, [fetchSnapshot]);
+
+  const handleUnlock = async () => {
+    if (!pwInput.trim() || !listingId) return;
+    setPwLoading(true);
+    setPwError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/valuation/listing/${listingId}/unlock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pwInput }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setPwError(body.error ?? "Incorrect password. Please try again.");
+        return;
+      }
+      setReportToken(body.token);
+      fetchSnapshot(body.token);
+    } catch {
+      setPwError("Network error. Please try again.");
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0) + 12;
+  const btmPad = insets.bottom + 80;
+
+  if (requiresAccess && !reportToken) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={{ paddingTop: topPad, paddingBottom: btmPad, paddingHorizontal: 16, flex: 1 }}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <Feather name="arrow-left" size={20} color={colors.foreground} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.title, { color: colors.foreground }]}>Verified Financials</Text>
+              <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 2 }}>Access restricted</Text>
+            </View>
+          </View>
+
+          <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: 28, paddingHorizontal: 8 }}>
+            <View style={unlockStyles.iconCircle}>
+              <Feather name="lock" size={34} color="#F59E0B" />
+            </View>
+
+            <View style={{ alignItems: "center", gap: 8 }}>
+              <Text style={[unlockStyles.headline, { color: colors.foreground }]}>Report Protected</Text>
+              <Text style={[unlockStyles.body, { color: colors.mutedForeground }]}>
+                The seller has restricted access to this financial report. Enter the password provided by the seller to unlock it.
+              </Text>
+            </View>
+
+            <View style={{ width: "100%", gap: 12 }}>
+              <TextInput
+                value={pwInput}
+                onChangeText={(t) => { setPwInput(t); setPwError(null); }}
+                placeholder="Report password"
+                placeholderTextColor={colors.mutedForeground}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="go"
+                onSubmitEditing={handleUnlock}
+                style={[
+                  unlockStyles.input,
+                  {
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    borderColor: pwError ? "#EF4444" : colors.border,
+                  },
+                ]}
+              />
+              {pwError && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Feather name="alert-circle" size={14} color="#EF4444" />
+                  <Text style={{ color: "#EF4444", fontSize: 13, fontFamily: "Inter_400Regular" }}>{pwError}</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                onPress={handleUnlock}
+                disabled={pwLoading || !pwInput.trim()}
+                style={[unlockStyles.btn, { opacity: pwLoading || !pwInput.trim() ? 0.5 : 1 }]}
+              >
+                {pwLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Feather name="unlock" size={16} color="#fff" />
+                    <Text style={unlockStyles.btnText}>Unlock Report</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   const tabs = data ? [
     { label: "Combined", snap: data.combined },
@@ -60,7 +182,7 @@ export default function BuyerValuationReport() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 80 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: topPad, paddingBottom: btmPad }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={colors.foreground} />
@@ -146,6 +268,15 @@ export default function BuyerValuationReport() {
     </View>
   );
 }
+
+const unlockStyles = StyleSheet.create({
+  iconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#F59E0B15", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#F59E0B30" },
+  headline:   { fontSize: 22, fontFamily: "Inter_700Bold", textAlign: "center" },
+  body:       { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, maxWidth: 300 },
+  input:      { borderRadius: 10, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, fontFamily: "Inter_400Regular", borderWidth: 1 },
+  btn:        { backgroundColor: "#F59E0B", borderRadius: 10, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8 },
+  btnText:    { color: "#fff", fontSize: 16, fontFamily: "Inter_600SemiBold" },
+});
 
 const styles = StyleSheet.create({
   container:      { flex: 1 },
