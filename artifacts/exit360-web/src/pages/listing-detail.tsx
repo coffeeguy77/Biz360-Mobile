@@ -437,13 +437,20 @@ export function ListingDetail() {
     return () => window.removeEventListener("message", handleMessage);
   }, [handleMessage]);
 
+  const fetchLiveData = useCallback(async (lid: string) => {
+    const headers: Record<string, string> = {};
+    const webAuth = localStorage.getItem("biz360_web_auth_token");
+    if (webAuth) headers["Authorization"] = `Bearer ${webAuth}`;
+    const reportToken = localStorage.getItem(`report_token_${lid}`);
+    if (reportToken) headers["X-Report-Token"] = reportToken;
+    const data = await fetch(`/api/public/listing/${lid}`, { headers }).then((r) => r.json()).catch(() => null);
+    if (data) setLiveData(data);
+  }, []);
+
   useEffect(() => {
     if (!listing?.isRealListing) return;
-    fetch(`/api/public/listing/${listing.id}`)
-      .then((r) => r.json())
-      .then((d) => setLiveData(d))
-      .catch(() => {});
-  }, [listing?.id]);
+    fetchLiveData(listing.id);
+  }, [listing?.id, fetchLiveData]);
 
   const checkAccess = useCallback(async (lid: string) => {
     setAccessChecking(true);
@@ -454,20 +461,39 @@ export function ListingDetail() {
       const reportToken = localStorage.getItem(`report_token_${lid}`);
       if (reportToken) headers["X-Report-Token"] = reportToken;
       const res = await fetch(`/api/public/listing/${lid}/access-check`, { headers });
-      if (res.ok) setAccessInfo(await res.json());
+      if (res.ok) {
+        const info = await res.json();
+        // Re-fetch live data FIRST so snapshot is ready when we show financials
+        if (info.hasAccess) await fetchLiveData(lid);
+        setAccessInfo(info);
+      } else {
+        // Fail closed on error — lock the gate
+        setAccessInfo({ mode: "locked", hasAccess: false });
+      }
+    } catch {
+      setAccessInfo({ mode: "locked", hasAccess: false });
     } finally {
       setAccessChecking(false);
     }
-  }, []);
+  }, [fetchLiveData]);
 
+  // Run access check once per listing ID (not on every liveData change — would loop)
   useEffect(() => {
-    if (!listing?.isRealListing || !liveData?.snapshot) return;
+    if (!listing?.isRealListing) return;
     checkAccess(listing.id);
-  }, [listing?.id, liveData?.snapshot, checkAccess]);
+  }, [listing?.id, checkAccess]);
 
-  const logView = useCallback(async (lid: string) => {
-    if (viewLogged) return;
+  // Reset access state when listing changes
+  useEffect(() => {
+    setAccessInfo(null);
+    setViewLogged(false);
+  }, [listing?.id]);
+
+  // Log view when access becomes visible — in effect, not in render
+  useEffect(() => {
+    if (!accessInfo?.hasAccess || !listing?.id || viewLogged) return;
     setViewLogged(true);
+    const lid = listing.id;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const webAuth = localStorage.getItem("biz360_web_auth_token");
     if (webAuth) headers["Authorization"] = `Bearer ${webAuth}`;
@@ -475,7 +501,7 @@ export function ListingDetail() {
       method: "POST", headers,
       body: JSON.stringify({ documentType: "financials" }),
     }).catch(() => {});
-  }, [viewLogged]);
+  }, [accessInfo?.hasAccess, listing?.id, viewLogged]);
 
   async function handlePasswordUnlock(lid: string) {
     if (!pwdInput) return;
@@ -728,6 +754,7 @@ export function ListingDetail() {
   const liveAskingPrice: number = liveData?.listing?.askingPrice ?? listing.askingPrice;
   const liveWeeklyRevenue: number = liveData?.listing?.weeklyRevenue ?? listing.weeklyRevenue;
   const snap = liveData?.snapshot ?? null;
+  const snapshotGated = liveData?.snapshotGated ?? false;
   const liveAdjustedProfit: number =
     snap?.adjustedEbitda != null && parseFloat(snap.adjustedEbitda) > 0
       ? parseFloat(snap.adjustedEbitda)
@@ -904,17 +931,22 @@ export function ListingDetail() {
               </div>
 
               {/* Valuation report — access-gated */}
-              {listing.isRealListing && snap && (() => {
+              {listing.isRealListing && (snap || snapshotGated) && (() => {
                 const lid = listing.id;
-                const mode = accessInfo?.mode ?? "public";
-                const hasAccess = accessInfo?.hasAccess ?? true;
-                const smsUnlock = accessInfo?.smsUnlockEnabled ?? false;
+                const mode = accessInfo?.mode ?? "locked";
+                const hasAccess = accessInfo?.hasAccess ?? false;
+                const smsUnlock = (accessInfo as any)?.smsUnlockEnabled ?? false;
                 const needsPassword = (mode === "password" || mode === "users_and_password") && !hasAccess;
                 const needsUser = (mode === "users") && !hasAccess;
 
-                if (hasAccess && accessInfo && !viewLogged) logView(lid);
-
-                const FinancialsContent = () => (
+                const FinancialsContent = () => {
+                  if (!snap) return (
+                    <div className="bg-card border border-green-500/20 rounded-2xl p-5 flex items-center gap-3">
+                      <Loader2 size={16} className="animate-spin text-green-400" />
+                      <span className="text-xs text-muted-foreground">Loading financials…</span>
+                    </div>
+                  );
+                  return (
                   <div className="bg-card border border-green-500/20 rounded-2xl p-5 flex flex-col gap-3">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -950,7 +982,8 @@ export function ListingDetail() {
                       Financials verified by EXIT360 via connected accounting & POS integrations.
                     </p>
                   </div>
-                );
+                  );
+                };
 
                 if (accessChecking && !accessInfo) {
                   return (

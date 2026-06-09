@@ -56,6 +56,46 @@ router.put("/biz360/kv/:key", async (req, res): Promise<void> => {
 // ─── Public listing data (no auth required) ───────────────────────────────────
 // Returns live asking price + published valuation snapshot for a listing ID.
 
+// ─── Shared access check helper ──────────────────────────────────────────────
+async function hasListingAccess(
+  listingId: string,
+  authHeader: string | undefined,
+  reportToken: string | undefined,
+): Promise<boolean> {
+  const [settings] = await db.select().from(reportAccessSettingsTable)
+    .where(eq(reportAccessSettingsTable.listingId, listingId));
+
+  if (!settings || settings.accessMode === "public") return true;
+
+  let viewerPhone: string | null = null;
+  if (authHeader?.startsWith("Bearer ")) {
+    const userId = await verifyToken(authHeader.slice(7)).catch(() => null);
+    if (userId) viewerPhone = userId.replace(/^u-/, "").replace(/^(\d+)$/, "+$1");
+  }
+
+  if (
+    (settings.accessMode === "password" || settings.accessMode === "users_and_password") &&
+    reportToken
+  ) {
+    if (await verifyReportAccessToken(reportToken, listingId)) return true;
+  }
+
+  if (settings.accessMode === "users" || settings.accessMode === "users_and_password") {
+    if (viewerPhone) {
+      const normalised = viewerPhone.replace(/\s/g, "");
+      const [grant] = await db.select().from(reportAccessGrantsTable).where(
+        and(
+          eq(reportAccessGrantsTable.listingId, listingId),
+          eq(reportAccessGrantsTable.phone, normalised),
+        )
+      );
+      if (grant) return true;
+    }
+  }
+
+  return false;
+}
+
 router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
   const { listingId } = req.params;
   try {
@@ -79,10 +119,23 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
         )
         .orderBy(desc(valuationSnapshotsTable.createdAt))
         .limit(1);
-      snapshot = snap ?? null;
+
+      let snapshotGated = false;
+      if (snap) {
+        const canAccess = await hasListingAccess(
+          listingId,
+          req.headers.authorization,
+          req.headers["x-report-token"] as string | undefined,
+        );
+        if (canAccess) {
+          snapshot = snap;
+        } else {
+          snapshotGated = true; // snapshot exists but is access-restricted
+        }
+      }
     }
 
-    res.json({ listing: liveListing, snapshot });
+    res.json({ listing: liveListing, snapshot, snapshotGated });
   } catch {
     res.status(500).json({ error: "Failed to fetch listing data" });
   }
