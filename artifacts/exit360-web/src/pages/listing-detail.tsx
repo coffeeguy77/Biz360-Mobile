@@ -84,11 +84,9 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): string 
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
   #pano{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;background:#000}
-  @keyframes kfPinBounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-13px)}60%{transform:translateY(-6px)}}
-  @keyframes kfPinShadow{0%,100%{transform:scaleX(1);opacity:0.28}35%{transform:scaleX(0.55);opacity:0.10}60%{transform:scaleX(0.78);opacity:0.18}}
-  .nav-pin-label{position:absolute;top:-30px;left:50%;transform:translateX(-50%);background:rgba(37,99,235,0.92);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .18s}
-  .pnlm-nav-pin-wrap:hover .nav-pin-label,.pnlm-nav-pin-wrap:active .nav-pin-label{opacity:1!important}
-  .pnlm-hotspot.pnlm-nav-pin-wrap{background:transparent!important;border:none!important;box-shadow:none!important;width:0!important;height:0!important;overflow:visible!important}
+  @keyframes kfNavFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+  .nav-pin-label{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.82);color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;font-family:system-ui,-apple-system,sans-serif;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+  .pnlm-hotspot.pnlm-nav-pin-wrap{background:transparent!important;border:none!important;box-shadow:none!important;width:44px!important;height:44px!important;overflow:visible!important;margin-left:-22px!important;margin-top:-22px!important}
   .pnlm-hotspot.pnlm-nav-pin-wrap::before{display:none!important}
   .pnlm-audio-hs{width:32px;height:32px;background:rgba(16,163,74,0.85);border:2px solid rgba(255,255,255,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:0 0 0 4px rgba(16,163,74,0.2);transition:background .2s;user-select:none}
   .pnlm-audio-hs:hover{background:rgba(16,163,74,1)}
@@ -104,17 +102,20 @@ var SPACES=${spacesJson};
 function xToYaw(x){return(x-0.5)*360}
 function yToPitch(y){return(0.5-y)*180}
 function createNavPin(container,args){
-  /* 0×0 anchor at the exact hotspot coordinate — children overflow freely */
-  container.style.cssText='width:0;height:0;overflow:visible;position:relative';
-  /* Pin body — pointer-events enabled so clicks land here, not on the canvas */
-  var pinDiv=document.createElement('div');
-  pinDiv.style.cssText='position:absolute;top:-44px;left:-17px;cursor:pointer;transform:scale(1.6);transform-origin:bottom center;animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite';
-  pinDiv.innerHTML=
-    '<svg width="34" height="44" viewBox="0 0 34 44" fill="none">'+
-      '<path d="M17 2C9.82 2 4 7.82 4 15c0 8.12 11.6 23.5 12.35 24.5a.85.85 0 001.3 0C18.4 38.5 30 23.12 30 15 30 7.82 24.18 2 17 2z" fill="#2563EB" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>'+
-      '<circle cx="17" cy="15" r="6.5" fill="white" opacity="0.95"/>'+
+  /* Arrow-in-circle nav pin: 44×44 circle centred on hotspot coordinate */
+  container.style.cssText='width:44px;height:44px;overflow:visible;position:relative;cursor:pointer';
+  container.innerHTML=
+    '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" style="display:block;animation:kfNavFloat 2.5s ease-in-out infinite">'+
+      '<circle cx="22" cy="22" r="20" fill="white" stroke="#94a3b8" stroke-width="1.5"/>'+
+      '<path d="M22 29V17M15 24l7-8 7 8" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'+
     '</svg>';
-  pinDiv.addEventListener('click',function(e){
+  /* Space name label above the circle */
+  var label=document.createElement('span');
+  label.className='nav-pin-label';
+  label.textContent=args.label;
+  container.appendChild(label);
+  /* Click handler */
+  container.addEventListener('click',function(e){
     e.stopPropagation();
     try{
       var sp=SPACES.find(function(s){return s.id===args.sceneId});
@@ -122,17 +123,6 @@ function createNavPin(container,args){
       viewer.loadScene(args.sceneId,0,resolvedYaw,100);
     }catch(err){}
   });
-  container.appendChild(pinDiv);
-  /* Shadow */
-  var shadow=document.createElement('div');
-  shadow.style.cssText='position:absolute;top:2px;left:-8px;width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;pointer-events:none;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite';
-  container.appendChild(shadow);
-  /* Label */
-  var label=document.createElement('span');
-  label.className='nav-pin-label';
-  label.style.bottom='50px';
-  label.textContent=args.label;
-  container.appendChild(label);
 }
 function createAudioHotspot(div,args){
   div.classList.add('pnlm-audio-hs');

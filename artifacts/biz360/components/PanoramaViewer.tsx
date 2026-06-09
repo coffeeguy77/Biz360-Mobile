@@ -125,7 +125,7 @@ function buildSinglePanoHtml(
       id:        p.id,
       pitch,
       yaw:       p.position.x * 360 - 180,
-      title:     p.title.split(" ").slice(0, 4).join(" "),
+      title:     p.type === 'navigation' ? p.title : p.title.split(" ").slice(0, 4).join(" "),
       color:     p.pinColor ?? PIN_COLORS[p.type] ?? "#3B82F6",
       icon,
       locked:    !!p.requiresNDA,
@@ -184,26 +184,43 @@ function buildSinglePanoHtml(
       container.style.opacity      = opac;
 
       if (anim === 'ripple') {
-        /* Navigation / ripple: 3 expanding concentric rings + small solid core */
-        injectKf('kf-ripple','@keyframes kfRipple{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
-        var ringCol = args.isNav ? 'rgba(59,130,246,0.9)' : col + 'cc';
-        var coreCol = args.isNav ? '#2563EB' : col;
-        var W = sz + 24; var HW = W >> 1;
-        container.style.width      = W + 'px';
-        container.style.height     = W + 'px';
-        container.style.marginLeft = '-' + HW + 'px';
-        container.style.marginTop  = '-' + HW + 'px';
-        var R = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;' +
-                'border:2.5px solid ' + ringCol + ';top:50%;left:50%;margin:-12px 0 0 -12px;' +
-                'animation-name:kfRipple;animation-duration:2s;animation-timing-function:ease-out;' +
-                'animation-iteration-count:infinite;pointer-events:none';
-        var C = 'position:absolute;width:12px;height:12px;border-radius:50%;background:' + coreCol + ';' +
-                'top:50%;left:50%;margin:-6px 0 0 -6px;z-index:2;box-shadow:0 0 8px 3px ' + coreCol + '88';
-        container.innerHTML =
-          '<div style="' + R + ';animation-delay:0s"></div>' +
-          '<div style="' + R + ';animation-delay:0.67s"></div>' +
-          '<div style="' + R + ';animation-delay:1.33s"></div>' +
-          '<div style="' + C + '"></div>';
+        if (args.isNav) {
+          /* Navigation pin: arrow-in-circle with destination name label above */
+          injectKf('kf-nav-float','@keyframes kfNavFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}');
+          container.style.width      = '44px';
+          container.style.height     = '44px';
+          container.style.marginLeft = '-22px';
+          container.style.marginTop  = '-22px';
+          container.style.overflow   = 'visible';
+          container.style.cursor     = 'pointer';
+          container.innerHTML =
+            '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" style="display:block;animation:kfNavFloat 2.5s ease-in-out infinite">' +
+              '<circle cx="22" cy="22" r="20" fill="white" stroke="#94a3b8" stroke-width="1.5"/>' +
+              '<path d="M22 29V17M15 24l7-8 7 8" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '</svg>' +
+            '<div style="position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.82);color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;font-family:system-ui,-apple-system,sans-serif;max-width:120px;overflow:hidden;text-overflow:ellipsis">' + (args.label || '') + '</div>';
+        } else {
+          /* Non-nav ripple: 3 expanding concentric rings + small solid core */
+          injectKf('kf-ripple','@keyframes kfRipple{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
+          var ringCol = col + 'cc';
+          var coreCol = col;
+          var W = sz + 24; var HW = W >> 1;
+          container.style.width      = W + 'px';
+          container.style.height     = W + 'px';
+          container.style.marginLeft = '-' + HW + 'px';
+          container.style.marginTop  = '-' + HW + 'px';
+          var R = 'position:absolute;width:24px;height:24px;border-radius:50%;background:transparent;' +
+                  'border:2.5px solid ' + ringCol + ';top:50%;left:50%;margin:-12px 0 0 -12px;' +
+                  'animation-name:kfRipple;animation-duration:2s;animation-timing-function:ease-out;' +
+                  'animation-iteration-count:infinite;pointer-events:none';
+          var C = 'position:absolute;width:12px;height:12px;border-radius:50%;background:' + coreCol + ';' +
+                  'top:50%;left:50%;margin:-6px 0 0 -6px;z-index:2;box-shadow:0 0 8px 3px ' + coreCol + '88';
+          container.innerHTML =
+            '<div style="' + R + ';animation-delay:0s"></div>' +
+            '<div style="' + R + ';animation-delay:0.67s"></div>' +
+            '<div style="' + R + ';animation-delay:1.33s"></div>' +
+            '<div style="' + C + '"></div>';
+        }
 
       } else if (anim === 'pulse') {
         /* Listen / pulse: 3 rings + icon core */

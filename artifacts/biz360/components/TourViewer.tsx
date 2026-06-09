@@ -284,17 +284,21 @@ function DirectionalStrip({ space, onPinPress, focusPin, onFocusPinHandled, onYa
           const cfg  = PIN_CFG[pin.type] ?? { icon: "info", color: "#3B82F6" };
 
           if (pin.type === "navigation") {
-            const px = Math.max(8, Math.min(frac * SW, SW - 150));
+            const px = Math.max(8, Math.min(frac * SW - 22, SW - 60));
             const py = 110 + pin.position.y * (SH * 0.55);
             return (
               <TouchableOpacity
                 key={pin.id}
-                style={[styles.navPin, { left: px, top: py, backgroundColor: cfg.color }]}
+                style={[styles.navPinWrap, { left: px, top: py }]}
                 onPress={() => onPinPress(pin)}
                 activeOpacity={0.8}
               >
-                <Feather name="arrow-right-circle" size={15} color="#fff" />
-                <Text style={styles.navPinLabel} numberOfLines={1}>{pin.title}</Text>
+                <View style={styles.navPinLabelPill}>
+                  <Text style={styles.navPinLabelText} numberOfLines={1} ellipsizeMode="tail">{pin.title}</Text>
+                </View>
+                <View style={[styles.navPinIconCircle, { backgroundColor: cfg.color }]}>
+                  <Feather name="arrow-up" size={16} color="#fff" />
+                </View>
               </TouchableOpacity>
             );
           }
@@ -441,17 +445,38 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
   },
   countText: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  navPin: {
+  navPinWrap: {
     position: "absolute",
-    flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 22,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.6, shadowRadius: 8, elevation: 10,
-    borderWidth: 2, borderColor: "rgba(255,255,255,0.45)",
-    maxWidth: 150,
+    alignItems: "center",
+    gap: 3,
+    width: 60,
   },
-  navPinLabel: {
-    color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold",
+  navPinLabelPill: {
+    backgroundColor: "rgba(15,23,42,0.82)",
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    maxWidth: 80,
+    alignItems: "center",
+  },
+  navPinLabelText: {
+    color: "#fff",
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+  },
+  navPinIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.55,
+    shadowRadius: 6,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.45)",
   },
   pin: {
     position: "absolute", width: 38, height: 38, borderRadius: 19,

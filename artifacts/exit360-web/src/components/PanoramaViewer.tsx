@@ -212,20 +212,21 @@ function buildPanoHtml(panoramaUrl: string, startYaw: number, pins: DemoPin[]): 
       container.style.overflow     = 'visible';
 
       if (anim === 'ripple') {
-        injectKf('kf-pin-bounce','@keyframes kfPinBounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-13px)}60%{transform:translateY(-6px)}}@keyframes kfPinShadow{0%,100%{transform:scaleX(1);opacity:0.28}35%{transform:scaleX(0.55);opacity:0.10}60%{transform:scaleX(0.78);opacity:0.18}}');
-        container.style.width  = '40px';
-        container.style.height = '58px';
-        container.style.marginLeft = '-20px';
-        container.style.marginTop  = '-54px';
+        /* Navigation pin: arrow-in-circle with destination name label above */
+        injectKf('kf-nav-float','@keyframes kfNavFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}');
+        container.style.width      = '44px';
+        container.style.height     = '44px';
+        container.style.marginLeft = '-22px';
+        container.style.marginTop  = '-22px';
+        container.style.overflow   = 'visible';
         container.style.position   = 'relative';
+        container.style.cursor     = 'pointer';
         container.innerHTML =
-          '<div style="position:absolute;top:0;left:50%;transform:translateX(-50%);animation:kfPinBounce 1.35s cubic-bezier(.4,0,.2,1) infinite">' +
-            '<svg width="34" height="44" viewBox="0 0 34 44" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-              '<path d="M17 2C9.82 2 4 7.82 4 15c0 8.12 11.6 23.5 12.35 24.5a.85.85 0 001.3 0C18.4 38.5 30 23.12 30 15 30 7.82 24.18 2 17 2z" fill="#2563EB" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>' +
-              '<circle cx="17" cy="15" r="5.5" fill="white" opacity="0.95"/>' +
-            '</svg>' +
-          '</div>' +
-          '<div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:16px;height:6px;background:rgba(0,0,0,0.28);border-radius:50%;animation:kfPinShadow 1.35s cubic-bezier(.4,0,.2,1) infinite"></div>';
+          '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" style="display:block;animation:kfNavFloat 2.5s ease-in-out infinite">' +
+            '<circle cx="22" cy="22" r="20" fill="white" stroke="#94a3b8" stroke-width="1.5"/>' +
+            '<path d="M22 29V17M15 24l7-8 7 8" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>' +
+          '<div style="position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.82);color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;font-family:system-ui,-apple-system,sans-serif;max-width:130px;overflow:hidden;text-overflow:ellipsis">' + args.label + '</div>';
       } else if (anim === 'pulse') {
         injectKf('kf-pulse','@keyframes kfPulse{0%{transform:scale(0.15);opacity:0.9}100%{transform:scale(4.5);opacity:0}}');
         var W2 = sz + 24; var HW2 = W2 >> 1;
