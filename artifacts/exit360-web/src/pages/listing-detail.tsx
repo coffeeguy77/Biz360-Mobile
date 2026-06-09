@@ -45,6 +45,7 @@ interface TourPin {
   title: string;
   position: { x: number; y: number };
   targetSpaceId?: string;
+  targetYaw?: number;
   audioUrl?: string;
   audioName?: string;
 }
@@ -118,9 +119,10 @@ function createNavPin(container,args){
   container.addEventListener('click',function(e){
     e.stopPropagation();
     try{
-      var sp=SPACES.find(function(s){return s.id===args.sceneId});
-      var resolvedYaw=typeof args.targetYaw==='number'?args.targetYaw:(sp&&typeof sp.defaultYaw==='number'?sp.defaultYaw:0);
-      viewer.loadScene(args.sceneId,0,resolvedYaw,100);
+      /* Use pin's targetYaw if explicitly set; otherwise pass null so Pannellum
+         falls through to the scene's own configured yaw (defaultYaw → panoramaStartYaw). */
+      var resolvedYaw=typeof args.targetYaw==='number'?args.targetYaw:null;
+      viewer.loadScene(args.sceneId,null,resolvedYaw,null);
     }catch(err){}
   });
 }
