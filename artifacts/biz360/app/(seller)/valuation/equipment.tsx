@@ -292,7 +292,7 @@ export default function EquipmentScreen() {
   const [editItem, setEditItem] = useState<ValEquipment | null>(null);
   const [moveItem, setMoveItem] = useState<ValEquipment | null>(null);
   const [moving, setMoving] = useState(false);
-  const [form, setForm] = useState({ name: "", purchasePrice: "", currentValue: "", isLeased: false });
+  const [form, setForm] = useState({ name: "", purchasePrice: "", secondhandValue: "", replacementCost: "", currentValue: "", isLeased: false });
 
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -306,14 +306,16 @@ export default function EquipmentScreen() {
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
+  const emptyForm = { name: "", purchasePrice: "", secondhandValue: "", replacementCost: "", currentValue: "", isLeased: false };
+
   const handleAdd = async () => {
     if (!selectedCafe || !form.name.trim()) { Alert.alert("Error", "Name is required"); return; }
     const res = await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ name: form.name.trim(), purchasePrice: parseFloat(form.purchasePrice) || null, currentValue: parseFloat(form.currentValue) || null, isLeased: form.isLeased, unit_id: selectedUnitId }),
+      body: JSON.stringify({ name: form.name.trim(), purchasePrice: parseFloat(form.purchasePrice) || null, secondhandValue: parseFloat(form.secondhandValue) || null, replacementCost: parseFloat(form.replacementCost) || null, currentValue: parseFloat(form.currentValue) || null, isLeased: form.isLeased, unit_id: selectedUnitId }),
     });
-    if (res.ok) { await fetchEquipment(selectedUnitId ?? undefined); setAdding(false); setForm({ name: "", purchasePrice: "", currentValue: "", isLeased: false }); }
+    if (res.ok) { await fetchEquipment(selectedUnitId ?? undefined); setAdding(false); setForm(emptyForm); }
     else { const e = await res.json(); Alert.alert("Error", e.error); }
   };
 
@@ -322,9 +324,18 @@ export default function EquipmentScreen() {
     await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment/${editItem.id}`, {
       method: "PATCH",
       headers: authHeaders(),
-      body: JSON.stringify({ name: form.name, purchasePrice: parseFloat(form.purchasePrice) || null, currentValue: parseFloat(form.currentValue) || null, isLeased: form.isLeased }),
+      body: JSON.stringify({
+        name: form.name,
+        purchasePrice: parseFloat(form.purchasePrice) || null,
+        secondhandValue: parseFloat(form.secondhandValue) || null,
+        replacementCost: parseFloat(form.replacementCost) || null,
+        currentValue: parseFloat(form.currentValue) || null,
+        isLeased: form.isLeased,
+      }),
     });
-    await fetchEquipment(selectedUnitId ?? undefined); setEditItem(null);
+    await fetchEquipment(selectedUnitId ?? undefined);
+    setEditItem(null);
+    recalculateSnapshot();
   };
 
   const handleDelete = (item: ValEquipment) => {
@@ -340,7 +351,14 @@ export default function EquipmentScreen() {
 
   const startEdit = (item: ValEquipment) => {
     setEditItem(item);
-    setForm({ name: item.name, purchasePrice: item.purchasePrice ?? "", currentValue: item.currentValue ?? "", isLeased: item.isLeased ?? false });
+    setForm({
+      name: item.name,
+      purchasePrice: item.purchasePrice ?? "",
+      secondhandValue: item.secondhandValue ?? "",
+      replacementCost: item.replacementCost ?? "",
+      currentValue: item.currentValue ?? "",
+      isLeased: item.isLeased ?? false,
+    });
   };
 
   const handleMove = async (targetUnitId: string | null) => {
@@ -457,27 +475,39 @@ export default function EquipmentScreen() {
           <View key={item.id} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {editItem?.id === item.id ? (
               <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Name</Text>
                 <TextInput
                   style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
                   value={form.name}
                   onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
-                  placeholder="Name"
+                  placeholder="e.g. Espresso Machine"
                   placeholderTextColor={colors.mutedForeground}
                 />
-                <TextInput
-                  style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-                  value={form.currentValue}
-                  onChangeText={(t) => setForm((f) => ({ ...f, currentValue: t }))}
-                  keyboardType="decimal-pad"
-                  placeholder="Current value ($)"
-                  placeholderTextColor={colors.mutedForeground}
-                />
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Purchase Price ($)</Text>
                 <TextInput
                   style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
                   value={form.purchasePrice}
                   onChangeText={(t) => setForm((f) => ({ ...f, purchasePrice: t }))}
                   keyboardType="decimal-pad"
-                  placeholder="Purchase price ($)"
+                  placeholder="Original purchase price"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Secondhand Value ($)</Text>
+                <TextInput
+                  style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                  value={form.secondhandValue}
+                  onChangeText={(t) => setForm((f) => ({ ...f, secondhandValue: t }))}
+                  keyboardType="decimal-pad"
+                  placeholder="Current market / secondhand value"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Replacement Cost ($)</Text>
+                <TextInput
+                  style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                  value={form.replacementCost}
+                  onChangeText={(t) => setForm((f) => ({ ...f, replacementCost: t }))}
+                  keyboardType="decimal-pad"
+                  placeholder="Cost to replace new"
                   placeholderTextColor={colors.mutedForeground}
                 />
                 <View style={styles.editBtns}>
@@ -684,6 +714,7 @@ const styles = StyleSheet.create({
   valTagLabel:    { fontSize: 10, fontFamily: "Inter_500Medium" },
   valTagValue:    { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   iconBtn:        { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  fieldLabel:     { fontSize: 11, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 },
   input:          { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular" },
   editBtns:       { flexDirection: "row", gap: 10 },
   saveBtn:        { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center" },
