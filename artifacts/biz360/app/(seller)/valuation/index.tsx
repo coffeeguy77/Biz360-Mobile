@@ -100,14 +100,17 @@ export default function ValuationIndex() {
               <Text style={styles.cafeNameLabel}>Valuing</Text>
               <Text style={styles.cafeName}>{selectedCafe.name}</Text>
               {valMidpoint ? (
-                <>
-                  <Text style={styles.valuationLabel}>Estimated Value</Text>
-                  <Text style={styles.valuationAmount}>{formatCurrency(valMidpoint)}</Text>
-                  <Text style={styles.snapshotDate}>as of {combined?.snapshotDate ?? "—"}</Text>
-                  <View style={styles.breakdownBox}>
+                <View style={styles.valuationRow}>
+                  <View style={styles.valuationLeft}>
+                    <Text style={styles.valuationLabel}>Estimated Value</Text>
+                    <Text style={styles.valuationAmount}>{formatCurrency(valMidpoint)}</Text>
+                    <Text style={styles.snapshotDate}>as of {combined?.snapshotDate ?? "—"}</Text>
+                  </View>
+                  <View style={styles.breakdownRight}>
                     {([
                       ["Revenue", combined?.grossRevenue],
                       ["COGS", combined?.cogs],
+                      ["Profit", combined?.grossProfit],
                       ["Equipment", combined?.totalEquipmentValue],
                     ] as [string, string | null | undefined][]).map(([label, val]) => (
                       <View key={label} style={styles.breakdownRow}>
@@ -116,7 +119,7 @@ export default function ValuationIndex() {
                       </View>
                     ))}
                   </View>
-                </>
+                </View>
               ) : (
                 <Text style={[styles.noSnapshot, { color: "#8B9CB8" }]}>No snapshot yet — tap Sync to generate your first valuation</Text>
               )}
@@ -214,9 +217,12 @@ const styles = StyleSheet.create({
   card:             { borderRadius: 16, padding: 20, borderWidth: 1, gap: 6 },
   cafeNameLabel:    { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
   cafeName:         { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
-  valuationLabel:   { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 12 },
-  valuationAmount:  { color: "#3B82F6", fontSize: 36, fontFamily: "Inter_700Bold" },
-  snapshotDate:     { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
+  valuationRow:     { flexDirection: "row", alignItems: "center", marginTop: 10, gap: 12 },
+  valuationLeft:    { flex: 1 },
+  valuationLabel:   { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
+  valuationAmount:  { color: "#3B82F6", fontSize: 34, fontFamily: "Inter_700Bold", marginTop: 2 },
+  snapshotDate:     { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  breakdownRight:   { gap: 7, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: "#1E3A5C" },
   noSnapshot:       { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20, marginTop: 8 },
   syncBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 12, marginTop: 12 },
   syncBtnText:      { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
@@ -237,10 +243,9 @@ const styles = StyleSheet.create({
   emptyText:        { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, maxWidth: 300 },
   createBtn:        { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14, marginTop: 8 },
   createBtnText:    { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  breakdownBox:     { marginTop: 10, borderTopWidth: 1, borderTopColor: "#1E3A5C", paddingTop: 10, gap: 6 },
-  breakdownRow:     { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  breakdownLabel:   { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
-  breakdownVal:     { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  breakdownRow:     { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  breakdownLabel:   { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
+  breakdownVal:     { color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" },
   excludedPill:     { backgroundColor: "rgba(239,68,68,0.15)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   excludedPillText: { color: "#EF4444", fontSize: 10, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.3 },
 });
