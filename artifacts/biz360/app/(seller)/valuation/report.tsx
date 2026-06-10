@@ -32,19 +32,45 @@ function healthScore(snap: ValSnapshot | null): { score: number; label: string; 
   return { score: 15, label: "Loss-making", color: "#EF4444" };
 }
 
-function ReportCard({ snap, name }: { snap: ValSnapshot | null; name: string }) {
+type CogsItem = { supplierName: string; total: number; unitId: string | null; unitName: string | null };
+
+function ReportCard({
+  snap,
+  name,
+  cogsBreakdown,
+  loadingCogs,
+  maskStaff,
+  onToggleMask,
+  filterUnitId,
+}: {
+  snap: ValSnapshot | null;
+  name: string;
+  cogsBreakdown: CogsItem[];
+  loadingCogs: boolean;
+  maskStaff: boolean;
+  onToggleMask: (v: boolean) => void;
+  filterUnitId?: string;
+}) {
   const colors = useColors();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const adjEbitda = Number(snap?.adjustedEbitda ?? 0);
+  const equipmentValue = Number(snap?.totalEquipmentValue ?? 0);
   const valMidpoint = Number(snap?.valuationMidpoint ?? 0);
-  const sdeMultiple = 2.0;
-  const sdeValuation = Math.max(adjEbitda, 0) * sdeMultiple;
+  const sdeValuation = Math.max(adjEbitda, 0) * 2.0 + equipmentValue;
   const blendedLow = Math.min(valMidpoint, sdeValuation) * 0.85;
   const blendedHigh = Math.max(valMidpoint, sdeValuation) * 1.15;
   const hs = healthScore(snap);
 
+  // Combined tab (filterUnitId=undefined) shows all suppliers; per-unit tabs filter by unitId
+  const tabCogs = filterUnitId === undefined
+    ? cogsBreakdown
+    : cogsBreakdown.filter(c => c.unitId === filterUnitId);
+
   return (
     <View style={{ gap: 12 }}>
       <Text style={[styles.tabName, { color: colors.foreground }]}>{name}</Text>
+
       <View style={[styles.metricRow, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
         <View style={styles.metricCell}>
           <Text style={styles.metricLabel}>Revenue</Text>
@@ -59,18 +85,30 @@ function ReportCard({ snap, name }: { snap: ValSnapshot | null; name: string }) 
           <Text style={[styles.metricVal, { color: "#3B82F6" }]}>{fmt(snap?.adjustedEbitda)}</Text>
         </View>
       </View>
+
+      {/* EBITDA Method — uses valuationMidpoint stored in snapshot = AdjEBITDA×2.5 + Equipment */}
       <View style={[styles.methodCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.methodTitle, { color: colors.foreground }]}>EBITDA Method (×2.5)</Text>
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={[styles.methodTitle, { color: colors.foreground }]}>Adj. EBITDA × 2.5 + Equipment</Text>
+          <Text style={styles.methodFormula}>{fmt(adjEbitda)} × 2.5 + {fmt(equipmentValue)} equip</Text>
+        </View>
         <Text style={[styles.methodVal, { color: "#3B82F6" }]}>{fmt(valMidpoint)}</Text>
       </View>
+
+      {/* SDE Method — same structure as EBITDA method but 2.0× multiple */}
       <View style={[styles.methodCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.methodTitle, { color: colors.foreground }]}>SDE Method (×2.0)</Text>
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={[styles.methodTitle, { color: colors.foreground }]}>Adj. EBITDA × 2.0 + Equipment</Text>
+          <Text style={styles.methodFormula}>{fmt(adjEbitda)} × 2.0 + {fmt(equipmentValue)} equip</Text>
+        </View>
         <Text style={[styles.methodVal, { color: "#8B5CF6" }]}>{fmt(sdeValuation)}</Text>
       </View>
+
       <View style={[styles.blendedCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
         <Text style={styles.blendedLabel}>Blended Asking Range</Text>
         <Text style={styles.blendedRange}>{fmt(blendedLow)} — {fmt(blendedHigh)}</Text>
       </View>
+
       <View style={[styles.healthCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.healthLabel, { color: colors.mutedForeground }]}>Business Health</Text>
@@ -80,6 +118,7 @@ function ReportCard({ snap, name }: { snap: ValSnapshot | null; name: string }) 
           <Text style={[styles.healthBadgeText, { color: hs.color }]}>{hs.score}/100</Text>
         </View>
       </View>
+
       <View style={styles.detailRows}>
         {([
           ["COGS", fmt(snap?.cogs)],
@@ -92,7 +131,6 @@ function ReportCard({ snap, name }: { snap: ValSnapshot | null; name: string }) 
             <Text style={[styles.detailVal, { color: colors.foreground }]}>{val}</Text>
           </View>
         ))}
-        {/* Square Revenue — shown as a verification row, NOT added to Xero total */}
         {snap?.squareRevenue && Number(snap.squareRevenue) > 0 ? (
           <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
             <View style={{ flex: 1, gap: 4 }}>
@@ -106,6 +144,65 @@ function ReportCard({ snap, name }: { snap: ValSnapshot | null; name: string }) 
           </View>
         ) : null}
       </View>
+
+      {/* ── Advanced section ─────────────────────────────────────────────────── */}
+      <TouchableOpacity
+        style={[styles.advancedToggle, { borderColor: colors.border }]}
+        onPress={() => setAdvancedOpen(v => !v)}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.advancedToggleText, { color: colors.mutedForeground }]}>Advanced</Text>
+        <Feather name={advancedOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
+      </TouchableOpacity>
+
+      {advancedOpen && (
+        <View style={[styles.advancedBody, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {/* Staff mask toggle */}
+          <View style={styles.maskRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.maskLabel, { color: colors.foreground }]}>Mask staff names</Text>
+              <Text style={[styles.maskSub, { color: colors.mutedForeground }]}>Replace supplier names with "Staff Wage" to protect privacy</Text>
+            </View>
+            <Switch
+              value={maskStaff}
+              onValueChange={onToggleMask}
+              trackColor={{ false: "#374151", true: "#3B82F6" }}
+              thumbColor="#fff"
+              ios_backgroundColor="#374151"
+            />
+          </View>
+
+          {/* COGS Breakdown */}
+          <View style={[styles.cogsHeader, { borderTopColor: colors.border }]}>
+            <Text style={[styles.cogsTitle, { color: colors.foreground }]}>COGS Breakdown</Text>
+            <Text style={[styles.cogsSub, { color: colors.mutedForeground }]}>Supplier spend classified as cost of goods sold</Text>
+          </View>
+
+          {loadingCogs ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />
+          ) : tabCogs.length === 0 ? (
+            <Text style={[styles.cogsEmpty, { color: colors.mutedForeground }]}>
+              No COGS suppliers found for this period. Map supplier contacts in the Supplier Mappings tool.
+            </Text>
+          ) : (
+            tabCogs.map((item, i) => (
+              <View key={i} style={[styles.cogsRow, { borderTopColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cogsSupplier, { color: colors.foreground }]}>
+                    {maskStaff ? `Staff Wage ${i + 1}` : item.supplierName}
+                  </Text>
+                  {!maskStaff && item.unitName ? (
+                    <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>{item.unitName}</Text>
+                  ) : item.unitId === null ? (
+                    <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>Parent / Shared</Text>
+                  ) : null}
+                </View>
+                <Text style={[styles.cogsAmount, { color: colors.foreground }]}>{fmt(item.total)}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -120,11 +217,34 @@ export default function ReportScreen() {
   const [publishedDate, setPublishedDate] = useState<string | null>(
     latestSnapshot.combined?.isPublished ? (latestSnapshot.combined.snapshotDate ?? null) : null
   );
+  const [cogsBreakdown, setCogsBreakdown] = useState<CogsItem[]>([]);
+  const [loadingCogs, setLoadingCogs] = useState(false);
+  const [maskStaff, setMaskStaff] = useState(false);
 
   useFocusEffect(useCallback(() => {
     fetchSnapshot();
     setPublishedDate(latestSnapshot.combined?.isPublished ? (latestSnapshot.combined.snapshotDate ?? null) : null);
+    if (selectedCafe?.id) fetchCogsBreakdown(selectedCafe.id);
   }, [selectedCafe?.id]));
+
+  async function fetchCogsBreakdown(cafeId: string) {
+    const token = await getAuthToken();
+    if (!token) return;
+    setLoadingCogs(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/cogs-breakdown`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCogsBreakdown(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // non-critical, silent failure
+    } finally {
+      setLoadingCogs(false);
+    }
+  }
 
   async function handlePublish() {
     if (!selectedCafe?.id) return;
@@ -171,9 +291,14 @@ export default function ReportScreen() {
       .map(({ unit, snapshot }) => ({ label: unit.name, snap: snapshot, unit })),
   ];
 
+  const currentTab = tabs[activeTab];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 80 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 80 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={colors.foreground} />
@@ -202,9 +327,17 @@ export default function ReportScreen() {
           </ScrollView>
         )}
 
-        {tabs[activeTab] ? (
+        {currentTab ? (
           <>
-            <ReportCard snap={tabs[activeTab].snap} name={tabs[activeTab].label} />
+            <ReportCard
+              snap={currentTab.snap}
+              name={currentTab.label}
+              cogsBreakdown={cogsBreakdown}
+              loadingCogs={loadingCogs}
+              maskStaff={maskStaff}
+              onToggleMask={setMaskStaff}
+              filterUnitId={currentTab.unit?.id}
+            />
             {activeTab === 0 && latestSnapshot.units.length > 0 && (
               <View style={[styles.bundleCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Text style={[styles.bundleTitle, { color: colors.foreground }]}>Sale Bundle</Text>
@@ -229,10 +362,10 @@ export default function ReportScreen() {
                       ) : (
                         <Switch
                           value={included}
-                          onValueChange={async (val) => {
+                          onValueChange={async (newVal) => {
                             setTogglingUnit(unit.id);
                             try {
-                              await updateUnit(unit.id, { is_included_in_sale: val });
+                              await updateUnit(unit.id, { is_included_in_sale: newVal });
                               await recalculateSnapshot();
                             } finally {
                               setTogglingUnit(null);
@@ -289,50 +422,65 @@ export default function ReportScreen() {
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1 },
-  scroll:         { paddingHorizontal: 16, gap: 14 },
-  header:         { flexDirection: "row", alignItems: "center", gap: 12 },
-  backBtn:        { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  title:          { fontSize: 22, fontFamily: "Inter_700Bold" },
-  tabs:           { gap: 8, paddingBottom: 4 },
-  tab:            { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: "#1E3A5C" },
-  tabText:        { fontSize: 13, fontFamily: "Inter_500Medium", color: "#8B9CB8" },
-  tabName:        { fontSize: 18, fontFamily: "Inter_700Bold" },
-  metricRow:      { flexDirection: "row", borderRadius: 14, padding: 16, borderWidth: 1 },
-  metricCell:     { flex: 1, alignItems: "center", gap: 4 },
-  metricLabel:    { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
-  metricVal:      { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
-  methodCard:     { borderRadius: 14, padding: 16, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  methodTitle:    { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  methodVal:      { fontSize: 20, fontFamily: "Inter_700Bold" },
-  blendedCard:    { borderRadius: 14, padding: 16, borderWidth: 1 },
-  blendedLabel:   { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
-  blendedRange:   { color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 4 },
-  healthCard:     { borderRadius: 14, padding: 16, borderWidth: 1, flexDirection: "row", alignItems: "center" },
-  healthLabel:    { fontSize: 12, fontFamily: "Inter_400Regular" },
-  healthScore:    { fontSize: 18, fontFamily: "Inter_700Bold", marginTop: 2 },
-  healthBadge:    { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
-  healthBadgeText:{ fontSize: 18, fontFamily: "Inter_700Bold" },
-  detailRows:     { gap: 0 },
-  detailRow:      { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1 },
-  detailLabel:    { fontSize: 13, fontFamily: "Inter_400Regular" },
+  container:           { flex: 1 },
+  scroll:              { paddingHorizontal: 16, gap: 14 },
+  header:              { flexDirection: "row", alignItems: "center", gap: 12 },
+  backBtn:             { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  title:               { fontSize: 22, fontFamily: "Inter_700Bold" },
+  tabs:                { gap: 8, paddingBottom: 4 },
+  tab:                 { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: "#1E3A5C" },
+  tabText:             { fontSize: 13, fontFamily: "Inter_500Medium", color: "#8B9CB8" },
+  tabName:             { fontSize: 18, fontFamily: "Inter_700Bold" },
+  metricRow:           { flexDirection: "row", borderRadius: 14, padding: 16, borderWidth: 1 },
+  metricCell:          { flex: 1, alignItems: "center", gap: 4 },
+  metricLabel:         { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
+  metricVal:           { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
+  methodCard:          { borderRadius: 14, padding: 16, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  methodTitle:         { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  methodFormula:       { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  methodVal:           { fontSize: 20, fontFamily: "Inter_700Bold" },
+  blendedCard:         { borderRadius: 14, padding: 16, borderWidth: 1 },
+  blendedLabel:        { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
+  blendedRange:        { color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 4 },
+  healthCard:          { borderRadius: 14, padding: 16, borderWidth: 1, flexDirection: "row", alignItems: "center" },
+  healthLabel:         { fontSize: 12, fontFamily: "Inter_400Regular" },
+  healthScore:         { fontSize: 18, fontFamily: "Inter_700Bold", marginTop: 2 },
+  healthBadge:         { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  healthBadgeText:     { fontSize: 18, fontFamily: "Inter_700Bold" },
+  detailRows:          { gap: 0 },
+  detailRow:           { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1 },
+  detailLabel:         { fontSize: 13, fontFamily: "Inter_400Regular" },
   detailVal:           { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   squareVerifiedBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
   squareVerifiedText:  { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#16A34A", letterSpacing: 0.3 },
-  empty:          { alignItems: "center", paddingVertical: 60, gap: 12 },
-  emptyTitle:     { fontSize: 18, fontFamily: "Inter_700Bold" },
-  emptyText:      { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, maxWidth: 280 },
-  publishSection: { gap: 10, paddingTop: 4 },
-  publishedBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 },
-  publishedText:  { fontSize: 13, fontFamily: "Inter_500Medium", color: "#16A34A" },
-  publishBtn:     { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, paddingVertical: 16 },
-  publishBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  accessBtn:      { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginLeft: "auto" },
-  accessBtnText:  { fontSize: 13, fontFamily: "Inter_500Medium" },
-  bundleCard:     { borderRadius: 14, padding: 16, borderWidth: 1, gap: 4 },
-  bundleTitle:    { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 2 },
-  bundleSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 8 },
-  bundleRow:      { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderTopWidth: 1, gap: 12 },
-  bundleUnitName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  bundleUnitSub:  { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  advancedToggle:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 1 },
+  advancedToggleText:  { fontSize: 13, fontFamily: "Inter_500Medium" },
+  advancedBody:        { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
+  maskRow:             { flexDirection: "row", alignItems: "center", padding: 16, gap: 12 },
+  maskLabel:           { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  maskSub:             { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  cogsHeader:          { paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1 },
+  cogsTitle:           { fontSize: 13, fontFamily: "Inter_700Bold" },
+  cogsSub:             { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  cogsEmpty:           { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, paddingHorizontal: 16, paddingBottom: 16 },
+  cogsRow:             { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, gap: 12 },
+  cogsSupplier:        { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  cogsUnit:            { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  cogsAmount:          { fontSize: 13, fontFamily: "Inter_700Bold" },
+  empty:               { alignItems: "center", paddingVertical: 60, gap: 12 },
+  emptyTitle:          { fontSize: 18, fontFamily: "Inter_700Bold" },
+  emptyText:           { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, maxWidth: 280 },
+  publishSection:      { gap: 10, paddingTop: 4 },
+  publishedBadge:      { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 },
+  publishedText:       { fontSize: 13, fontFamily: "Inter_500Medium", color: "#16A34A" },
+  publishBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, paddingVertical: 16 },
+  publishBtnText:      { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  accessBtn:           { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginLeft: "auto" },
+  accessBtnText:       { fontSize: 13, fontFamily: "Inter_500Medium" },
+  bundleCard:          { borderRadius: 14, padding: 16, borderWidth: 1, gap: 4 },
+  bundleTitle:         { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 2 },
+  bundleSubtitle:      { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 8 },
+  bundleRow:           { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderTopWidth: 1, gap: 12 },
+  bundleUnitName:      { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  bundleUnitSub:       { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
 });

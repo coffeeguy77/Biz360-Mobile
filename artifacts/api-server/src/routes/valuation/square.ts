@@ -255,5 +255,60 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
   return { snapshot: combined, units: unitSnapshots };
 }
 
+router.get("/cafes/:cafeId/cogs-breakdown", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  const periodMonths = Number((req.query as any).months ?? 12);
+
+  try {
+    await assertCafeOwner(cafeId, userId);
+  } catch (e: any) {
+    return res.status(e.status ?? 403).json({ error: e.message });
+  }
+
+  const [supplierMappingRows, units] = await Promise.all([
+    db.select().from(xeroSupplierMappingsTable).where(eq(xeroSupplierMappingsTable.cafeId, cafeId)),
+    db.select().from(businessUnitsTable).where(eq(businessUnitsTable.cafeId, cafeId)),
+  ]);
+
+  const includedUnitIds = new Set(units.filter(u => u.isIncludedInSale !== false).map(u => u.id));
+  const unitNameMap: Record<string, string> = {};
+  for (const u of units) unitNameMap[u.id] = u.name;
+
+  const [xeroInt] = await db.select().from(cafeIntegrationsTable).where(
+    and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "xero"), eq(cafeIntegrationsTable.status, "connected"))
+  );
+
+  let supplierSpend: { name: string; contactId: string; total: number }[] = [];
+  if (xeroInt) {
+    try {
+      const accessToken = await getValidXeroToken(xeroInt, cafeId);
+      const tenantId = xeroInt.metadata && typeof xeroInt.metadata === "object" ? (xeroInt.metadata as any).tenant_id : null;
+      if (accessToken && tenantId) {
+        supplierSpend = await getXeroSupplierSpend(accessToken, tenantId, periodMonths).catch(() => []);
+      }
+    } catch {}
+  }
+
+  const result: { supplierName: string; total: number; unitId: string | null; unitName: string | null }[] = [];
+  for (const s of supplierSpend) {
+    const cogsRow = supplierMappingRows.find(r =>
+      r.contactName === s.name &&
+      r.isCogs === true &&
+      (r.unitId === null || includedUnitIds.has(r.unitId))
+    );
+    if (!cogsRow) continue;
+    result.push({
+      supplierName: s.name,
+      total: s.total,
+      unitId: cogsRow.unitId ?? null,
+      unitName: cogsRow.unitId ? (unitNameMap[cogsRow.unitId] ?? null) : null,
+    });
+  }
+
+  result.sort((a, b) => b.total - a.total);
+  return res.json(result);
+});
+
 export { calculateAndSaveSnapshot };
 export default router;
