@@ -115,6 +115,30 @@ import __bannerUrl from 'node:url';
 globalThis.require = __bannerCrReq(import.meta.url);
 globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
 globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
+
+// Polyfill DOMMatrix for pdfjs-dist (used by pdf-parse) in Node.js
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor(init) { this.a=1;this.b=0;this.c=0;this.d=1;this.e=0;this.f=0;this.m11=1;this.m12=0;this.m13=0;this.m14=0;this.m21=0;this.m22=1;this.m23=0;this.m24=0;this.m31=0;this.m32=0;this.m33=1;this.m34=0;this.m41=0;this.m42=0;this.m43=0;this.m44=1;this.is2D=true;this.isIdentity=true; }
+    multiply(m) { return new globalThis.DOMMatrix(); }
+    translate(tx,ty,tz) { return new globalThis.DOMMatrix(); }
+    scale(sx,sy,sz,ox,oy,oz) { return new globalThis.DOMMatrix(); }
+    rotate(rx,ry,rz) { return new globalThis.DOMMatrix(); }
+    rotateAxisAngle(x,y,z,a) { return new globalThis.DOMMatrix(); }
+    skewX(sx) { return new globalThis.DOMMatrix(); }
+    skewY(sy) { return new globalThis.DOMMatrix(); }
+    flipX() { return new globalThis.DOMMatrix(); }
+    flipY() { return new globalThis.DOMMatrix(); }
+    inverse() { return new globalThis.DOMMatrix(); }
+    transformPoint(p) { return p || {x:0,y:0,z:0,w:1}; }
+    toFloat32Array() { return new Float32Array(16); }
+    toFloat64Array() { return new Float64Array(16); }
+    toString() { return 'matrix(1, 0, 0, 1, 0, 0)'; }
+    static fromMatrix(m) { return new globalThis.DOMMatrix(); }
+    static fromFloat32Array(a) { return new globalThis.DOMMatrix(); }
+    static fromFloat64Array(a) { return new globalThis.DOMMatrix(); }
+  };
+}
     `,
     },
   });

@@ -488,6 +488,24 @@ export default function SellerDashboard() {
           <Feather name="chevron-right" size={18} color="#8B9CB8" />
         </TouchableOpacity>
 
+        {/* ── Listings quick action ── */}
+        <TouchableOpacity
+          style={[styles.listingsCard, { backgroundColor: "#0F1F35", borderColor: "#1E3A5C" }]}
+          onPress={() => router.push("/(seller)/listings" as any)}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.listingsIconWrap, { backgroundColor: "#3B82F620" }]}>
+            <Feather name="list" size={22} color="#3B82F6" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.listingsTitle}>My Listings</Text>
+            <Text style={styles.listingsSub}>
+              {listings.length > 0 ? `${listings.length} listing${listings.length !== 1 ? "s" : ""}` : "No listings yet"}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color="#8B9CB8" />
+        </TouchableOpacity>
+
         {/* ── Create listing CTA ── */}
         <TouchableOpacity
           style={[styles.createBtn, { backgroundColor: colors.primary }]}
@@ -542,6 +560,10 @@ const styles = StyleSheet.create({
   valuationIconWrap:{ width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   valuationTitle:   { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
   valuationSub:     { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  listingsCard:     { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 16, padding: 18, borderWidth: 1 },
+  listingsIconWrap: { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  listingsTitle:    { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  listingsSub:      { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
 
   // ── Modal ──
   modalBackdrop:    { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.65)" },

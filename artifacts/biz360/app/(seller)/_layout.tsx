@@ -16,10 +16,6 @@ function NativeLayout() {
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
         <Label>Dashboard</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="listings">
-        <Icon sf={{ default: "list.bullet", selected: "list.bullet.rectangle.fill" }} />
-        <Label>Listings</Label>
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="tours">
         <Icon sf={{ default: "rotate.3d", selected: "rotate.3d.fill" }} />
         <Label>Tours</Label>
@@ -28,17 +24,13 @@ function NativeLayout() {
         <Icon sf={{ default: "chart.line.uptrend.xyaxis", selected: "chart.line.uptrend.xyaxis.circle.fill" }} />
         <Label>Valuation</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="leads">
-        <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
-        <Label>Leads</Label>
+      <NativeTabs.Trigger name="leases">
+        <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
+        <Label>Leases</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="messages">
-        <Icon sf={{ default: "message", selected: "message.fill" }} />
-        <Label>Messages</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="help">
-        <Icon sf={{ default: "book.pages", selected: "book.pages.fill" }} />
-        <Label>Help</Label>
+      <NativeTabs.Trigger name="more">
+        <Icon sf={{ default: "ellipsis", selected: "ellipsis.circle.fill" }} />
+        <Label>More</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -73,12 +65,15 @@ function ClassicLayout() {
       }}
     >
       <Tabs.Screen name="dashboard"  options={{ title: "Dashboard",  tabBarIcon: ({ color }) => isIOS ? <SymbolView name="chart.bar"                     tintColor={color} size={24} /> : <Feather name="bar-chart-2"    size={22} color={color} /> }} />
-      <Tabs.Screen name="listings"   options={{ title: "Listings",   tabBarIcon: ({ color }) => isIOS ? <SymbolView name="list.bullet"                   tintColor={color} size={24} /> : <Feather name="list"           size={22} color={color} /> }} />
       <Tabs.Screen name="tours"      options={{ title: "Tours",      tabBarIcon: ({ color }) => isIOS ? <SymbolView name="rotate.3d"                      tintColor={color} size={24} /> : <Feather name="rotate-ccw"    size={22} color={color} /> }} />
       <Tabs.Screen name="valuation"  options={{ title: "Valuation",  tabBarIcon: ({ color }) => isIOS ? <SymbolView name="chart.line.uptrend.xyaxis"      tintColor={color} size={24} /> : <Feather name="trending-up"   size={22} color={color} /> }} />
-      <Tabs.Screen name="leads"      options={{ title: "Leads",      tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.2"                       tintColor={color} size={24} /> : <Feather name="users"         size={22} color={color} /> }} />
-      <Tabs.Screen name="messages"   options={{ title: "Messages",   tabBarIcon: ({ color }) => isIOS ? <SymbolView name="message"                        tintColor={color} size={24} /> : <Feather name="message-circle" size={22} color={color} /> }} />
-      <Tabs.Screen name="help"       options={{ title: "Help",       tabBarIcon: ({ color }) => isIOS ? <SymbolView name="book.pages"                     tintColor={color} size={24} /> : <Feather name="book-open"     size={22} color={color} /> }} />
+      <Tabs.Screen name="leases"     options={{ title: "Leases",     tabBarIcon: ({ color }) => isIOS ? <SymbolView name="doc.text"                        tintColor={color} size={24} /> : <Feather name="file-text"     size={22} color={color} /> }} />
+      <Tabs.Screen name="more"       options={{ title: "More",       tabBarIcon: ({ color }) => isIOS ? <SymbolView name="ellipsis"                        tintColor={color} size={24} /> : <Feather name="more-horizontal" size={22} color={color} /> }} />
+      {/* Hidden tabs — accessible via router.push from More screen */}
+      <Tabs.Screen name="listings"   options={{ href: null }} />
+      <Tabs.Screen name="leads"      options={{ href: null }} />
+      <Tabs.Screen name="messages"   options={{ href: null }} />
+      <Tabs.Screen name="help"       options={{ href: null }} />
     </Tabs>
   );
 }
