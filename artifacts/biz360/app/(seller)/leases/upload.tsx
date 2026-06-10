@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLease } from "@/context/LeaseContext";
 import { Clause, Lease } from "@/context/leaseTypes";
 import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
@@ -86,8 +87,10 @@ export default function UploadLease() {
 
       setStatus("analysing");
 
+      const authToken = await AsyncStorage.getItem("biz360_auth_token");
       const response = await fetch(`${API_BASE}/api/lease-analysis`, {
         method: "POST",
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         body: formData,
       });
 

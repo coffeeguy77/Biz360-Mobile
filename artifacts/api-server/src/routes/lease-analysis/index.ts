@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { requireAuth } from "../../middlewares/auth";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require("pdf-parse");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -42,7 +43,7 @@ Return this exact structure:
 
 Focus on clauses that significantly affect café operators: rent terms, options, exclusivity, assignment, make-good, outgoings, services, disruption, and exit rights. Extract 8-20 key clauses.`;
 
-router.post("/lease-analysis", upload.single("file"), async (req, res) => {
+router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
     if (!file) {

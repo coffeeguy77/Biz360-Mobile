@@ -9,6 +9,7 @@ import { useColors } from "@/hooks/useColors";
 import { useLease } from "@/context/LeaseContext";
 import { LeaseCard } from "@/components/lease/LeaseCard";
 import { RiskBadge } from "@/components/lease/RiskBadge";
+import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 
 const ACTIONS = [
   { icon: "upload-cloud", label: "Upload & Analyse",   route: "/(seller)/leases/upload",  color: "#3B82F6", bg: "#1E3A5C" },
@@ -32,9 +33,7 @@ export default function LeasesHub() {
     ]);
   };
 
-  const criticalCount = clauses.filter(c => c.riskLevel === "critical").length;
-  const tenantFriendly = clauses.filter(c => c.rating === "tenant-friendly").length;
-  const libraryCount = clauses.length;
+  const userClauseCount = clauses.filter(c => !c.isSeed).length;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -68,18 +67,13 @@ export default function LeasesHub() {
           </View>
           <View style={[styles.statDivider, { backgroundColor: "#1E3A5C" }]} />
           <View style={styles.stat}>
-            <Text style={[styles.statVal, { color: "#FCA5A5" }]}>{criticalCount}</Text>
-            <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Critical</Text>
+            <Text style={[styles.statVal, { color: "#93C5FD" }]}>{userClauseCount}</Text>
+            <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Clauses</Text>
           </View>
           <View style={[styles.statDivider, { backgroundColor: "#1E3A5C" }]} />
           <View style={styles.stat}>
-            <Text style={[styles.statVal, { color: "#86EFAC" }]}>{tenantFriendly}</Text>
-            <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Favourable</Text>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: "#1E3A5C" }]} />
-          <View style={styles.stat}>
-            <Text style={[styles.statVal, { color: "#93C5FD" }]}>{libraryCount}</Text>
-            <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>In Library</Text>
+            <Text style={[styles.statVal, { color: "#86EFAC" }]}>{drafts.length}</Text>
+            <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Drafts</Text>
           </View>
         </View>
 
@@ -181,6 +175,8 @@ export default function LeasesHub() {
             ))}
           </>
         )}
+
+        <DisclaimerBanner text="Lease analysis is for informational purposes only. Always seek independent legal advice before signing or negotiating any commercial lease." />
       </ScrollView>
     </View>
   );
