@@ -439,7 +439,18 @@ export default function EquipmentScreen() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  const totalValue = equipment.filter((e) => !e.isLeased).reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
+  // Only show tabs and count equipment for included divisions
+  const includedUnits = businessUnits.filter((u) => u.isIncludedInSale !== false);
+  const includedUnitIds = new Set(includedUnits.map((u) => u.id));
+
+  // On the "All" tab, hide equipment that belongs to an excluded division
+  const visibleEquipment = selectedUnitId
+    ? equipment
+    : includedUnits.length > 0
+      ? equipment.filter((e) => !e.unitId || includedUnitIds.has(e.unitId))
+      : equipment;
+
+  const totalValue = visibleEquipment.filter((e) => !e.isLeased).reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
 
   return (
     <KeyboardAvoidingView
@@ -460,8 +471,8 @@ export default function EquipmentScreen() {
           <Text style={[styles.title, { color: colors.foreground }]}>Equipment</Text>
         </View>
 
-        {/* Unit filter tabs */}
-        {businessUnits.length > 0 && (
+        {/* Unit filter tabs — only included divisions */}
+        {includedUnits.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitPicker}>
             <TouchableOpacity
               style={[styles.unitChip, !selectedUnitId && { backgroundColor: colors.primary }]}
@@ -469,7 +480,7 @@ export default function EquipmentScreen() {
             >
               <Text style={[styles.unitChipText, !selectedUnitId && { color: "#fff" }]}>All</Text>
             </TouchableOpacity>
-            {businessUnits.map((u) => (
+            {includedUnits.map((u) => (
               <TouchableOpacity
                 key={u.id}
                 style={[styles.unitChip, selectedUnitId === u.id && { backgroundColor: colors.primary }]}
@@ -494,7 +505,7 @@ export default function EquipmentScreen() {
           </View>
           <View style={{ alignItems: "flex-end", gap: 8 }}>
             <View style={[styles.itemCountBadge, { backgroundColor: "#1E3A5C" }]}>
-              <Text style={styles.itemCountText}>{equipment.length} item{equipment.length !== 1 ? "s" : ""}</Text>
+              <Text style={styles.itemCountText}>{visibleEquipment.length} item{visibleEquipment.length !== 1 ? "s" : ""}</Text>
             </View>
             <TouchableOpacity
               onPress={() => setShowReplacement((v) => !v)}
@@ -506,8 +517,8 @@ export default function EquipmentScreen() {
           </View>
         </View>
 
-        {/* Equipment list */}
-        {equipment.map((item) => (
+        {/* Equipment list — only visible (included division) items */}
+        {visibleEquipment.map((item) => (
           <View key={item.id} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {editItem?.id === item.id ? (
               <>

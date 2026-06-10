@@ -166,7 +166,9 @@ export default function ReportScreen() {
 
   const tabs: { label: string; snap: ValSnapshot | null; unit?: ValUnit }[] = [
     { label: "Combined", snap: latestSnapshot.combined },
-    ...latestSnapshot.units.map(({ unit, snapshot }) => ({ label: unit.name, snap: snapshot, unit })),
+    ...latestSnapshot.units
+      .filter(({ unit }) => unit.isIncludedInSale !== false)
+      .map(({ unit, snapshot }) => ({ label: unit.name, snap: snapshot, unit })),
   ];
 
   return (
