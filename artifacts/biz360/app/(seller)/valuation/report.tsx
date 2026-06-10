@@ -171,11 +171,11 @@ function ReportCard({
 
       {advancedOpen && (
         <View style={[styles.advancedBody, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {/* Staff reveal toggle */}
+          {/* Staff mask toggle */}
           <View style={styles.maskRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.maskLabel, { color: colors.foreground }]}>Show staff names</Text>
-              <Text style={[styles.maskSub, { color: colors.mutedForeground }]}>Reveal real names of suppliers tagged as staff</Text>
+              <Text style={[styles.maskLabel, { color: colors.foreground }]}>Mask staff names</Text>
+              <Text style={[styles.maskSub, { color: colors.mutedForeground }]}>Replace tagged supplier names with a Staff Wage pill</Text>
             </View>
             <Switch
               value={showStaffNames}
@@ -210,7 +210,7 @@ function ReportCard({
             }
             return tabCogs.map((item, i) => {
               const isStaff = staffSuppliers.has(item.supplierName);
-              const masked = isStaff && !showStaffNames;
+              const masked = isStaff && showStaffNames;
               const wageNum = staffIndex[item.supplierName] ?? 0;
               return (
                 <View key={i} style={[styles.cogsRow, { borderTopColor: colors.border }]}>
