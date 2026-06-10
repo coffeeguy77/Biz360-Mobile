@@ -378,7 +378,11 @@ export default function SellerDashboard() {
 
         {/* ── Featured listing card ── */}
         {featuredListing ? (
-          <View style={[styles.tourCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
+          <TouchableOpacity
+            style={[styles.tourCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}
+            onPress={() => router.push("/(seller)/listings" as any)}
+            activeOpacity={0.85}
+          >
             <View style={styles.tourCardLeft}>
               <Text style={styles.tourCardTitle}>{featuredListing.businessName ?? "My Listing"}</Text>
               <Text style={styles.tourCardSub}>
@@ -408,11 +412,11 @@ export default function SellerDashboard() {
             </View>
             <TouchableOpacity
               style={styles.tourBtn}
-              onPress={() => router.push("/(seller)/tours" as any)}
+              onPress={(e) => { e.stopPropagation(); router.push("/(seller)/tours" as any); }}
             >
               <Feather name="rotate-ccw" size={20} color="#fff" />
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         ) : (
           <View style={[styles.noListingCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
             <Feather name="plus-circle" size={24} color="#3B82F6" />

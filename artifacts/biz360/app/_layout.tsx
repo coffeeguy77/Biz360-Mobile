@@ -36,9 +36,6 @@ function RootLayoutNav() {
       <Stack.Screen name="create-listing" />
       <Stack.Screen name="packages" />
       <Stack.Screen name="wiki" />
-      <Stack.Screen name="lease-detail/[id]" />
-      <Stack.Screen name="clause-detail/[id]" />
-      <Stack.Screen name="draft-detail/[id]" />
     </Stack>
   );
 }

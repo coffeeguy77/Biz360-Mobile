@@ -49,7 +49,6 @@ export default function LeaseDetail() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={colors.foreground} />
@@ -64,7 +63,6 @@ export default function LeaseDetail() {
           </View>
         </View>
 
-        {/* Summary card */}
         <View style={[styles.summaryCard, { backgroundColor: "#0F1F35", borderColor: "#1E3A5C" }]}>
           {lease.parties?.tenant && (
             <View style={styles.summaryRow}><Text style={styles.summaryKey}>Tenant</Text><Text style={styles.summaryVal}>{lease.parties.tenant}</Text></View>
@@ -83,7 +81,6 @@ export default function LeaseDetail() {
           )}
         </View>
 
-        {/* Risk stats */}
         <View style={[styles.statsRow, { backgroundColor: "#0F1F35", borderColor: "#1E3A5C" }]}>
           <View style={styles.stat}>
             <Text style={[styles.statVal, { color: "#FCA5A5" }]}>{critical}</Text>
@@ -106,7 +103,6 @@ export default function LeaseDetail() {
           </View>
         </View>
 
-        {/* View in Library */}
         <TouchableOpacity
           style={[styles.libBtn, { backgroundColor: "#1E3A5C", borderColor: "#3B82F6" }]}
           onPress={() => router.push("/(seller)/leases/library" as any)}
@@ -116,7 +112,6 @@ export default function LeaseDetail() {
           <Feather name="arrow-right" size={14} color="#93C5FD" />
         </TouchableOpacity>
 
-        {/* Clauses */}
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
           Analysed Clauses ({leaseClauses.length})
         </Text>
@@ -132,7 +127,7 @@ export default function LeaseDetail() {
             <ClauseCard
               key={clause.id}
               clause={clause}
-              onPress={() => router.push(`/clause-detail/${clause.id}` as any)}
+              onPress={() => router.push(`/(seller)/leases/clause-detail/${clause.id}` as any)}
             />
           ))
         )}

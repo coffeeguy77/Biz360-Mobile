@@ -171,5 +171,4 @@ const styles = StyleSheet.create({
   sectionTitle:    { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
   sectionContent:  { paddingHorizontal: 14, paddingBottom: 14, borderTopWidth: 1 },
   sectionText:     { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, paddingTop: 12 },
-  disclaimer:      { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16, textAlign: "center" },
 });

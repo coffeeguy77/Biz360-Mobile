@@ -101,11 +101,16 @@ export default function SellerListings() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
-        <View>
-          <Text style={[styles.title, { color: colors.foreground }]}>My Listings</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ paddingBottom: 4 }}>
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </TouchableOpacity>
+          <View>
+            <Text style={[styles.title, { color: colors.foreground }]}>My Listings</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             {activeCount} active{pendingCount > 0 ? ` · ${pendingCount} pending` : ""}
           </Text>
+          </View>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <TouchableOpacity

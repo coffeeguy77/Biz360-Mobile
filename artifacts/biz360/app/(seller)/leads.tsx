@@ -109,11 +109,16 @@ export default function SellerLeads() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
-        <View>
-          <Text style={[styles.title, { color: colors.foreground }]}>Leads</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ paddingBottom: 4 }}>
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </TouchableOpacity>
+          <View>
+            <Text style={[styles.title, { color: colors.foreground }]}>Leads</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             {leads.length > 0 ? `${leads.length} messages · ${hotCount} hot` : "No leads yet"}
           </Text>
+          </View>
         </View>
         {(hotCount > 0 || newReqCount > 0) && (
           <View style={[styles.hotBadge, { backgroundColor: "#EF4444" }]}>

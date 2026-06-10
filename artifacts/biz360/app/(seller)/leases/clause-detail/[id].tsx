@@ -133,5 +133,4 @@ const styles = StyleSheet.create({
   jurisdictionRow:{ flexDirection: "row", flexWrap: "wrap", gap: 6 },
   juriChip:       { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   juriText:       { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#93C5FD" },
-  disclaimer:     { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16, textAlign: "center" },
 });
