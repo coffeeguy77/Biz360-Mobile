@@ -292,17 +292,23 @@ router.get("/cafes/:cafeId/cogs-breakdown", async (req, res) => {
 
   const result: { supplierName: string; total: number; unitId: string | null; unitName: string | null }[] = [];
   for (const s of supplierSpend) {
-    const cogsRow = supplierMappingRows.find(r =>
+    // Use some() (not find) to avoid first-match ordering bugs — same pattern as snapshot COGS logic
+    const isCogs = supplierMappingRows.some(r =>
       r.contactName === s.name &&
       r.isCogs === true &&
       (r.unitId === null || includedUnitIds.has(r.unitId))
     );
-    if (!cogsRow) continue;
+    if (!isCogs) continue;
+    // For unit attribution: prefer the most specific unit-owned COGS row, fall back to parent
+    const unitRow = supplierMappingRows.find(r =>
+      r.contactName === s.name && r.isCogs === true && r.unitId !== null && includedUnitIds.has(r.unitId)
+    );
+    const attributedUnitId = unitRow?.unitId ?? null;
     result.push({
       supplierName: s.name,
       total: s.total,
-      unitId: cogsRow.unitId ?? null,
-      unitName: cogsRow.unitId ? (unitNameMap[cogsRow.unitId] ?? null) : null,
+      unitId: attributedUnitId,
+      unitName: attributedUnitId ? (unitNameMap[attributedUnitId] ?? null) : null,
     });
   }
 

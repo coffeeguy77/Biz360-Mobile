@@ -227,12 +227,13 @@ export default function ReportScreen() {
     if (selectedCafe?.id) fetchCogsBreakdown(selectedCafe.id);
   }, [selectedCafe?.id]));
 
-  async function fetchCogsBreakdown(cafeId: string) {
+  async function fetchCogsBreakdown(cafeId: string, periodMonths?: number) {
     const token = await getAuthToken();
     if (!token) return;
     setLoadingCogs(true);
+    const months = periodMonths ?? latestSnapshot.combined?.periodMonths ?? 12;
     try {
-      const res = await fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/cogs-breakdown`, {
+      const res = await fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/cogs-breakdown?months=${months}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -367,6 +368,7 @@ export default function ReportScreen() {
                             try {
                               await updateUnit(unit.id, { is_included_in_sale: newVal });
                               await recalculateSnapshot();
+                              if (selectedCafe?.id) fetchCogsBreakdown(selectedCafe.id);
                             } finally {
                               setTogglingUnit(null);
                             }
