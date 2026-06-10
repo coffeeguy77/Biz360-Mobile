@@ -98,11 +98,12 @@ function parseCsv(text: string): CsvRow[] {
 // ─── Import preview modal ─────────────────────────────────────────────────────
 
 function ImportPreviewModal({
-  visible, rows, unitId, onClose, onImported, authToken, cafeId,
+  visible, rows, unitId, businessUnits, onClose, onImported, authToken, cafeId,
 }: {
   visible: boolean;
   rows: CsvRow[];
   unitId: string | null;
+  businessUnits: { id: string; name: string }[];
   onClose: () => void;
   onImported: () => void;
   authToken: string | null;
@@ -110,6 +111,10 @@ function ImportPreviewModal({
 }) {
   const colors = useColors();
   const [importing, setImporting] = useState(false);
+  const [chosenUnitId, setChosenUnitId] = useState<string | null>(unitId);
+
+  // Sync when the modal opens with a fresh unitId
+  React.useEffect(() => { if (visible) setChosenUnitId(unitId); }, [visible, unitId]);
 
   const handleImport = async () => {
     if (importing) return;
@@ -119,7 +124,7 @@ function ImportPreviewModal({
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
-          unit_id: unitId,
+          unit_id: chosenUnitId,
           items: rows.map(({ displayValue: _dv, ...rest }) => rest),
         }),
       });
@@ -171,6 +176,36 @@ function ImportPreviewModal({
             <Text style={previewStyles.summaryLabel}>Total Value</Text>
           </View>
         </View>
+
+        {/* Unit assignment — only shown when there are business units */}
+        {businessUnits.length > 0 && (
+          <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+            <Text style={[previewStyles.unitLabel, { color: colors.mutedForeground }]}>
+              Import into
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 6 }}>
+              <TouchableOpacity
+                style={[previewStyles.unitChip, !chosenUnitId && previewStyles.unitChipActive]}
+                onPress={() => setChosenUnitId(null)}
+              >
+                <Text style={[previewStyles.unitChipText, !chosenUnitId && previewStyles.unitChipTextActive]}>
+                  No specific unit
+                </Text>
+              </TouchableOpacity>
+              {businessUnits.map((u) => (
+                <TouchableOpacity
+                  key={u.id}
+                  style={[previewStyles.unitChip, chosenUnitId === u.id && previewStyles.unitChipActive]}
+                  onPress={() => setChosenUnitId(u.id)}
+                >
+                  <Text style={[previewStyles.unitChipText, chosenUnitId === u.id && previewStyles.unitChipTextActive]}>
+                    {u.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Row list */}
         <FlatList
@@ -234,11 +269,16 @@ const previewStyles = StyleSheet.create({
   rowName:      { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   rowMeta:      { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   rowVal:       { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  footer:       { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 14, borderTopWidth: 1 },
-  cancelBtn:    { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: "center", borderWidth: 1 },
-  cancelText:   { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  importBtn:    { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 12, backgroundColor: "#2563EB" },
-  importText:   { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  footer:            { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 14, borderTopWidth: 1 },
+  cancelBtn:         { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: "center", borderWidth: 1 },
+  cancelText:        { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  importBtn:         { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 12, backgroundColor: "#2563EB" },
+  importText:        { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  unitLabel:         { fontSize: 12, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5 },
+  unitChip:          { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: "#1E3A5C" },
+  unitChipActive:    { backgroundColor: "#2563EB" },
+  unitChipText:      { fontSize: 13, fontFamily: "Inter_500Medium", color: "#8B9CB8" },
+  unitChipTextActive:{ color: "#fff" },
 });
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
@@ -518,6 +558,7 @@ export default function EquipmentScreen() {
           visible={showPreview}
           rows={csvRows}
           unitId={selectedUnitId}
+          businessUnits={businessUnits}
           onClose={() => setShowPreview(false)}
           onImported={handleImported}
           authToken={authToken}
