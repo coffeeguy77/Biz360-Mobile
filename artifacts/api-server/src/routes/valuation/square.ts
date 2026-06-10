@@ -96,6 +96,9 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
     } catch (err) { logger.warn({ cafeId, err }, "Xero data fetch failed during snapshot"); }
   }
 
+  // ── Which units are included in the sale bundle ────────────────────────────
+  const includedUnitIds = new Set(units.filter(u => u.isIncludedInSale !== false).map(u => u.id));
+
   // ── Shared account→owner lookup ────────────────────────────────────────────
   // Unit rows are only stored when claimed (isIncluded=true always).
   // Build: accountName → ownerUnitId (or null for parent/unassigned)
@@ -123,19 +126,20 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
     if (m.contactName && !m.unitId) parentCogsMap[m.contactName] = m.isCogs ?? false;
   }
 
-  // ── Combined totals (all claimed/included accounts across all owners) ───────
-  // Income accounts: unit-owned rows are always included; parent rows use isIncluded
+  // ── Combined totals — only accounts belonging to included units (or parent) ─
+  // Income: unit-owned rows included only if unit is in the sale bundle
   const allXeroRevenue = financials
     ? financials.incomeRows.filter(r => {
         const owner = accountOwner[r.name];
         if (owner === undefined) return false;
-        if (owner !== null) return true; // unit-owned = always included
-        return parentIncomeMap[r.name] === true; // parent row uses toggle
+        if (owner !== null) return includedUnitIds.has(owner); // unit-owned = only if included in sale
+        return parentIncomeMap[r.name] === true; // parent row uses isIncluded toggle
       }).reduce((s, r) => s + r.amount, 0)
     : 0;
   const allCOGS = supplierSpend.filter(s => {
     const m = supplierMappingRows.find(r => r.contactName === s.name);
-    return m?.isCogs === true;
+    if (!m?.isCogs) return false;
+    return m.unitId === null || includedUnitIds.has(m.unitId); // parent COGS or included unit COGS
   }).reduce((s, r) => s + r.total, 0);
   // Square is reconciled into Xero — do NOT add squareRevenue on top.
   // squareRevenue is stored in the snapshot purely as a verification figure.
@@ -145,6 +149,10 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
 
   // ── Parent-level equipment and add-backs (not assigned to any unit) ─────────
   const parentEquipmentValue = equipmentRows.filter(e => !e.isLeased && !e.unitId).reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+  // Combined equipment = parent + all included units (for display in the combined snapshot)
+  const combinedEquipmentValue = equipmentRows
+    .filter(e => !e.isLeased && (e.unitId === null || includedUnitIds.has(e.unitId!)))
+    .reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
   const parentAdjustments = adjustmentRows.filter(a => !a.unitId);
   const parentAdjEbitda = computeAdjustedEbitda(ebitda, parentAdjustments.map(a => ({ annualAmount: a.annualAmount ?? 0 })), periodMonths);
 
@@ -211,8 +219,10 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
   // ── Combined snapshot ──────────────────────────────────────────────────────
   let combinedValuation: number;
   if (units.length > 0) {
-    // Sum of independent unit valuations + parent-level items
-    const sumUnitValuations = unitSnapshots.reduce((s, { snapshot }) => s + Number(snapshot.valuationMidpoint ?? 0), 0);
+    // Sum only included unit valuations + parent-level items
+    const sumUnitValuations = unitSnapshots
+      .filter(({ unit }) => includedUnitIds.has(unit.id))
+      .reduce((s, { snapshot }) => s + Number(snapshot.valuationMidpoint ?? 0), 0);
     const parentAddbacksAnnualized = parentAdjustments.reduce((s, a) => s + Number(a.annualAmount ?? 0), 0);
     const parentAddbacksPeriod = (parentAddbacksAnnualized / 12) * periodMonths;
     combinedValuation = sumUnitValuations + computeValuationMidpoint(parentAddbacksPeriod, parentEquipmentValue);
@@ -232,7 +242,7 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
     ebitda: String(Math.round(ebitda * 100) / 100),
     adjustedEbitda: String(Math.round(parentAdjEbitda * 100) / 100),
     valuationMidpoint: String(Math.round(combinedValuation)),
-    totalEquipmentValue: String(Math.round(parentEquipmentValue * 100) / 100),
+    totalEquipmentValue: String(Math.round(combinedEquipmentValue * 100) / 100),
     squareRevenue: String(Math.round(squareRevenue * 100) / 100),
     xeroRevenue: String(Math.round(allXeroRevenue * 100) / 100),
   }).returning();
@@ -240,4 +250,5 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
   return { snapshot: combined, units: unitSnapshots };
 }
 
+export { calculateAndSaveSnapshot };
 export default router;

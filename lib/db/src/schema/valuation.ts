@@ -39,6 +39,7 @@ export const businessUnitsTable = pgTable(
     name: text("name").notNull(),
     revenueSharePct: numeric("revenue_share_pct").notNull().default("0"),
     sortOrder: integer("sort_order").notNull().default(0),
+    isIncludedInSale: boolean("is_included_in_sale").notNull().default(true),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => [

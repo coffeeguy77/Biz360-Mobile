@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, desc, isNull } from "drizzle-orm";
 import { db, valuationSnapshotsTable, businessUnitsTable } from "@workspace/db";
 import { assertCafeOwner } from "./cafes";
+import { calculateAndSaveSnapshot } from "./square";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router({ mergeParams: true });
@@ -31,6 +32,17 @@ router.get("/latest", async (req, res) => {
     return { unit, snapshot: snap ?? null };
   }));
   return res.json({ combined: combined ?? null, units: unitSnapshots });
+});
+
+// POST /recalculate — recalculate snapshot from cached data (used after toggling units in/out of sale)
+router.post("/recalculate", async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.params as { cafeId: string };
+  const { periodMonths = 12 } = req.body as { periodMonths?: number };
+  await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
+  if (res.headersSent) return;
+  const result = await calculateAndSaveSnapshot(cafeId, userId, periodMonths);
+  return res.json(result);
 });
 
 // POST /publish — seller publishes latest combined snapshot to buyers

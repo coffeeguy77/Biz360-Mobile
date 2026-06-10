@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
@@ -113,9 +113,10 @@ function ReportCard({ snap, name }: { snap: ValSnapshot | null; name: string }) 
 export default function ReportScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { latestSnapshot, selectedCafe, fetchSnapshot, businessUnits } = useValuation();
+  const { latestSnapshot, selectedCafe, fetchSnapshot, updateUnit, recalculateSnapshot } = useValuation();
   const [activeTab, setActiveTab] = useState(0);
   const [publishing, setPublishing] = useState(false);
+  const [togglingUnit, setTogglingUnit] = useState<string | null>(null);
   const [publishedDate, setPublishedDate] = useState<string | null>(
     latestSnapshot.combined?.isPublished ? (latestSnapshot.combined.snapshotDate ?? null) : null
   );
@@ -200,7 +201,52 @@ export default function ReportScreen() {
         )}
 
         {tabs[activeTab] ? (
-          <ReportCard snap={tabs[activeTab].snap} name={tabs[activeTab].label} />
+          <>
+            <ReportCard snap={tabs[activeTab].snap} name={tabs[activeTab].label} />
+            {activeTab === 0 && latestSnapshot.units.length > 0 && (
+              <View style={[styles.bundleCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.bundleTitle, { color: colors.foreground }]}>Sale Bundle</Text>
+                <Text style={[styles.bundleSubtitle, { color: colors.mutedForeground }]}>
+                  Toggle divisions on or off to revalue the business in real time.
+                </Text>
+                {latestSnapshot.units.map(({ unit, snapshot }) => {
+                  const included = unit.isIncludedInSale !== false;
+                  const val = snapshot?.valuationMidpoint ? Number(snapshot.valuationMidpoint) : null;
+                  const isToggling = togglingUnit === unit.id;
+                  return (
+                    <View key={unit.id} style={[styles.bundleRow, { borderTopColor: colors.border }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.bundleUnitName, { color: colors.foreground }]}>{unit.name}</Text>
+                        <Text style={[styles.bundleUnitSub, { color: included ? "#16A34A" : colors.mutedForeground }]}>
+                          {included ? "Included in sale" : "Excluded from sale"}
+                          {val !== null ? `  ·  ${fmt(val)}` : ""}
+                        </Text>
+                      </View>
+                      {isToggling ? (
+                        <ActivityIndicator size="small" color={colors.primary} style={{ width: 50 }} />
+                      ) : (
+                        <Switch
+                          value={included}
+                          onValueChange={async (val) => {
+                            setTogglingUnit(unit.id);
+                            try {
+                              await updateUnit(unit.id, { is_included_in_sale: val });
+                              await recalculateSnapshot();
+                            } finally {
+                              setTogglingUnit(null);
+                            }
+                          }}
+                          trackColor={{ false: "#374151", true: "#16A34A" }}
+                          thumbColor="#fff"
+                          ios_backgroundColor="#374151"
+                        />
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </>
         ) : (
           <View style={styles.empty}>
             <Feather name="file-text" size={40} color={colors.mutedForeground} />
@@ -281,4 +327,10 @@ const styles = StyleSheet.create({
   publishBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   accessBtn:      { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginLeft: "auto" },
   accessBtnText:  { fontSize: 13, fontFamily: "Inter_500Medium" },
+  bundleCard:     { borderRadius: 14, padding: 16, borderWidth: 1, gap: 4 },
+  bundleTitle:    { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 2 },
+  bundleSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 8 },
+  bundleRow:      { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderTopWidth: 1, gap: 12 },
+  bundleUnitName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  bundleUnitSub:  { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
 });

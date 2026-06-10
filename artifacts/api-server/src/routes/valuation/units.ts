@@ -49,11 +49,12 @@ router.patch("/:unitId", async (req, res) => {
   const { cafeId, unitId } = req.params as { cafeId: string; unitId: string };
   await assertCafeOwner(cafeId, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
   if (res.headersSent) return;
-  const { name, revenue_share_pct, sort_order } = req.body as { name?: string; revenue_share_pct?: number; sort_order?: number };
+  const { name, revenue_share_pct, sort_order, is_included_in_sale } = req.body as { name?: string; revenue_share_pct?: number; sort_order?: number; is_included_in_sale?: boolean };
   const [updated] = await db.update(businessUnitsTable).set({
     ...(name !== undefined && { name }),
     ...(revenue_share_pct !== undefined && { revenueSharePct: String(revenue_share_pct) }),
     ...(sort_order !== undefined && { sortOrder: sort_order }),
+    ...(is_included_in_sale !== undefined && { isIncludedInSale: is_included_in_sale }),
   }).where(and(eq(businessUnitsTable.id, unitId), eq(businessUnitsTable.cafeId, cafeId))).returning();
   if (!updated) return res.status(404).json({ error: "Business unit not found" });
   return res.json(updated);

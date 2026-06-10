@@ -44,7 +44,8 @@ export interface ValSnapshot {
 }
 export interface ValUnit {
   id: string; cafeId: string; ownerId: string; name: string;
-  revenueSharePct: string; sortOrder: number; createdAt?: string | null;
+  revenueSharePct: string; sortOrder: number;
+  isIncludedInSale?: boolean | null; createdAt?: string | null;
 }
 export interface ValLatestSnapshot {
   combined: ValSnapshot | null;
@@ -68,8 +69,9 @@ interface ValuationContextType {
   businessUnits: ValUnit[];
   fetchUnits: () => Promise<void>;
   createUnit: (data: { name: string; revenue_share_pct?: number }) => Promise<ValUnit | null>;
-  updateUnit: (unitId: string, data: { name?: string; revenue_share_pct?: number; sort_order?: number }) => Promise<void>;
+  updateUnit: (unitId: string, data: { name?: string; revenue_share_pct?: number; sort_order?: number; is_included_in_sale?: boolean }) => Promise<void>;
   deleteUnit: (unitId: string) => Promise<void>;
+  recalculateSnapshot: () => Promise<void>;
   authToken: string | null;
 }
 
@@ -186,7 +188,7 @@ export function ValuationProvider({ children }: { children: React.ReactNode }) {
     } catch { return null; }
   }, [authToken, selectedCafe, fetchUnits]);
 
-  const updateUnit = useCallback(async (unitId: string, data: { name?: string; revenue_share_pct?: number; sort_order?: number }) => {
+  const updateUnit = useCallback(async (unitId: string, data: { name?: string; revenue_share_pct?: number; sort_order?: number; is_included_in_sale?: boolean }) => {
     if (!authToken || !selectedCafe) return;
     try {
       await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/units/${unitId}`, {
@@ -197,6 +199,18 @@ export function ValuationProvider({ children }: { children: React.ReactNode }) {
       await fetchUnits();
     } catch {}
   }, [authToken, selectedCafe, fetchUnits]);
+
+  const recalculateSnapshot = useCallback(async () => {
+    if (!authToken || !selectedCafe) return;
+    try {
+      await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/snapshots/recalculate`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({}),
+      });
+      await fetchSnapshot();
+    } catch {}
+  }, [authToken, selectedCafe, fetchSnapshot]);
 
   const deleteUnit = useCallback(async (unitId: string) => {
     if (!authToken || !selectedCafe) return;
@@ -224,7 +238,7 @@ export function ValuationProvider({ children }: { children: React.ReactNode }) {
       cafes, selectedCafe, loadingCafes, fetchCafes, selectCafe, createCafe,
       equipment, fetchEquipment, adjustments, fetchAdjustments,
       latestSnapshot, fetchSnapshot, refresh,
-      businessUnits, fetchUnits, createUnit, updateUnit, deleteUnit,
+      businessUnits, fetchUnits, createUnit, updateUnit, deleteUnit, recalculateSnapshot,
       authToken,
     }}>
       {children}
