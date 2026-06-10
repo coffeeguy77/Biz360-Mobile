@@ -39,16 +39,20 @@ function ReportCard({
   name,
   cogsBreakdown,
   loadingCogs,
-  maskStaff,
-  onToggleMask,
+  staffSuppliers,
+  showStaffNames,
+  onToggleShowStaff,
+  onToggleSupplierStaff,
   filterUnitId,
 }: {
   snap: ValSnapshot | null;
   name: string;
   cogsBreakdown: CogsItem[];
   loadingCogs: boolean;
-  maskStaff: boolean;
-  onToggleMask: (v: boolean) => void;
+  staffSuppliers: Set<string>;
+  showStaffNames: boolean;
+  onToggleShowStaff: (v: boolean) => void;
+  onToggleSupplierStaff: (supplierName: string) => void;
   filterUnitId?: string;
 }) {
   const colors = useColors();
@@ -157,15 +161,15 @@ function ReportCard({
 
       {advancedOpen && (
         <View style={[styles.advancedBody, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {/* Staff mask toggle */}
+          {/* Staff reveal toggle */}
           <View style={styles.maskRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.maskLabel, { color: colors.foreground }]}>Mask staff names</Text>
-              <Text style={[styles.maskSub, { color: colors.mutedForeground }]}>Replace supplier names with "Staff Wage" to protect privacy</Text>
+              <Text style={[styles.maskLabel, { color: colors.foreground }]}>Show staff names</Text>
+              <Text style={[styles.maskSub, { color: colors.mutedForeground }]}>Reveal real names of suppliers tagged as staff</Text>
             </View>
             <Switch
-              value={maskStaff}
-              onValueChange={onToggleMask}
+              value={showStaffNames}
+              onValueChange={onToggleShowStaff}
               trackColor={{ false: "#374151", true: "#3B82F6" }}
               thumbColor="#fff"
               ios_backgroundColor="#374151"
@@ -175,7 +179,7 @@ function ReportCard({
           {/* COGS Breakdown */}
           <View style={[styles.cogsHeader, { borderTopColor: colors.border }]}>
             <Text style={[styles.cogsTitle, { color: colors.foreground }]}>COGS Breakdown</Text>
-            <Text style={[styles.cogsSub, { color: colors.mutedForeground }]}>Supplier spend classified as cost of goods sold</Text>
+            <Text style={[styles.cogsSub, { color: colors.mutedForeground }]}>Tap 👁 to tag a supplier as staff — their name is replaced with a pill</Text>
           </View>
 
           {loadingCogs ? (
@@ -184,23 +188,56 @@ function ReportCard({
             <Text style={[styles.cogsEmpty, { color: colors.mutedForeground }]}>
               No COGS suppliers found for this period. Map supplier contacts in the Supplier Mappings tool.
             </Text>
-          ) : (
-            tabCogs.map((item, i) => (
-              <View key={i} style={[styles.cogsRow, { borderTopColor: colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.cogsSupplier, { color: colors.foreground }]}>
-                    {maskStaff ? `Staff Wage ${i + 1}` : item.supplierName}
-                  </Text>
-                  {!maskStaff && item.unitName ? (
-                    <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>{item.unitName}</Text>
-                  ) : item.unitId === null ? (
-                    <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>Parent / Shared</Text>
-                  ) : null}
+          ) : (() => {
+            // Build stable "Staff Wage N" numbers based on order in full cogsBreakdown list
+            let staffCounter = 0;
+            const staffIndex: Record<string, number> = {};
+            for (const c of cogsBreakdown) {
+              if (staffSuppliers.has(c.supplierName) && !(c.supplierName in staffIndex)) {
+                staffCounter += 1;
+                staffIndex[c.supplierName] = staffCounter;
+              }
+            }
+            return tabCogs.map((item, i) => {
+              const isStaff = staffSuppliers.has(item.supplierName);
+              const masked = isStaff && !showStaffNames;
+              const wageNum = staffIndex[item.supplierName] ?? 0;
+              return (
+                <View key={i} style={[styles.cogsRow, { borderTopColor: colors.border }]}>
+                  <View style={{ flex: 1 }}>
+                    {masked ? (
+                      <View style={styles.staffPill}>
+                        <Text style={styles.staffPillText}>Staff Wage {wageNum}</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <Text style={[styles.cogsSupplier, { color: colors.foreground }]}>{item.supplierName}</Text>
+                        {item.unitName ? (
+                          <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>{item.unitName}</Text>
+                        ) : item.unitId === null ? (
+                          <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>Parent / Shared</Text>
+                        ) : null}
+                      </>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                    <Text style={[styles.cogsAmount, { color: colors.foreground }]}>{fmt(item.total)}</Text>
+                    <TouchableOpacity
+                      style={styles.eyeBtn}
+                      onPress={() => onToggleSupplierStaff(item.supplierName)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather
+                        name={isStaff ? "eye-off" : "eye"}
+                        size={17}
+                        color={isStaff ? "#3B82F6" : colors.mutedForeground}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={[styles.cogsAmount, { color: colors.foreground }]}>{fmt(item.total)}</Text>
-              </View>
-            ))
-          )}
+              );
+            });
+          })()}
         </View>
       )}
     </View>
@@ -219,13 +256,36 @@ export default function ReportScreen() {
   );
   const [cogsBreakdown, setCogsBreakdown] = useState<CogsItem[]>([]);
   const [loadingCogs, setLoadingCogs] = useState(false);
-  const [maskStaff, setMaskStaff] = useState(false);
+  const [staffSuppliers, setStaffSuppliers] = useState<Set<string>>(new Set());
+  const [showStaffNames, setShowStaffNames] = useState(false);
 
+  // Load persisted staff tags for the current cafe
   useFocusEffect(useCallback(() => {
     fetchSnapshot();
     setPublishedDate(latestSnapshot.combined?.isPublished ? (latestSnapshot.combined.snapshotDate ?? null) : null);
-    if (selectedCafe?.id) fetchCogsBreakdown(selectedCafe.id);
+    if (selectedCafe?.id) {
+      fetchCogsBreakdown(selectedCafe.id);
+      AsyncStorage.getItem(`staff-suppliers:${selectedCafe.id}`).then(raw => {
+        if (raw) {
+          try { setStaffSuppliers(new Set(JSON.parse(raw))); } catch { /* ignore */ }
+        } else {
+          setStaffSuppliers(new Set());
+        }
+      });
+    }
   }, [selectedCafe?.id]));
+
+  function toggleSupplierStaff(supplierName: string) {
+    setStaffSuppliers(prev => {
+      const next = new Set(prev);
+      if (next.has(supplierName)) next.delete(supplierName);
+      else next.add(supplierName);
+      if (selectedCafe?.id) {
+        AsyncStorage.setItem(`staff-suppliers:${selectedCafe.id}`, JSON.stringify([...next]));
+      }
+      return next;
+    });
+  }
 
   async function fetchCogsBreakdown(cafeId: string, periodMonths?: number) {
     const token = await getAuthToken();
@@ -335,8 +395,10 @@ export default function ReportScreen() {
               name={currentTab.label}
               cogsBreakdown={cogsBreakdown}
               loadingCogs={loadingCogs}
-              maskStaff={maskStaff}
-              onToggleMask={setMaskStaff}
+              staffSuppliers={staffSuppliers}
+              showStaffNames={showStaffNames}
+              onToggleShowStaff={setShowStaffNames}
+              onToggleSupplierStaff={toggleSupplierStaff}
               filterUnitId={currentTab.unit?.id}
             />
             {activeTab === 0 && latestSnapshot.units.length > 0 && (
@@ -469,6 +531,9 @@ const styles = StyleSheet.create({
   cogsSupplier:        { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   cogsUnit:            { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   cogsAmount:          { fontSize: 13, fontFamily: "Inter_700Bold" },
+  staffPill:           { backgroundColor: "#1D3461", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start" },
+  staffPillText:       { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#60A5FA" },
+  eyeBtn:              { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
   empty:               { alignItems: "center", paddingVertical: 60, gap: 12 },
   emptyTitle:          { fontSize: 18, fontFamily: "Inter_700Bold" },
   emptyText:           { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, maxWidth: 280 },
