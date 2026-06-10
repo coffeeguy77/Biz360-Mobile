@@ -1,0 +1,331 @@
+## Task: Add a standalone "Leases" Tab to Biz360
+
+Add a fully self-contained lease management feature as a new "Leases" tab. 
+No external dependencies on other apps. Everything runs inside Biz360.
+
+---
+
+## 1. Install packages
+
+In the Expo app:
+pnpm add @react-native-async-storage/async-storage expo-document-picker@~14.0.8 expo-file-system
+
+In the API server:
+pnpm add pdf-parse mammoth
+pnpm add -D @types/pdf-parse @types/mammoth
+
+---
+
+## 2. Set up the Anthropic AI integration
+
+Use Replit's built-in Anthropic integration:
+- Go to Tools → Integrations → search "Anthropic" → connect it
+- This gives you access to Claude without a separate API key
+- Import via: import Anthropic from '@anthropic-ai/sdk'
+- The SDK auto-reads the ANTHROPIC_API_KEY injected by the integration
+
+---
+
+## 3. Add API route: POST /api/lease-analysis
+
+Add this route to the existing Express API server.
+
+File: src/routes/leaseAnalysis.ts
+
+import { Router, Request, Response } from 'express';
+import Anthropic from '@anthropic-ai/sdk';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const router = Router();
+const anthropic = new Anthropic();
+
+async function extractText(fileBase64: string, fileType: string): Promise<string> {
+  const buffer = Buffer.from(fileBase64, 'base64');
+  
+  if (fileType === 'docx') {
+    const mammoth = require('mammoth');
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value;
+  }
+  
+  // PDF: write to temp file, extract, clean up
+  const tmpPath = path.join(os.tmpdir(), `lease_${Date.now()}.pdf`);
+  try {
+    fs.writeFileSync(tmpPath, buffer);
+    const PDFParse = require('pdf-parse/lib/pdf-parse.js');
+    const dataBuffer = fs.readFileSync(tmpPath);
+    const data = await PDFParse(dataBuffer);
+    return data.text;
+  } finally {
+    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+  }
+}
+
+router.post('/lease-analysis', async (req: Request, res: Response) => {
+  const { fileName, fileType, fileBase64 } = req.body;
+  
+  if (!fileName || !fileType || !fileBase64) {
+    return res.status(400).json({ error: 'fileName, fileType, and fileBase64 are required' });
+  }
+  
+  let leaseText: string;
+  try {
+    leaseText = await extractText(fileBase64, fileType);
+    if (!leaseText || leaseText.trim().length < 50) {
+      return res.status(400).json({ error: 'Could not extract readable text from document' });
+    }
+  } catch (err) {
+    return res.status(400).json({ error: 'Failed to parse document' });
+  }
+
+  const prompt = `You are an expert Australian commercial leasing lawyer specialising in café and retail leases.
+
+Analyse this lease document and extract structured information. Return ONLY valid JSON.
+
+LEASE DOCUMENT:
+${leaseText.slice(0, 15000)}
+
+Return this exact JSON structure:
+{
+  "jurisdiction": "NSW" | "VIC" | "QLD" | "WA" | "SA" | "ACT" | "TAS" | "NT" | null,
+  "leaseType": "commercial" | "retail" | "licence" | "mixed" | null,
+  "parties": {
+    "tenant": "name or null",
+    "landlord": "name or null"
+  },
+  "premises": "address description or null",
+  "term": "e.g. 5 years + 2 x 5-year options or null",
+  "rentAmount": "e.g. $80,000 per annum + GST or null",
+  "clauses": [
+    {
+      "title": "Short descriptive title",
+      "category": "one of: Rent & Outgoings | Rent Review | Lease Term & Options | Use & Exclusivity | Licence Areas | Make-Good | Assignment & Subletting | Rent Commencement | Services & Infrastructure | Signage & Marketing | Termination & Security | Incentives | Security",
+      "rating": "tenant-friendly" | "landlord-friendly" | "balanced",
+      "riskLevel": "low" | "medium" | "high" | "critical",
+      "plainEnglish": "1-2 sentence plain English explanation for a café operator",
+      "originalText": "exact clause text from document",
+      "suggestedText": "improved tenant-friendly version of the clause",
+      "cafeRelevanceScore": 1-5,
+      "negotiationScore": 1-5
+    }
+  ]
+}
+
+Extract 8-15 of the most important clauses. Focus on café-relevant clauses.
+cafeRelevanceScore: how important this clause is for a café operator (5=critical)
+negotiationScore: how negotiable this clause typically is (5=very negotiable)
+Return only the JSON object, no markdown, no explanation.`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const rawText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(500).json({ error: 'AI returned invalid response' });
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Normalise
+    const jurisdiction = ['NSW','VIC','QLD','WA','SA','ACT','TAS','NT'].includes(parsed.jurisdiction)
+      ? parsed.jurisdiction : undefined;
+    const leaseType = ['commercial','retail','licence','mixed'].includes(parsed.leaseType)
+      ? parsed.leaseType : undefined;
+    const parties = {
+      tenant: parsed.parties?.tenant && parsed.parties.tenant !== 'null' ? parsed.parties.tenant : undefined,
+      landlord: parsed.parties?.landlord && parsed.parties.landlord !== 'null' ? parsed.parties.landlord : undefined,
+    };
+
+    const clauses = (parsed.clauses || []).map((c: any) => ({
+      title: String(c.title || ''),
+      category: String(c.category || 'General'),
+      rating: ['tenant-friendly','landlord-friendly','balanced'].includes(c.rating) ? c.rating : 'balanced',
+      riskLevel: ['low','medium','high','critical'].includes(c.riskLevel) ? c.riskLevel : 'medium',
+      plainEnglish: String(c.plainEnglish || ''),
+      originalText: String(c.originalText || ''),
+      suggestedText: c.suggestedText ? String(c.suggestedText) : undefined,
+      jurisdictions: jurisdiction ? [jurisdiction] : ['NSW','VIC','QLD','WA','SA','ACT','TAS','NT'],
+      cafeRelevanceScore: Math.min(5, Math.max(1, Number(c.cafeRelevanceScore) || 3)),
+      negotiationScore: Math.min(5, Math.max(1, Number(c.negotiationScore) || 3)),
+    }));
+
+    res.json({ jurisdiction, leaseType, parties, premises: parsed.premises, term: parsed.term, rentAmount: parsed.rentAmount, clauses });
+  } catch (err) {
+    console.error('Lease analysis error:', err);
+    res.status(500).json({ error: 'AI analysis failed. Please try again.' });
+  }
+});
+
+export default router;
+
+Register this route in your main routes file:
+import leaseAnalysisRouter from './leaseAnalysis';
+app.use('/api', leaseAnalysisRouter);
+
+Also increase the JSON body size limit in your Express app setup:
+app.use(express.json({ limit: '20mb' }));
+
+---
+
+## 4. Create these files in the Expo app
+
+### context/leaseTypes.ts
+Define these TypeScript types:
+- Jurisdiction = 'ACT'|'NSW'|'VIC'|'QLD'|'SA'|'WA'|'TAS'|'NT'
+- LeaseType = 'commercial'|'retail'|'licence'|'mixed'
+- PremisesType = 'cafe'|'kiosk'|'restaurant'|'office-foyer-cafe'|'shopping-centre-cafe'|'street-front-cafe'|'outdoor-seating-cafe'
+- LeasePosition = 'tenant-friendly'|'balanced'|'landlord-friendly'
+- ClauseRating = 'tenant-friendly'|'landlord-friendly'|'balanced'
+- RiskLevel = 'low'|'medium'|'high'|'critical'
+- AnalysisStatus = 'pending'|'analysing'|'complete'|'failed'
+- Clause { id, title, category, rating: ClauseRating, riskLevel: RiskLevel, plainEnglish, originalText, suggestedText?, jurisdictions: Jurisdiction[], cafeRelevanceScore: number, negotiationScore: number, sourceLeaseId?, isSeed? }
+- Lease { id, name, uploadDate, status: AnalysisStatus, fileType: 'pdf'|'docx', jurisdiction?: Jurisdiction, leaseType?: LeaseType, parties?: {tenant?:string,landlord?:string}, premises?, term?, rentAmount?, clauseCount?, extractedClauseIds? }
+- DraftSection { id, title, content, type: 'schedule'|'special-conditions'|'licence-clauses'|'tenant-protections'|'summary'|'checklist'|'red-flags' }
+- DraftLease { id, name, createdAt, jurisdiction: Jurisdiction, leaseType: LeaseType, premisesType: PremisesType, position: LeasePosition, rentStructure, outgoingsStructure, licenceAreas: string[], selectedProtections: string[], sections: DraftSection[] }
+- BuilderState { jurisdiction, leaseType, premisesType, position, rentStructure, outgoingsStructure, licenceAreas, selectedProtections, occupancyThreshold: number }
+
+### context/LeaseContext.tsx
+React context with AsyncStorage persistence (keys prefixed 'biz360_lease_').
+Merges LEASE_SEED_CLAUSES from data/leaseSeedClauses.ts with user-added clauses.
+Exports LeaseProvider and useLease hook.
+Actions: addLease, updateLease, deleteLease, addClause, addDraft, deleteDraft.
+
+### data/leaseSeedClauses.ts
+15 curated Australian café lease clauses (all with isSeed: true), covering:
+1. Rent Abatement During Landlord Works — Rent & Outgoings, high, tenant-friendly
+2. Building Occupancy Rent Reduction — Rent & Outgoings, high, tenant-friendly
+3. Outdoor Seating Licence Peppercorn Rent — Licence Areas, medium, tenant-friendly
+4. Café Exclusivity Clause — Use & Exclusivity, high, tenant-friendly
+5. Option to Renew — Lease Term & Options, high, tenant-friendly
+6. Limited Make-Good Obligation — Make-Good, medium, tenant-friendly
+7. Assignment to Business Purchaser — Assignment & Subletting, medium, tenant-friendly
+8. No Rent Until DA Approval — Rent Commencement, critical, tenant-friendly
+9. Outgoings Cap — Rent & Outgoings, medium, tenant-friendly
+10. Fit-Out Contribution by Landlord — Incentives, medium, tenant-friendly
+11. Grease Trap & Exhaust Landlord Obligations — Services & Infrastructure, high, balanced
+12. Signage Rights — Signage & Marketing, low, balanced
+13. No Services No Rent — Rent Commencement, critical, tenant-friendly
+14. Market Rent Dispute Resolution — Rent Review, medium, balanced
+15. Demolition & Redevelopment Protection — Termination & Security, critical, landlord-friendly
+Each has: plainEnglish (2 sentences), originalText (full clause), suggestedText (improved version), all 8 jurisdictions, cafeRelevanceScore, negotiationScore.
+
+### utils/leaseDraftGenerator.ts
+generateDraft(state: BuilderState, id: string): DraftLease
+7 sections: Schedule, Special Conditions (full clause text per selected protection), Licence Area Clauses, Tenant Protections Summary, Plain English Summary, Negotiation Checklist ([X]/[ ]), Red Flag Report (warnings for missing critical protections).
+22 protections: rent-reduction-occupancy, rent-abatement-works, peppercorn-common-areas, outdoor-seating-licence, foyer-licence, storage-licence, no-rent-approvals, no-rent-services, landlord-base-building, outgoings-cap, exclude-vacant-outgoings, cafe-exclusivity, assignment-purchaser, limited-makegood, termination-approvals, landlord-maintenance, disruption-compensation, option-to-renew, market-rent-dispute, signage-rights, delivery-access, grease-trap.
+
+### components/lease/LeaseUI.tsx
+- RiskBadge: low=green bg, medium=amber bg, high=red bg, critical=solid red
+- RatingBadge: tenant-friendly=blue, balanced=sky, landlord-friendly=purple
+- ScoreDots: filled/empty dots (5 max)
+- DisclaimerBanner: left gold border, alert icon, "This document is a drafting and negotiation aid only. It is not legal advice."
+- StepIndicator: horizontal dots with connecting lines, completed=filled primary, active=outlined primary, future=grey
+- LeaseEmptyState: icon + title + subtitle centred
+
+### components/lease/LeaseCard.tsx
+File icon (pdf/docx), name, date, status badge. When complete: footer chips for jurisdiction/type/clause count.
+
+### components/lease/ClauseCard.tsx
+RiskBadge + RatingBadge row, clause title, category in accent colour, plainEnglish (2 lines), footer ScoreDots + jurisdiction badges. Navigates to /clause-detail/[id] on press.
+
+---
+
+## 5. Screens
+
+### app/(tabs)/leases/index.tsx
+Scrollable dashboard:
+- Navy header "Leases" / "Café lease tools for sellers"
+- Stats: leases count, clauses count, drafts count
+- Quick Actions 2×2 grid: Upload Lease, Clause Library, Build Lease, Drafts
+- Clause Library banner (navy, shows total clause count in gold badge)
+- Recent Leases (last 3 LeaseCards, tap → /lease-detail/[id])
+- DisclaimerBanner
+
+### app/(tabs)/leases/upload.tsx
+- Dashed upload area → expo-document-picker (PDF/DOCX only)
+- After pick: filename card + "Analyse with AI" button
+- On analyse:
+  1. Read file as base64:
+     - Web: fetch(uri) → arrayBuffer → base64 via btoa
+     - Native: FileSystem.readAsStringAsync(uri, { encoding: 'base64' })
+  2. POST to ${process.env.EXPO_PUBLIC_API_URL}/api/lease-analysis
+     body: { fileName, fileType, fileBase64 }
+  3. Save lease via addLease (status: 'analysing')
+  4. On response: updateLease with real data, add extracted clauses via addClause
+  5. Navigate to /lease-detail/[id]
+- Progress bar + phase messages during analysis
+- Error card with "Try Again" on failure
+- Jurisdiction info card at bottom
+
+### app/(tabs)/leases/library.tsx
+Search bar + rating filter chips (All/Tenant/Balanced/Landlord) + risk filter chips (All/Critical/High/Medium/Low).
+FlatList of ClauseCards filtered by search + filters.
+
+### app/(tabs)/leases/builder.tsx
+5-step wizard with fixed header + StepIndicator + ScrollView content + fixed footer nav.
+Step 1: Jurisdiction chips (8) + Lease Type radios (4)
+Step 2: Premises Type radios (7) + Position radios (3 with descriptions)
+Step 3: Rent Structure radios (5) + Outgoings radios (4)
+Step 4: Licence Areas checkboxes (6)
+Step 5: 22 protection checkboxes grouped by category
+Footer: Back (←) + Next/Generate button (gold on step 5)
+On generate: generateDraft() → addDraft() → router.push('/draft-detail/' + id)
+
+### app/(tabs)/leases/reports.tsx
+FlatList of draft cards. Each shows: name, date, position badge, chips, protection count.
+Tap → /draft-detail/[id]. Trash icon → delete with Alert confirmation.
+Empty state → "Open Lease Builder" button.
+
+### app/lease-detail/[id].tsx
+Navy header (back + name). Lease details (jurisdiction, type, premises, term, rent, parties). Extracted clauses list (ClauseCards). DisclaimerBanner.
+
+### app/clause-detail/[id].tsx
+Navy header (back + category + title). Badges + scores. Plain English card. Original text card (monospaced). Suggested text card (gold left border). DisclaimerBanner.
+
+### app/draft-detail/[id].tsx
+Navy header (back + draft name). Chips (jurisdiction, type, premises, position). Expand All / Collapse All. 7 collapsible sections each with icon. DisclaimerBanner.
+
+---
+
+## 6. Root layout changes
+
+In app/_layout.tsx, wrap the root navigator with LeaseProvider:
+import { LeaseProvider } from '@/context/LeaseContext';
+// wrap: <LeaseProvider><existing navigator></LeaseProvider>
+
+---
+
+## 7. Add "Leases" tab in app/(tabs)/_layout.tsx
+
+Add alongside existing tabs. Use the existing tab bar pattern in this file.
+Icon: Feather "file-text" or SF Symbol "doc.text.fill" on iOS.
+Name: "leases", title: "Leases"
+
+---
+
+## 8. Environment variable
+
+The upload screen calls the API at:
+  `${process.env.EXPO_PUBLIC_API_URL}/api/lease-analysis`
+
+Make sure EXPO_PUBLIC_API_URL is already set in this project (it should be — it's how other screens call the API). If not, set it to the deployed API server URL.
+
+---
+
+## 9. Key rules
+
+- AsyncStorage keys must use prefix 'biz360_lease_' to avoid collisions
+- No hardcoded hex colours — use the existing Biz360 colour system for all components
+- Every screen that shows lease output must include DisclaimerBanner
+- The feature works fully offline except for the Upload AI Analysis step
+- generateId(): use Date.now().toString() + Math.random().toString(36).substring(2,9)
+  Do NOT use the uuid package (crashes on React Native)
