@@ -292,7 +292,8 @@ export default function EquipmentScreen() {
   const [editItem, setEditItem] = useState<ValEquipment | null>(null);
   const [moveItem, setMoveItem] = useState<ValEquipment | null>(null);
   const [moving, setMoving] = useState(false);
-  const [form, setForm] = useState({ name: "", purchasePrice: "", secondhandValue: "", replacementCost: "", currentValue: "", isLeased: false });
+  const [form, setForm] = useState({ name: "", secondhandValue: "", replacementCost: "", isLeased: false });
+  const [showReplacement, setShowReplacement] = useState(false);
 
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -306,14 +307,14 @@ export default function EquipmentScreen() {
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const emptyForm = { name: "", purchasePrice: "", secondhandValue: "", replacementCost: "", currentValue: "", isLeased: false };
+  const emptyForm = { name: "", secondhandValue: "", replacementCost: "", isLeased: false };
 
   const handleAdd = async () => {
     if (!selectedCafe || !form.name.trim()) { Alert.alert("Error", "Name is required"); return; }
     const res = await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ name: form.name.trim(), purchasePrice: parseFloat(form.purchasePrice) || null, secondhandValue: parseFloat(form.secondhandValue) || null, replacementCost: parseFloat(form.replacementCost) || null, currentValue: parseFloat(form.currentValue) || null, isLeased: form.isLeased, unit_id: selectedUnitId }),
+      body: JSON.stringify({ name: form.name.trim(), secondhandValue: parseFloat(form.secondhandValue) || null, replacementCost: parseFloat(form.replacementCost) || null, valuationMode: "secondhand", isLeased: form.isLeased, unit_id: selectedUnitId }),
     });
     if (res.ok) { await fetchEquipment(selectedUnitId ?? undefined); setAdding(false); setForm(emptyForm); }
     else { const e = await res.json(); Alert.alert("Error", e.error); }
@@ -326,10 +327,9 @@ export default function EquipmentScreen() {
       headers: authHeaders(),
       body: JSON.stringify({
         name: form.name,
-        purchasePrice: parseFloat(form.purchasePrice) || null,
         secondhandValue: parseFloat(form.secondhandValue) || null,
         replacementCost: parseFloat(form.replacementCost) || null,
-        currentValue: parseFloat(form.currentValue) || null,
+        valuationMode: "secondhand",
         isLeased: form.isLeased,
       }),
     });
@@ -345,10 +345,9 @@ export default function EquipmentScreen() {
       headers: authHeaders(),
       body: JSON.stringify({
         name: `${item.name} (copy)`,
-        purchasePrice: item.purchasePrice,
         secondhandValue: item.secondhandValue,
         replacementCost: item.replacementCost,
-        currentValue: item.currentValue,
+        valuationMode: "secondhand",
         isLeased: item.isLeased,
         category: item.category,
         brand: item.brand,
@@ -373,10 +372,8 @@ export default function EquipmentScreen() {
     setEditItem(item);
     setForm({
       name: item.name,
-      purchasePrice: item.purchasePrice ?? "",
       secondhandValue: item.secondhandValue ?? "",
       replacementCost: item.replacementCost ?? "",
-      currentValue: item.currentValue ?? "",
       isLeased: item.isLeased ?? false,
     });
   };
@@ -442,7 +439,7 @@ export default function EquipmentScreen() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  const totalValue = equipment.filter((e) => !e.isLeased).reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+  const totalValue = equipment.filter((e) => !e.isLeased).reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -483,10 +480,24 @@ export default function EquipmentScreen() {
         <View style={[styles.summaryCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.summaryLabel}>Total Equipment Value</Text>
-            <Text style={styles.summaryVal}>${totalValue.toLocaleString()}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 }}>
+              <Text style={styles.summaryVal}>${totalValue.toLocaleString()}</Text>
+              <View style={[styles.valTag, { backgroundColor: "rgba(59,130,246,0.18)" }]}>
+                <Text style={[styles.valTagLabel, { color: "#60A5FA" }]}>Secondhand</Text>
+              </View>
+            </View>
           </View>
-          <View style={[styles.itemCountBadge, { backgroundColor: "#1E3A5C" }]}>
-            <Text style={styles.itemCountText}>{equipment.length} item{equipment.length !== 1 ? "s" : ""}</Text>
+          <View style={{ alignItems: "flex-end", gap: 8 }}>
+            <View style={[styles.itemCountBadge, { backgroundColor: "#1E3A5C" }]}>
+              <Text style={styles.itemCountText}>{equipment.length} item{equipment.length !== 1 ? "s" : ""}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowReplacement((v) => !v)}
+              style={[styles.valTag, { backgroundColor: showReplacement ? "rgba(234,179,8,0.18)" : "rgba(255,255,255,0.06)" }]}
+            >
+              <Feather name={showReplacement ? "eye" : "eye-off"} size={10} color={showReplacement ? "#FBBF24" : "#6B7280"} />
+              <Text style={[styles.valTagLabel, { color: showReplacement ? "#FBBF24" : "#6B7280" }]}>Replacement</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -501,15 +512,6 @@ export default function EquipmentScreen() {
                   value={form.name}
                   onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
                   placeholder="e.g. Espresso Machine"
-                  placeholderTextColor={colors.mutedForeground}
-                />
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Purchase Price ($)</Text>
-                <TextInput
-                  style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-                  value={form.purchasePrice}
-                  onChangeText={(t) => setForm((f) => ({ ...f, purchasePrice: t }))}
-                  keyboardType="decimal-pad"
-                  placeholder="Original purchase price"
                   placeholderTextColor={colors.mutedForeground}
                 />
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Secondhand Value ($)</Text>
@@ -546,28 +548,22 @@ export default function EquipmentScreen() {
                   <Text style={[styles.itemMeta, { color: colors.mutedForeground }]}>
                     {item.isLeased
                       ? "Leased"
-                      : `$${Number(item.currentValue ?? item.purchasePrice ?? 0).toLocaleString()}`}
+                      : item.secondhandValue
+                        ? `$${Number(item.secondhandValue).toLocaleString()}`
+                        : item.currentValue
+                          ? `$${Number(item.currentValue).toLocaleString()}`
+                          : "No value set"}
                     {item.category ? ` · ${item.category}` : ""}
                     {item.brand ? ` · ${item.brand}` : ""}
                   </Text>
-                  {(item.secondhandValue || item.replacementCost) ? (
+                  {(showReplacement && item.replacementCost) ? (
                     <View style={styles.valuationTags}>
-                      {item.secondhandValue ? (
-                        <View style={[styles.valTag, { backgroundColor: "rgba(59,130,246,0.12)" }]}>
-                          <Text style={[styles.valTagLabel, { color: "#60A5FA" }]}>Secondhand</Text>
-                          <Text style={[styles.valTagValue, { color: "#93C5FD" }]}>
-                            ${Number(item.secondhandValue).toLocaleString()}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {item.replacementCost ? (
-                        <View style={[styles.valTag, { backgroundColor: "rgba(234,179,8,0.10)" }]}>
-                          <Text style={[styles.valTagLabel, { color: "#FBBF24" }]}>Replacement</Text>
-                          <Text style={[styles.valTagValue, { color: "#FDE68A" }]}>
-                            ${Number(item.replacementCost).toLocaleString()}
-                          </Text>
-                        </View>
-                      ) : null}
+                      <View style={[styles.valTag, { backgroundColor: "rgba(234,179,8,0.10)" }]}>
+                        <Text style={[styles.valTagLabel, { color: "#FBBF24" }]}>Replacement</Text>
+                        <Text style={[styles.valTagValue, { color: "#FDE68A" }]}>
+                          ${Number(item.replacementCost).toLocaleString()}
+                        </Text>
+                      </View>
                     </View>
                   ) : null}
                 </View>
@@ -593,6 +589,7 @@ export default function EquipmentScreen() {
         {/* Add form or Add button */}
         {adding ? (
           <View style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Name</Text>
             <TextInput
               style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
               value={form.name}
@@ -601,20 +598,22 @@ export default function EquipmentScreen() {
               placeholderTextColor={colors.mutedForeground}
               autoFocus
             />
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Secondhand Value ($)</Text>
             <TextInput
               style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              value={form.currentValue}
-              onChangeText={(t) => setForm((f) => ({ ...f, currentValue: t }))}
+              value={form.secondhandValue}
+              onChangeText={(t) => setForm((f) => ({ ...f, secondhandValue: t }))}
               keyboardType="decimal-pad"
-              placeholder="Current value ($)"
+              placeholder="Current market / secondhand value"
               placeholderTextColor={colors.mutedForeground}
             />
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Replacement Cost ($)</Text>
             <TextInput
               style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              value={form.purchasePrice}
-              onChangeText={(t) => setForm((f) => ({ ...f, purchasePrice: t }))}
+              value={form.replacementCost}
+              onChangeText={(t) => setForm((f) => ({ ...f, replacementCost: t }))}
               keyboardType="decimal-pad"
-              placeholder="Purchase price ($)"
+              placeholder="Cost to replace new"
               placeholderTextColor={colors.mutedForeground}
             />
             <View style={styles.editBtns}>
@@ -630,7 +629,7 @@ export default function EquipmentScreen() {
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={[styles.addBtn, { borderColor: colors.border, flex: 1 }]}
-              onPress={() => { setAdding(true); setForm({ name: "", purchasePrice: "", currentValue: "", isLeased: false }); }}
+              onPress={() => { setAdding(true); setForm(emptyForm); }}
             >
               <Feather name="plus" size={17} color={colors.primary} />
               <Text style={[styles.addBtnText, { color: colors.primary }]}>Add Item</Text>

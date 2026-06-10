@@ -12,10 +12,11 @@ function resolveCurrentValue(item: {
   manualValue?: number | string | null;
   purchasePrice?: number | string | null;
 }): string | null {
-  const mode = item.valuationMode ?? "purchase";
+  const mode = item.valuationMode ?? "secondhand";
   if (mode === "secondhand" && item.secondhandValue != null) return String(item.secondhandValue);
   if (mode === "replacement" && item.replacementCost != null) return String(item.replacementCost);
   if (mode === "manual" && item.manualValue != null) return String(item.manualValue);
+  if (item.secondhandValue != null) return String(item.secondhandValue);
   if (item.purchasePrice != null) return String(item.purchasePrice);
   return null;
 }
@@ -66,7 +67,7 @@ router.post("/", async (req, res) => {
     secondhandValue: secondhandValue != null ? String(secondhandValue) : null,
     replacementCost: replacementCost != null ? String(replacementCost) : null,
     currentValue: resolvedVal,
-    valuationMode: valuationMode || "purchase",
+    valuationMode: valuationMode || "secondhand",
     ownership: ownership || null,
     notes: notes || null,
     isLeased: isLeased ?? false,
@@ -113,7 +114,7 @@ router.post("/import", async (req, res) => {
       secondhandValue: item.secondhandValue != null ? String(item.secondhandValue) : null,
       replacementCost: item.replacementCost != null ? String(item.replacementCost) : null,
       currentValue: resolveCurrentValue(item),
-      valuationMode: item.valuationMode || "purchase",
+      valuationMode: item.valuationMode || "secondhand",
       ownership: item.ownership || null,
       notes: item.notes || null,
       isLeased: item.ownership === "leased",

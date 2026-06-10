@@ -148,11 +148,11 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
   const ebitda = computeEbitda(totalRevenue, xeroTotalExpenses, xeroTotalRevenue, !!xeroInt);
 
   // ── Parent-level equipment and add-backs (not assigned to any unit) ─────────
-  const parentEquipmentValue = equipmentRows.filter(e => !e.isLeased && !e.unitId).reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+  const parentEquipmentValue = equipmentRows.filter(e => !e.isLeased && !e.unitId).reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
   // Combined equipment = parent + all included units (for display in the combined snapshot)
   const combinedEquipmentValue = equipmentRows
     .filter(e => !e.isLeased && (e.unitId === null || includedUnitIds.has(e.unitId!)))
-    .reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+    .reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
   const parentAdjustments = adjustmentRows.filter(a => !a.unitId);
   const parentAdjEbitda = computeAdjustedEbitda(ebitda, parentAdjustments.map(a => ({ annualAmount: a.annualAmount ?? 0 })), periodMonths);
 
@@ -186,7 +186,7 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
 
     // Unit equipment and add-backs
     const unitEquipValue = equipmentRows.filter(e => !e.isLeased && e.unitId === unit.id)
-      .reduce((s, e) => s + Number(e.currentValue ?? e.purchasePrice ?? 0), 0);
+      .reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
     const unitAdj = adjustmentRows.filter(a => a.unitId === unit.id);
 
     // Independent unit P&L
