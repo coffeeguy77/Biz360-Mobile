@@ -286,10 +286,12 @@ const previewStyles = StyleSheet.create({
 export default function EquipmentScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { equipment, fetchEquipment, selectedCafe, businessUnits, fetchUnits, authToken } = useValuation();
+  const { equipment, fetchEquipment, selectedCafe, businessUnits, fetchUnits, authToken, recalculateSnapshot } = useValuation();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editItem, setEditItem] = useState<ValEquipment | null>(null);
+  const [moveItem, setMoveItem] = useState<ValEquipment | null>(null);
+  const [moving, setMoving] = useState(false);
   const [form, setForm] = useState({ name: "", purchasePrice: "", currentValue: "", isLeased: false });
 
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
@@ -339,6 +341,23 @@ export default function EquipmentScreen() {
   const startEdit = (item: ValEquipment) => {
     setEditItem(item);
     setForm({ name: item.name, purchasePrice: item.purchasePrice ?? "", currentValue: item.currentValue ?? "", isLeased: item.isLeased ?? false });
+  };
+
+  const handleMove = async (targetUnitId: string | null) => {
+    if (!selectedCafe || !moveItem) return;
+    setMoving(true);
+    try {
+      await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment/${moveItem.id}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ unit_id: targetUnitId }),
+      });
+      setMoveItem(null);
+      await fetchEquipment(selectedUnitId ?? undefined);
+      await recalculateSnapshot();
+    } finally {
+      setMoving(false);
+    }
   };
 
   // ── CSV import ───────────────────────────────────────────────────────────────
@@ -502,6 +521,11 @@ export default function EquipmentScreen() {
                     </View>
                   ) : null}
                 </View>
+                {businessUnits.length > 0 && (
+                  <TouchableOpacity onPress={() => setMoveItem(item)} style={styles.iconBtn}>
+                    <Feather name="corner-up-right" size={16} color="#F59E0B" />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity onPress={() => startEdit(item)} style={styles.iconBtn}>
                   <Feather name="edit-2" size={16} color={colors.primary} />
                 </TouchableOpacity>
@@ -570,6 +594,56 @@ export default function EquipmentScreen() {
         )}
       </ScrollView>
 
+      {/* Move Division modal */}
+      <Modal visible={!!moveItem} animationType="slide" transparent onRequestClose={() => setMoveItem(null)}>
+        <View style={styles.moveOverlay}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setMoveItem(null)} />
+          <View style={[styles.moveSheet, { backgroundColor: colors.card }]}>
+            <View style={styles.moveHandle} />
+            <Text style={[styles.moveTitle, { color: colors.foreground }]}>Move to Division</Text>
+            <Text style={[styles.moveSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {moveItem?.name}
+            </Text>
+
+            <View style={styles.moveOptions}>
+              {/* "No division" option — parent level */}
+              <TouchableOpacity
+                style={[styles.moveOption, !moveItem?.unitId && styles.moveOptionCurrent, { borderColor: colors.border }]}
+                onPress={() => handleMove(null)}
+                disabled={moving || !moveItem?.unitId}
+              >
+                <View style={[styles.moveOptionDot, { backgroundColor: "#6B7280" }]} />
+                <Text style={[styles.moveOptionText, { color: colors.foreground }]}>No specific division</Text>
+                {!moveItem?.unitId && <Feather name="check" size={14} color="#16A34A" />}
+              </TouchableOpacity>
+
+              {businessUnits.map((u) => {
+                const isCurrent = moveItem?.unitId === u.id;
+                return (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={[styles.moveOption, isCurrent && styles.moveOptionCurrent, { borderColor: colors.border }]}
+                    onPress={() => handleMove(u.id)}
+                    disabled={moving || isCurrent}
+                  >
+                    <View style={[styles.moveOptionDot, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.moveOptionText, { color: colors.foreground }]}>{u.name}</Text>
+                    {isCurrent && <Feather name="check" size={14} color="#16A34A" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.moveCancelBtn, { borderColor: colors.border }]}
+              onPress={() => setMoveItem(null)}
+            >
+              <Text style={[styles.moveCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* CSV preview modal */}
       {selectedCafe && (
         <ImportPreviewModal
@@ -620,4 +694,16 @@ const styles = StyleSheet.create({
   addBtn:         { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderStyle: "dashed" },
   csvBtn:         { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 1, paddingHorizontal: 18 },
   addBtnText:     { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  moveOverlay:      { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
+  moveSheet:        { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, gap: 4 },
+  moveHandle:       { width: 36, height: 4, borderRadius: 2, backgroundColor: "#4B5563", alignSelf: "center", marginBottom: 12 },
+  moveTitle:        { fontSize: 17, fontFamily: "Inter_700Bold", textAlign: "center", marginBottom: 2 },
+  moveSub:          { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", marginBottom: 14 },
+  moveOptions:      { gap: 8, marginBottom: 14 },
+  moveOption:       { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1 },
+  moveOptionCurrent:{ opacity: 0.45 },
+  moveOptionDot:    { width: 8, height: 8, borderRadius: 4 },
+  moveOptionText:   { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+  moveCancelBtn:    { alignItems: "center", paddingVertical: 13, borderRadius: 12, borderWidth: 1 },
+  moveCancelText:   { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
