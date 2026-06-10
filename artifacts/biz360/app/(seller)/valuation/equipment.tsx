@@ -338,6 +338,26 @@ export default function EquipmentScreen() {
     recalculateSnapshot();
   };
 
+  const handleDuplicate = async (item: ValEquipment) => {
+    if (!selectedCafe) return;
+    await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        name: `${item.name} (copy)`,
+        purchasePrice: item.purchasePrice,
+        secondhandValue: item.secondhandValue,
+        replacementCost: item.replacementCost,
+        currentValue: item.currentValue,
+        isLeased: item.isLeased,
+        category: item.category,
+        brand: item.brand,
+        unit_id: item.unitId ?? selectedUnitId,
+      }),
+    });
+    await fetchEquipment(selectedUnitId ?? undefined);
+  };
+
   const handleDelete = (item: ValEquipment) => {
     Alert.alert("Delete", `Remove "${item.name}"?`, [
       { text: "Cancel", style: "cancel" },
@@ -558,6 +578,9 @@ export default function EquipmentScreen() {
                 )}
                 <TouchableOpacity onPress={() => startEdit(item)} style={styles.iconBtn}>
                   <Feather name="edit-2" size={16} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDuplicate(item)} style={styles.iconBtn}>
+                  <Feather name="copy" size={16} color={colors.mutedForeground} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDelete(item)} style={styles.iconBtn}>
                   <Feather name="trash-2" size={16} color="#EF4444" />
