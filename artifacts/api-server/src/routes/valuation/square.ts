@@ -136,13 +136,21 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
         return parentIncomeMap[r.name] === true; // parent row uses isIncluded toggle
       }).reduce((s, r) => s + r.amount, 0)
     : 0;
+  // Combined COGS: a supplier is included if ANY of its mapping rows marks it
+  // as COGS for an included unit (or parent). Using some() avoids the find()
+  // first-match bug while still counting each supplier's spend only once.
+  const allCOGS = supplierSpend.filter(s =>
+    supplierMappingRows.some(r =>
+      r.contactName === s.name &&
+      r.isCogs === true &&
+      (r.unitId === null || includedUnitIds.has(r.unitId))
+    )
+  ).reduce((s, r) => s + r.total, 0);
   // Square is reconciled into Xero — do NOT add squareRevenue on top.
   // squareRevenue is stored in the snapshot purely as a verification figure.
   const totalRevenue = allXeroRevenue;
+  const grossProfit = computeGrossProfit(totalRevenue, allCOGS, allCOGS > 0);
   const ebitda = computeEbitda(totalRevenue, xeroTotalExpenses, xeroTotalRevenue, !!xeroInt);
-  // allCOGS and grossProfit are deferred until after the unit loop so we can
-  // sum per-unit COGS directly (avoids the find() deduplication bug where a
-  // supplier with multiple mapping rows could be skipped or miscounted).
 
   // ── Parent-level equipment and add-backs (not assigned to any unit) ─────────
   const parentEquipmentValue = equipmentRows.filter(e => !e.isLeased && !e.unitId).reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
@@ -212,20 +220,6 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
     }).returning();
     unitSnapshots.push({ unit, snapshot: unitSnap });
   }
-
-  // ── Combined COGS: sum included unit COGS + any parent-level COGS ──────────
-  // Using per-unit snapshot figures ensures consistency between the Combined
-  // tab and individual division tabs, and avoids the find() race where a
-  // supplier mapped to multiple units could be miscounted.
-  const includedUnitCOGS = unitSnapshots
-    .filter(({ unit }) => includedUnitIds.has(unit.id))
-    .reduce((s, { snapshot }) => s + Number(snapshot.cogs ?? 0), 0);
-  const parentOnlyCOGS = supplierSpend.filter(s => {
-    const m = supplierMappingRows.find(r => r.contactName === s.name && !r.unitId);
-    return m?.isCogs ?? false;
-  }).reduce((s, r) => s + r.total, 0);
-  const allCOGS = includedUnitCOGS + parentOnlyCOGS;
-  const grossProfit = computeGrossProfit(totalRevenue, allCOGS, allCOGS > 0);
 
   // ── Combined snapshot ──────────────────────────────────────────────────────
   let combinedValuation: number;

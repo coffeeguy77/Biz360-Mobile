@@ -104,6 +104,18 @@ export default function ValuationIndex() {
                   <Text style={styles.valuationLabel}>Estimated Value</Text>
                   <Text style={styles.valuationAmount}>{formatCurrency(valMidpoint)}</Text>
                   <Text style={styles.snapshotDate}>as of {combined?.snapshotDate ?? "—"}</Text>
+                  <View style={styles.breakdownBox}>
+                    {([
+                      ["Revenue", combined?.grossRevenue],
+                      ["COGS", combined?.cogs],
+                      ["Equipment", combined?.totalEquipmentValue],
+                    ] as [string, string | null | undefined][]).map(([label, val]) => (
+                      <View key={label} style={styles.breakdownRow}>
+                        <Text style={styles.breakdownLabel}>{label}</Text>
+                        <Text style={styles.breakdownVal}>{formatCurrency(val)}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </>
               ) : (
                 <Text style={[styles.noSnapshot, { color: "#8B9CB8" }]}>No snapshot yet — tap Sync to generate your first valuation</Text>
@@ -132,14 +144,21 @@ export default function ValuationIndex() {
                   return (
                     <View key={unit.id} style={[styles.unitCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.unitName, { color: colors.foreground }]}>{unit.name}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <Text style={[styles.unitName, { color: colors.foreground }]}>{unit.name}</Text>
+                          {unit.isIncludedInSale === false && (
+                            <View style={styles.excludedPill}>
+                              <Text style={styles.excludedPillText}>Excluded</Text>
+                            </View>
+                          )}
+                        </View>
                         {unitSnap?.grossRevenue && Number(unitSnap.grossRevenue) > 0 ? (
                           <Text style={[styles.unitMeta, { color: colors.mutedForeground }]}>Revenue: {formatCurrency(unitSnap.grossRevenue)}</Text>
                         ) : (
                           <Text style={[styles.unitMeta, { color: colors.mutedForeground }]}>Assign income accounts to calculate</Text>
                         )}
                       </View>
-                      <Text style={[styles.unitVal, { color: colors.primary }]}>
+                      <Text style={[styles.unitVal, { color: unit.isIncludedInSale === false ? colors.mutedForeground : colors.primary }]}>
                         {unitSnap?.valuationMidpoint && Number(unitSnap.valuationMidpoint) > 0 ? formatCurrency(unitSnap.valuationMidpoint) : "—"}
                       </Text>
                     </View>
@@ -218,4 +237,10 @@ const styles = StyleSheet.create({
   emptyText:        { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, maxWidth: 300 },
   createBtn:        { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14, marginTop: 8 },
   createBtnText:    { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  breakdownBox:     { marginTop: 10, borderTopWidth: 1, borderTopColor: "#1E3A5C", paddingTop: 10, gap: 6 },
+  breakdownRow:     { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  breakdownLabel:   { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
+  breakdownVal:     { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  excludedPill:     { backgroundColor: "rgba(239,68,68,0.15)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  excludedPillText: { color: "#EF4444", fontSize: 10, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.3 },
 });
