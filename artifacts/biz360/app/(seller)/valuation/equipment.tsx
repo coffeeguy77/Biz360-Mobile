@@ -443,12 +443,11 @@ export default function EquipmentScreen() {
   const includedUnits = businessUnits.filter((u) => u.isIncludedInSale !== false);
   const includedUnitIds = new Set(includedUnits.map((u) => u.id));
 
-  // On the "All" tab, hide equipment that belongs to an excluded division
+  // On the "All" tab, always exclude equipment belonging to disabled divisions.
+  // Items with no unitId (unassigned/parent) are always visible.
   const visibleEquipment = selectedUnitId
     ? equipment
-    : includedUnits.length > 0
-      ? equipment.filter((e) => !e.unitId || includedUnitIds.has(e.unitId))
-      : equipment;
+    : equipment.filter((e) => !e.unitId || includedUnitIds.has(e.unitId));
 
   const totalValue = visibleEquipment.filter((e) => !e.isLeased).reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
 
