@@ -132,7 +132,7 @@ export default function LeaseBuilder() {
       "Draft Created",
       `"${draft.name}" is ready.`,
       [
-        { text: "View Draft", onPress: () => router.push(`/draft-detail/${id}` as any) },
+        { text: "View Draft", onPress: () => router.push(`draft-detail/${id}` as any) },
         { text: "Done",       onPress: () => router.back() },
       ],
     );
