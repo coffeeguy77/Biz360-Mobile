@@ -346,9 +346,7 @@ export default function EquipmentScreen() {
   const handlePickCsv = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: Platform.OS === "ios"
-          ? ["public.comma-separated-values-text", "public.text", "public.plain-text", "public.data"]
-          : ["text/csv", "text/comma-separated-values", "application/csv", "text/plain", "*/*"],
+        type: "*/*",
         copyToCacheDirectory: true,
         multiple: false,
       });
