@@ -13,7 +13,8 @@ import { useLease } from "@/context/LeaseContext";
 import { Clause, Lease } from "@/context/leaseTypes";
 import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 
-const API_BASE = (() => { try { const d = (global as any).__replit_dev_domain; return d ? `https://${d}` : ""; } catch { return ""; } })();
+const domain = process.env.EXPO_PUBLIC_DOMAIN;
+const API_BASE = domain ? `https://${domain}` : "";
 
 function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
@@ -153,7 +154,7 @@ export default function UploadLease() {
 
       setStatus("done");
       setTimeout(() => {
-        router.push(`/lease-detail/${leaseId}` as any);
+        router.push(`lease-detail/${leaseId}` as any);
       }, 1000);
 
     } catch (err: unknown) {

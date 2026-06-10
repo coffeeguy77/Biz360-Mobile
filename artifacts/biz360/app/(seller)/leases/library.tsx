@@ -165,7 +165,7 @@ export default function ClauseLibrary() {
             <ClauseCard
               key={clause.id}
               clause={clause}
-              onPress={() => router.push(`/(seller)/leases/clause-detail/${clause.id}` as any)}
+              onPress={() => router.push(`clause-detail/${clause.id}` as any)}
             />
           ))
         )}
