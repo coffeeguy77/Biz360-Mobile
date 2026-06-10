@@ -481,6 +481,26 @@ export default function EquipmentScreen() {
                     {item.category ? ` · ${item.category}` : ""}
                     {item.brand ? ` · ${item.brand}` : ""}
                   </Text>
+                  {(item.secondhandValue || item.replacementCost) ? (
+                    <View style={styles.valuationTags}>
+                      {item.secondhandValue ? (
+                        <View style={[styles.valTag, { backgroundColor: "rgba(59,130,246,0.12)" }]}>
+                          <Text style={[styles.valTagLabel, { color: "#60A5FA" }]}>Secondhand</Text>
+                          <Text style={[styles.valTagValue, { color: "#93C5FD" }]}>
+                            ${Number(item.secondhandValue).toLocaleString()}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {item.replacementCost ? (
+                        <View style={[styles.valTag, { backgroundColor: "rgba(234,179,8,0.10)" }]}>
+                          <Text style={[styles.valTagLabel, { color: "#FBBF24" }]}>Replacement</Text>
+                          <Text style={[styles.valTagValue, { color: "#FDE68A" }]}>
+                            ${Number(item.replacementCost).toLocaleString()}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
                 <TouchableOpacity onPress={() => startEdit(item)} style={styles.iconBtn}>
                   <Feather name="edit-2" size={16} color={colors.primary} />
@@ -585,6 +605,10 @@ const styles = StyleSheet.create({
   itemRow:        { flexDirection: "row", alignItems: "center" },
   itemName:       { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   itemMeta:       { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  valuationTags:  { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  valTag:         { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  valTagLabel:    { fontSize: 10, fontFamily: "Inter_500Medium" },
+  valTagValue:    { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   iconBtn:        { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   input:          { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular" },
   editBtns:       { flexDirection: "row", gap: 10 },
