@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useLease } from "@/context/LeaseContext";
 import { Clause, Lease } from "@/context/leaseTypes";
+import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 
 const API_BASE = (() => { try { const d = (global as any).__replit_dev_domain; return d ? `https://${d}` : ""; } catch { return ""; } })();
 
@@ -20,7 +21,7 @@ function genId(): string {
 export default function UploadLease() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addLease, updateLease, addClause } = useLease();
+  const { addLease, updateLease, addClauses } = useLease();
   const [status, setStatus] = useState<"idle" | "uploading" | "analysing" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ name: string; uri: string; mimeType?: string } | null>(null);
@@ -115,27 +116,24 @@ export default function UploadLease() {
         }>;
       };
 
-      const clauseIds: string[] = [];
-      if (data.clauses?.length) {
-        for (const c of data.clauses) {
-          const id = genId();
-          clauseIds.push(id);
-          await addClause({
-            id,
-            title: c.title ?? "Untitled Clause",
-            category: c.category ?? "Other",
-            rating: (c.rating as Clause["rating"]) ?? "balanced",
-            riskLevel: (c.riskLevel as Clause["riskLevel"]) ?? "medium",
-            plainEnglish: c.plainEnglish ?? "",
-            originalText: c.originalText ?? "",
-            suggestedText: c.suggestedText,
-            jurisdictions: data.jurisdiction ? [data.jurisdiction as Clause["jurisdictions"][0]] : [],
-            cafeRelevanceScore: c.cafeRelevanceScore ?? 3,
-            negotiationScore: c.negotiationScore ?? 3,
-            sourceLeaseId: leaseId,
-            isSeed: false,
-          } as Clause);
-        }
+      const builtClauses: Clause[] = (data.clauses ?? []).map(c => ({
+        id: genId(),
+        title: c.title ?? "Untitled Clause",
+        category: c.category ?? "Other",
+        rating: (c.rating as Clause["rating"]) ?? "balanced",
+        riskLevel: (c.riskLevel as Clause["riskLevel"]) ?? "medium",
+        plainEnglish: c.plainEnglish ?? "",
+        originalText: c.originalText ?? "",
+        suggestedText: c.suggestedText,
+        jurisdictions: data.jurisdiction ? [data.jurisdiction as Clause["jurisdictions"][0]] : [],
+        cafeRelevanceScore: c.cafeRelevanceScore ?? 3,
+        negotiationScore: c.negotiationScore ?? 3,
+        sourceLeaseId: leaseId,
+        isSeed: false,
+      }));
+      const clauseIds = builtClauses.map(c => c.id);
+      if (builtClauses.length) {
+        await addClauses(builtClauses);
       }
 
       await updateLease(leaseId, {
@@ -282,9 +280,7 @@ export default function UploadLease() {
           )}
         </TouchableOpacity>
 
-        <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
-          Your lease is processed securely and not stored on our servers. Always seek independent legal advice.
-        </Text>
+        <DisclaimerBanner text="Your lease is processed securely and not stored on our servers. Always seek independent legal advice." />
       </ScrollView>
     </View>
   );

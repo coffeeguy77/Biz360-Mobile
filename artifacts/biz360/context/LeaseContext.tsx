@@ -3,28 +3,29 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Clause, DraftLease, Lease } from './leaseTypes';
 import { LEASE_SEED_CLAUSES } from '@/data/leaseSeedClauses';
 
-const LEASES_KEY = 'biz360_lease_leases';
+const LEASES_KEY  = 'biz360_lease_leases';
 const CLAUSES_KEY = 'biz360_lease_clauses';
-const DRAFTS_KEY = 'biz360_lease_drafts';
+const DRAFTS_KEY  = 'biz360_lease_drafts';
 
 interface LeaseContextValue {
-  leases: Lease[];
-  clauses: Clause[];
-  drafts: DraftLease[];
-  addLease: (lease: Lease) => Promise<void>;
-  updateLease: (id: string, updates: Partial<Lease>) => Promise<void>;
-  deleteLease: (id: string) => Promise<void>;
-  addClause: (clause: Clause) => Promise<void>;
-  addDraft: (draft: DraftLease) => Promise<void>;
-  deleteDraft: (id: string) => Promise<void>;
+  leases:       Lease[];
+  clauses:      Clause[];
+  drafts:       DraftLease[];
+  addLease:     (lease: Lease) => Promise<void>;
+  updateLease:  (id: string, updates: Partial<Lease>) => Promise<void>;
+  deleteLease:  (id: string) => Promise<void>;
+  addClause:    (clause: Clause) => Promise<void>;
+  addClauses:   (clauses: Clause[]) => Promise<void>;
+  addDraft:     (draft: DraftLease) => Promise<void>;
+  deleteDraft:  (id: string) => Promise<void>;
 }
 
 const LeaseContext = createContext<LeaseContextValue | null>(null);
 
 export function LeaseProvider({ children }: { children: React.ReactNode }) {
-  const [leases, setLeases] = useState<Lease[]>([]);
+  const [leases,      setLeases]      = useState<Lease[]>([]);
   const [userClauses, setUserClauses] = useState<Clause[]>([]);
-  const [drafts, setDrafts] = useState<DraftLease[]>([]);
+  const [drafts,      setDrafts]      = useState<DraftLease[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -47,43 +48,89 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
   ];
 
   async function addLease(lease: Lease) {
-    const next = [lease, ...leases];
-    setLeases(next);
-    await AsyncStorage.setItem(LEASES_KEY, JSON.stringify(next));
+    let saved: Lease[] = [];
+    setLeases(prev => {
+      saved = [lease, ...prev];
+      return saved;
+    });
+    await AsyncStorage.setItem(LEASES_KEY, JSON.stringify(saved));
   }
 
   async function updateLease(id: string, updates: Partial<Lease>) {
-    const next = leases.map(l => l.id === id ? { ...l, ...updates } : l);
-    setLeases(next);
-    await AsyncStorage.setItem(LEASES_KEY, JSON.stringify(next));
+    let saved: Lease[] = [];
+    setLeases(prev => {
+      saved = prev.map(l => l.id === id ? { ...l, ...updates } : l);
+      return saved;
+    });
+    await AsyncStorage.setItem(LEASES_KEY, JSON.stringify(saved));
   }
 
   async function deleteLease(id: string) {
-    const next = leases.filter(l => l.id !== id);
-    setLeases(next);
-    await AsyncStorage.setItem(LEASES_KEY, JSON.stringify(next));
+    let savedLeases: Lease[]  = [];
+    let savedClauses: Clause[] = [];
+
+    setLeases(prev => {
+      savedLeases = prev.filter(l => l.id !== id);
+      return savedLeases;
+    });
+    // Also remove any clauses that were extracted from this lease
+    setUserClauses(prev => {
+      savedClauses = prev.filter(c => c.sourceLeaseId !== id);
+      return savedClauses;
+    });
+
+    await Promise.all([
+      AsyncStorage.setItem(LEASES_KEY,  JSON.stringify(savedLeases)),
+      AsyncStorage.setItem(CLAUSES_KEY, JSON.stringify(savedClauses)),
+    ]);
   }
 
   async function addClause(clause: Clause) {
-    const next = [clause, ...userClauses.filter(c => c.id !== clause.id)];
-    setUserClauses(next);
-    await AsyncStorage.setItem(CLAUSES_KEY, JSON.stringify(next));
+    let saved: Clause[] = [];
+    setUserClauses(prev => {
+      saved = [clause, ...prev.filter(c => c.id !== clause.id)];
+      return saved;
+    });
+    await AsyncStorage.setItem(CLAUSES_KEY, JSON.stringify(saved));
+  }
+
+  /** Atomically insert multiple clauses in one state update + one AsyncStorage write. */
+  async function addClauses(incoming: Clause[]) {
+    if (!incoming.length) return;
+    let saved: Clause[] = [];
+    setUserClauses(prev => {
+      const incomingIds = new Set(incoming.map(c => c.id));
+      saved = [...incoming, ...prev.filter(c => !incomingIds.has(c.id))];
+      return saved;
+    });
+    await AsyncStorage.setItem(CLAUSES_KEY, JSON.stringify(saved));
   }
 
   async function addDraft(draft: DraftLease) {
-    const next = [draft, ...drafts];
-    setDrafts(next);
-    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
+    let saved: DraftLease[] = [];
+    setDrafts(prev => {
+      saved = [draft, ...prev];
+      return saved;
+    });
+    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(saved));
   }
 
   async function deleteDraft(id: string) {
-    const next = drafts.filter(d => d.id !== id);
-    setDrafts(next);
-    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
+    let saved: DraftLease[] = [];
+    setDrafts(prev => {
+      saved = prev.filter(d => d.id !== id);
+      return saved;
+    });
+    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(saved));
   }
 
   return (
-    <LeaseContext.Provider value={{ leases, clauses, drafts, addLease, updateLease, deleteLease, addClause, addDraft, deleteDraft }}>
+    <LeaseContext.Provider value={{
+      leases, clauses, drafts,
+      addLease, updateLease, deleteLease,
+      addClause, addClauses,
+      addDraft, deleteDraft,
+    }}>
       {children}
     </LeaseContext.Provider>
   );

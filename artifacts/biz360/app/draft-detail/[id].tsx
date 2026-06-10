@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useLease } from "@/context/LeaseContext";
 import { DraftSection } from "@/context/leaseTypes";
+import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 
 const SECTION_ICONS: Record<DraftSection["type"], string> = {
   "schedule":            "list",
@@ -144,9 +145,7 @@ export default function DraftDetail() {
           );
         })}
 
-        <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
-          This draft is a starting point for legal negotiations only. It does not constitute legal advice. Have a qualified solicitor review and finalise before use.
-        </Text>
+        <DisclaimerBanner text="This draft is a starting point for legal negotiations only. It does not constitute legal advice. Have a qualified solicitor review and finalise before use." />
       </ScrollView>
     </View>
   );

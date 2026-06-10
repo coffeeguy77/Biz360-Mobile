@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useLease } from "@/context/LeaseContext";
 import { ClauseCard } from "@/components/lease/ClauseCard";
+import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 
 const RISK_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -135,6 +136,8 @@ export default function LeaseDetail() {
             />
           ))
         )}
+
+        <DisclaimerBanner />
       </ScrollView>
     </View>
   );

@@ -7,6 +7,7 @@ import { useColors } from "@/hooks/useColors";
 import { useLease } from "@/context/LeaseContext";
 import { RiskBadge, RatingBadge } from "@/components/lease/RiskBadge";
 import { ScoreBar } from "@/components/lease/ScoreBar";
+import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 
 export default function ClauseDetail() {
   const colors = useColors();
@@ -107,9 +108,7 @@ export default function ClauseDetail() {
           </View>
         )}
 
-        <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
-          This analysis is for informational purposes only and does not constitute legal advice. Always consult a qualified commercial lease solicitor before signing or negotiating any lease.
-        </Text>
+        <DisclaimerBanner />
       </ScrollView>
     </View>
   );
