@@ -8,6 +8,7 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ValuationProvider } from "@/context/ValuationContext";
 
 function NativeLayout() {
   return (
@@ -79,6 +80,6 @@ function ClassicLayout() {
 }
 
 export default function SellerTabLayout() {
-  if (isLiquidGlassAvailable()) return <NativeLayout />;
-  return <ClassicLayout />;
+  const layout = isLiquidGlassAvailable() ? <NativeLayout /> : <ClassicLayout />;
+  return <ValuationProvider>{layout}</ValuationProvider>;
 }

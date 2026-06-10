@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useState } from "react";
 import {
   Alert, ActivityIndicator, Modal, Platform, Pressable,
@@ -11,8 +10,14 @@ import { DEMO_USERS, useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { getUsers, isMySubmission, PendingListing, getPendingListings, saveUsers } from "@/lib/adminStore";
 import { aggregateAnalytics, getMultiAnalytics, ListingAnalytics } from "@/lib/analyticsStore";
+import { useValuation } from "@/context/ValuationContext";
 
-const API_BASE = (() => { try { const d = (global as any).__replit_dev_domain; return d ? `https://${d}` : ""; } catch { return ""; } })();
+function formatValuation(val: string | number | null | undefined): string {
+  const n = Number(val ?? 0);
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n.toLocaleString()}`;
+}
 
 // ─── Plan definitions ──────────────────────────────────────────────────────────
 
@@ -241,8 +246,9 @@ export default function SellerDashboard() {
   const [featuredAnalytics, setFeaturedAnalytics] = useState<ListingAnalytics | null>(null);
   const [analyticsLoading,  setAnalyticsLoading]  = useState(true);
   const [upgradeVisible,    setUpgradeVisible]    = useState(false);
-  const [valMidpoint,       setValMidpoint]       = useState<number | null>(null);
-  const [valCafeId,         setValCafeId]         = useState<string | null>(null);
+
+  const { selectedCafe, latestSnapshot, fetchCafes, fetchSnapshot, authToken } = useValuation();
+  const valMidpoint = latestSnapshot.combined?.valuationMidpoint;
 
   useFocusEffect(
     useCallback(() => {
@@ -271,27 +277,11 @@ export default function SellerDashboard() {
         setAnalyticsLoading(false);
       });
 
-      // Fetch combined valuation midpoint from latest snapshot
-      (async () => {
-        try {
-          const token = await AsyncStorage.getItem("biz360_auth_token");
-          if (!token || !API_BASE) return;
-          const headers = { Authorization: `Bearer ${token}` };
-          const cafesRes = await fetch(`${API_BASE}/api/valuation/cafes`, { headers });
-          if (!cafesRes.ok) return;
-          const cafes = await cafesRes.json();
-          if (!cafes?.length) return;
-          const cafe = cafes[0];
-          setValCafeId(cafe.id);
-          const snapRes = await fetch(`${API_BASE}/api/valuation/cafes/${cafe.id}/snapshots/latest`, { headers });
-          if (!snapRes.ok) return;
-          const snap = await snapRes.json();
-          // /snapshots/latest returns { combined, units }
-          const midpoint = snap?.combined?.valuationMidpoint;
-          if (midpoint != null) setValMidpoint(Number(midpoint));
-        } catch {}
-      })();
-    }, [user?.id]),
+      // Refresh valuation snapshot on focus
+      if (authToken) {
+        fetchCafes().then((cafes) => { if (cafes.length > 0) fetchSnapshot(); });
+      }
+    }, [user?.id, authToken]),
   );
 
   const featuredListing = listings.find((l) => l.status === "approved") ?? listings[0];
@@ -476,11 +466,16 @@ export default function SellerDashboard() {
             <Feather name="trending-up" size={22} color="#2563EB" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.valuationTitle}>Business Valuation</Text>
-            {valMidpoint != null ? (
-              <Text style={[styles.valuationSub, { color: "#16A34A", fontFamily: "Inter_600SemiBold" }]}>
-                ${valMidpoint.toLocaleString(undefined, { maximumFractionDigits: 0 })} midpoint
-              </Text>
+            <Text style={styles.valuationTitle}>
+              {selectedCafe?.name ?? "Business Valuation"}
+            </Text>
+            {valMidpoint != null && Number(valMidpoint) > 0 ? (
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+                <Text style={{ color: "#3B82F6", fontSize: 20, fontFamily: "Inter_700Bold" }}>
+                  {formatValuation(valMidpoint)}
+                </Text>
+                <Text style={[styles.valuationSub, { marginTop: 0 }]}>est. value</Text>
+              </View>
             ) : (
               <Text style={styles.valuationSub}>Not yet synced · Tap to set up</Text>
             )}
