@@ -19,8 +19,13 @@ export interface ValIntegration {
 }
 export interface ValEquipment {
   id: string; cafeId: string; unitId?: string | null; name: string;
-  purchasePrice?: string | null; currentValue?: string | null;
-  valuationMode?: string | null; isLeased?: boolean | null;
+  category?: string | null; brand?: string | null;
+  purchaseDate?: string | null; condition?: string | null;
+  depreciationYears?: number | null;
+  purchasePrice?: string | null; secondhandValue?: string | null;
+  replacementCost?: string | null; currentValue?: string | null;
+  valuationMode?: string | null; ownership?: string | null;
+  notes?: string | null; isLeased?: boolean | null;
   suspended?: boolean | null; createdAt?: string | null;
 }
 export interface ValAdjustment {
