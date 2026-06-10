@@ -81,18 +81,30 @@ function ReportCard({ snap, name }: { snap: ValSnapshot | null; name: string }) 
         </View>
       </View>
       <View style={styles.detailRows}>
-        {[
+        {([
           ["COGS", fmt(snap?.cogs)],
           ["Gross Profit", fmt(snap?.grossProfit)],
           ["Equipment Value", fmt(snap?.totalEquipmentValue)],
-          ["Square Revenue", fmt(snap?.squareRevenue)],
-          ["Xero Revenue", fmt(snap?.xeroRevenue)],
-        ].map(([label, val]) => (
+          ["Xero Revenue (inc. Square)", fmt(snap?.xeroRevenue)],
+        ] as [string, string][]).map(([label, val]) => (
           <View key={label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
             <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>{label}</Text>
             <Text style={[styles.detailVal, { color: colors.foreground }]}>{val}</Text>
           </View>
         ))}
+        {/* Square Revenue — shown as a verification row, NOT added to Xero total */}
+        {snap?.squareRevenue && Number(snap.squareRevenue) > 0 ? (
+          <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Square Revenue</Text>
+              <View style={styles.squareVerifiedBadge}>
+                <Feather name="check-circle" size={10} color="#16A34A" />
+                <Text style={styles.squareVerifiedText}>VERIFIED · SQUARE CONNECTED</Text>
+              </View>
+            </View>
+            <Text style={[styles.detailVal, { color: "#16A34A" }]}>{fmt(snap.squareRevenue)}</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -256,7 +268,9 @@ const styles = StyleSheet.create({
   detailRows:     { gap: 0 },
   detailRow:      { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1 },
   detailLabel:    { fontSize: 13, fontFamily: "Inter_400Regular" },
-  detailVal:      { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  detailVal:           { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  squareVerifiedBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
+  squareVerifiedText:  { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#16A34A", letterSpacing: 0.3 },
   empty:          { alignItems: "center", paddingVertical: 60, gap: 12 },
   emptyTitle:     { fontSize: 18, fontFamily: "Inter_700Bold" },
   emptyText:      { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, maxWidth: 280 },

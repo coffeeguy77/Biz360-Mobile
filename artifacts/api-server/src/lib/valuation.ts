@@ -1,5 +1,7 @@
-export function computeGrossRevenue(squareRevenue: number, xeroRevenue: number): number {
-  return squareRevenue + xeroRevenue;
+// Square income is already reconciled into Xero — use Xero as the single source of truth.
+// squareRevenue is kept as a verification figure only, never added on top.
+export function computeGrossRevenue(_squareRevenue: number, xeroRevenue: number): number {
+  return xeroRevenue;
 }
 
 export function computeGrossProfit(revenue: number, cogsFromSuppliers: number, hasSupplierMappings: boolean): number {

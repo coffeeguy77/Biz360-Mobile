@@ -137,7 +137,9 @@ async function calculateAndSaveSnapshot(cafeId: string, ownerId: string, periodM
     const m = supplierMappingRows.find(r => r.contactName === s.name);
     return m?.isCogs === true;
   }).reduce((s, r) => s + r.total, 0);
-  const totalRevenue = squareRevenue + allXeroRevenue;
+  // Square is reconciled into Xero — do NOT add squareRevenue on top.
+  // squareRevenue is stored in the snapshot purely as a verification figure.
+  const totalRevenue = allXeroRevenue;
   const grossProfit = computeGrossProfit(totalRevenue, allCOGS, allCOGS > 0);
   const ebitda = computeEbitda(totalRevenue, xeroTotalExpenses, xeroTotalRevenue, !!xeroInt);
 
