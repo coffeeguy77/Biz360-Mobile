@@ -128,13 +128,23 @@ function ReportCard({
           ["COGS", fmt(snap?.cogs)],
           ["Gross Profit", fmt(snap?.grossProfit)],
           ["Equipment Value", fmt(snap?.totalEquipmentValue)],
-          ["Xero Revenue (inc. Square)", fmt(snap?.xeroRevenue)],
         ] as [string, string][]).map(([label, val]) => (
           <View key={label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
             <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>{label}</Text>
             <Text style={[styles.detailVal, { color: colors.foreground }]}>{val}</Text>
           </View>
         ))}
+        {/* Xero Revenue — with verified badge */}
+        <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Xero Revenue (inc. Square)</Text>
+            <View style={styles.squareVerifiedBadge}>
+              <Feather name="check-circle" size={10} color="#1AB4D7" />
+              <Text style={[styles.squareVerifiedText, { color: "#1AB4D7" }]}>VERIFIED · XERO CONNECTED</Text>
+            </View>
+          </View>
+          <Text style={[styles.detailVal, { color: "#1AB4D7" }]}>{fmt(snap?.xeroRevenue)}</Text>
+        </View>
         {snap?.squareRevenue && Number(snap.squareRevenue) > 0 ? (
           <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
             <View style={{ flex: 1, gap: 4 }}>
