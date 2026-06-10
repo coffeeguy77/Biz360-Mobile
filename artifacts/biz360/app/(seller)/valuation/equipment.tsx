@@ -4,7 +4,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-  Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Text,
+  Alert, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text,
   TextInput, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -442,10 +442,15 @@ export default function EquipmentScreen() {
   const totalValue = equipment.filter((e) => !e.isLeased).reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={insets.bottom + 10}
+    >
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
         <View style={styles.header}>
@@ -709,7 +714,7 @@ export default function EquipmentScreen() {
           cafeId={selectedCafe.id}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
