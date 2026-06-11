@@ -201,9 +201,16 @@ export function HealthScoreChart({ data }: { data?: typeof DEMO_HEALTH }) {
 }
 
 // ── Section-key → chart component mapping ────────────────────────────────────
+// All 8 chart components mapped to the section keys that auto-fill populates
+// with chartData. Charts only render when chartData is present on a section;
+// they fall back to demo data if chartData is absent (for previewing).
 export const SECTION_CHART_MAP: Record<string, React.ComponentType<{ data?: unknown }>> = {
-  app_valuation_summary:       ValuationBridgeChart  as React.ComponentType<{ data?: unknown }>,
-  financial_performance_summary: RevenueSourceChart  as React.ComponentType<{ data?: unknown }>,
-  plant_equipment_summary:     EquipmentCategoryChart as React.ComponentType<{ data?: unknown }>,
-  lease_premises_summary:      LeaseRiskChart         as React.ComponentType<{ data?: unknown }>,
+  app_valuation_summary:        ValuationBridgeChart    as React.ComponentType<{ data?: unknown }>,
+  revenue_stream_breakdown:     RevenueDivisionChart    as React.ComponentType<{ data?: unknown }>,
+  division_breakdown:           ValuationDivisionChart  as React.ComponentType<{ data?: unknown }>,
+  plant_equipment_summary:      EquipmentCategoryChart  as React.ComponentType<{ data?: unknown }>,
+  buyer_access_confidentiality: BuyerEngagementChart   as React.ComponentType<{ data?: unknown }>,
+  lease_premises_summary:       LeaseRiskChart          as React.ComponentType<{ data?: unknown }>,
+  verified_revenue_sources:     RevenueSourceChart      as React.ComponentType<{ data?: unknown }>,
+  business_health_score:        HealthScoreChart        as React.ComponentType<{ data?: unknown }>,
 };

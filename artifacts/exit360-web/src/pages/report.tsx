@@ -173,45 +173,69 @@ const ACCENT_COLORS = [
 
 // ── Main Report Page ──────────────────────────────────────────────────────────
 export function ReportPage() {
-  const params = useParams<{ listingId: string }>();
+  // versionId may come from route param (/reports/:listingId/:versionId)
+  // or from query string (?v=...) for legacy links.
+  const params = useParams<{ listingId: string; versionId?: string }>();
   const listingId = params.listingId ?? "";
   const urlParams = new URLSearchParams(window.location.search);
-  const buyerPhone = urlParams.get("phone") ?? undefined;
-  const versionId  = urlParams.get("v") ?? undefined;
+  const versionId = params.versionId ?? urlParams.get("v") ?? undefined;
 
-  const [data, setData]       = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+  const [data, setData]           = useState<ReportData | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
   const [printMode, setPrintMode] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!listingId) { setError("No listing ID provided."); setLoading(false); return; }
-    const url = `/api/report-sections/html/${listingId}${buyerPhone ? `?buyerPhone=${encodeURIComponent(buyerPhone)}` : ""}`;
-    fetch(url)
-      .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
-      .then((json: ReportData) => setData(json))
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+    setLoading(true);
+
+    if (versionId) {
+      // Versioned view: fetch the snapshot captured when this version was published.
+      // Requires seller token — unauthenticated viewers fall back to live sections.
+      const token = localStorage.getItem("biz360_auth_token");
+      fetch(`/api/report-versions/snapshot/${versionId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
+        .then((json: { sections: ReportSection[]; title?: string }) =>
+          setData({ sections: json.sections, accessLevel: "seller" }))
+        .catch(() => {
+          // Fall back to live sections if snapshot not accessible
+          fetch(`/api/report-sections/html/${listingId}`)
+            .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
+            .then((json: ReportData) => setData(json))
+            .catch((e) => setError(String(e)));
+        })
+        .finally(() => setLoading(false));
+    } else {
+      // Live view: send seller token if present (unlocks approved_buyers sections)
+      const token = localStorage.getItem("biz360_auth_token");
+      fetch(`/api/report-sections/html/${listingId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
+        .then((json: ReportData) => setData(json))
+        .catch((e) => setError(String(e)))
+        .finally(() => setLoading(false));
+    }
 
     recordAccessLog(listingId, "report_viewed", versionId ? { versionId } : {});
-  }, [listingId, buyerPhone, versionId]);
+  }, [listingId, versionId]);
 
-  async function handleDownloadPdf(mode: "seller" | "buyer" = "buyer") {
+  async function handleDownloadPdf() {
     setDownloading(true);
     try {
-      const token = localStorage.getItem("biz360_auth_token");
-      const res = await fetch(`/api/report-exports/pdf/${listingId}?mode=${mode}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      // Public buyer PDF — no auth required. Includes only public sections.
+      const res = await fetch(`/api/report-exports/pdf-public/${listingId}`);
       if (!res.ok) throw new Error("PDF generation failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = `im-report-${listingId}.pdf`; a.click();
       URL.revokeObjectURL(url);
-      recordAccessLog(listingId, "pdf_downloaded", { mode });
+      recordAccessLog(listingId, "pdf_downloaded", { mode: "buyer_public" });
     } catch {
       alert("Could not generate PDF. Please try again.");
     } finally { setDownloading(false); }
@@ -286,7 +310,7 @@ export function ReportPage() {
               {printMode ? "Dark Mode" : "Print Mode"}
             </button>
             <button
-              onClick={() => handleDownloadPdf("buyer")}
+              onClick={() => handleDownloadPdf()}
               disabled={downloading}
               className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
             >
@@ -358,7 +382,7 @@ export function ReportPage() {
           {/* CTA Buttons */}
           <div className="flex flex-wrap gap-3 print:hidden">
             <button
-              onClick={() => handleDownloadPdf("buyer")}
+              onClick={() => handleDownloadPdf()}
               disabled={downloading}
               className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-60"
             >

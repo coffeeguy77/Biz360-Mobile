@@ -275,21 +275,30 @@ export default function ReportHubScreen() {
     }
   }
 
-  async function handleExportPdf() {
+  async function downloadPdf(mode: "seller" | "buyer") {
     if (!listingId) return;
-    const token = await getAuthToken();
-    if (!token) { Alert.alert("Not signed in", "Please sign in to export the PDF."); return; }
     setDownloading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/report-exports/pdf/${listingId}?mode=seller`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      let res: Response;
+      const filename = `im-report-${listingId.slice(0, 8)}-${mode}.pdf`;
+
+      if (mode === "buyer") {
+        // Public buyer PDF — no auth required
+        res = await fetch(`${API_BASE}/api/report-exports/pdf-public/${listingId}`);
+      } else {
+        const token = await getAuthToken();
+        if (!token) { Alert.alert("Not signed in", "Please sign in to export the seller PDF."); return; }
+        res = await fetch(`${API_BASE}/api/report-exports/pdf/${listingId}?mode=seller`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        Alert.alert("Error", err.error ?? "Could not generate PDF. Please try again.");
+        Alert.alert("Error", (err as { error?: string }).error ?? "Could not generate PDF. Please try again.");
         return;
       }
-      const filename = `im-report-${listingId.slice(0, 8)}-seller.pdf`;
+
       if (Platform.OS === "web") {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -310,6 +319,24 @@ export default function ReportHubScreen() {
     } finally {
       setDownloading(false);
     }
+  }
+
+  function handleExportPdf() {
+    Alert.alert(
+      "Export PDF",
+      "Choose the PDF version to export.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Seller Copy (full)",
+          onPress: () => downloadPdf("seller"),
+        },
+        {
+          text: "Buyer Copy (public sections)",
+          onPress: () => downloadPdf("buyer"),
+        },
+      ],
+    );
   }
 
   async function handlePublish() {

@@ -925,12 +925,12 @@ router.patch("/report-versions/:id", requireAuth, async (req, res): Promise<void
 });
 
 // ─── GET /api/report-sections/html/:listingId ────────────────────────────────
-// Returns sections filtered by access level for HTML report rendering.
-// Access levels:
-//   - No auth: public sections only
-//   - Seller JWT (ownership verified): all non-hidden sections
-// Note: buyer-token access will be added in the access-control task once tokens
-// are persisted and validated against listing-specific grants.
+// Access tiers:
+//   - No auth / public: public sections shown; approved_buyers sections locked
+//     (content stripped, isLocked: true). seller_only sections excluded.
+//   - Seller JWT (ownership verified): all non-hidden sections unlocked.
+// Buyer OTP-based unlocking is handled by the buyer access task (Task #78).
+// Raw phone params are intentionally absent — no proof-of-possession bypass.
 router.get("/report-sections/html/:listingId", async (req, res): Promise<void> => {
   const { listingId } = req.params as { listingId: string };
   try {
@@ -945,8 +945,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       return;
     }
 
-    // Determine who is asking — only seller JWT with verified listing ownership
-    // elevates above public. Unvalidated headers are never trusted.
+    // Determine who is asking — only a verified seller JWT elevates above public.
     const authHeader = req.headers.authorization;
     let accessLevel: "public" | "seller" = "public";
 
@@ -965,35 +964,17 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       } catch { /* fall through to public */ }
     }
 
-    // Check if a buyer phone has an approved_buyers grant for this listing
-    const buyerPhone = req.query["buyerPhone"] as string | undefined;
-    let hasApprovedBuyerAccess = false;
-    if (buyerPhone && accessLevel === "public") {
-      try {
-        const [grant] = await db
-          .select({ id: reportAccessGrantsTable.id })
-          .from(reportAccessGrantsTable)
-          .where(
-            and(
-              eq(reportAccessGrantsTable.listingId, listingId),
-              eq(reportAccessGrantsTable.phone, buyerPhone),
-            ),
-          )
-          .limit(1);
-        hasApprovedBuyerAccess = !!grant;
-      } catch { /* fall through */ }
-    }
-
     // Filter and gate sections based on access level
     const filtered = allSections
       .filter((s) => {
         if (s.visibility === "hidden") return false;
         if (s.visibility === "seller_only") return accessLevel === "seller";
-        return true; // public and approved_buyers both pass the filter
+        return true;
       })
       .map((s) => {
-        // approved_buyers sections: unlock for sellers and approved buyers, lock for everyone else
-        if (s.visibility === "approved_buyers" && accessLevel !== "seller" && !hasApprovedBuyerAccess) {
+        // approved_buyers: unlocked only for verified sellers.
+        // Buyers unlock these via OTP flow (Task #78).
+        if (s.visibility === "approved_buyers" && accessLevel !== "seller") {
           return {
             ...s,
             body:         null,
@@ -1006,10 +987,42 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         return { ...s, isLocked: false };
       });
 
-    res.json({ sections: filtered, accessLevel, hasApprovedBuyerAccess });
+    res.json({ sections: filtered, accessLevel });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });
+  }
+});
+
+// ─── GET /api/report-versions/snapshot/:versionId ────────────────────────────
+// Returns the section snapshot stored when a version was published.
+// Requires seller JWT ownership of the version.
+router.get("/report-versions/snapshot/:versionId", requireAuth, async (req, res): Promise<void> => {
+  const userId    = req.user!.id;
+  const { versionId } = req.params as { versionId: string };
+  try {
+    const [version] = await db
+      .select()
+      .from(reportVersionsTable)
+      .where(and(eq(reportVersionsTable.id, versionId), eq(reportVersionsTable.ownerId, userId)))
+      .limit(1);
+
+    if (!version) {
+      res.status(404).json({ error: "Version not found or access denied" });
+      return;
+    }
+
+    const snapshot = (version.snapshotJson ?? []) as unknown[];
+    res.json({
+      sections:      snapshot,
+      versionNumber: version.versionNumber,
+      title:         version.title,
+      status:        version.status,
+      createdAt:     version.createdAt,
+    });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load version snapshot" });
   }
 });
 

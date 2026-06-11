@@ -17,6 +17,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/listings" component={Listings} />
       <Route path="/listings/:id" component={ListingDetail} />
+      <Route path="/reports/:listingId/:versionId" component={ReportPage} />
       <Route path="/reports/:listingId" component={ReportPage} />
       <Route path="/sign-in" component={SignIn} />
       <Route component={NotFound} />

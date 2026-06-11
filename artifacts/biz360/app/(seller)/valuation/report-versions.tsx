@@ -67,8 +67,9 @@ export default function ReportVersionsScreen() {
   async function handleViewHtml(version: ReportVersion) {
     if (!listingId) return;
     const token = await getAuthToken();
+    // Use clean route /reports/:listingId/:versionId for versioned snapshots
     const url = version.generatedHtmlUrl ??
-      `${API_BASE.replace(/\/api$/, "")}/exit360-web/reports/${listingId}?v=${version.id}${token ? `&token=${token}` : ""}`;
+      `${API_BASE.replace(/\/api$/, "")}/exit360-web/reports/${listingId}/${version.id}`;
     try {
       await Linking.openURL(url);
     } catch {
