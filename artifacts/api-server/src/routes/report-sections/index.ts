@@ -1017,9 +1017,16 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       }
     }
 
+    // Sanitise fields that must never reach non-seller viewers regardless of section visibility.
+    // sellerNotes and aiInstruction are seller-internal and must be stripped at the API layer.
+    function sanitiseForNonSeller<T extends Record<string, unknown>>(s: T): T {
+      return { ...s, sellerNotes: null, aiInstruction: null };
+    }
+
     // Filter and gate sections based on access level
     const filtered = allSections
       .filter((s) => {
+        if (!s.includeInHtml) return false;
         if (s.visibility === "hidden") return false;
         if (s.visibility === "seller_only") return accessLevel === "seller";
         return true;
@@ -1027,7 +1034,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       .map((s) => {
         // approved_buyers: unlocked for sellers and OTP-verified approved buyers.
         if (s.visibility === "approved_buyers" && accessLevel !== "seller" && !buyerGranted) {
-          return {
+          const locked = {
             ...s,
             body:         null,
             bulletPoints: [] as string[],
@@ -1035,8 +1042,10 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
             chartData:    null,
             isLocked:     true,
           };
+          return sanitiseForNonSeller(locked);
         }
-        return { ...s, isLocked: false };
+        const withLock = { ...s, isLocked: false };
+        return accessLevel === "seller" ? withLock : sanitiseForNonSeller(withLock);
       });
 
     res.json({ sections: filtered, accessLevel, buyerGranted });
@@ -1085,23 +1094,29 @@ router.get("/report-versions/public-snapshot/:versionId", async (req, res): Prom
       }
     }
 
+    // Strip fields that must never leave the server in non-seller contexts
+    function stripSellerFields(s: Record<string, unknown>): Record<string, unknown> {
+      return { ...s, sellerNotes: null, aiInstruction: null };
+    }
+
     const snapshot = (version.snapshotJson ?? []) as any[];
     const publicSections = snapshot
       .map((s: any) => {
         // Always hide seller-only and hidden sections from public view
         if (s.visibility === "seller_only" || s.visibility === "hidden") return null;
+        if (!s.includeInHtml) return null;
         // Gate approved_buyers sections: return locked placeholder without content
         if (s.visibility === "approved_buyers" && !buyerGranted) {
-          return {
+          return stripSellerFields({
             ...s,
             body:         null,
             bulletPoints: [] as string[],
             tableData:    null,
             chartData:    null,
             isLocked:     true,
-          };
+          });
         }
-        return { ...s, isLocked: false };
+        return stripSellerFields({ ...s, isLocked: false });
       })
       .filter(Boolean);
 

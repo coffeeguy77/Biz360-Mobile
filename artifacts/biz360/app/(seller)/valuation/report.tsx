@@ -283,8 +283,14 @@ export default function ReportHubScreen() {
       const filename = `im-report-${listingId.slice(0, 8)}-${mode}.pdf`;
 
       if (mode === "buyer") {
-        // Public buyer PDF — no auth required
-        res = await fetch(`${API_BASE}/api/report-exports/pdf-public/${listingId}`);
+        // Buyer mode PDF — uses authenticated endpoint with mode=buyer,
+        // which includes approved_buyers sections (seller-initiated share).
+        // The unauthenticated pdf-public endpoint is a teaser-only download.
+        const token = await getAuthToken();
+        if (!token) { Alert.alert("Not signed in", "Please sign in to export the buyer PDF."); return; }
+        res = await fetch(`${API_BASE}/api/report-exports/pdf/${listingId}?mode=buyer`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
       } else {
         const token = await getAuthToken();
         if (!token) { Alert.alert("Not signed in", "Please sign in to export the seller PDF."); return; }

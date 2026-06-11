@@ -543,8 +543,8 @@ export function ReportPage() {
                 : <SectionContent section={section} listingId={listingId} />
               }
 
-              {/* Seller notes (only shown in seller mode) */}
-              {section.sellerNotes && !section.isLocked && (
+              {/* Seller notes (only shown when caller is the verified seller) */}
+              {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
                 <div className={cn(
                   "mt-5 p-4 rounded-xl border-l-2 border-amber-500/40 text-sm",
                   printMode ? "bg-amber-50 text-amber-800" : "bg-amber-500/5 text-amber-300"
