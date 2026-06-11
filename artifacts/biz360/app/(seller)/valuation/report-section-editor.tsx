@@ -1,9 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
+  ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -32,25 +32,52 @@ interface SectionData {
   includeInHtml: boolean;
   includeInApp: boolean;
   sortOrder: number;
+  lastUpdatedAt: string | null;
 }
 
 const VISIBILITY_OPTIONS: { value: Visibility; label: string; desc: string; color: string }[] = [
-  { value: "public",          label: "Public",          desc: "Visible to all marketplace visitors",          color: "#16A34A" },
-  { value: "verified_buyer",  label: "Verified Buyer",  desc: "Only buyers who have requested info",          color: "#3B82F6" },
-  { value: "nda_signed",      label: "NDA Signed",      desc: "Only buyers who have signed the NDA",          color: "#A78BFA" },
-  { value: "hidden",          label: "Hidden",          desc: "Not shown on any buyer-facing view",           color: "#6B7280" },
+  { value: "public",         label: "Public",         desc: "All marketplace visitors",      color: "#16A34A" },
+  { value: "verified_buyer", label: "Verified Buyer", desc: "Buyers who requested info",      color: "#3B82F6" },
+  { value: "nda_signed",     label: "NDA Signed",     desc: "Buyers who signed the NDA",      color: "#A78BFA" },
+  { value: "hidden",         label: "Hidden",         desc: "Not shown on any buyer view",    color: "#6B7280" },
 ];
+
+function formatRelativeDate(iso: string | null): string {
+  if (!iso) return "Not saved yet";
+  try {
+    const d = new Date(iso);
+    const diff = Date.now() - d.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
+}
+
+function countWords(text: string): number {
+  return text.split(/\s+/).filter((w) => w.length > 0).length;
+}
+
+function deriveSourceLabel(body: string | null): string | null {
+  if (!body?.trim()) return null;
+  const lines = body.split("\n").filter((l) => l.trim());
+  const kvLines = lines.filter((l) => /^[A-Za-z].+:\s.+/.test(l)).length;
+  return (lines.length > 0 && kvLines / lines.length > 0.4) ? "App Data" : "Manual";
+}
 
 export default function ReportSectionEditorScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { selectedCafe } = useValuation();
-  const { sectionId } = useLocalSearchParams<{ sectionId: string; title: string }>();
+  const { sectionId } = useLocalSearchParams<{ sectionId: string }>();
 
   const [section, setSection] = useState<SectionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
@@ -61,6 +88,9 @@ export default function ReportSectionEditorScreen() {
   const [includeInHtml, setIncludeInHtml] = useState(true);
   const [includeInApp, setIncludeInApp] = useState(true);
   const [showVisibility, setShowVisibility] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [originalBody, setOriginalBody] = useState<string | null>(null);
+  const [originalBullets, setOriginalBullets] = useState<string[]>([]);
 
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
 
@@ -82,10 +112,13 @@ export default function ReportSectionEditorScreen() {
           setSubtitle(s.subtitle ?? "");
           setBody(s.body ?? "");
           setBullets(Array.isArray(s.bullets) ? s.bullets : []);
-          setVisibility(s.visibility as Visibility ?? "verified_buyer");
+          setVisibility((s.visibility as Visibility) ?? "verified_buyer");
           setIncludeInPdf(s.includeInPdf ?? true);
           setIncludeInHtml(s.includeInHtml ?? true);
           setIncludeInApp(s.includeInApp ?? true);
+          setSavedAt(s.lastUpdatedAt);
+          setOriginalBody(s.body ?? "");
+          setOriginalBullets(Array.isArray(s.bullets) ? s.bullets : []);
         } else {
           Alert.alert("Error", "Could not load section. Please try again.");
           router.back();
@@ -106,7 +139,7 @@ export default function ReportSectionEditorScreen() {
     setSaving(true);
     try {
       const cleanBullets = bullets.filter((b) => b.trim().length > 0);
-      const body_payload: Record<string, unknown> = {
+      const payload: Record<string, unknown> = {
         title: title.trim(),
         subtitle: subtitle.trim() || null,
         body: body.trim() || null,
@@ -116,14 +149,18 @@ export default function ReportSectionEditorScreen() {
         includeInHtml,
         includeInApp,
       };
-      if (markComplete) body_payload.status = "complete";
+      if (markComplete) payload.status = "complete";
 
       const res = await fetch(`${API_BASE}/api/report-sections/${sectionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body_payload),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
+        const data = await res.json();
+        setSavedAt(data.section?.lastUpdatedAt ?? new Date().toISOString());
+        setOriginalBody(body.trim() || null);
+        setOriginalBullets(cleanBullets);
         if (markComplete) {
           Alert.alert("Marked Complete", "This section is now marked as complete.", [
             { text: "OK", onPress: () => router.back() },
@@ -152,26 +189,24 @@ export default function ReportSectionEditorScreen() {
         const data = await res.json();
         const suggestion = data.suggestions?.[section.sectionKey];
         if (suggestion) {
-          const suggestedBody = suggestion.suggestedBody as string | undefined;
-          const suggestedBullets = suggestion.suggestedBullets as string[] | undefined;
-          const sourceLabel = (suggestion.sourceLabel as string) ?? "app data";
-
+          const sb = (suggestion.suggestedBody as string | undefined) ?? "";
+          const sBullets = (suggestion.suggestedBullets as string[] | undefined) ?? [];
           Alert.alert(
             "Auto-fill Suggestion",
-            `Found data from ${sourceLabel}:\n\n${suggestedBody ? suggestedBody.slice(0, 200) + (suggestedBody.length > 200 ? "…" : "") : "(bullet points only)"}`,
+            `${sb ? sb.slice(0, 200) + (sb.length > 200 ? "…" : "") : "(bullet points only)"}`,
             [
               { text: "Cancel", style: "cancel" },
               {
                 text: "Apply",
                 onPress: () => {
-                  if (suggestedBody && suggestedBody.trim()) setBody(suggestedBody.trim());
-                  if (suggestedBullets?.length) setBullets(suggestedBullets);
+                  if (sb.trim()) setBody(sb.trim());
+                  if (sBullets.length) setBullets(sBullets);
                 },
               },
             ]
           );
         } else {
-          Alert.alert("No suggestion", "No auto-fill data found for this section. Fill it in manually or import from CSV.");
+          Alert.alert("No suggestion", "No auto-fill data available for this section.");
         }
       } else {
         Alert.alert("Error", "Could not fetch auto-fill data.");
@@ -180,19 +215,38 @@ export default function ReportSectionEditorScreen() {
     finally { setAutoFilling(false); }
   }
 
-  function addBullet() {
-    setBullets((prev) => [...prev, ""]);
+  function handleRegenerate() {
+    handleAutoFill();
   }
 
-  function updateBullet(idx: number, val: string) {
-    setBullets((prev) => prev.map((b, i) => (i === idx ? val : b)));
+  async function handleCopy() {
+    const text = [title, subtitle, body, ...bullets].filter(Boolean).join("\n\n");
+    try {
+      await Share.share({ message: text, title });
+    } catch { /* cancelled */ }
   }
 
-  function removeBullet(idx: number) {
-    setBullets((prev) => prev.filter((_, i) => i !== idx));
+  function handleClear() {
+    Alert.alert("Clear content?", "This will remove the body text and all bullet points.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Clear", style: "destructive", onPress: () => { setBody(""); setBullets([]); } },
+    ]);
+  }
+
+  function handleRestoreDefault() {
+    Alert.alert(
+      "Restore default?",
+      "This will restore the auto-fill suggestion for this section.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Restore", onPress: () => handleAutoFill() },
+      ]
+    );
   }
 
   const selVis = VISIBILITY_OPTIONS.find((v) => v.value === visibility)!;
+  const wordCount = countWords(body);
+  const sourceLabel = deriveSourceLabel(body);
 
   if (loading) {
     return (
@@ -208,7 +262,7 @@ export default function ReportSectionEditorScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -230,6 +284,34 @@ export default function ReportSectionEditorScreen() {
               : <Feather name="zap" size={16} color="#FBBF24" />}
             <Text style={styles.autoFillText}>Auto-fill</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Meta bar: data source + last saved + word count */}
+        <View style={[styles.metaBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.metaItem}>
+            <Feather name="clock" size={12} color={colors.mutedForeground} />
+            <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+              {formatRelativeDate(savedAt)}
+            </Text>
+          </View>
+          <View style={styles.metaDivider} />
+          <View style={styles.metaItem}>
+            <Feather name="align-left" size={12} color={colors.mutedForeground} />
+            <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+              {wordCount} word{wordCount !== 1 ? "s" : ""}
+            </Text>
+          </View>
+          {sourceLabel && (
+            <>
+              <View style={styles.metaDivider} />
+              <View style={styles.metaItem}>
+                <Feather name={sourceLabel === "App Data" ? "database" : "edit"} size={12} color={sourceLabel === "App Data" ? "#3B82F6" : colors.mutedForeground} />
+                <Text style={[styles.metaText, { color: sourceLabel === "App Data" ? "#3B82F6" : colors.mutedForeground }]}>
+                  {sourceLabel}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Section title */}
@@ -258,7 +340,12 @@ export default function ReportSectionEditorScreen() {
 
         {/* Body */}
         <View style={styles.fieldBlock}>
-          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>SECTION BODY</Text>
+          <View style={styles.fieldRow}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>SECTION BODY</Text>
+            <Text style={[styles.charCount, { color: wordCount < 20 && body.length > 0 ? "#F59E0B" : colors.mutedForeground }]}>
+              {wordCount} words
+            </Text>
+          </View>
           <TextInput
             style={[styles.bodyInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
             value={body}
@@ -268,16 +355,18 @@ export default function ReportSectionEditorScreen() {
             multiline
             textAlignVertical="top"
           />
-          <Text style={[styles.charCount, { color: colors.mutedForeground }]}>
-            {body.length} chars{body.length < 50 && body.length > 0 ? " — add more detail" : ""}
-          </Text>
+          {wordCount > 0 && wordCount < 30 && (
+            <Text style={[styles.hintText, { color: "#F59E0B" }]}>
+              Add more detail — buyers expect at least 30–50 words per section.
+            </Text>
+          )}
         </View>
 
         {/* Bullet points */}
         <View style={styles.fieldBlock}>
           <View style={styles.fieldRow}>
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>KEY POINTS</Text>
-            <TouchableOpacity onPress={addBullet}>
+            <TouchableOpacity onPress={() => setBullets((prev) => [...prev, ""])}>
               <Text style={[styles.addLink, { color: colors.primary }]}>+ Add point</Text>
             </TouchableOpacity>
           </View>
@@ -292,11 +381,11 @@ export default function ReportSectionEditorScreen() {
               <TextInput
                 style={[styles.bulletInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
                 value={bullet}
-                onChangeText={(val) => updateBullet(idx, val)}
+                onChangeText={(val) => setBullets((prev) => prev.map((b, i) => (i === idx ? val : b)))}
                 placeholder={`Key point ${idx + 1}`}
                 placeholderTextColor={colors.mutedForeground}
               />
-              <TouchableOpacity onPress={() => removeBullet(idx)} style={styles.removeBulletBtn}>
+              <TouchableOpacity onPress={() => setBullets((prev) => prev.filter((_, i) => i !== idx))} style={styles.removeBulletBtn}>
                 <Feather name="x" size={15} color="#EF4444" />
               </TouchableOpacity>
             </View>
@@ -345,10 +434,10 @@ export default function ReportSectionEditorScreen() {
               ["PDF Export", includeInPdf, setIncludeInPdf],
               ["HTML Export", includeInHtml, setIncludeInHtml],
               ["App Display", includeInApp, setIncludeInApp],
-            ] as [string, boolean, (v: boolean) => void][]).map(([label, val, setter]) => (
+            ] as [string, boolean, (v: boolean) => void][]).map(([label, val, setter], idx, arr) => (
               <TouchableOpacity
                 key={label}
-                style={[styles.toggleRow, { borderBottomColor: colors.border }]}
+                style={[styles.toggleRow, idx < arr.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}
                 onPress={() => setter(!val)}
               >
                 <Text style={[styles.toggleLabel, { color: colors.foreground }]}>{label}</Text>
@@ -360,7 +449,7 @@ export default function ReportSectionEditorScreen() {
           </View>
         </View>
 
-        {/* Action buttons */}
+        {/* Primary action buttons */}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
@@ -373,7 +462,7 @@ export default function ReportSectionEditorScreen() {
             <Text style={styles.saveBtnText}>Save Draft</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.completeBtn, { opacity: saving ? 0.6 : 1 }]}
+            style={[styles.completeBtn, { borderColor: "#16A34A", opacity: saving ? 0.6 : 1 }]}
             onPress={() => handleSave(true)}
             disabled={saving}
           >
@@ -381,45 +470,116 @@ export default function ReportSectionEditorScreen() {
             <Text style={styles.completeBtnText}>Mark Complete</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Secondary actions */}
+        <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>MORE ACTIONS</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.secondaryRow}>
+          {[
+            { label: "Regenerate", icon: "refresh-cw", color: "#FBBF24", action: handleRegenerate },
+            { label: "Copy Text",  icon: "copy",       color: "#3B82F6", action: handleCopy },
+            { label: "Clear",      icon: "trash-2",    color: "#EF4444", action: handleClear },
+            { label: "Restore",    icon: "rotate-ccw", color: "#6B7280", action: handleRestoreDefault },
+            { label: "Preview",    icon: "eye",        color: "#A78BFA", action: () => setShowPreview(true) },
+          ].map(({ label, icon, color, action }) => (
+            <TouchableOpacity
+              key={label}
+              style={[styles.secondaryAction, { backgroundColor: color + "18", borderColor: color + "33" }]}
+              onPress={action}
+            >
+              <Feather name={icon as any} size={15} color={color} />
+              <Text style={[styles.secondaryActionText, { color }]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </ScrollView>
+
+      {/* Preview modal */}
+      <Modal visible={showPreview} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPreview(false)}>
+        <View style={[styles.previewModal, { backgroundColor: colors.background }]}>
+          <View style={styles.previewHeader}>
+            <Text style={[styles.previewTitle, { color: colors.foreground }]}>Section Preview</Text>
+            <TouchableOpacity onPress={() => setShowPreview(false)} style={styles.closeBtn}>
+              <Feather name="x" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.previewBody} showsVerticalScrollIndicator={false}>
+            <Text style={[styles.previewHeading, { color: colors.foreground }]}>{title}</Text>
+            {subtitle ? <Text style={[styles.previewSubtitle, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
+            {body ? <Text style={[styles.previewBodyText, { color: colors.foreground }]}>{body}</Text> : null}
+            {bullets.filter((b) => b.trim()).length > 0 && (
+              <View style={styles.previewBullets}>
+                {bullets.filter((b) => b.trim()).map((b, i) => (
+                  <View key={i} style={styles.previewBulletRow}>
+                    <View style={[styles.bulletDot, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.previewBulletText, { color: colors.foreground }]}>{b}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {!body && !bullets.length && (
+              <Text style={[styles.previewEmpty, { color: colors.mutedForeground }]}>No content yet — use Auto-fill or type in the fields above.</Text>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1 },
-  scroll:          { paddingHorizontal: 16, gap: 18 },
-  header:          { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  backBtn:         { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", marginTop: 2 },
-  title:           { flex: 1, fontSize: 18, fontFamily: "Inter_700Bold", lineHeight: 26 },
-  autoFillBtn:     { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20, backgroundColor: "#2D2010" },
-  autoFillText:    { color: "#FBBF24", fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  fieldBlock:      { gap: 8 },
-  fieldLabel:      { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
-  fieldRow:        { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  fieldInput:      { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: "Inter_400Regular" },
-  bodyInput:       { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 160, lineHeight: 22 },
-  charCount:       { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "right" },
-  addLink:         { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  emptyBullets:    { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic" },
-  bulletRow:       { flexDirection: "row", alignItems: "center", gap: 8 },
-  bulletDot:       { width: 6, height: 6, borderRadius: 3 },
-  bulletInput:     { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_400Regular" },
-  removeBulletBtn: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
-  visSelector:     { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
-  visDot:          { width: 10, height: 10, borderRadius: 5 },
-  visLabel:        { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  visDesc:         { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
-  visDropdown:     { borderRadius: 12, borderWidth: 1, overflow: "hidden" },
-  visOption:       { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderBottomWidth: 1 },
-  toggleCard:      { borderRadius: 12, borderWidth: 1, overflow: "hidden" },
-  toggleRow:       { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
-  toggleLabel:     { fontSize: 14, fontFamily: "Inter_500Medium" },
-  toggle:          { width: 40, height: 24, borderRadius: 12, position: "relative" },
-  toggleThumb:     { position: "absolute", top: 3, width: 18, height: 18, borderRadius: 9, backgroundColor: "#fff" },
-  actionRow:       { flexDirection: "row", gap: 10 },
-  saveBtn:         { flex: 3, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14 },
-  saveBtnText:     { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  completeBtn:     { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: "#16A34A" },
-  completeBtnText: { color: "#16A34A", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  container:         { flex: 1 },
+  scroll:            { paddingHorizontal: 16, gap: 18 },
+  header:            { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  backBtn:           { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", marginTop: 2 },
+  title:             { flex: 1, fontSize: 18, fontFamily: "Inter_700Bold", lineHeight: 26 },
+  autoFillBtn:       { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20, backgroundColor: "#2D2010" },
+  autoFillText:      { color: "#FBBF24", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  metaBar:           { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, gap: 10 },
+  metaItem:          { flexDirection: "row", alignItems: "center", gap: 5 },
+  metaText:          { fontSize: 11, fontFamily: "Inter_400Regular" },
+  metaDivider:       { width: 1, height: 12, backgroundColor: "#1E3A5C" },
+  fieldBlock:        { gap: 8 },
+  fieldLabel:        { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
+  fieldRow:          { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  fieldInput:        { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: "Inter_400Regular" },
+  bodyInput:         { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 160, lineHeight: 22 },
+  charCount:         { fontSize: 11, fontFamily: "Inter_400Regular" },
+  hintText:          { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16 },
+  addLink:           { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  emptyBullets:      { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic" },
+  bulletRow:         { flexDirection: "row", alignItems: "center", gap: 8 },
+  bulletDot:         { width: 6, height: 6, borderRadius: 3 },
+  bulletInput:       { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_400Regular" },
+  removeBulletBtn:   { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
+  visSelector:       { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
+  visDot:            { width: 10, height: 10, borderRadius: 5 },
+  visLabel:          { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  visDesc:           { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+  visDropdown:       { borderRadius: 12, borderWidth: 1, overflow: "hidden" },
+  visOption:         { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderBottomWidth: 1 },
+  toggleCard:        { borderRadius: 12, borderWidth: 1, overflow: "hidden" },
+  toggleRow:         { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12 },
+  toggleLabel:       { fontSize: 14, fontFamily: "Inter_500Medium" },
+  toggle:            { width: 40, height: 24, borderRadius: 12, position: "relative" },
+  toggleThumb:       { position: "absolute", top: 3, width: 18, height: 18, borderRadius: 9, backgroundColor: "#fff" },
+  actionRow:         { flexDirection: "row", gap: 10 },
+  saveBtn:           { flex: 3, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14 },
+  saveBtnText:       { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  completeBtn:       { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5 },
+  completeBtnText:   { color: "#16A34A", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  secondaryRow:      { gap: 8, paddingBottom: 4 },
+  secondaryAction:   { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
+  secondaryActionText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  previewModal:      { flex: 1 },
+  previewHeader:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
+  previewTitle:      { fontSize: 18, fontFamily: "Inter_700Bold" },
+  closeBtn:          { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  previewBody:       { paddingHorizontal: 20, paddingBottom: 60, gap: 14 },
+  previewHeading:    { fontSize: 22, fontFamily: "Inter_700Bold" },
+  previewSubtitle:   { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  previewBodyText:   { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22 },
+  previewBullets:    { gap: 8 },
+  previewBulletRow:  { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  previewBulletText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  previewEmpty:      { fontSize: 14, fontFamily: "Inter_400Regular", fontStyle: "italic", textAlign: "center", paddingVertical: 40 },
 });

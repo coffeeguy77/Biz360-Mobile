@@ -58,18 +58,40 @@ interface ReportSection {
   isRequired: boolean;
 }
 
-function reportStatus(sections: ReportSection[], pct: number): { label: string; color: string } {
-  if (sections.length === 0) return { label: "Empty", color: "#6B7280" };
-  if (pct >= 90) return { label: "Ready", color: "#16A34A" };
-  if (pct >= 40) return { label: "Draft", color: "#F59E0B" };
-  return { label: "Started", color: "#3B82F6" };
+interface ReportVersion {
+  id: string;
+  versionNumber: number;
+  status: string;
+  title: string | null;
+  createdAt: string | null;
 }
+
+type ReportStatus = "empty" | "draft" | "ready" | "published" | "buyer_locked";
+
+function computeStatus(sections: ReportSection[], pct: number, versions: ReportVersion[]): ReportStatus {
+  if (sections.length === 0) return "empty";
+  const latestVersion = versions[0] ?? null;
+  if (latestVersion?.status === "published") return "buyer_locked";
+  if (latestVersion) return "published";
+  if (pct >= 80) return "ready";
+  if (pct >= 20) return "draft";
+  return "draft";
+}
+
+const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string }> = {
+  empty:        { label: "Empty",        color: "#6B7280" },
+  draft:        { label: "Draft",        color: "#3B82F6" },
+  ready:        { label: "Ready",        color: "#F59E0B" },
+  published:    { label: "Published",    color: "#16A34A" },
+  buyer_locked: { label: "Buyer Locked", color: "#A78BFA" },
+};
 
 function completenessScore(sections: ReportSection[]): number {
   if (!sections.length) return 0;
-  const required = sections.filter((s) => REQUIRED_KEYS.includes(s.sectionKey));
-  if (!required.length) return 0;
-  const filled = required.filter((s) => s.status === "complete" || (s.body && s.body.trim().length > 10)).length;
+  const filled = REQUIRED_KEYS.filter((k) => {
+    const s = sections.find((sec) => sec.sectionKey === k);
+    return s && (s.status === "complete" || (s.body && s.body.trim().length > 10));
+  }).length;
   return Math.round((filled / REQUIRED_KEYS.length) * 100);
 }
 
@@ -78,33 +100,40 @@ export default function ReportHubScreen() {
   const insets = useSafeAreaInsets();
   const { latestSnapshot, selectedCafe } = useValuation();
   const [sections, setSections] = useState<ReportSection[]>([]);
-  const [loadingSections, setLoadingSections] = useState(false);
+  const [versions, setVersions] = useState<ReportVersion[]>([]);
+  const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
   const snap = latestSnapshot.combined;
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
 
-  const loadSections = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!listingId) return;
     const token = await getAuthToken();
     if (!token) return;
-    setLoadingSections(true);
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/report-sections/${listingId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const [sectRes, verRes] = await Promise.all([
+        fetch(`${API_BASE}/api/report-sections/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE}/api/report-versions/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (sectRes.ok) {
+        const data = await sectRes.json();
         setSections(data.sections ?? []);
       }
+      if (verRes.ok) {
+        const data = await verRes.json();
+        setVersions(data.versions ?? []);
+      }
     } catch { /* non-fatal */ }
-    finally { setLoadingSections(false); }
+    finally { setLoading(false); }
   }, [listingId]);
 
-  useFocusEffect(useCallback(() => { loadSections(); }, [loadSections]));
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const pct = completenessScore(sections);
-  const status = reportStatus(sections, pct);
+  const status = computeStatus(sections, pct, versions);
+  const statusCfg = STATUS_CONFIG[status];
   const adjEbitda = Number(snap?.adjustedEbitda ?? 0);
   const equipVal = Number(snap?.totalEquipmentValue ?? 0);
   const blendedLow = Math.round((adjEbitda * 2.0 + equipVal) * 0.9);
@@ -123,9 +152,10 @@ export default function ReportHubScreen() {
       Alert.alert("Report incomplete", "Please complete at least 40% of required sections before publishing.");
       return;
     }
+    const versionNum = (versions[0]?.versionNumber ?? 0) + 1;
     Alert.alert(
       "Publish IM Report?",
-      `This will snapshot your current ${sections.length} sections as Version 1 and make the report visible to approved buyers.`,
+      `This will snapshot your current ${sections.length} sections as Version ${versionNum}.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -136,10 +166,12 @@ export default function ReportHubScreen() {
               const res = await fetch(`${API_BASE}/api/report-versions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ listingId, title: `Version 1 — ${new Date().toLocaleDateString("en-AU")}` }),
+                body: JSON.stringify({ listingId, title: `Version ${versionNum} — ${new Date().toLocaleDateString("en-AU")}` }),
               });
               if (res.ok) {
-                Alert.alert("Published!", "Your IM report has been snapshotted and saved as a draft version.");
+                const data = await res.json();
+                setVersions((prev) => [data.version, ...prev]);
+                Alert.alert("Published!", `Version ${versionNum} snapshot created.`);
               } else {
                 const err = await res.json().catch(() => ({}));
                 Alert.alert("Error", err.error ?? "Publish failed");
@@ -164,11 +196,21 @@ export default function ReportHubScreen() {
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.foreground }]}>IM Report</Text>
-          <View style={[styles.statusBadge, { backgroundColor: status.color + "22" }]}>
-            <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: statusCfg.color + "22" }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusCfg.color }]} />
+            <Text style={[styles.statusText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
           </View>
         </View>
+
+        {/* Version pill */}
+        {versions.length > 0 && (
+          <View style={[styles.versionPill, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
+            <Feather name="clock" size={12} color="#8B9CB8" />
+            <Text style={styles.versionText}>
+              {versions.length} version{versions.length !== 1 ? "s" : ""} · Latest: {versions[0].title ?? `v${versions[0].versionNumber}`}
+            </Text>
+          </View>
+        )}
 
         {/* Financial summary card */}
         {snap ? (
@@ -208,7 +250,7 @@ export default function ReportHubScreen() {
         <View style={[styles.completenessCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.completenessHeader}>
             <Text style={[styles.completenessTitle, { color: colors.foreground }]}>Report Completeness</Text>
-            {loadingSections
+            {loading
               ? <ActivityIndicator size="small" color={colors.primary} />
               : <Text style={[styles.completenessNum, { color: pct >= 80 ? "#16A34A" : pct >= 40 ? "#F59E0B" : colors.primary }]}>{pct}%</Text>}
           </View>
@@ -228,6 +270,17 @@ export default function ReportHubScreen() {
               </Text>
             </View>
           )}
+          {missingRequired.length > 3 && (
+            <TouchableOpacity
+              style={[styles.recommendMore, { borderColor: "#F59E0B33" }]}
+              onPress={() => router.push({ pathname: "/(seller)/valuation/report-builder" as any, params: { filter: "incomplete" } })}
+            >
+              <Feather name="list" size={13} color="#F59E0B" />
+              <Text style={[styles.recommendText, { color: "#F59E0B" }]}>
+                {missingRequired.length} required sections need content — tap to complete
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Primary actions */}
@@ -242,14 +295,14 @@ export default function ReportHubScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
-            onPress={() => Alert.alert("Preview", "HTML preview requires the HTML export task. Coming soon.")}
+            onPress={() => Alert.alert("Preview", "HTML preview is coming in the HTML/PDF export task.")}
           >
             <Feather name="eye" size={18} color="#60A5FA" />
             <Text style={[styles.primaryBtnText, { color: "#60A5FA" }]}>Preview Report</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
-            onPress={() => Alert.alert("Export PDF", "PDF export is coming in the next update.")}
+            onPress={() => Alert.alert("Export PDF", "PDF export is coming in the HTML/PDF export task.")}
           >
             <Feather name="file-text" size={18} color="#A78BFA" />
             <Text style={[styles.primaryBtnText, { color: "#A78BFA" }]}>Export PDF</Text>
@@ -276,7 +329,9 @@ export default function ReportHubScreen() {
             {publishing
               ? <ActivityIndicator size="small" color="#fff" />
               : <Feather name="upload-cloud" size={18} color="#fff" />}
-            <Text style={styles.primaryBtnText}>Publish</Text>
+            <Text style={styles.primaryBtnText}>
+              {status === "buyer_locked" ? "Re-publish" : "Publish"}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -286,11 +341,11 @@ export default function ReportHubScreen() {
           {[
             { label: "Report Sections", icon: "list", color: "#3B82F6", route: "/(seller)/valuation/report-builder" },
             { label: "Access Settings", icon: "lock", color: "#8B5CF6", route: "/(seller)/valuation/report-access" },
-            { label: "Version History", icon: "clock", color: "#6B7280", route: null },
+            { label: "Version History", icon: "clock", color: "#6B7280", route: null, badge: versions.length > 0 ? `${versions.length}` : null },
             { label: "AI Draft Helper", icon: "zap", color: "#FBBF24", route: null },
             { label: "Charts & Stats", icon: "bar-chart-2", color: "#34D399", route: null },
             { label: "Due Diligence Pack", icon: "check-square", color: "#F87171", route: "/(seller)/valuation/due-diligence" },
-          ].map(({ label, icon, color, route }) => (
+          ].map(({ label, icon, color, route, badge }) => (
             <TouchableOpacity
               key={label}
               style={[styles.secondaryBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -303,6 +358,11 @@ export default function ReportHubScreen() {
                 <Feather name={icon as any} size={18} color={color} />
               </View>
               <Text style={[styles.secondaryLabel, { color: colors.foreground }]}>{label}</Text>
+              {badge && (
+                <View style={[styles.secondaryBadge, { backgroundColor: color + "22" }]}>
+                  <Text style={[styles.secondaryBadgeText, { color }]}>{badge}</Text>
+                </View>
+              )}
               <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
             </TouchableOpacity>
           ))}
@@ -321,6 +381,8 @@ const styles = StyleSheet.create({
   statusBadge:        { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   statusDot:          { width: 7, height: 7, borderRadius: 4 },
   statusText:         { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  versionPill:        { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, alignSelf: "flex-start" },
+  versionText:        { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
   summaryCard:        { borderRadius: 16, padding: 18, borderWidth: 1, gap: 10 },
   bizName:            { color: "#8B9CB8", fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
   summaryRow:         { flexDirection: "row", alignItems: "flex-start", gap: 14 },
@@ -344,6 +406,7 @@ const styles = StyleSheet.create({
   completenessHint:   { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
   recommendRow:       { flexDirection: "row", alignItems: "center", gap: 6 },
   recommendText:      { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
+  recommendMore:      { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1 },
   sectionLabel:       { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
   primaryGrid:        { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   primaryBtn:         { width: "31.5%", borderRadius: 14, padding: 14, alignItems: "center", gap: 8 },
@@ -352,4 +415,6 @@ const styles = StyleSheet.create({
   secondaryBtn:       { flexDirection: "row", alignItems: "center", gap: 14, padding: 14, borderRadius: 14, borderWidth: 1 },
   secondaryIcon:      { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   secondaryLabel:     { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  secondaryBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  secondaryBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
 });

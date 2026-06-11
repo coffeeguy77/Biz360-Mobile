@@ -25,6 +25,9 @@ const REQUIRED_KEYS = [
   "operations_overview", "growth_opportunities", "asking_price_terms",
 ];
 
+const VISIBILITY_CYCLE: Visibility[] = ["public", "verified_buyer", "nda_signed", "hidden"];
+type Visibility = "public" | "verified_buyer" | "nda_signed" | "hidden";
+
 interface ReportSection {
   id: string;
   sectionKey: string;
@@ -32,40 +35,37 @@ interface ReportSection {
   subtitle: string | null;
   body: string | null;
   status: string;
-  visibility: string;
+  visibility: Visibility;
   sortOrder: number;
   isRequired: boolean;
   includeInPdf: boolean;
+  lastUpdatedAt: string | null;
 }
 
 function hasContent(s: ReportSection): boolean {
   return s.status === "complete" || (!!s.body && s.body.trim().length > 10);
 }
 
-function visibilityColor(v: string): string {
-  if (v === "public") return "#16A34A";
-  if (v === "verified_buyer") return "#3B82F6";
-  if (v === "nda_signed") return "#A78BFA";
-  return "#6B7280";
+function deriveSource(s: ReportSection): { label: string; color: string } | null {
+  if (!s.body?.trim()) return null;
+  const lines = s.body.split("\n").filter((l) => l.trim());
+  const kvLines = lines.filter((l) => /^[A-Za-z].+:\s.+/.test(l)).length;
+  if (lines.length > 0 && kvLines / lines.length > 0.4) return { label: "App Data", color: "#3B82F6" };
+  return { label: "Manual", color: "#6B7280" };
 }
 
-function visibilityLabel(v: string): string {
-  if (v === "public") return "Public";
-  if (v === "verified_buyer") return "Verified Buyer";
-  if (v === "nda_signed") return "NDA Signed";
-  return "Hidden";
+function visibilityConfig(v: Visibility): { icon: string; color: string; label: string } {
+  if (v === "public")         return { icon: "globe", color: "#16A34A", label: "Public" };
+  if (v === "verified_buyer") return { icon: "user-check", color: "#3B82F6", label: "Verified" };
+  if (v === "nda_signed")     return { icon: "lock", color: "#A78BFA", label: "NDA" };
+  return { icon: "eye-off", color: "#6B7280", label: "Hidden" };
 }
 
-function statusColor(s: ReportSection): string {
-  if (s.status === "complete") return "#16A34A";
-  if (hasContent(s)) return "#F59E0B";
-  return "#6B7280";
-}
-
-function statusLabel(s: ReportSection): string {
-  if (s.status === "complete") return "Complete";
-  if (hasContent(s)) return "Draft";
-  return "Empty";
+function statusConfig(s: ReportSection): { label: string; color: string } {
+  if (s.status === "complete")     return { label: "Complete",     color: "#16A34A" };
+  if (s.status === "needs_review") return { label: "Needs Review", color: "#F87171" };
+  if (hasContent(s))               return { label: "Draft",        color: "#F59E0B" };
+  return { label: "Empty", color: "#6B7280" };
 }
 
 type FilterTab = "all" | "incomplete" | "complete";
@@ -125,7 +125,7 @@ export default function ReportBuilderScreen() {
   async function handleTogglePdf(section: ReportSection) {
     const token = await getAuthToken();
     if (!token) return;
-    setToggling(section.id);
+    setToggling(section.id + "_pdf");
     try {
       const res = await fetch(`${API_BASE}/api/report-sections/${section.id}`, {
         method: "PATCH",
@@ -139,6 +139,25 @@ export default function ReportBuilderScreen() {
     finally { setToggling(null); }
   }
 
+  async function handleCycleVisibility(section: ReportSection) {
+    const token = await getAuthToken();
+    if (!token) return;
+    const currentIdx = VISIBILITY_CYCLE.indexOf(section.visibility);
+    const nextVisibility = VISIBILITY_CYCLE[(currentIdx + 1) % VISIBILITY_CYCLE.length];
+    setToggling(section.id + "_vis");
+    try {
+      const res = await fetch(`${API_BASE}/api/report-sections/${section.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ visibility: nextVisibility }),
+      });
+      if (res.ok) {
+        setSections((prev) => prev.map((s) => s.id === section.id ? { ...s, visibility: nextVisibility } : s));
+      }
+    } catch { /* non-fatal */ }
+    finally { setToggling(null); }
+  }
+
   async function handleDelete(section: ReportSection) {
     Alert.alert("Delete Section?", `Remove "${section.title}" from the report?`, [
       { text: "Cancel", style: "cancel" },
@@ -147,11 +166,20 @@ export default function ReportBuilderScreen() {
         onPress: async () => {
           const token = await getAuthToken();
           if (!token) return;
-          await fetch(`${API_BASE}/api/report-sections/${section.id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          setSections((prev) => prev.filter((s) => s.id !== section.id));
+          try {
+            const res = await fetch(`${API_BASE}/api/report-sections/${section.id}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              setSections((prev) => prev.filter((s) => s.id !== section.id));
+            } else {
+              const err = await res.json().catch(() => ({}));
+              Alert.alert("Cannot delete", err.error ?? "This section could not be removed.");
+            }
+          } catch {
+            Alert.alert("Error", "Network error — please try again.");
+          }
         },
       },
     ]);
@@ -159,7 +187,9 @@ export default function ReportBuilderScreen() {
 
   const filled = sections.filter(hasContent).length;
   const requiredFilled = sections.filter((s) => REQUIRED_KEYS.includes(s.sectionKey) && hasContent(s)).length;
-  const pct = sections.length === 0 ? 0 : Math.round((requiredFilled / Math.max(REQUIRED_KEYS.length, 1)) * 100);
+  const pct = sections.length === 0 ? 0 : Math.round((requiredFilled / REQUIRED_KEYS.length) * 100);
+
+  const missingRequired = REQUIRED_KEYS.filter((k) => !sections.find((s) => s.sectionKey === k && hasContent(s)));
 
   const filtered = filter === "all"
     ? sections
@@ -170,7 +200,7 @@ export default function ReportBuilderScreen() {
   if (!listingId) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.scroll, { paddingTop: insets.top + 20 }]}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 20 }]}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
               <Feather name="arrow-left" size={20} color={colors.foreground} />
@@ -182,7 +212,7 @@ export default function ReportBuilderScreen() {
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No Listing Linked</Text>
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Link this business to a listing to build an IM report.</Text>
           </View>
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -220,21 +250,31 @@ export default function ReportBuilderScreen() {
             </View>
             <View style={styles.progressStats}>
               {[
-                { label: "Required", val: requiredFilled, total: REQUIRED_KEYS.length, color: "#3B82F6" },
-                { label: "Total Sections", val: sections.length, color: "#8B9CB8" },
-                { label: "In PDF", val: sections.filter((s) => s.includeInPdf).length, color: "#A78BFA" },
-              ].map(({ label, val, total, color }) => (
+                { label: "Required", val: `${requiredFilled}/${REQUIRED_KEYS.length}`, color: "#3B82F6" },
+                { label: "Total", val: `${sections.length}`, color: "#8B9CB8" },
+                { label: "In PDF", val: `${sections.filter((s) => s.includeInPdf).length}`, color: "#A78BFA" },
+              ].map(({ label, val, color }) => (
                 <View key={label} style={styles.statCell}>
-                  <Text style={[styles.statNum, { color }]}>{val}{total ? `/${total}` : ""}</Text>
+                  <Text style={[styles.statNum, { color }]}>{val}</Text>
                   <Text style={styles.statLabel}>{label}</Text>
                 </View>
               ))}
             </View>
+            {/* Actionable recommendations */}
+            {missingRequired.length > 0 && (
+              <View style={[styles.recommendBox, { backgroundColor: "#F59E0B11", borderColor: "#F59E0B33" }]}>
+                <Feather name="alert-triangle" size={13} color="#F59E0B" />
+                <Text style={[styles.recommendText, { color: "#F59E0B" }]}>
+                  {missingRequired.length === 1
+                    ? `Add "${missingRequired[0].replace(/_/g, " ")}" to complete the required sections.`
+                    : `${missingRequired.length} required sections still need content to meet IM standards.`}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
         {sections.length === 0 ? (
-          /* Empty state */
           <View style={styles.emptyState}>
             <Feather name="file-text" size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No Sections Yet</Text>
@@ -270,10 +310,14 @@ export default function ReportBuilderScreen() {
             </ScrollView>
 
             {/* Section cards */}
-            {filtered.map((section) => (
-              <View key={section.id} style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.sectionCardTop}>
-                  <View style={{ flex: 1, gap: 4 }}>
+            {filtered.map((section) => {
+              const sc = statusConfig(section);
+              const vc = visibilityConfig(section.visibility);
+              const src = deriveSource(section);
+              return (
+                <View key={section.id} style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: hasContent(section) ? colors.border : colors.border }]}>
+                  <View style={styles.sectionCardTop}>
+                    {/* Required dot + title */}
                     <View style={styles.sectionTitleRow}>
                       {REQUIRED_KEYS.includes(section.sectionKey) && (
                         <View style={styles.requiredDot} />
@@ -282,21 +326,37 @@ export default function ReportBuilderScreen() {
                         {section.title}
                       </Text>
                     </View>
+
+                    {/* Badge row */}
                     <View style={styles.badgeRow}>
-                      <View style={[styles.statusBadge, { backgroundColor: statusColor(section) + "22" }]}>
-                        <Text style={[styles.badgeText, { color: statusColor(section) }]}>{statusLabel(section)}</Text>
+                      <View style={[styles.badge, { backgroundColor: sc.color + "22" }]}>
+                        <Text style={[styles.badgeText, { color: sc.color }]}>{sc.label}</Text>
                       </View>
-                      <View style={[styles.visBadge, { backgroundColor: visibilityColor(section.visibility) + "18" }]}>
-                        <Feather name="eye" size={10} color={visibilityColor(section.visibility)} />
-                        <Text style={[styles.badgeText, { color: visibilityColor(section.visibility) }]}>{visibilityLabel(section.visibility)}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={[styles.badge, { backgroundColor: vc.color + "18" }]}
+                        onPress={() => handleCycleVisibility(section)}
+                        disabled={toggling === section.id + "_vis"}
+                      >
+                        {toggling === section.id + "_vis"
+                          ? <ActivityIndicator size="small" color={vc.color} style={{ width: 10, height: 10 }} />
+                          : <Feather name={vc.icon as any} size={10} color={vc.color} />}
+                        <Text style={[styles.badgeText, { color: vc.color }]}>{vc.label}</Text>
+                      </TouchableOpacity>
                       {section.includeInPdf && (
-                        <View style={[styles.visBadge, { backgroundColor: "#A78BFA18" }]}>
+                        <View style={[styles.badge, { backgroundColor: "#A78BFA18" }]}>
                           <Feather name="file-text" size={10} color="#A78BFA" />
                           <Text style={[styles.badgeText, { color: "#A78BFA" }]}>PDF</Text>
                         </View>
                       )}
+                      {src && (
+                        <View style={[styles.badge, { backgroundColor: src.color + "18" }]}>
+                          <Feather name={src.label === "App Data" ? "database" : "edit"} size={10} color={src.color} />
+                          <Text style={[styles.badgeText, { color: src.color }]}>{src.label}</Text>
+                        </View>
+                      )}
                     </View>
+
+                    {/* Body preview */}
                     {section.body ? (
                       <Text style={[styles.sectionBodyPreview, { color: colors.mutedForeground }]} numberOfLines={2}>
                         {section.body}
@@ -305,36 +365,38 @@ export default function ReportBuilderScreen() {
                       <Text style={[styles.sectionEmpty, { color: colors.mutedForeground }]}>No content yet</Text>
                     )}
                   </View>
+
+                  {/* Actions row */}
+                  <View style={[styles.sectionCardActions, { borderTopColor: colors.border }]}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+                      onPress={() => router.push({ pathname: "/(seller)/valuation/report-section-editor" as any, params: { sectionId: section.id } })}
+                    >
+                      <Feather name="edit-2" size={13} color="#fff" />
+                      <Text style={styles.actionBtnText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionBtnOutline, { borderColor: colors.border }]}
+                      onPress={() => handleTogglePdf(section)}
+                      disabled={toggling === section.id + "_pdf"}
+                    >
+                      {toggling === section.id + "_pdf"
+                        ? <ActivityIndicator size="small" color={colors.mutedForeground} />
+                        : <Feather name={section.includeInPdf ? "file-minus" : "file-plus"} size={13} color={colors.mutedForeground} />}
+                      <Text style={[styles.actionBtnOutlineText, { color: colors.mutedForeground }]}>
+                        {section.includeInPdf ? "Remove PDF" : "Add PDF"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => handleDelete(section)}
+                    >
+                      <Feather name="trash-2" size={15} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={[styles.sectionCardActions, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => router.push({ pathname: "/(seller)/valuation/report-section-editor" as any, params: { sectionId: section.id, title: section.title } })}
-                  >
-                    <Feather name="edit-2" size={13} color="#fff" />
-                    <Text style={styles.actionBtnText}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtnOutline, { borderColor: colors.border }]}
-                    onPress={() => handleTogglePdf(section)}
-                    disabled={toggling === section.id}
-                  >
-                    {toggling === section.id
-                      ? <ActivityIndicator size="small" color={colors.mutedForeground} />
-                      : <Feather name={section.includeInPdf ? "file-minus" : "file-plus"} size={13} color={colors.mutedForeground} />}
-                    <Text style={[styles.actionBtnOutlineText, { color: colors.mutedForeground }]}>
-                      {section.includeInPdf ? "Remove from PDF" : "Add to PDF"}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteBtn}
-                    onPress={() => handleDelete(section)}
-                  >
-                    <Feather name="trash-2" size={15} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+              );
+            })}
 
             {/* Re-seed nudge */}
             <TouchableOpacity
@@ -369,6 +431,8 @@ const styles = StyleSheet.create({
   statCell:          { alignItems: "center", gap: 2 },
   statNum:           { fontSize: 16, fontFamily: "Inter_700Bold" },
   statLabel:         { color: "#8B9CB8", fontSize: 10, fontFamily: "Inter_400Regular" },
+  recommendBox:      { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1 },
+  recommendText:     { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium", lineHeight: 17 },
   filterRow:         { gap: 8, paddingBottom: 2 },
   filterChip:        { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#1E3A5C" },
   filterText:        { fontSize: 13, fontFamily: "Inter_500Medium", color: "#8B9CB8" },
@@ -378,8 +442,7 @@ const styles = StyleSheet.create({
   requiredDot:       { width: 7, height: 7, borderRadius: 4, backgroundColor: "#3B82F6", marginTop: 5 },
   sectionTitle:      { fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1, lineHeight: 20 },
   badgeRow:          { flexDirection: "row", gap: 6, flexWrap: "wrap" },
-  statusBadge:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  visBadge:          { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  badge:             { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   badgeText:         { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   sectionBodyPreview:{ fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
   sectionEmpty:      { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic" },
