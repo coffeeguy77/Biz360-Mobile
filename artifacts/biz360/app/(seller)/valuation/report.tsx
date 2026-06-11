@@ -454,7 +454,7 @@ export default function ReportHubScreen() {
               ? <ActivityIndicator size="small" color="#34D399" />
               : <Feather name="download" size={18} color="#34D399" />}
             <Text style={[styles.primaryBtnText, { color: "#34D399" }]}>
-              {downloading ? "Generating…" : "Download CSV"}
+              {downloading ? "Generating…" : "AI Fill Template"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -466,7 +466,7 @@ export default function ReportHubScreen() {
               ? <ActivityIndicator size="small" color="#FBBF24" />
               : <Feather name="upload" size={18} color="#FBBF24" />}
             <Text style={[styles.primaryBtnText, { color: "#FBBF24" }]}>
-              {uploading ? "Reading…" : "Upload CSV"}
+              {uploading ? "Uploading…" : "Upload CSV"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity

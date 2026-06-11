@@ -28,6 +28,7 @@ interface PreviewRow {
 
 interface PreviewData {
   rowCount: number;
+  validRowCount: number;
   matchedCount: number;
   unknownKeys: string[];
   invalidVisibility: string[];
@@ -141,8 +142,8 @@ export default function CsvImportPreviewScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: "#60A5FA" }]}>{previewData.rowCount}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Rows Parsed</Text>
+            <Text style={[styles.statNum, { color: "#60A5FA" }]}>{previewData.validRowCount ?? previewData.rowCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Valid Rows</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.statNum, { color: "#34D399" }]}>{previewData.matchedCount}</Text>
