@@ -15,16 +15,19 @@ import {
 // variable_map: maps placeholder names (TENANT_NAME) → original document values.
 
 export const leaseTemplatesTable = pgTable("lease_templates", {
-  id:              uuid("id").primaryKey().defaultRandom(),
-  name:            text("name").notNull(),
-  jurisdiction:    text("jurisdiction"),
-  leaseType:       text("lease_type"),
-  premisesType:    text("premises_type"),
-  templateContent: text("template_content").notNull(),
-  variableMap:     jsonb("variable_map").$type<Record<string, string>>().notNull().default({}),
-  isMaster:        boolean("is_master").notNull().default(false),
-  createdByUserId: text("created_by_user_id"),
-  createdAt:       timestamp("created_at").defaultNow(),
+  id:               uuid("id").primaryKey().defaultRandom(),
+  name:             text("name").notNull(),
+  jurisdiction:     text("jurisdiction"),
+  leaseType:        text("lease_type"),
+  premisesType:     text("premises_type"),
+  templateContent:  text("template_content").notNull(),
+  variableMap:      jsonb("variable_map").$type<Record<string, string>>().notNull().default({}),
+  isMaster:         boolean("is_master").notNull().default(false),
+  // Tracks which analysis UUID this template was generated from.
+  // Used by POST /api/lease-templates { analysedLeaseId } for idempotent retrieval.
+  sourceAnalysisId: text("source_analysis_id"),
+  createdByUserId:  text("created_by_user_id"),
+  createdAt:        timestamp("created_at").defaultNow(),
 });
 
 export type LeaseTemplate = typeof leaseTemplatesTable.$inferSelect;

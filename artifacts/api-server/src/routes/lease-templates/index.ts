@@ -3,12 +3,19 @@ import { asc, count, desc, eq, and } from "drizzle-orm";
 import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
 import { requireAuth } from "../../middlewares/auth";
 import { extractTemplateFromAnalysis } from "../../lib/template-extraction";
+import { getAnalysis } from "../../lib/analysis-cache";
 import { logger } from "../../lib/logger";
 
 const router = Router();
 
+// Helper: extract only placeholder KEYS from variableMap (never expose extracted values
+// cross-user — they originate from another user's private lease document).
+function toVariableKeys(variableMap: Record<string, string> | null | undefined): string[] {
+  return Object.keys(variableMap ?? {});
+}
+
 // ─── GET /api/lease-templates ─────────────────────────────────────────────────
-// List all lease templates (summary only — no full templateContent).
+// List all lease templates. variableMap values are stripped; only keys are returned.
 router.get("/lease-templates", requireAuth, async (_req, res): Promise<void> => {
   try {
     const rows = await db
@@ -25,7 +32,18 @@ router.get("/lease-templates", requireAuth, async (_req, res): Promise<void> => 
       .from(leaseTemplatesTable)
       .orderBy(desc(leaseTemplatesTable.createdAt));
 
-    res.json({ templates: rows });
+    const templates = rows.map(r => ({
+      id:           r.id,
+      name:         r.name,
+      jurisdiction: r.jurisdiction,
+      leaseType:    r.leaseType,
+      premisesType: r.premisesType,
+      isMaster:     r.isMaster,
+      variableKeys: toVariableKeys(r.variableMap),
+      createdAt:    r.createdAt,
+    }));
+
+    res.json({ templates });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "DB error";
     res.status(500).json({ error: msg });
@@ -33,7 +51,7 @@ router.get("/lease-templates", requireAuth, async (_req, res): Promise<void> => 
 });
 
 // ─── GET /api/lease-templates/:id ────────────────────────────────────────────
-// Full template with templateContent (JSON clause array) and variableMap.
+// Full template with templateContent and variableKeys (never raw values).
 router.get("/lease-templates/:id", requireAuth, async (req, res): Promise<void> => {
   const { id } = req.params;
   try {
@@ -47,7 +65,22 @@ router.get("/lease-templates/:id", requireAuth, async (req, res): Promise<void> 
       return;
     }
 
-    res.json({ template: rows[0] });
+    const row = rows[0];
+    // Return variableKeys (placeholder names) but NOT the raw variableMap values,
+    // which originate from another user's private lease document.
+    const template = {
+      id:              row.id,
+      name:            row.name,
+      jurisdiction:    row.jurisdiction,
+      leaseType:       row.leaseType,
+      premisesType:    row.premisesType,
+      isMaster:        row.isMaster,
+      templateContent: row.templateContent,
+      variableKeys:    toVariableKeys(row.variableMap),
+      createdAt:       row.createdAt,
+    };
+
+    res.json({ template });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "DB error";
     res.status(500).json({ error: msg });
@@ -55,28 +88,129 @@ router.get("/lease-templates/:id", requireAuth, async (req, res): Promise<void> 
 });
 
 // ─── POST /api/lease-templates ────────────────────────────────────────────────
-// Create a new template. Supports two modes:
+// Create a new template. Supports three modes:
 //
-// Mode A — from analysisData (required workflow):
+// Mode A — from analysedLeaseId (primary workflow):
+//   Body: { analysedLeaseId: "<UUID returned by /lease-analysis>" }
+//   Idempotent: if a template already exists for this analysisId, returns it immediately.
+//   Otherwise, looks up the cached analysis data and runs template extraction synchronously.
+//
+// Mode B — from raw analysisData (admin/programmatic):
 //   Body: { analysisData: <full lease analysis JSON>, extractedText?: string }
-//   The server runs template extraction via Claude (same as background task), upserts to
-//   lease_clauses_master, and creates + returns a new lease_templates row.
-//   isMaster is set if no template yet exists for the same jurisdiction+leaseType.
 //
-// Mode B — manual payload (admin/testing):
+// Mode C — manual payload (admin/testing):
 //   Body: { name, templateContent, variableMap?, jurisdiction?, leaseType?, premisesType?, isMaster? }
 //
 router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => {
-  const body = req.body as Record<string, unknown>;
+  const body   = req.body as Record<string, unknown>;
   const userId = req.user!.id;
 
-  // ── Mode A: create from analysisData ──────────────────────────────────────
+  // ── Mode A: idempotent create from cached analysisId ─────────────────────
+  if (body.analysedLeaseId && typeof body.analysedLeaseId === "string") {
+    const analysedLeaseId = body.analysedLeaseId;
+
+    // Return existing template if already generated for this analysis
+    const existing = await db
+      .select()
+      .from(leaseTemplatesTable)
+      .where(eq(leaseTemplatesTable.sourceAnalysisId, analysedLeaseId));
+
+    if (existing.length) {
+      const row = existing[0];
+      res.json({
+        template: {
+          id:              row.id,
+          name:            row.name,
+          jurisdiction:    row.jurisdiction,
+          leaseType:       row.leaseType,
+          premisesType:    row.premisesType,
+          isMaster:        row.isMaster,
+          templateContent: row.templateContent,
+          variableKeys:    toVariableKeys(row.variableMap),
+          createdAt:       row.createdAt,
+        },
+        cached: true,
+      });
+      return;
+    }
+
+    // Look up analysis data from TTL cache
+    const analysisData = getAnalysis(analysedLeaseId);
+    if (!analysisData) {
+      res.status(404).json({
+        error: "Analysis data not found or expired. Please re-upload the lease document to regenerate.",
+      });
+      return;
+    }
+
+    // Run extraction synchronously
+    try {
+      const templateData = await extractTemplateFromAnalysis(analysisData);
+      if (!templateData) {
+        res.status(500).json({ error: "Template extraction failed — Claude returned invalid output" });
+        return;
+      }
+
+      const jurisdiction = (analysisData.jurisdiction as string | null) ?? null;
+      const leaseType    = (analysisData.leaseType    as string | null) ?? null;
+      const templateName = templateData.template_name
+        || `${jurisdiction ?? "AU"} ${leaseType ?? "Commercial"} Lease Template`;
+      const templateContent = JSON.stringify(templateData.template_clauses ?? []);
+
+      let isMaster = false;
+      try {
+        const conditions = [
+          jurisdiction ? eq(leaseTemplatesTable.jurisdiction, jurisdiction) : undefined,
+          leaseType    ? eq(leaseTemplatesTable.leaseType,    leaseType)    : undefined,
+        ].filter(Boolean) as ReturnType<typeof eq>[];
+        const cnt = await db
+          .select({ n: count() })
+          .from(leaseTemplatesTable)
+          .where(conditions.length > 1 ? and(...conditions) : conditions[0]);
+        isMaster = Number(cnt[0]?.n ?? 0) === 0;
+      } catch { /* fall back to false */ }
+
+      const rows = await db
+        .insert(leaseTemplatesTable)
+        .values({
+          name:             templateName,
+          jurisdiction,
+          leaseType,
+          templateContent,
+          variableMap:      templateData.variable_map ?? {},
+          isMaster,
+          sourceAnalysisId: analysedLeaseId,
+          createdByUserId:  userId,
+        })
+        .returning();
+
+      const row = rows[0];
+      res.status(201).json({
+        template: {
+          id:              row.id,
+          name:            row.name,
+          jurisdiction:    row.jurisdiction,
+          leaseType:       row.leaseType,
+          premisesType:    row.premisesType,
+          isMaster:        row.isMaster,
+          templateContent: row.templateContent,
+          variableKeys:    toVariableKeys(row.variableMap),
+          createdAt:       row.createdAt,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Extraction error";
+      res.status(500).json({ error: msg });
+    }
+    return;
+  }
+
+  // ── Mode B: create from raw analysisData ──────────────────────────────────
   if (body.analysisData && typeof body.analysisData === "object") {
     const analysisResult = body.analysisData as Record<string, unknown>;
     const extractedText  = typeof body.extractedText === "string" ? body.extractedText : undefined;
 
     try {
-      // Run template extraction synchronously so we can return the result immediately
       const templateData = await extractTemplateFromAnalysis(analysisResult, extractedText);
       if (!templateData) {
         res.status(500).json({ error: "Template extraction failed — Claude returned invalid output" });
@@ -85,29 +219,23 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
 
       const jurisdiction = (analysisResult.jurisdiction as string | null) ?? null;
       const leaseType    = (analysisResult.leaseType    as string | null) ?? null;
-
       const templateName = templateData.template_name
         || `${jurisdiction ?? "AU"} ${leaseType ?? "Commercial"} Lease Template`;
-
       const templateContent = JSON.stringify(templateData.template_clauses ?? []);
 
-      // Determine isMaster: first template for this jurisdiction+leaseType combination
       let isMaster = false;
       try {
         const conditions = [
           jurisdiction ? eq(leaseTemplatesTable.jurisdiction, jurisdiction) : undefined,
           leaseType    ? eq(leaseTemplatesTable.leaseType,    leaseType)    : undefined,
         ].filter(Boolean) as ReturnType<typeof eq>[];
-
-        const existing = await db
+        const cnt = await db
           .select({ n: count() })
           .from(leaseTemplatesTable)
           .where(conditions.length > 1 ? and(...conditions) : conditions[0]);
-
-        isMaster = Number(existing[0]?.n ?? 0) === 0;
+        isMaster = Number(cnt[0]?.n ?? 0) === 0;
       } catch { /* fall back to false */ }
 
-      // Upsert clauses into shared library
       const rawClauses = (analysisResult.clauses ?? []) as Array<Record<string, unknown>>;
       for (const clause of rawClauses) {
         const title = clause.title as string;
@@ -130,7 +258,7 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
             })
             .onConflictDoNothing();
         } catch (e) {
-          logger.warn({ err: e, title }, "POST: failed to upsert master clause");
+          logger.warn({ err: e, title }, "POST Mode B: failed to upsert master clause");
         }
       }
 
@@ -147,7 +275,20 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
         })
         .returning();
 
-      res.status(201).json({ template: rows[0] });
+      const row = rows[0];
+      res.status(201).json({
+        template: {
+          id:              row.id,
+          name:            row.name,
+          jurisdiction:    row.jurisdiction,
+          leaseType:       row.leaseType,
+          premisesType:    row.premisesType,
+          isMaster:        row.isMaster,
+          templateContent: row.templateContent,
+          variableKeys:    toVariableKeys(row.variableMap),
+          createdAt:       row.createdAt,
+        },
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Extraction error";
       res.status(500).json({ error: msg });
@@ -155,15 +296,15 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
     return;
   }
 
-  // ── Mode B: manual payload ─────────────────────────────────────────────────
+  // ── Mode C: manual payload ─────────────────────────────────────────────────
   const { name, jurisdiction, leaseType, premisesType, templateContent, variableMap, isMaster } = body;
 
   if (!name || typeof name !== "string") {
-    res.status(400).json({ error: "name is required" });
+    res.status(400).json({ error: "Provide analysedLeaseId, analysisData, or name + templateContent" });
     return;
   }
   if (!templateContent || typeof templateContent !== "string") {
-    res.status(400).json({ error: "templateContent is required (or provide analysisData for automatic extraction)" });
+    res.status(400).json({ error: "templateContent is required for manual template creation" });
     return;
   }
 
@@ -182,7 +323,20 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
       })
       .returning();
 
-    res.status(201).json({ template: rows[0] });
+    const row = rows[0];
+    res.status(201).json({
+      template: {
+        id:              row.id,
+        name:            row.name,
+        jurisdiction:    row.jurisdiction,
+        leaseType:       row.leaseType,
+        premisesType:    row.premisesType,
+        isMaster:        row.isMaster,
+        templateContent: row.templateContent,
+        variableKeys:    toVariableKeys(row.variableMap),
+        createdAt:       row.createdAt,
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "DB error";
     res.status(500).json({ error: msg });
@@ -191,7 +345,6 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
 
 // ─── GET /api/lease-clauses ───────────────────────────────────────────────────
 // Public shared clause library — no auth required.
-// Returns all master clauses alphabetically by category then title.
 router.get("/lease-clauses", async (_req, res): Promise<void> => {
   try {
     const rows = await db

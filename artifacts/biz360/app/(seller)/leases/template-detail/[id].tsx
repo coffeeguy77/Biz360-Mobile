@@ -22,7 +22,7 @@ import type { Clause, DraftLease, DraftSection, Jurisdiction, LeaseType, Premise
 const domain   = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}` : "";
 
-// AsyncStorage keys for seller business profile
+// AsyncStorage keys for the seller's own business profile
 const KEY_SELLER_STATE   = "biz360_seller_state";
 const KEY_BUSINESS_NAME  = "biz360_business_name";
 const KEY_ABN            = "biz360_abn";
@@ -35,8 +35,9 @@ interface TemplateDetail {
   leaseType:       string | null;
   premisesType:    string | null;
   isMaster:        boolean;
+  // API returns only placeholder KEYS — never extracted values (to prevent cross-user leakage)
+  variableKeys:    string[];
   templateContent: string;
-  variableMap:     Record<string, string>;
   createdAt:       string | null;
 }
 
@@ -64,11 +65,9 @@ function HighlightedText({ text, style }: { text: string; style?: object }) {
   return (
     <Text style={style}>
       {parts.map((part, i) =>
-        /^{{[A-Z_]+}}$/.test(part) ? (
-          <Text key={i} style={hlStyles.token}>{part}</Text>
-        ) : (
-          <Text key={i}>{part}</Text>
-        )
+        /^{{[A-Z_]+}}$/.test(part)
+          ? <Text key={i} style={hlStyles.token}>{part}</Text>
+          : <Text key={i}>{part}</Text>
       )}
     </Text>
   );
@@ -104,7 +103,7 @@ export default function TemplateDetailScreen() {
 
   useEffect(() => {
     (async () => {
-      // Load seller business profile from AsyncStorage
+      // Load seller's OWN business profile from AsyncStorage first
       const [sellerState, businessName, abn, businessAddr] = await Promise.all([
         AsyncStorage.getItem(KEY_SELLER_STATE),
         AsyncStorage.getItem(KEY_BUSINESS_NAME),
@@ -123,12 +122,18 @@ export default function TemplateDetailScreen() {
         const tpl = data.template;
         setTemplate(tpl);
 
-        // Pre-fill variables: start from Claude-extracted variableMap, then overlay seller profile
-        const initial: Record<string, string> = { ...(tpl.variableMap ?? {}) };
-        if (user?.name)    initial.TENANT_NAME      ||= user.name;
-        if (businessName)  initial.BUSINESS_NAME    ||= businessName;
-        if (abn)           initial.TENANT_ABN       ||= abn;
-        if (businessAddr)  initial.PREMISES_ADDRESS ||= businessAddr;
+        // Initialise variable form from seller's OWN profile only.
+        // variableKeys contains only placeholder names — never source-lease values —
+        // so no other user's data can prefill this form.
+        const initial: Record<string, string> = {};
+        for (const key of tpl.variableKeys ?? []) {
+          initial[key] = "";  // start empty
+        }
+        // Fill in from seller's stored profile (their own data)
+        if (user?.name)    initial.TENANT_NAME      = user.name;
+        if (businessName)  initial.BUSINESS_NAME    = businessName;
+        if (abn)           initial.TENANT_ABN       = abn;
+        if (businessAddr)  initial.PREMISES_ADDRESS = businessAddr;
         setEditedVars(initial);
 
         try {
@@ -158,7 +163,7 @@ export default function TemplateDetailScreen() {
   const pickState = () => {
     Alert.alert(
       "Your Business State",
-      "Select the Australian state or territory where your business operates.",
+      "Select the state or territory where your business operates.",
       [
         ...AU_STATES.map(s => ({
           text: s,
@@ -176,12 +181,12 @@ export default function TemplateDetailScreen() {
     if (!template) return;
     setGenerating(true);
 
-    // Persist any updated profile fields the user may have typed
-    const updates: Promise<void>[] = [];
-    if (editedVars.BUSINESS_NAME)  updates.push(AsyncStorage.setItem(KEY_BUSINESS_NAME, editedVars.BUSINESS_NAME));
-    if (editedVars.TENANT_ABN)     updates.push(AsyncStorage.setItem(KEY_ABN,           editedVars.TENANT_ABN));
-    if (editedVars.PREMISES_ADDRESS) updates.push(AsyncStorage.setItem(KEY_BUSINESS_ADDR, editedVars.PREMISES_ADDRESS));
-    await Promise.all(updates).catch(() => {});
+    // Persist any profile fields the user typed into the form
+    const saves: Promise<void>[] = [];
+    if (editedVars.BUSINESS_NAME)    saves.push(AsyncStorage.setItem(KEY_BUSINESS_NAME, editedVars.BUSINESS_NAME));
+    if (editedVars.TENANT_ABN)       saves.push(AsyncStorage.setItem(KEY_ABN,           editedVars.TENANT_ABN));
+    if (editedVars.PREMISES_ADDRESS) saves.push(AsyncStorage.setItem(KEY_BUSINESS_ADDR, editedVars.PREMISES_ADDRESS));
+    await Promise.all(saves).catch(() => {});
 
     try {
       const tplJur = template.jurisdiction as Jurisdiction | null;
@@ -219,7 +224,6 @@ export default function TemplateDetailScreen() {
     const tplJur = template.jurisdiction;
 
     if (tplJur && userState && tplJur !== userState) {
-      // Jurisdiction mismatch — show specific mismatch warning
       Alert.alert(
         "Jurisdiction Mismatch",
         `This template was created under ${tplJur} law, but your business operates in ${userState}.\n\nThe legal terms may differ significantly between states. You should seek advice from a ${tplJur} solicitor before using this template.\n\nProceed anyway?`,
@@ -229,21 +233,16 @@ export default function TemplateDetailScreen() {
         ],
       );
     } else if (tplJur && !userState) {
-      // User state not set — ask them to confirm before proceeding
       Alert.alert(
         `Confirm Jurisdiction`,
         `This template was created under ${tplJur} law. Does your business operate in ${tplJur}?`,
         [
           { text: "Cancel", style: "cancel" },
-          {
-            text: "No — set my state",
-            onPress: pickState,
-          },
+          { text: "No — set my state", onPress: pickState },
           { text: `Yes — I'm in ${tplJur}`, onPress: generateDraft },
         ],
       );
     } else {
-      // Jurisdictions match (or template has no jurisdiction) — proceed immediately
       generateDraft();
     }
   };
@@ -317,7 +316,7 @@ export default function TemplateDetailScreen() {
               )}
             </View>
 
-            {/* ── Your business state pill ── */}
+            {/* State indicator */}
             <TouchableOpacity
               style={[
                 styles.statePill,
@@ -338,19 +337,20 @@ export default function TemplateDetailScreen() {
                 {userState
                   ? jurisdictionMatch
                     ? `Your state: ${userState} — matches template`
-                    : `Your state: ${userState} — does not match template (${template.jurisdiction})`
+                    : `Your state: ${userState} — differs from template (${template.jurisdiction})`
                   : "Tap to set your business state"}
               </Text>
               <Feather name="chevron-right" size={13} color={jurisdictionMatch ? "#86EFAC" : "#FCD34D"} />
             </TouchableOpacity>
 
-            {/* ── Variable fill-in form ── */}
+            {/* Variable fill-in form */}
             {variableKeys.length > 0 && (
               <>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your Business Details</Text>
                   <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
-                    Edit these — they replace <Text style={{ color: "#3B82F6" }}>{"{{PLACEHOLDERS}}"}</Text> in the draft
+                    Fill in your own details — they replace{" "}
+                    <Text style={{ color: "#3B82F6" }}>{"{{PLACEHOLDERS}}"}</Text> in the draft
                   </Text>
                 </View>
                 {variableKeys.map(key => (
@@ -373,7 +373,7 @@ export default function TemplateDetailScreen() {
               </>
             )}
 
-            {/* ── Clause preview with {{}} highlighting ── */}
+            {/* Clause preview */}
             {clauses.length > 0 && (
               <>
                 <TouchableOpacity
@@ -420,7 +420,6 @@ export default function TemplateDetailScreen() {
         ) : null}
       </ScrollView>
 
-      {/* Generate Draft CTA */}
       {!loading && !error && template && (
         <View style={[styles.ctaBar, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
           <TouchableOpacity

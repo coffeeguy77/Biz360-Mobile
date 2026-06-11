@@ -4,12 +4,14 @@ import { execSync } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAuth } from "../../middlewares/auth";
 import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { and, count, eq } from "drizzle-orm";
 import { extractTemplateFromAnalysis } from "../../lib/template-extraction";
+import { setAnalysis } from "../../lib/analysis-cache";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require("mammoth");
 
@@ -49,13 +51,11 @@ Return this exact structure:
 
 Focus on clauses that significantly affect café operators: rent terms, options, exclusivity, assignment, make-good, outgoings, services, disruption, and exit rights. Extract 8-20 key clauses.`;
 
-// ─── Background: upsert clauses + extract template ───────────────────────────
-// extractedText: full mammoth/antiword text for DOC/DOCX files — passed to the
-// template extraction call so Claude can detect party names from the raw document
-// rather than only from the analysis JSON summary.
+// ─── Background: upsert clauses + extract + store template ───────────────────
 async function storeAnalysisInBackground(
   analysisResult: Record<string, unknown>,
   userId: string,
+  analysisId: string,
   isPdf: boolean,
   base64Pdf: string | undefined,
   extractedText: string | undefined,
@@ -90,9 +90,9 @@ async function storeAnalysisInBackground(
       }
     }
 
-    // 2. Second Claude call: produce templateClauses with {{PLACEHOLDER}} substitution.
-    //    For DOC/DOCX files, extractedText gives the full raw document for richer entity detection.
-    //    For PDFs, base64Pdf is attached so Claude can reference the original document.
+    // 2. Second Claude call: produce templateClauses with {{PLACEHOLDER}} tokens.
+    //    For DOC/DOCX: extractedText provides full raw document for richer entity detection.
+    //    For PDF: base64Pdf is attached so Claude can reference the original document.
     const templateData = await extractTemplateFromAnalysis(
       analysisResult,
       extractedText,
@@ -107,12 +107,9 @@ async function storeAnalysisInBackground(
     const templateName = templateData.template_name
       || `${jurisdiction ?? "AU"} ${(analysisResult.leaseType as string) ?? "Commercial"} Lease Template`;
 
-    // templateContent stores the templatised clause array (with {{PLACEHOLDER}} tokens)
-    const templateContent = JSON.stringify(
-      templateData.template_clauses ?? rawClauses,
-    );
+    const templateContent = JSON.stringify(templateData.template_clauses ?? rawClauses);
 
-    // Mark as master if this is the first template for this jurisdiction + leaseType combination
+    // Mark as master if first template for this jurisdiction + leaseType combination
     const leaseType = (analysisResult.leaseType as string | null) ?? null;
     let isMaster = false;
     try {
@@ -127,16 +124,17 @@ async function storeAnalysisInBackground(
         .where(conditions.length > 1 ? and(...conditions) : conditions[0]);
 
       isMaster = Number(existing[0]?.n ?? 0) === 0;
-    } catch { /* non-critical — fall back to false */ }
+    } catch { /* fall back to false */ }
 
     await db.insert(leaseTemplatesTable).values({
-      name:            templateName,
+      name:             templateName,
       jurisdiction,
       leaseType,
       templateContent,
-      variableMap:     templateData.variable_map ?? {},
+      variableMap:      templateData.variable_map ?? {},
       isMaster,
-      createdByUserId: userId,
+      sourceAnalysisId: analysisId,
+      createdByUserId:  userId,
     });
 
     logger.info({ templateName, clauses: rawClauses.length }, "Lease template stored from analysis");
@@ -169,7 +167,7 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
 
     if (isPdf) {
       const base64Pdf = file.buffer.toString("base64");
-      base64PdfForBg = base64Pdf;
+      base64PdfForBg  = base64Pdf;
 
       message = await anthropic.messages.create({
         model:      "claude-sonnet-4-6",
@@ -202,22 +200,17 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
         } finally {
           try { unlinkSync(tmpPath); } catch { /* ignore */ }
         }
-
         if (!text.trim()) {
           try {
             const parsed = await mammoth.extractRawText({ buffer: file.buffer });
             text = parsed.value ?? "";
-          } catch {
-            text = "";
-          }
+          } catch { text = ""; }
         }
       } else {
         try {
           const parsed = await mammoth.extractRawText({ buffer: file.buffer });
           text = parsed.value ?? "";
-        } catch {
-          text = "";
-        }
+        } catch { text = ""; }
       }
 
       if (!text.trim()) {
@@ -226,15 +219,15 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
         });
       }
 
-      // Keep full text for background extraction; send first 60k chars to primary analysis
+      // Full text preserved for background extraction entity detection;
+      // only first 60k chars sent to primary analysis call.
       extractedTextForBg = text;
-      const truncated = text.slice(0, 60000);
 
       message = await anthropic.messages.create({
         model:      "claude-sonnet-4-6",
         max_tokens: 8192,
         system:     SYSTEM_PROMPT,
-        messages:   [{ role: "user", content: `Please analyse the following commercial lease document:\n\n${truncated}` }],
+        messages:   [{ role: "user", content: `Please analyse the following commercial lease document:\n\n${text.slice(0, 60000)}` }],
       });
     }
 
@@ -251,12 +244,21 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       return res.status(500).json({ error: "AI returned invalid JSON", raw: raw.text.slice(0, 500) });
     }
 
-    // Send result to client immediately, then store clauses + template in background
-    res.json(parsed);
+    // Generate a unique ID for this analysis.
+    // Returned to the client so it can call POST /api/lease-templates { analysedLeaseId }
+    // for idempotent template retrieval/extraction.
+    const analysisId = randomUUID();
 
+    // Cache the analysis data for 2 hours (background task may still be running)
+    setAnalysis(analysisId, parsed);
+
+    // Include analysisId in the response alongside the full analysis result
+    res.json({ ...parsed, analysisId });
+
+    // Background: upsert clauses + extract and store template
     const userId = req.user!.id;
     setImmediate(() => {
-      storeAnalysisInBackground(parsed, userId, isPdf, base64PdfForBg, extractedTextForBg).catch(() => {});
+      storeAnalysisInBackground(parsed, userId, analysisId, isPdf, base64PdfForBg, extractedTextForBg).catch(() => {});
     });
 
     return;

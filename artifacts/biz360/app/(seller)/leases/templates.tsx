@@ -25,7 +25,7 @@ interface TemplateRow {
   leaseType:    string | null;
   premisesType: string | null;
   isMaster:     boolean;
-  variableMap:  Record<string, string>;
+  variableKeys: string[];
   createdAt:    string | null;
 }
 
@@ -138,7 +138,7 @@ export default function TemplatesScreen() {
           </View>
         ) : (
           templates.map(tpl => {
-            const varCount = Object.keys(tpl.variableMap ?? {}).length;
+            const varCount = (tpl.variableKeys ?? []).length;
             const date = tpl.createdAt ? new Date(tpl.createdAt).toLocaleDateString("en-AU") : null;
             return (
               <TouchableOpacity

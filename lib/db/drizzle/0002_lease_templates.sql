@@ -7,6 +7,7 @@ CREATE TABLE "lease_templates" (
   "template_content" text NOT NULL,
   "variable_map" jsonb DEFAULT '{}'::jsonb NOT NULL,
   "is_master" boolean DEFAULT false NOT NULL,
+  "source_analysis_id" text,
   "created_by_user_id" text,
   "created_at" timestamp DEFAULT now()
 );
