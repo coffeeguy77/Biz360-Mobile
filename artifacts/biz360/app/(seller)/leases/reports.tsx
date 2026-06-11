@@ -65,7 +65,7 @@ export default function LeaseDrafts() {
             <View key={draft.id} style={[styles.draftCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <TouchableOpacity
                 style={styles.draftMain}
-                onPress={() => router.push(`/draft-detail/${draft.id}` as any)}
+                onPress={() => router.push({ pathname: "/(seller)/leases/draft-detail/[id]", params: { id: draft.id } } as any)}
               >
                 <View style={[styles.draftIcon, { backgroundColor: "#052E16" }]}>
                   <Feather name="file-text" size={18} color="#16A34A" />

@@ -1,5 +1,9 @@
 import { Router } from "express";
 import multer from "multer";
+import { execSync } from "child_process";
+import { writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAuth } from "../../middlewares/auth";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -91,24 +95,44 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
         ],
       });
     } else {
-      // DOCX / DOC — extract text with mammoth.
-      // Mammoth handles DOCX natively. It also handles .doc files that are
-      // actually in OOXML format (mislabelled). True legacy binary .doc files
-      // will produce an empty result; we surface a clear error in that case.
       let text = "";
-      try {
-        const parsed = await mammoth.extractRawText({ buffer: file.buffer });
-        text = parsed.value ?? "";
-      } catch {
-        text = "";
+
+      if (isDoc) {
+        // Legacy binary .doc: use antiword (system tool) for extraction.
+        // Antiword handles binary Word 97-2003 format natively.
+        // Fallback to mammoth for mislabelled .doc files that are actually OOXML.
+        const tmpPath = join(tmpdir(), `lease-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`);
+        try {
+          writeFileSync(tmpPath, file.buffer);
+          text = execSync(`antiword "${tmpPath}"`, { timeout: 30000 }).toString();
+        } catch {
+          text = "";
+        } finally {
+          try { unlinkSync(tmpPath); } catch { /* ignore */ }
+        }
+
+        if (!text.trim()) {
+          // Fallback: mammoth handles OOXML .doc (mislabelled DOCX files)
+          try {
+            const parsed = await mammoth.extractRawText({ buffer: file.buffer });
+            text = parsed.value ?? "";
+          } catch {
+            text = "";
+          }
+        }
+      } else {
+        // DOCX — extract text with mammoth
+        try {
+          const parsed = await mammoth.extractRawText({ buffer: file.buffer });
+          text = parsed.value ?? "";
+        } catch {
+          text = "";
+        }
       }
 
       if (!text.trim()) {
         return res.status(422).json({
-          error:
-            isDoc
-              ? "Could not read this Word document. Legacy .doc files are not fully supported — please save the document as PDF or DOCX (.docx) and try again."
-              : "Could not extract text from document. The file may be corrupted or empty.",
+          error: "Could not extract text from document. The file may be corrupted or in an unsupported format. Please try saving as PDF or DOCX and uploading again.",
         });
       }
 
