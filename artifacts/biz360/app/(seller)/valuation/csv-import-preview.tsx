@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system";
 import { useColors } from "@/hooks/useColors";
 
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
@@ -72,14 +73,20 @@ export default function CsvImportPreviewScreen() {
 
     setConfirming(true);
     try {
+      const formData = new FormData();
+      if (Platform.OS === "web") {
+        const blob = new Blob([csvText ?? ""], { type: "text/csv" });
+        formData.append("file", blob, fileName);
+      } else {
+        const tempPath = `${FileSystem.cacheDirectory}confirm_import.csv`;
+        await FileSystem.writeAsStringAsync(tempPath, csvText ?? "", { encoding: FileSystem.EncodingType.UTF8 });
+        formData.append("file", { uri: tempPath, type: "text/csv", name: fileName } as any);
+      }
+
       const res = await fetch(`${API_BASE}/api/report-sections/csv-import/${listingId}?preview=false`, {
         method: "POST",
-        headers: {
-          "Content-Type": "text/csv",
-          Authorization: `Bearer ${token}`,
-          "x-file-name": fileName,
-        },
-        body: csvText,
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
       });
       await AsyncStorage.removeItem("csv_import_pending_text");
       if (!res.ok) {

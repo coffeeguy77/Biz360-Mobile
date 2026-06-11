@@ -200,7 +200,7 @@ export default function ReportHubScreen() {
 
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["text/csv", "text/comma-separated-values", "text/plain", "*/*"],
+        type: ["text/csv", "text/comma-separated-values", ".csv"],
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets?.[0]) return;
@@ -208,6 +208,7 @@ export default function ReportHubScreen() {
       const file = result.assets[0];
       setUploading(true);
 
+      // Read text for AsyncStorage (needed by confirm step)
       let csvText: string;
       if (Platform.OS === "web") {
         const resp = await fetch(file.uri);
@@ -221,10 +222,19 @@ export default function ReportHubScreen() {
         return;
       }
 
+      // Build multipart FormData for upload
+      const formData = new FormData();
+      if (Platform.OS === "web") {
+        const blob = new Blob([csvText], { type: "text/csv" });
+        formData.append("file", blob, file.name ?? "imported.csv");
+      } else {
+        formData.append("file", { uri: file.uri, type: "text/csv", name: file.name ?? "imported.csv" } as any);
+      }
+
       const res = await fetch(`${API_BASE}/api/report-sections/csv-import/${listingId}?preview=true`, {
         method: "POST",
-        headers: { "Content-Type": "text/csv", Authorization: `Bearer ${token}` },
-        body: csvText,
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

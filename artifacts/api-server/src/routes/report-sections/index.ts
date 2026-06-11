@@ -16,9 +16,12 @@ import {
   reportAccessLogsTable,
   kvStore,
 } from "@workspace/db";
+import multer from "multer";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
 import { buildDefaultSections, SECTION_DEFAULTS } from "../../lib/report-section-defaults";
+
+const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -440,17 +443,21 @@ router.get("/report-sections/csv-template/:listingId", requireAuth, async (req, 
 
 // ─── POST /api/report-sections/csv-import/:listingId?preview=true|false ───────
 // preview=true  → dry-run diff (no DB writes); preview=false → write to DB.
-// Body: raw CSV text with Content-Type: text/csv.
-router.post("/report-sections/csv-import/:listingId", requireAuth, async (req, res): Promise<void> => {
+// Body: multipart/form-data with a field named "file" containing the CSV.
+router.post("/report-sections/csv-import/:listingId", requireAuth, csvUpload.single("file"), async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId } = req.params as { listingId: string };
   const isPreview = req.query['preview'] !== 'false';
   try {
     await assertListingOwner(listingId, userId);
 
-    const csvText = typeof req.body === 'string' ? req.body : '';
+    if (!req.file) {
+      res.status(400).json({ error: 'No file uploaded. Send a multipart/form-data request with a "file" field.' });
+      return;
+    }
+    const csvText = req.file.buffer.toString("utf-8");
     if (!csvText.trim()) {
-      res.status(400).json({ error: 'Empty CSV body' });
+      res.status(400).json({ error: 'Uploaded file is empty' });
       return;
     }
 
@@ -531,6 +538,8 @@ router.post("/report-sections/csv-import/:listingId", requireAuth, async (req, r
         try { tableData = JSON.parse(tableJsonRaw); } catch { /* ignore malformed JSON */ }
       }
 
+      const isAppGenerated = existing.dataSource === 'app_generated';
+
       const fields: Partial<typeof reportSectionsTable.$inferInsert> = {};
       const body      = col(row, 'main_body').trim();
       const subtitle  = col(row, 'section_subtitle').trim();
@@ -541,14 +550,17 @@ router.post("/report-sections/csv-import/:listingId", requireAuth, async (req, r
       const inclHtml  = col(row, 'include_in_html').trim();
       const inclApp   = col(row, 'include_in_app').trim();
 
-      if (body)      { fields.body = body;           changedFields++; }
+      // Financial content fields: only write for non-app-generated sections
+      if (!isAppGenerated) {
+        if (body)           { fields.body = body;              changedFields++; }
+        if (bullets.length) { fields.bulletPoints = bullets;  changedFields++; }
+        if (tableData)      { fields.tableData = tableData as any; changedFields++; }
+      }
+
+      // Metadata fields: safe to update regardless of data source
       if (subtitle)  { fields.subtitle = subtitle;   changedFields++; }
       if (title)     { fields.title = title;          changedFields++; }
       if (selNotes)  { fields.sellerNotes = selNotes; changedFields++; }
-      if (bullets.length) { fields.bulletPoints = bullets; changedFields++; }
-      if (tableData && existing.dataSource !== 'app_generated') {
-        fields.tableData = tableData as any; changedFields++;
-      }
       if (visRaw && VALID_VISIBILITY.has(visRaw)) { fields.visibility = visRaw; changedFields++; }
       if (statusRaw && ['empty', 'draft', 'complete', 'needs_review'].includes(statusRaw)) {
         fields.status = statusRaw; changedFields++;
@@ -566,7 +578,9 @@ router.post("/report-sections/csv-import/:listingId", requireAuth, async (req, r
         changedFields++;
       }
 
-      fields.dataSource = 'csv_imported';
+      // Preserve app-generated data source label; mark others as csv_imported
+      if (!isAppGenerated) { fields.dataSource = 'csv_imported'; }
+
       updateOperations.push({ id: existing.id, sectionKey, fields });
 
       if (previewRows.length < 5) {
@@ -602,7 +616,7 @@ router.post("/report-sections/csv-import/:listingId", requireAuth, async (req, r
     }
 
     // ── Audit log ────────────────────────────────────────────────────────────
-    const fileName = (req.headers['x-file-name'] as string | undefined) ?? 'imported.csv';
+    const fileName = req.file?.originalname ?? 'imported.csv';
     await db.insert(reportCsvImportsTable).values({
       listingId,
       ownerId:       userId,
