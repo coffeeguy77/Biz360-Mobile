@@ -9,6 +9,7 @@ import { requireAuth } from "../../middlewares/auth";
 import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { and, count, eq } from "drizzle-orm";
+import { extractTemplateFromAnalysis } from "../../lib/template-extraction";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require("mammoth");
 
@@ -48,51 +49,16 @@ Return this exact structure:
 
 Focus on clauses that significantly affect café operators: rent terms, options, exclusivity, assignment, make-good, outgoings, services, disruption, and exit rights. Extract 8-20 key clauses.`;
 
-// ─── Template extraction prompt ───────────────────────────────────────────────
-// This produces a templatized version of all extracted clauses by replacing
-// party-specific named entities with {{PLACEHOLDER}} tokens throughout every text field.
-const TEMPLATE_SYSTEM_PROMPT = `You are creating a reusable master lease template from a commercial lease analysis.
-Given the full lease analysis JSON, produce a template by replacing all specific party names, addresses, dates, and monetary amounts with {{PLACEHOLDER}} variables in EVERY clause text field.
-
-Return ONLY valid JSON — no markdown, no explanation:
-{
-  "template_name": "<descriptive name e.g. 'VIC Retail Café Lease 5+5 Years'>",
-  "variable_map": {
-    "TENANT_NAME": "<actual tenant/lessee business name found in document, or omit>",
-    "LANDLORD_NAME": "<actual landlord/lessor name, or omit>",
-    "BUSINESS_NAME": "<trading/brand name if different from tenant entity name, or omit>",
-    "PREMISES_ADDRESS": "<full street address of premises, or omit>",
-    "LEASE_DATE": "<commencement date e.g. '1 July 2024', or omit>",
-    "RENT_AMOUNT": "<weekly or monthly rent figure e.g. '$2,500/week', or omit>",
-    "LEASE_TERM": "<full term description e.g. '5 years + 5 year option', or omit>"
-  },
-  "template_clauses": [
-    {
-      "title": "<clause title — unchanged from input>",
-      "category": "<category — unchanged from input>",
-      "rating": "<rating — unchanged from input>",
-      "riskLevel": "<riskLevel — unchanged from input>",
-      "plainEnglish": "<plain English, replacing party names with {{TENANT_NAME}}, {{LANDLORD_NAME}} etc.>",
-      "originalText": "<original clause text with specific names/addresses/dates/amounts replaced by {{VARIABLE_NAME}}>",
-      "suggestedText": "<suggested text with specific names/addresses/dates/amounts replaced by {{VARIABLE_NAME}}>",
-      "cafeRelevanceScore": <number unchanged>,
-      "negotiationScore": <number unchanged>
-    }
-  ]
-}
-
-Rules:
-- Only include keys in variable_map where you found actual values in the document; omit unknown/null values
-- In template_clauses: replace ALL occurrences of each named entity throughout plainEnglish, originalText, and suggestedText
-- Include ALL clauses from the input analysis — do not skip any
-- Keep title, category, rating, riskLevel, cafeRelevanceScore, negotiationScore identical to input`;
-
 // ─── Background: upsert clauses + extract template ───────────────────────────
+// extractedText: full mammoth/antiword text for DOC/DOCX files — passed to the
+// template extraction call so Claude can detect party names from the raw document
+// rather than only from the analysis JSON summary.
 async function storeAnalysisInBackground(
   analysisResult: Record<string, unknown>,
   userId: string,
   isPdf: boolean,
   base64Pdf: string | undefined,
+  extractedText: string | undefined,
 ): Promise<void> {
   try {
     const rawClauses = (analysisResult.clauses ?? []) as Array<Record<string, unknown>>;
@@ -124,60 +90,24 @@ async function storeAnalysisInBackground(
       }
     }
 
-    // 2. Second Claude call: produce templateClauses with {{PLACEHOLDER}} substitution
-    //    plus variable_map and template_name.
-    const userContent = `Here is the commercial lease analysis JSON — transform every clause into a reusable template:\n${JSON.stringify(analysisResult)}`;
+    // 2. Second Claude call: produce templateClauses with {{PLACEHOLDER}} substitution.
+    //    For DOC/DOCX files, extractedText gives the full raw document for richer entity detection.
+    //    For PDFs, base64Pdf is attached so Claude can reference the original document.
+    const templateData = await extractTemplateFromAnalysis(
+      analysisResult,
+      extractedText,
+      isPdf ? base64Pdf : undefined,
+    );
 
-    let templateMessage: Awaited<ReturnType<typeof anthropic.messages.create>>;
-
-    if (isPdf && base64Pdf) {
-      templateMessage = await anthropic.messages.create({
-        model:      "claude-haiku-4-5",
-        max_tokens: 8192,
-        system:     TEMPLATE_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            content: [
-              {
-                type:   "document",
-                source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
-              },
-              { type: "text", text: userContent },
-            ] as any,
-          },
-        ],
-      });
-    } else {
-      templateMessage = await anthropic.messages.create({
-        model:      "claude-haiku-4-5",
-        max_tokens: 8192,
-        system:     TEMPLATE_SYSTEM_PROMPT,
-        messages:   [{ role: "user", content: userContent }],
-      });
-    }
-
-    const rawTemplate = templateMessage.content[0];
-    if (rawTemplate.type !== "text") return;
-
-    let templateData: {
-      template_name?:     string;
-      variable_map?:      Record<string, string>;
-      template_clauses?:  Array<Record<string, unknown>>;
-    };
-    try {
-      const cleaned = rawTemplate.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      templateData = JSON.parse(cleaned);
-    } catch {
-      logger.warn("Template extraction returned invalid JSON — skipping DB storage");
+    if (!templateData) {
+      logger.warn("Template extraction returned null — skipping DB storage");
       return;
     }
 
     const templateName = templateData.template_name
       || `${jurisdiction ?? "AU"} ${(analysisResult.leaseType as string) ?? "Commercial"} Lease Template`;
 
-    // templateContent stores the templatized clause array (with {{PLACEHOLDER}} tokens)
+    // templateContent stores the templatised clause array (with {{PLACEHOLDER}} tokens)
     const templateContent = JSON.stringify(
       templateData.template_clauses ?? rawClauses,
     );
@@ -235,6 +165,7 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let message: any;
     let base64PdfForBg: string | undefined;
+    let extractedTextForBg: string | undefined;
 
     if (isPdf) {
       const base64Pdf = file.buffer.toString("base64");
@@ -295,6 +226,8 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
         });
       }
 
+      // Keep full text for background extraction; send first 60k chars to primary analysis
+      extractedTextForBg = text;
       const truncated = text.slice(0, 60000);
 
       message = await anthropic.messages.create({
@@ -323,7 +256,7 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
 
     const userId = req.user!.id;
     setImmediate(() => {
-      storeAnalysisInBackground(parsed, userId, isPdf, base64PdfForBg).catch(() => {});
+      storeAnalysisInBackground(parsed, userId, isPdf, base64PdfForBg, extractedTextForBg).catch(() => {});
     });
 
     return;

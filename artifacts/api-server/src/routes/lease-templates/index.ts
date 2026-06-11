@@ -1,7 +1,9 @@
 import { Router } from "express";
-import { asc, desc, eq } from "drizzle-orm";
-import { db, leaseTemplatesTable, leaseClausesMasterTable } from "@workspace/db";
+import { asc, count, desc, eq, and } from "drizzle-orm";
+import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
 import { requireAuth } from "../../middlewares/auth";
+import { extractTemplateFromAnalysis } from "../../lib/template-extraction";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -53,25 +55,115 @@ router.get("/lease-templates/:id", requireAuth, async (req, res): Promise<void> 
 });
 
 // ─── POST /api/lease-templates ────────────────────────────────────────────────
-// Create a new template manually.
-// Body: { name, jurisdiction?, leaseType?, premisesType?, templateContent, variableMap?, isMaster? }
+// Create a new template. Supports two modes:
+//
+// Mode A — from analysisData (required workflow):
+//   Body: { analysisData: <full lease analysis JSON>, extractedText?: string }
+//   The server runs template extraction via Claude (same as background task), upserts to
+//   lease_clauses_master, and creates + returns a new lease_templates row.
+//   isMaster is set if no template yet exists for the same jurisdiction+leaseType.
+//
+// Mode B — manual payload (admin/testing):
+//   Body: { name, templateContent, variableMap?, jurisdiction?, leaseType?, premisesType?, isMaster? }
+//
 router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => {
-  const {
-    name,
-    jurisdiction,
-    leaseType,
-    premisesType,
-    templateContent,
-    variableMap,
-    isMaster,
-  } = req.body as Record<string, unknown>;
+  const body = req.body as Record<string, unknown>;
+  const userId = req.user!.id;
+
+  // ── Mode A: create from analysisData ──────────────────────────────────────
+  if (body.analysisData && typeof body.analysisData === "object") {
+    const analysisResult = body.analysisData as Record<string, unknown>;
+    const extractedText  = typeof body.extractedText === "string" ? body.extractedText : undefined;
+
+    try {
+      // Run template extraction synchronously so we can return the result immediately
+      const templateData = await extractTemplateFromAnalysis(analysisResult, extractedText);
+      if (!templateData) {
+        res.status(500).json({ error: "Template extraction failed — Claude returned invalid output" });
+        return;
+      }
+
+      const jurisdiction = (analysisResult.jurisdiction as string | null) ?? null;
+      const leaseType    = (analysisResult.leaseType    as string | null) ?? null;
+
+      const templateName = templateData.template_name
+        || `${jurisdiction ?? "AU"} ${leaseType ?? "Commercial"} Lease Template`;
+
+      const templateContent = JSON.stringify(templateData.template_clauses ?? []);
+
+      // Determine isMaster: first template for this jurisdiction+leaseType combination
+      let isMaster = false;
+      try {
+        const conditions = [
+          jurisdiction ? eq(leaseTemplatesTable.jurisdiction, jurisdiction) : undefined,
+          leaseType    ? eq(leaseTemplatesTable.leaseType,    leaseType)    : undefined,
+        ].filter(Boolean) as ReturnType<typeof eq>[];
+
+        const existing = await db
+          .select({ n: count() })
+          .from(leaseTemplatesTable)
+          .where(conditions.length > 1 ? and(...conditions) : conditions[0]);
+
+        isMaster = Number(existing[0]?.n ?? 0) === 0;
+      } catch { /* fall back to false */ }
+
+      // Upsert clauses into shared library
+      const rawClauses = (analysisResult.clauses ?? []) as Array<Record<string, unknown>>;
+      for (const clause of rawClauses) {
+        const title = clause.title as string;
+        if (!title) continue;
+        try {
+          await db
+            .insert(leaseClausesMasterTable)
+            .values({
+              title,
+              category:           (clause.category as string) || "Other",
+              rating:             (clause.rating as string) || "balanced",
+              riskLevel:          (clause.riskLevel as string) || "medium",
+              plainEnglish:       (clause.plainEnglish as string) || "",
+              originalText:       (clause.originalText as string) || "",
+              suggestedText:      clause.suggestedText as string | undefined,
+              jurisdiction,
+              cafeRelevanceScore: (clause.cafeRelevanceScore as number) || 3,
+              negotiationScore:   (clause.negotiationScore as number) || 3,
+              isSeed:             false,
+            })
+            .onConflictDoNothing();
+        } catch (e) {
+          logger.warn({ err: e, title }, "POST: failed to upsert master clause");
+        }
+      }
+
+      const rows = await db
+        .insert(leaseTemplatesTable)
+        .values({
+          name:            templateName,
+          jurisdiction,
+          leaseType,
+          templateContent,
+          variableMap:     templateData.variable_map ?? {},
+          isMaster,
+          createdByUserId: userId,
+        })
+        .returning();
+
+      res.status(201).json({ template: rows[0] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Extraction error";
+      res.status(500).json({ error: msg });
+    }
+    return;
+  }
+
+  // ── Mode B: manual payload ─────────────────────────────────────────────────
+  const { name, jurisdiction, leaseType, premisesType, templateContent, variableMap, isMaster } = body;
 
   if (!name || typeof name !== "string") {
     res.status(400).json({ error: "name is required" });
     return;
   }
   if (!templateContent || typeof templateContent !== "string") {
-    res.status(400).json({ error: "templateContent is required" });
+    res.status(400).json({ error: "templateContent is required (or provide analysisData for automatic extraction)" });
     return;
   }
 
@@ -86,7 +178,7 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
         templateContent,
         variableMap:  (variableMap  as Record<string, string>) ?? {},
         isMaster:     isMaster === true,
-        createdByUserId: req.user!.id,
+        createdByUserId: userId,
       })
       .returning();
 
