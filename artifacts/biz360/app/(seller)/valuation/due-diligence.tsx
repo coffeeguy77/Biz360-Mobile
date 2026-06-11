@@ -27,9 +27,10 @@ interface DocumentItem {
   available: boolean;
   accessLevel: AccessLevel;
   notes: string;
+  fileLink: string;
 }
 
-const DEFAULT_DOCUMENTS: Omit<DocumentItem, "available" | "accessLevel" | "notes">[] = [
+const DEFAULT_DOCUMENTS: Omit<DocumentItem, "available" | "accessLevel" | "notes" | "fileLink">[] = [
   { key: "financials_3yr",         label: "3 Years Financial Statements",    description: "Profit & loss, balance sheet, cash flow",       category: "Financial" },
   { key: "tax_returns_3yr",        label: "3 Years Tax Returns",             description: "Business tax returns signed by accountant",     category: "Financial" },
   { key: "bgl_report",             label: "BGL / Xero Reconciliation",       description: "Source-of-truth accounting report",             category: "Financial" },
@@ -76,6 +77,7 @@ function initDocuments(saved: Record<string, Partial<DocumentItem>> | null): Doc
       available: s?.available ?? false,
       accessLevel: s?.accessLevel ?? "nda_signed",
       notes: s?.notes ?? "",
+      fileLink: s?.fileLink ?? "",
     };
   });
 }
@@ -134,7 +136,7 @@ export default function DueDiligenceScreen() {
     try {
       const payload: Record<string, Omit<DocumentItem, "key" | "label" | "description" | "category">> = {};
       documents.forEach((d) => {
-        payload[d.key] = { available: d.available, accessLevel: d.accessLevel, notes: d.notes };
+        payload[d.key] = { available: d.available, accessLevel: d.accessLevel, notes: d.notes, fileLink: d.fileLink };
       });
       const bodyJson = JSON.stringify(payload);
       const available = documents.filter((d) => d.available).length;
@@ -186,6 +188,10 @@ export default function DueDiligenceScreen() {
 
   function setNotes(key: string, notes: string) {
     setDocuments((prev) => prev.map((d) => d.key === key ? { ...d, notes } : d));
+  }
+
+  function setFileLink(key: string, fileLink: string) {
+    setDocuments((prev) => prev.map((d) => d.key === key ? { ...d, fileLink } : d));
   }
 
   const filteredDocs = documents.filter((d) => d.category === activeCategory);
@@ -294,6 +300,20 @@ export default function DueDiligenceScreen() {
                   </View>
                 )}
 
+                {/* File link */}
+                <View style={styles.docExtraRow}>
+                  <Text style={[styles.docExtraLabel, { color: colors.mutedForeground }]}>File link</Text>
+                </View>
+                <TextInput
+                  style={[styles.fileLinkInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                  value={doc.fileLink}
+                  onChangeText={(t) => setFileLink(doc.key, t)}
+                  placeholder="https://drive.google.com/… (optional)"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+
                 {/* Notes */}
                 {editNoteKey === doc.key ? (
                   <TextInput
@@ -367,6 +387,7 @@ const styles = StyleSheet.create({
   accessLabel:    { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   accessDropdown: { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
   accessOption:   { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderBottomWidth: 1 },
+  fileLinkInput:  { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, fontFamily: "Inter_400Regular" },
   notesBtn:       { flexDirection: "row", alignItems: "center", gap: 6 },
   notesText:      { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1 },
   notesInput:     { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, fontFamily: "Inter_400Regular", minHeight: 60 },

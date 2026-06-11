@@ -105,10 +105,18 @@ export default function ReportBuilderScreen() {
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             });
             if (seedRes.ok) {
-              const seedData = await seedRes.json();
-              setSections((seedData.sections ?? []).sort(
-                (a: ReportSection, b: ReportSection) => a.sortOrder - b.sortOrder
-              ));
+              // Defaults endpoint returns { seeded, total } — re-fetch the full list
+              const refetchRes = await fetch(`${API_BASE}/api/report-sections/${listingId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (refetchRes.ok) {
+                const refetchData = await refetchRes.json();
+                setSections((refetchData.sections ?? []).sort(
+                  (a: ReportSection, b: ReportSection) => a.sortOrder - b.sortOrder
+                ));
+              } else {
+                setSections([]);
+              }
             } else {
               setSections([]);
             }
