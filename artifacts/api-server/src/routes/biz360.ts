@@ -757,6 +757,16 @@ router.post("/report-preview-tokens", async (req, res): Promise<void> => {
   const { listingId } = req.body as { listingId?: string };
   if (!listingId) { res.status(400).json({ error: "listingId required" }); return; }
 
+  // Verify the authenticated user owns this listing before issuing a preview code.
+  // Without this check any authenticated user could obtain a seller-preview token for
+  // any arbitrary listing and use it to unlock approved-buyer PDF content.
+  const [owned] = await db
+    .select({ id: cafesTable.id })
+    .from(cafesTable)
+    .where(and(eq(cafesTable.listingId, listingId), eq(cafesTable.ownerId, userId)))
+    .limit(1);
+  if (!owned) { res.status(403).json({ error: "Listing not found or access denied" }); return; }
+
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { randomBytes } = require("crypto") as typeof import("crypto");
   const code = randomBytes(20).toString("hex");       // 40 hex chars
