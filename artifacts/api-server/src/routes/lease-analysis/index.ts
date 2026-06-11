@@ -4,7 +4,6 @@ import { execSync } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAuth } from "../../middlewares/auth";
 import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
@@ -48,25 +47,44 @@ Return this exact structure:
 
 Focus on clauses that significantly affect café operators: rent terms, options, exclusivity, assignment, make-good, outgoings, services, disruption, and exit rights. Extract 8-20 key clauses.`;
 
-const TEMPLATE_SYSTEM_PROMPT = `You are extracting template variables from a commercial lease analysis result.
-Given the JSON analysis of a lease, identify all specific named entities to replace with template variables.
-Return ONLY a valid JSON object — no markdown, no explanation.
+// ─── Template extraction prompt ───────────────────────────────────────────────
+// This produces a templatized version of all extracted clauses by replacing
+// party-specific named entities with {{PLACEHOLDER}} tokens throughout every text field.
+const TEMPLATE_SYSTEM_PROMPT = `You are creating a reusable master lease template from a commercial lease analysis.
+Given the full lease analysis JSON, produce a template by replacing all specific party names, addresses, dates, and monetary amounts with {{PLACEHOLDER}} variables in EVERY clause text field.
 
-Return this exact structure:
+Return ONLY valid JSON — no markdown, no explanation:
 {
-  "template_name": "<descriptive name, e.g. 'VIC Retail Café Lease 5+5 Years'>",
+  "template_name": "<descriptive name e.g. 'VIC Retail Café Lease 5+5 Years'>",
   "variable_map": {
-    "TENANT_NAME": "<actual tenant name if found, else omit key>",
-    "LANDLORD_NAME": "<actual landlord name if found, else omit key>",
-    "BUSINESS_NAME": "<trading/business name if found, else omit key>",
-    "PREMISES_ADDRESS": "<full premises address if found, else omit key>",
-    "LEASE_DATE": "<commencement date if found, else omit key>",
-    "RENT_AMOUNT": "<weekly/monthly rent if found, else omit key>",
-    "LEASE_TERM": "<full term description if found, else omit key>"
-  }
+    "TENANT_NAME": "<actual tenant/lessee business name found in document, or omit>",
+    "LANDLORD_NAME": "<actual landlord/lessor name, or omit>",
+    "BUSINESS_NAME": "<trading/brand name if different from tenant entity name, or omit>",
+    "PREMISES_ADDRESS": "<full street address of premises, or omit>",
+    "LEASE_DATE": "<commencement date e.g. '1 July 2024', or omit>",
+    "RENT_AMOUNT": "<weekly or monthly rent figure e.g. '$2,500/week', or omit>",
+    "LEASE_TERM": "<full term description e.g. '5 years + 5 year option', or omit>"
+  },
+  "template_clauses": [
+    {
+      "title": "<clause title — unchanged from input>",
+      "category": "<category — unchanged from input>",
+      "rating": "<rating — unchanged from input>",
+      "riskLevel": "<riskLevel — unchanged from input>",
+      "plainEnglish": "<plain English, replacing party names with {{TENANT_NAME}}, {{LANDLORD_NAME}} etc.>",
+      "originalText": "<original clause text with specific names/addresses/dates/amounts replaced by {{VARIABLE_NAME}}>",
+      "suggestedText": "<suggested text with specific names/addresses/dates/amounts replaced by {{VARIABLE_NAME}}>",
+      "cafeRelevanceScore": <number unchanged>,
+      "negotiationScore": <number unchanged>
+    }
+  ]
 }
 
-Only include keys that have actual known values from the document. Omit keys with null or unknown values.`;
+Rules:
+- Only include keys in variable_map where you found actual values in the document; omit unknown/null values
+- In template_clauses: replace ALL occurrences of each named entity throughout plainEnglish, originalText, and suggestedText
+- Include ALL clauses from the input analysis — do not skip any
+- Keep title, category, rating, riskLevel, cafeRelevanceScore, negotiationScore identical to input`;
 
 // ─── Background: upsert clauses + extract template ───────────────────────────
 async function storeAnalysisInBackground(
@@ -74,14 +92,13 @@ async function storeAnalysisInBackground(
   userId: string,
   isPdf: boolean,
   base64Pdf: string | undefined,
-  text: string | undefined,
 ): Promise<void> {
   try {
-    // 1. Upsert extracted clauses into lease_clauses_master
-    const clauses = (analysisResult.clauses ?? []) as Array<Record<string, unknown>>;
+    const rawClauses = (analysisResult.clauses ?? []) as Array<Record<string, unknown>>;
     const jurisdiction = (analysisResult.jurisdiction as string | null) ?? null;
 
-    for (const clause of clauses) {
+    // 1. Upsert each extracted clause into the shared lease_clauses_master library
+    for (const clause of rawClauses) {
       const title = clause.title as string;
       if (!title) continue;
       try {
@@ -106,15 +123,16 @@ async function storeAnalysisInBackground(
       }
     }
 
-    // 2. Second Claude call: extract variable map + template name
-    let templateMessage: Awaited<ReturnType<typeof anthropic.messages.create>>;
+    // 2. Second Claude call: produce templateClauses with {{PLACEHOLDER}} substitution
+    //    plus variable_map and template_name.
+    const userContent = `Here is the commercial lease analysis JSON — transform every clause into a reusable template:\n${JSON.stringify(analysisResult)}`;
 
-    const userContent = `Here is the commercial lease analysis JSON:\n${JSON.stringify(analysisResult)}`;
+    let templateMessage: Awaited<ReturnType<typeof anthropic.messages.create>>;
 
     if (isPdf && base64Pdf) {
       templateMessage = await anthropic.messages.create({
         model:      "claude-haiku-4-5",
-        max_tokens: 1024,
+        max_tokens: 8192,
         system:     TEMPLATE_SYSTEM_PROMPT,
         messages: [
           {
@@ -133,7 +151,7 @@ async function storeAnalysisInBackground(
     } else {
       templateMessage = await anthropic.messages.create({
         model:      "claude-haiku-4-5",
-        max_tokens: 1024,
+        max_tokens: 8192,
         system:     TEMPLATE_SYSTEM_PROMPT,
         messages:   [{ role: "user", content: userContent }],
       });
@@ -142,7 +160,11 @@ async function storeAnalysisInBackground(
     const rawTemplate = templateMessage.content[0];
     if (rawTemplate.type !== "text") return;
 
-    let templateData: { template_name?: string; variable_map?: Record<string, string> };
+    let templateData: {
+      template_name?:     string;
+      variable_map?:      Record<string, string>;
+      template_clauses?:  Array<Record<string, unknown>>;
+    };
     try {
       const cleaned = rawTemplate.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       templateData = JSON.parse(cleaned);
@@ -152,19 +174,24 @@ async function storeAnalysisInBackground(
     }
 
     const templateName = templateData.template_name
-      || `${jurisdiction ?? "AU"} ${(analysisResult.leaseType as string) ?? "Commercial"} Lease`;
+      || `${jurisdiction ?? "AU"} ${(analysisResult.leaseType as string) ?? "Commercial"} Lease Template`;
+
+    // templateContent stores the templatized clause array (with {{PLACEHOLDER}} tokens)
+    const templateContent = JSON.stringify(
+      templateData.template_clauses ?? rawClauses,
+    );
 
     await db.insert(leaseTemplatesTable).values({
       name:            templateName,
       jurisdiction,
       leaseType:       (analysisResult.leaseType as string | null) ?? null,
-      templateContent: JSON.stringify(analysisResult.clauses ?? []),
+      templateContent,
       variableMap:     templateData.variable_map ?? {},
       isMaster:        false,
       createdByUserId: userId,
     });
 
-    logger.info({ templateName, clauses: clauses.length }, "Template stored");
+    logger.info({ templateName, clauses: rawClauses.length }, "Lease template stored from analysis");
   } catch (err) {
     logger.error({ err }, "Background template extraction failed");
   }
@@ -190,7 +217,6 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let message: any;
     let base64PdfForBg: string | undefined;
-    let textForBg: string | undefined;
 
     if (isPdf) {
       const base64Pdf = file.buffer.toString("base64");
@@ -252,7 +278,6 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       }
 
       const truncated = text.slice(0, 60000);
-      textForBg = truncated;
 
       message = await anthropic.messages.create({
         model:      "claude-sonnet-4-6",
@@ -275,12 +300,12 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       return res.status(500).json({ error: "AI returned invalid JSON", raw: raw.text.slice(0, 500) });
     }
 
-    // Send result immediately — then store clauses + template in background
+    // Send result to client immediately, then store clauses + template in background
     res.json(parsed);
 
     const userId = req.user!.id;
     setImmediate(() => {
-      storeAnalysisInBackground(parsed, userId, isPdf, base64PdfForBg, textForBg).catch(() => {});
+      storeAnalysisInBackground(parsed, userId, isPdf, base64PdfForBg).catch(() => {});
     });
 
     return;

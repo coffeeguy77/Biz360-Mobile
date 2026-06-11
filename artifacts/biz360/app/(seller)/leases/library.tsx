@@ -20,14 +20,14 @@ function serverRowToClause(row: Record<string, unknown>): Clause {
     title:              String(row.title ?? ""),
     category:           String(row.category ?? "Other"),
     rating:             (row.rating as Clause["rating"]) ?? "balanced",
-    riskLevel:          (row.risk_level as Clause["riskLevel"]) ?? "medium",
-    plainEnglish:       String(row.plain_english ?? ""),
-    originalText:       String(row.original_text ?? ""),
-    suggestedText:      row.suggested_text ? String(row.suggested_text) : undefined,
+    riskLevel:          (row.riskLevel as Clause["riskLevel"]) ?? "medium",
+    plainEnglish:       String(row.plainEnglish ?? ""),
+    originalText:       String(row.originalText ?? ""),
+    suggestedText:      row.suggestedText ? String(row.suggestedText) : undefined,
     jurisdictions:      row.jurisdiction ? [String(row.jurisdiction) as any] : [],
-    cafeRelevanceScore: Number(row.cafe_relevance_score ?? 3),
-    negotiationScore:   Number(row.negotiation_score ?? 3),
-    isSeed:             Boolean(row.is_seed ?? false),
+    cafeRelevanceScore: Number(row.cafeRelevanceScore ?? 3),
+    negotiationScore:   Number(row.negotiationScore ?? 3),
+    isSeed:             Boolean(row.isSeed ?? false),
   };
 }
 
