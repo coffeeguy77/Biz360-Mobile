@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator, Alert, Linking, Platform, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -185,7 +185,11 @@ export default function ReportHubScreen() {
       } else {
         const path = `${FileSystem.cacheDirectory}${filename}`;
         await FileSystem.writeAsStringAsync(path, csvText, { encoding: FileSystem.EncodingType.UTF8 });
-        await Share.share({ url: path, title: "IM Report AI Fill Template" });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(path, { mimeType: "text/csv", dialogTitle: "IM Report AI Fill Template" });
+        } else {
+          Alert.alert("Sharing unavailable", "File saved to cache but sharing is not available on this device.");
+        }
       }
     } catch {
       Alert.alert("Error", "Download failed. Please check your connection.");
