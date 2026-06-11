@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -65,7 +65,9 @@ const CATEGORIES = [
 export default function ClauseLibrary() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { clauses: localClauses } = useLease();
+  const { clauses: localClauses, leases } = useLease();
+  // leaseId is passed when navigating from a lease-detail screen
+  const { leaseId } = useLocalSearchParams<{ leaseId?: string }>();
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState<RiskLevel | "all">("all");
   const [ratingFilter, setRatingFilter] = useState<ClauseRating | "all">("all");
@@ -89,14 +91,28 @@ export default function ClauseLibrary() {
     })();
   }, []);
 
-  // Merge: seeds first, then unique server clauses, then user-extracted clauses
+  // When leaseId is provided, find which clause IDs belong to that lease
+  const leaseClauseIds = useMemo((): Set<string> | null => {
+    if (!leaseId) return null;
+    const lease = leases.find(l => l.id === leaseId);
+    if (!lease?.extractedClauseIds?.length) return new Set();
+    return new Set(lease.extractedClauseIds);
+  }, [leaseId, leases]);
+
+  // Merge: seeds first, then unique server clauses, then user-extracted clauses.
+  // When leaseId is set, restrict to only that lease's extracted clauses.
   const clauses = useMemo((): Clause[] => {
     const seedIds     = new Set(LEASE_SEED_CLAUSES.map(s => s.id));
     const seedTitles  = new Set(LEASE_SEED_CLAUSES.map(s => s.title.toLowerCase()));
     const serverUniq  = serverClauses.filter(c => !seedTitles.has(c.title.toLowerCase()));
     const userExtracted = localClauses.filter(c => !seedIds.has(c.id) && !c.isSeed);
+
+    if (leaseClauseIds !== null) {
+      // Per-lease view: only show that lease's extracted clauses
+      return userExtracted.filter(c => leaseClauseIds.has(c.id));
+    }
     return [...LEASE_SEED_CLAUSES, ...serverUniq, ...userExtracted];
-  }, [localClauses, serverClauses]);
+  }, [localClauses, serverClauses, leaseClauseIds]);
 
   const serverCount = serverClauses.filter(c =>
     !LEASE_SEED_CLAUSES.some(s => s.title.toLowerCase() === c.title.toLowerCase())
@@ -131,20 +147,29 @@ export default function ClauseLibrary() {
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: colors.foreground }]}>Clause Library</Text>
-            <Text style={[styles.sub, { color: colors.mutedForeground }]}>{filtered.length} of {clauses.length} clauses</Text>
+            <Text style={[styles.title, { color: colors.foreground }]}>
+              {leaseId ? "Analysed Clauses" : "Clause Library"}
+            </Text>
+            <Text style={[styles.sub, { color: colors.mutedForeground }]}>
+              {leaseId
+                ? `${filtered.length} of ${clauses.length} clause${clauses.length !== 1 ? "s" : ""} from this lease`
+                : `${filtered.length} of ${clauses.length} clauses`}
+            </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.seedToggle, { backgroundColor: showOnlySeed ? "#1E3A5C" : colors.card, borderColor: showOnlySeed ? "#3B82F6" : colors.border }]}
-            onPress={() => setShowOnlySeed(s => !s)}
-          >
-            <Feather name="star" size={12} color={showOnlySeed ? "#3B82F6" : colors.mutedForeground} />
-            <Text style={[styles.seedToggleText, { color: showOnlySeed ? "#3B82F6" : colors.mutedForeground }]}>Templates</Text>
-          </TouchableOpacity>
+          {/* Hide seed toggle when in per-lease view — all clauses are user-extracted */}
+          {!leaseId && (
+            <TouchableOpacity
+              style={[styles.seedToggle, { backgroundColor: showOnlySeed ? "#1E3A5C" : colors.card, borderColor: showOnlySeed ? "#3B82F6" : colors.border }]}
+              onPress={() => setShowOnlySeed(s => !s)}
+            >
+              <Feather name="star" size={12} color={showOnlySeed ? "#3B82F6" : colors.mutedForeground} />
+              <Text style={[styles.seedToggleText, { color: showOnlySeed ? "#3B82F6" : colors.mutedForeground }]}>Templates</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Server clause indicator */}
-        {serverFetched && serverCount > 0 && (
+        {/* Server clause indicator — only shown in global library view */}
+        {!leaseId && serverFetched && serverCount > 0 && (
           <View style={[styles.serverBanner, { backgroundColor: "#052E16", borderColor: "#16A34A40" }]}>
             <Feather name="cloud" size={12} color="#16A34A" />
             <Text style={[styles.serverBannerText, { color: "#86EFAC" }]}>
@@ -222,13 +247,28 @@ export default function ClauseLibrary() {
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No clauses match your filters</Text>
           </View>
         ) : (
-          filtered.map(clause => (
-            <ClauseCard
-              key={clause.id}
-              clause={clause}
-              onPress={() => router.push(`clause-detail/${clause.id}` as any)}
-            />
-          ))
+          filtered.map(clause => {
+            // Server-only clauses (not in local AsyncStorage or seed data) carry their
+            // data as a JSON param so clause-detail can render them without a local lookup.
+            const isLocalOrSeed =
+              LEASE_SEED_CLAUSES.some(s => s.id === clause.id) ||
+              localClauses.some(c => c.id === clause.id);
+            return (
+              <ClauseCard
+                key={clause.id}
+                clause={clause}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(seller)/leases/clause-detail/[id]",
+                    params: {
+                      id: clause.id,
+                      ...(isLocalOrSeed ? {} : { clauseJson: JSON.stringify(clause) }),
+                    },
+                  } as any)
+                }
+              />
+            );
+          })
         )}
       </ScrollView>
     </View>

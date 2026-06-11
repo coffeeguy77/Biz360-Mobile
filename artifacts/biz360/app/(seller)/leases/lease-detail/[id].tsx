@@ -227,11 +227,14 @@ export default function LeaseDetail() {
 
         <TouchableOpacity
           style={[styles.libBtn, { backgroundColor: "#1E3A5C", borderColor: "#3B82F6" }]}
-          onPress={() => router.push("library" as any)}
+          onPress={() => router.push({ pathname: "/(seller)/leases/library", params: { leaseId: id } } as any)}
         >
           <Feather name="book-open" size={14} color="#93C5FD" />
-          <Text style={[styles.libBtnText, { color: "#93C5FD" }]}>View all clauses in the Library</Text>
-          <Feather name="arrow-right" size={14} color="#93C5FD" />
+          <Text style={[styles.libBtnText, { color: "#93C5FD" }]}>
+            {leaseClauses.length > 0
+              ? `View ${leaseClauses.length} analysed clause${leaseClauses.length !== 1 ? "s" : ""} →`
+              : "View analysed clauses →"}
+          </Text>
         </TouchableOpacity>
 
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>

@@ -5,17 +5,24 @@ import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useLease } from "@/context/LeaseContext";
+import { Clause } from "@/context/leaseTypes";
 import { RiskBadge, RatingBadge } from "@/components/lease/RiskBadge";
 import { ScoreBar } from "@/components/lease/ScoreBar";
 import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
+import { LEASE_SEED_CLAUSES } from "@/data/leaseSeedClauses";
 
 export default function ClauseDetail() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // clauseJson is a serialised Clause passed by the library for server-only clauses
+  // that aren't stored in local AsyncStorage.
+  const { id, clauseJson } = useLocalSearchParams<{ id: string; clauseJson?: string }>();
   const { clauses } = useLease();
 
-  const clause = clauses.find(c => c.id === id);
+  // Search order: user-extracted clauses → seed clauses → JSON param (server clauses)
+  const clause: Clause | undefined =
+    [...clauses, ...LEASE_SEED_CLAUSES].find(c => c.id === id) ??
+    (clauseJson ? (JSON.parse(clauseJson) as Clause) : undefined);
 
   if (!clause) {
     return (
