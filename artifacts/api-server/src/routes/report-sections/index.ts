@@ -14,6 +14,7 @@ import {
   reportCsvImportsTable,
   reportExportsTable,
   reportAccessLogsTable,
+  kvStore,
 } from "@workspace/db";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
@@ -58,7 +59,7 @@ async function assertSectionOwner(sectionId: string, ownerId: string) {
 
 // ─── GET /api/report-sections/listing/:listingId ─────────────────────────────
 // Returns all sections for a listing, ordered by sort_order.
-router.get("/report-sections/listing/:listingId", requireAuth, async (req, res): Promise<void> => {
+router.get("/report-sections/:listingId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId } = req.params as { listingId: string };
   try {
@@ -261,12 +262,26 @@ router.get("/report-sections/auto-fill/:listingId", requireAuth, async (req, res
     }
 
     // ── 360_business_walkthrough ─────────────────────────────────────────────
-    // Tour data lives in the KV store / biz360 data layer. We signal it exists
-    // but don't pull it here — the mobile app's tour store provides counts.
+    // Pull live tour spaces from the KV store (key: biz360_tour_spaces_v1_{listingId})
+    const [tourRow] = await db
+      .select({ value: kvStore.value })
+      .from(kvStore)
+      .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+      .limit(1);
+
+    const tourSpaces = Array.isArray(tourRow?.value) ? (tourRow.value as Record<string, unknown>[]) : [];
+    const spaceCount = tourSpaces.length;
+    const spaceNames = tourSpaces
+      .map((s) => s.name as string | undefined)
+      .filter(Boolean)
+      .slice(0, 8) as string[];
+
     suggestions["360_business_walkthrough"] = {
-      suggestedBody: "A virtual 360° walkthrough of the business premises is available. Open the tour to explore each space, view equipment in context, and listen to audio narrations for key areas.",
-      suggestedBullets: [],
-      tableData: null,
+      suggestedBody: spaceCount > 0
+        ? `A virtual 360° walkthrough of the business premises is available with ${spaceCount} space${spaceCount !== 1 ? "s" : ""} captured. Buyers can explore each area, view equipment in context, and experience the layout before visiting in person.`
+        : "A virtual 360° walkthrough of the business premises can be added via the Tour section of the app. Buyers can explore each space, view equipment in context, and listen to audio narrations for key areas.",
+      suggestedBullets: spaceNames.map((name) => `360° view: ${name}`),
+      tableData: spaceCount > 0 ? { spaceCount, spaceNames } : null,
       sourceLabel: "app_generated",
     };
 
@@ -402,7 +417,7 @@ router.post("/report-sections/bulk-update", requireAuth, async (req, res): Promi
 });
 
 // ─── GET /api/report-versions/listing/:listingId ─────────────────────────────
-router.get("/report-versions/listing/:listingId", requireAuth, async (req, res): Promise<void> => {
+router.get("/report-versions/:listingId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId } = req.params as { listingId: string };
   try {
@@ -456,7 +471,7 @@ router.post("/report-versions", requireAuth, async (req, res): Promise<void> => 
         ownerId: userId,
         versionNumber: nextVersion,
         title: title ?? `Version ${nextVersion}`,
-        status: status ?? "draft",
+        status: "draft",
         snapshotJson: sections as unknown as Record<string, unknown>,
         createdBy: userId,
       })
@@ -515,12 +530,12 @@ router.patch("/report-versions/:id", requireAuth, async (req, res): Promise<void
 });
 
 // ─── GET /api/report-sections/html/:listingId ────────────────────────────────
-// Public endpoint returning sections filtered by access level.
-// Used by the HTML report route to build the buyer-facing report.
+// Returns sections filtered by access level for HTML report rendering.
 // Access levels:
-//   - No token: public sections only
-//   - x-report-token (valid): public + approved_buyers sections
-//   - Seller (JWT): all non-hidden sections
+//   - No auth: public sections only
+//   - Seller JWT (ownership verified): all non-hidden sections
+// Note: buyer-token access will be added in the access-control task once tokens
+// are persisted and validated against listing-specific grants.
 router.get("/report-sections/html/:listingId", async (req, res): Promise<void> => {
   const { listingId } = req.params as { listingId: string };
   try {
@@ -535,57 +550,35 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       return;
     }
 
-    // Determine who is asking
+    // Determine who is asking — only seller JWT with verified listing ownership
+    // elevates above public. Unvalidated headers are never trusted.
     const authHeader = req.headers.authorization;
-    const reportToken = req.headers["x-report-token"];
-    let accessLevel: "public" | "buyer" | "seller" = "public";
+    let accessLevel: "public" | "seller" = "public";
 
     if (authHeader?.startsWith("Bearer ")) {
-      // Could be seller JWT — verify ownership
       try {
         const { verifyToken } = await import("../../middlewares/auth");
         const userId = await verifyToken(authHeader.slice(7));
         if (userId) {
-          const ownerId = allSections[0]?.ownerId;
-          if (userId === ownerId) {
-            accessLevel = "seller";
-          } else {
-            accessLevel = "buyer";
-          }
+          const [ownerRow] = await db
+            .select({ id: cafesTable.id })
+            .from(cafesTable)
+            .where(and(eq(cafesTable.listingId, listingId), eq(cafesTable.ownerId, userId)))
+            .limit(1);
+          if (ownerRow) accessLevel = "seller";
         }
       } catch { /* fall through to public */ }
-    } else if (reportToken) {
-      accessLevel = "buyer";
     }
 
-    // Filter and sanitise sections based on access level
+    // Filter sections based on access level
     const filtered = allSections
       .filter((s) => {
         if (s.visibility === "hidden") return false;
         if (s.visibility === "seller_only") return accessLevel === "seller";
-        if (s.visibility === "approved_buyers") return accessLevel !== "public";
+        if (s.visibility === "approved_buyers") return false; // buyer-token gate deferred
         return true; // public
       })
-      .map((s) => {
-        const isLocked = s.visibility === "approved_buyers" && accessLevel === "public";
-        if (isLocked) {
-          return {
-            id: s.id,
-            sectionKey: s.sectionKey,
-            title: s.title,
-            subtitle: s.subtitle,
-            visibility: s.visibility,
-            includeInHtml: s.includeInHtml,
-            sortOrder: s.sortOrder,
-            isLocked: true,
-            body: null,
-            bulletPoints: [],
-            tableData: null,
-            chartData: null,
-          };
-        }
-        return { ...s, isLocked: false };
-      });
+      .map((s) => ({ ...s, isLocked: false }));
 
     res.json({ sections: filtered, accessLevel });
   } catch (err: unknown) {
