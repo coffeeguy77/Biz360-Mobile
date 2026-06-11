@@ -2,11 +2,13 @@ import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Platform, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { useColors } from "@/hooks/useColors";
 import { useValuation } from "@/context/ValuationContext";
 
@@ -111,6 +113,8 @@ export default function ReportHubScreen() {
   const [versions, setVersions] = useState<ReportVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const snap = latestSnapshot.combined;
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
@@ -152,6 +156,99 @@ export default function ReportHubScreen() {
     const s = sections.find((sec) => sec.sectionKey === k);
     return !s || (!s.body?.trim() && s.status !== "complete");
   });
+
+  async function handleDownloadCsv() {
+    if (!listingId) return;
+    const token = await getAuthToken();
+    if (!token) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/report-sections/csv-template/${listingId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        Alert.alert("Error", "Could not generate CSV template. Please try again.");
+        return;
+      }
+      const csvText = await res.text();
+      const filename = `im-report-${listingId}-template.csv`;
+
+      if (Platform.OS === "web") {
+        const blob = new Blob([csvText], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const path = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(path, csvText, { encoding: FileSystem.EncodingType.UTF8 });
+        await Share.share({ url: path, title: "IM Report AI Fill Template" });
+      }
+    } catch {
+      Alert.alert("Error", "Download failed. Please check your connection.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleUploadCsv() {
+    if (!listingId) return;
+    const token = await getAuthToken();
+    if (!token) return;
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["text/csv", "text/comma-separated-values", "text/plain", "*/*"],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const file = result.assets[0];
+      setUploading(true);
+
+      let csvText: string;
+      if (Platform.OS === "web") {
+        const resp = await fetch(file.uri);
+        csvText = await resp.text();
+      } else {
+        csvText = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 });
+      }
+
+      if (!csvText.trim()) {
+        Alert.alert("Error", "The selected file appears to be empty.");
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/api/report-sections/csv-import/${listingId}?preview=true`, {
+        method: "POST",
+        headers: { "Content-Type": "text/csv", Authorization: `Bearer ${token}` },
+        body: csvText,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert("Parse Error", err.error ?? "Could not parse the CSV file.");
+        return;
+      }
+      const previewData = await res.json();
+
+      await AsyncStorage.setItem("csv_import_pending_text", csvText);
+
+      router.push({
+        pathname: "/(seller)/valuation/csv-import-preview" as any,
+        params: {
+          listingId,
+          fileName: file.name ?? "imported.csv",
+          preview: JSON.stringify(previewData),
+        },
+      });
+    } catch {
+      Alert.alert("Error", "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handlePublish() {
     if (!listingId || !snap) return;
@@ -339,18 +436,28 @@ export default function ReportHubScreen() {
             <Text style={[styles.primaryBtnText, { color: "#A78BFA" }]}>Export PDF</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
-            onPress={() => Alert.alert("CSV Template", "CSV import/export is coming in the next update.")}
+            style={[styles.primaryBtn, { backgroundColor: downloading ? "#0F2040" : "#1E3A5C", opacity: downloading ? 0.7 : 1 }]}
+            onPress={handleDownloadCsv}
+            disabled={downloading}
           >
-            <Feather name="download" size={18} color="#34D399" />
-            <Text style={[styles.primaryBtnText, { color: "#34D399" }]}>Download CSV</Text>
+            {downloading
+              ? <ActivityIndicator size="small" color="#34D399" />
+              : <Feather name="download" size={18} color="#34D399" />}
+            <Text style={[styles.primaryBtnText, { color: "#34D399" }]}>
+              {downloading ? "Generating…" : "Download CSV"}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
-            onPress={() => Alert.alert("Upload CSV", "CSV import is coming in the next update.")}
+            style={[styles.primaryBtn, { backgroundColor: uploading ? "#0F2040" : "#1E3A5C", opacity: uploading ? 0.7 : 1 }]}
+            onPress={handleUploadCsv}
+            disabled={uploading}
           >
-            <Feather name="upload" size={18} color="#FBBF24" />
-            <Text style={[styles.primaryBtnText, { color: "#FBBF24" }]}>Upload CSV</Text>
+            {uploading
+              ? <ActivityIndicator size="small" color="#FBBF24" />
+              : <Feather name="upload" size={18} color="#FBBF24" />}
+            <Text style={[styles.primaryBtnText, { color: "#FBBF24" }]}>
+              {uploading ? "Reading…" : "Upload CSV"}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: publishing ? "#1E3A5C" : "#16A34A" }]}
@@ -364,6 +471,14 @@ export default function ReportHubScreen() {
               {status === "buyer_locked" ? "Re-publish" : "Publish"}
             </Text>
           </TouchableOpacity>
+        </View>
+
+        {/* AI fill warning notice */}
+        <View style={[styles.aiWarning, { backgroundColor: "#7C2D1208", borderColor: "#F59E0B33" }]}>
+          <Feather name="alert-triangle" size={13} color="#F59E0B" style={{ marginTop: 1 }} />
+          <Text style={[styles.aiWarningText, { color: "#D97706" }]}>
+            Do not upload confidential financial documents into third-party AI tools unless you are comfortable sharing that information.
+          </Text>
         </View>
 
         {/* Secondary actions */}
@@ -448,4 +563,6 @@ const styles = StyleSheet.create({
   secondaryLabel:     { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
   secondaryBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   secondaryBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  aiWarning:          { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  aiWarningText:      { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
 });
