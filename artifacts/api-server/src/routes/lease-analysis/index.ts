@@ -3,8 +3,6 @@ import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAuth } from "../../middlewares/auth";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require("mammoth");
 
 const router = Router();
@@ -51,39 +49,70 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
     }
 
     const mime = file.mimetype;
-    const isPdf = mime === "application/pdf" || file.originalname.endsWith(".pdf");
-    const isDocx = mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.originalname.endsWith(".docx");
+    const name = file.originalname.toLowerCase();
+    const isPdf  = mime === "application/pdf" || name.endsWith(".pdf");
+    const isDocx = mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || name.endsWith(".docx");
+    const isDoc  = mime === "application/msword" || mime === "application/vnd.ms-word" || name.endsWith(".doc");
 
-    if (!isPdf && !isDocx) {
-      return res.status(400).json({ error: "Only PDF and DOCX files are supported" });
+    if (!isPdf && !isDocx && !isDoc) {
+      return res.status(400).json({ error: "Only PDF, DOCX, and DOC files are supported" });
     }
 
-    let text = "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let message: any;
+
     if (isPdf) {
-      const parsed = await pdfParse(file.buffer);
-      text = parsed.text ?? "";
+      // Use Claude's native PDF document API — reads both text-based and scanned/image PDFs
+      const base64Pdf = file.buffer.toString("base64");
+
+      message = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            content: [
+              {
+                type: "document",
+                source: {
+                  type: "base64",
+                  media_type: "application/pdf",
+                  data: base64Pdf,
+                },
+              },
+              {
+                type: "text",
+                text: "Please analyse the commercial lease document provided above.",
+              },
+            ] as any,
+          },
+        ],
+      });
     } else {
+      // DOC / DOCX — extract text with mammoth, send as text
       const parsed = await mammoth.extractRawText({ buffer: file.buffer });
-      text = parsed.value ?? "";
+      const text: string = parsed.value ?? "";
+
+      if (!text.trim()) {
+        return res.status(422).json({ error: "Could not extract text from document. The file may be corrupted or empty." });
+      }
+
+      const truncated = text.slice(0, 60000);
+
+      message = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Please analyse the following commercial lease document:\n\n${truncated}`,
+          },
+        ],
+      });
     }
-
-    if (!text.trim()) {
-      return res.status(422).json({ error: "Could not extract text from document. The file may be scanned or image-based." });
-    }
-
-    const truncated = text.slice(0, 60000);
-
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: `Please analyse the following commercial lease document:\n\n${truncated}`,
-        },
-      ],
-      system: SYSTEM_PROMPT,
-    });
 
     const raw = message.content[0];
     if (raw.type !== "text") {

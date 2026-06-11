@@ -34,6 +34,8 @@ export default function UploadLease() {
         type: [
           "application/pdf",
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/msword",
+          "application/vnd.ms-word",
         ],
         copyToCacheDirectory: true,
       });
@@ -60,6 +62,7 @@ export default function UploadLease() {
 
     const leaseId = genId();
     const isPdf = selectedFile.name.toLowerCase().endsWith(".pdf") || selectedFile.mimeType === "application/pdf";
+    const isDoc = selectedFile.name.toLowerCase().endsWith(".doc") || selectedFile.mimeType === "application/msword" || selectedFile.mimeType === "application/vnd.ms-word";
     const fileType = isPdf ? "pdf" : "docx";
 
     const newLease: Lease = {
@@ -82,7 +85,7 @@ export default function UploadLease() {
         formData.append("file", {
           uri: selectedFile.uri,
           name: selectedFile.name,
-          type: selectedFile.mimeType ?? (isPdf ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+          type: selectedFile.mimeType ?? (isPdf ? "application/pdf" : isDoc ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
         } as any);
       }
 
@@ -154,7 +157,7 @@ export default function UploadLease() {
 
       setStatus("done");
       setTimeout(() => {
-        router.push(`lease-detail/${leaseId}` as any);
+        router.push({ pathname: "/(seller)/leases/lease-detail/[id]", params: { id: leaseId } } as any);
       }, 1000);
 
     } catch (err: unknown) {

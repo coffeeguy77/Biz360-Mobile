@@ -139,7 +139,7 @@ export default function LeasesHub() {
             <LeaseCard
               key={lease.id}
               lease={lease}
-              onPress={() => router.push(`lease-detail/${lease.id}` as any)}
+              onPress={() => router.push({ pathname: "/(seller)/leases/lease-detail/[id]", params: { id: lease.id } } as any)}
               onDelete={() => handleDelete(lease.id)}
             />
           ))
@@ -158,7 +158,7 @@ export default function LeasesHub() {
               <TouchableOpacity
                 key={draft.id}
                 style={[styles.draftCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => router.push(`draft-detail/${draft.id}` as any)}
+                onPress={() => router.push({ pathname: "/(seller)/leases/draft-detail/[id]", params: { id: draft.id } } as any)}
                 activeOpacity={0.85}
               >
                 <View style={[styles.draftIcon, { backgroundColor: "#052E16" }]}>

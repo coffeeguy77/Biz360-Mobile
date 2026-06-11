@@ -17,6 +17,7 @@ interface LeaseContextValue {
   addClause:    (clause: Clause) => Promise<void>;
   addClauses:   (clauses: Clause[]) => Promise<void>;
   addDraft:     (draft: DraftLease) => Promise<void>;
+  updateDraft:  (id: string, updates: Partial<DraftLease>) => Promise<void>;
   deleteDraft:  (id: string) => Promise<void>;
 }
 
@@ -115,6 +116,15 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(saved));
   }
 
+  async function updateDraft(id: string, updates: Partial<DraftLease>) {
+    let saved: DraftLease[] = [];
+    setDrafts(prev => {
+      saved = prev.map(d => d.id === id ? { ...d, ...updates } : d);
+      return saved;
+    });
+    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(saved));
+  }
+
   async function deleteDraft(id: string) {
     let saved: DraftLease[] = [];
     setDrafts(prev => {
@@ -129,7 +139,7 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
       leases, clauses, drafts,
       addLease, updateLease, deleteLease,
       addClause, addClauses,
-      addDraft, deleteDraft,
+      addDraft, updateDraft, deleteDraft,
     }}>
       {children}
     </LeaseContext.Provider>

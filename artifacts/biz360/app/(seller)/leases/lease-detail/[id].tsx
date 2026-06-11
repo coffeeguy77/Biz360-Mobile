@@ -134,7 +134,7 @@ export default function LeaseDetail() {
         "Draft Created",
         `"${draft.name}" has been saved with ${tenantFavClauses.length} favourable clause${tenantFavClauses.length !== 1 ? "s" : ""}.`,
         [
-          { text: "View Draft", onPress: () => router.push(`draft-detail/${draftId}` as any) },
+          { text: "View Draft", onPress: () => router.push({ pathname: "/(seller)/leases/draft-detail/[id]", params: { id: draftId } } as any) },
           { text: "Done", style: "cancel" },
         ],
       );
@@ -249,7 +249,7 @@ export default function LeaseDetail() {
             <ClauseCard
               key={clause.id}
               clause={clause}
-              onPress={() => router.push(`clause-detail/${clause.id}` as any)}
+              onPress={() => router.push({ pathname: "/(seller)/leases/clause-detail/[id]", params: { id: clause.id } } as any)}
             />
           ))
         )}
