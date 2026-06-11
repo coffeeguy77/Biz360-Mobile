@@ -292,6 +292,23 @@ router.get("/report-sections/auto-fill/:listingId", requireAuth, async (req, res
   }
 });
 
+// ─── GET /api/report-sections/:id/detail ─────────────────────────────────────
+// Returns a single report section by ID (ownership verified).
+// Note: this route must be defined before /:listingId to avoid prefix conflicts,
+// but since /:id/detail has 2 path segments and /:listingId has 1, Express
+// resolves them correctly regardless of order.
+router.get("/report-sections/:id/detail", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { id } = req.params as { id: string };
+  try {
+    const section = await assertSectionOwner(id, userId);
+    res.json({ section });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load section" });
+  }
+});
+
 // ─── POST /api/report-sections ────────────────────────────────────────────────
 // Create a single report section. Used when the mobile app saves a new custom section.
 router.post("/report-sections", requireAuth, async (req, res): Promise<void> => {

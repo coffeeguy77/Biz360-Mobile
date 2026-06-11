@@ -1,11 +1,14 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
+  Text, TouchableOpacity, View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
-import { useValuation, ValSnapshot, ValUnit } from "@/context/ValuationContext";
+import { useValuation } from "@/context/ValuationContext";
 
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}` : "";
@@ -21,348 +24,133 @@ function fmt(val: string | number | null | undefined): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
-function healthScore(snap: ValSnapshot | null): { score: number; label: string; color: string } {
-  if (!snap) return { score: 0, label: "No data", color: "#6B7280" };
-  const adjEbitda = Number(snap.adjustedEbitda ?? 0);
-  const revenue = Number(snap.grossRevenue ?? 1);
-  const margin = adjEbitda / revenue;
-  if (margin >= 0.2) return { score: 85, label: "Strong", color: "#16A34A" };
-  if (margin >= 0.1) return { score: 65, label: "Moderate", color: "#F59E0B" };
-  if (margin >= 0) return { score: 40, label: "Tight", color: "#F97316" };
-  return { score: 15, label: "Loss-making", color: "#EF4444" };
+const REQUIRED_KEYS = [
+  "business_overview", "reason_for_sale", "products_services",
+  "financial_performance_summary", "addbacks_adjusted_ebitda",
+  "app_valuation_summary", "plant_equipment_summary",
+  "lease_premises_summary", "staffing_workforce", "customer_base",
+  "operations_overview", "growth_opportunities", "asking_price_terms",
+];
+
+const REQUIRED_LABELS: Record<string, string> = {
+  business_overview: "Business Overview",
+  reason_for_sale: "Reason for Sale",
+  products_services: "Products & Services",
+  financial_performance_summary: "Financial Summary",
+  addbacks_adjusted_ebitda: "Add-backs",
+  app_valuation_summary: "Valuation Summary",
+  plant_equipment_summary: "Equipment",
+  lease_premises_summary: "Lease",
+  staffing_workforce: "Staffing",
+  customer_base: "Customer Base",
+  operations_overview: "Operations",
+  growth_opportunities: "Growth Opportunities",
+  asking_price_terms: "Asking Price & Terms",
+};
+
+interface ReportSection {
+  id: string;
+  sectionKey: string;
+  title: string;
+  body: string | null;
+  status: string;
+  visibility: string;
+  isRequired: boolean;
 }
 
-type CogsItem = { supplierName: string; total: number; unitId: string | null; unitName: string | null };
-
-function ReportCard({
-  snap,
-  name,
-  cogsBreakdown,
-  loadingCogs,
-  staffSuppliers,
-  showStaffNames,
-  onToggleShowStaff,
-  onToggleSupplierStaff,
-  filterUnitId,
-}: {
-  snap: ValSnapshot | null;
-  name: string;
-  cogsBreakdown: CogsItem[];
-  loadingCogs: boolean;
-  staffSuppliers: Set<string>;
-  showStaffNames: boolean;
-  onToggleShowStaff: (v: boolean) => void;
-  onToggleSupplierStaff: (supplierName: string) => void;
-  filterUnitId?: string;
-}) {
-  const colors = useColors();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
-  const adjEbitda = Number(snap?.adjustedEbitda ?? 0);
-  const equipmentValue = Number(snap?.totalEquipmentValue ?? 0);
-  const valMidpoint = Number(snap?.valuationMidpoint ?? 0);
-  const sdeValuation = Math.max(adjEbitda, 0) * 2.0 + equipmentValue;
-  const blendedLow = Math.min(valMidpoint, sdeValuation) * 0.85;
-  const blendedHigh = Math.max(valMidpoint, sdeValuation) * 1.15;
-  const hs = healthScore(snap);
-
-  // Combined tab (filterUnitId=undefined) shows all suppliers; per-unit tabs filter by unitId
-  const tabCogs = filterUnitId === undefined
-    ? cogsBreakdown
-    : cogsBreakdown.filter(c => c.unitId === filterUnitId);
-
-  return (
-    <View style={{ gap: 12 }}>
-      <Text style={[styles.tabName, { color: colors.foreground }]}>{name}</Text>
-
-      <View style={[styles.metricRow, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
-        <View style={styles.metricCell}>
-          <Text style={styles.metricLabel}>Revenue</Text>
-          <Text style={styles.metricVal}>{fmt(snap?.grossRevenue)}</Text>
-        </View>
-        <View style={styles.metricCell}>
-          <Text style={styles.metricLabel}>EBITDA</Text>
-          <Text style={styles.metricVal}>{fmt(snap?.ebitda)}</Text>
-        </View>
-        <View style={styles.metricCell}>
-          <Text style={styles.metricLabel}>Adj. EBITDA</Text>
-          <Text style={[styles.metricVal, { color: "#3B82F6" }]}>{fmt(snap?.adjustedEbitda)}</Text>
-        </View>
-      </View>
-
-      {/* EBITDA Method — uses valuationMidpoint stored in snapshot = AdjEBITDA×2.5 + Equipment */}
-      <View style={[styles.methodCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text style={[styles.methodTitle, { color: colors.foreground }]}>Adj. EBITDA × 2.5 + Equipment</Text>
-          <Text style={styles.methodFormula}>{fmt(adjEbitda)} × 2.5 + {fmt(equipmentValue)} equip</Text>
-        </View>
-        <Text style={[styles.methodVal, { color: "#3B82F6" }]}>{fmt(valMidpoint)}</Text>
-      </View>
-
-      {/* SDE Method — same structure as EBITDA method but 2.0× multiple */}
-      <View style={[styles.methodCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text style={[styles.methodTitle, { color: colors.foreground }]}>Adj. EBITDA × 2.0 + Equipment</Text>
-          <Text style={styles.methodFormula}>{fmt(adjEbitda)} × 2.0 + {fmt(equipmentValue)} equip</Text>
-        </View>
-        <Text style={[styles.methodVal, { color: "#8B5CF6" }]}>{fmt(sdeValuation)}</Text>
-      </View>
-
-      <View style={[styles.blendedCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
-        <Text style={styles.blendedLabel}>Blended Asking Range</Text>
-        <Text style={styles.blendedRange}>{fmt(blendedLow)} — {fmt(blendedHigh)}</Text>
-      </View>
-
-      <View style={[styles.healthCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.healthLabel, { color: colors.mutedForeground }]}>Business Health</Text>
-          <Text style={[styles.healthScore, { color: hs.color }]}>{hs.label}</Text>
-        </View>
-        <View style={[styles.healthBadge, { backgroundColor: hs.color + "20" }]}>
-          <Text style={[styles.healthBadgeText, { color: hs.color }]}>{hs.score}/100</Text>
-        </View>
-      </View>
-
-      <View style={styles.detailRows}>
-        {([
-          ["COGS", fmt(snap?.cogs)],
-          ["Gross Profit", fmt(snap?.grossProfit)],
-          ["Equipment Value", fmt(snap?.totalEquipmentValue)],
-        ] as [string, string][]).map(([label, val]) => (
-          <View key={label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>{label}</Text>
-            <Text style={[styles.detailVal, { color: colors.foreground }]}>{val}</Text>
-          </View>
-        ))}
-        {/* Xero Revenue — with verified badge */}
-        <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Xero Revenue (inc. Square)</Text>
-            <View style={styles.squareVerifiedBadge}>
-              <Feather name="check-circle" size={10} color="#1AB4D7" />
-              <Text style={[styles.squareVerifiedText, { color: "#1AB4D7" }]}>VERIFIED · XERO CONNECTED</Text>
-            </View>
-          </View>
-          <Text style={[styles.detailVal, { color: "#1AB4D7" }]}>{fmt(snap?.xeroRevenue)}</Text>
-        </View>
-        {snap?.squareRevenue && Number(snap.squareRevenue) > 0 ? (
-          <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Square Revenue</Text>
-              <View style={styles.squareVerifiedBadge}>
-                <Feather name="check-circle" size={10} color="#16A34A" />
-                <Text style={styles.squareVerifiedText}>VERIFIED · SQUARE CONNECTED</Text>
-              </View>
-            </View>
-            <Text style={[styles.detailVal, { color: "#16A34A" }]}>{fmt(snap.squareRevenue)}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* ── Advanced section ─────────────────────────────────────────────────── */}
-      <TouchableOpacity
-        style={[styles.advancedToggle, { borderColor: colors.border }]}
-        onPress={() => setAdvancedOpen(v => !v)}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.advancedToggleText, { color: colors.mutedForeground }]}>Advanced</Text>
-        <Feather name={advancedOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
-      </TouchableOpacity>
-
-      {advancedOpen && (
-        <View style={[styles.advancedBody, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {/* Staff mask toggle */}
-          <View style={styles.maskRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.maskLabel, { color: colors.foreground }]}>Mask staff names</Text>
-              <Text style={[styles.maskSub, { color: colors.mutedForeground }]}>Replace tagged supplier names with a Staff Wage pill</Text>
-            </View>
-            <Switch
-              value={showStaffNames}
-              onValueChange={onToggleShowStaff}
-              trackColor={{ false: "#374151", true: "#3B82F6" }}
-              thumbColor="#fff"
-              ios_backgroundColor="#374151"
-            />
-          </View>
-
-          {/* COGS Breakdown */}
-          <View style={[styles.cogsHeader, { borderTopColor: colors.border }]}>
-            <Text style={[styles.cogsTitle, { color: colors.foreground }]}>COGS Breakdown</Text>
-            <Text style={[styles.cogsSub, { color: colors.mutedForeground }]}>Tap 👁 to tag a supplier as staff — their name is replaced with a pill</Text>
-          </View>
-
-          {loadingCogs ? (
-            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />
-          ) : tabCogs.length === 0 ? (
-            <Text style={[styles.cogsEmpty, { color: colors.mutedForeground }]}>
-              No COGS suppliers found for this period. Map supplier contacts in the Supplier Mappings tool.
-            </Text>
-          ) : (() => {
-            // Build stable "Staff Wage N" numbers based on order in full cogsBreakdown list
-            let staffCounter = 0;
-            const staffIndex: Record<string, number> = {};
-            for (const c of cogsBreakdown) {
-              if (staffSuppliers.has(c.supplierName) && !(c.supplierName in staffIndex)) {
-                staffCounter += 1;
-                staffIndex[c.supplierName] = staffCounter;
-              }
-            }
-            return tabCogs.map((item, i) => {
-              const isStaff = staffSuppliers.has(item.supplierName);
-              const masked = isStaff && showStaffNames;
-              const wageNum = staffIndex[item.supplierName] ?? 0;
-              return (
-                <View key={i} style={[styles.cogsRow, { borderTopColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    {masked ? (
-                      <View style={styles.staffPill}>
-                        <Text style={styles.staffPillText}>Staff Wage {wageNum}</Text>
-                      </View>
-                    ) : (
-                      <>
-                        <Text style={[styles.cogsSupplier, { color: colors.foreground }]}>{item.supplierName}</Text>
-                        {item.unitName ? (
-                          <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>{item.unitName}</Text>
-                        ) : item.unitId === null ? (
-                          <Text style={[styles.cogsUnit, { color: colors.mutedForeground }]}>Parent / Shared</Text>
-                        ) : null}
-                      </>
-                    )}
-                  </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-                    <Text style={[styles.cogsAmount, { color: colors.foreground }]}>{fmt(item.total)}</Text>
-                    <TouchableOpacity
-                      style={styles.eyeBtn}
-                      onPress={() => onToggleSupplierStaff(item.supplierName)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Feather
-                        name={isStaff ? "eye-off" : "eye"}
-                        size={17}
-                        color={isStaff ? "#3B82F6" : colors.mutedForeground}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            });
-          })()}
-        </View>
-      )}
-    </View>
-  );
+function reportStatus(sections: ReportSection[], pct: number): { label: string; color: string } {
+  if (sections.length === 0) return { label: "Empty", color: "#6B7280" };
+  if (pct >= 90) return { label: "Ready", color: "#16A34A" };
+  if (pct >= 40) return { label: "Draft", color: "#F59E0B" };
+  return { label: "Started", color: "#3B82F6" };
 }
 
-export default function ReportScreen() {
+function completenessScore(sections: ReportSection[]): number {
+  if (!sections.length) return 0;
+  const required = sections.filter((s) => REQUIRED_KEYS.includes(s.sectionKey));
+  if (!required.length) return 0;
+  const filled = required.filter((s) => s.status === "complete" || (s.body && s.body.trim().length > 10)).length;
+  return Math.round((filled / REQUIRED_KEYS.length) * 100);
+}
+
+export default function ReportHubScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { latestSnapshot, selectedCafe, fetchSnapshot, updateUnit, recalculateSnapshot } = useValuation();
-  const [activeTab, setActiveTab] = useState(0);
+  const { latestSnapshot, selectedCafe } = useValuation();
+  const [sections, setSections] = useState<ReportSection[]>([]);
+  const [loadingSections, setLoadingSections] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [togglingUnit, setTogglingUnit] = useState<string | null>(null);
-  const [publishedDate, setPublishedDate] = useState<string | null>(
-    latestSnapshot.combined?.isPublished ? (latestSnapshot.combined.snapshotDate ?? null) : null
-  );
-  const [cogsBreakdown, setCogsBreakdown] = useState<CogsItem[]>([]);
-  const [loadingCogs, setLoadingCogs] = useState(false);
-  const [staffSuppliers, setStaffSuppliers] = useState<Set<string>>(new Set());
-  const [showStaffNames, setShowStaffNames] = useState(false);
 
-  // Load persisted staff tags for the current cafe
-  useFocusEffect(useCallback(() => {
-    fetchSnapshot();
-    setPublishedDate(latestSnapshot.combined?.isPublished ? (latestSnapshot.combined.snapshotDate ?? null) : null);
-    if (selectedCafe?.id) {
-      fetchCogsBreakdown(selectedCafe.id);
-      AsyncStorage.getItem(`staff-suppliers:${selectedCafe.id}`).then(raw => {
-        if (raw) {
-          try { setStaffSuppliers(new Set(JSON.parse(raw))); } catch { /* ignore */ }
-        } else {
-          setStaffSuppliers(new Set());
-        }
-      });
-    }
-  }, [selectedCafe?.id]));
+  const snap = latestSnapshot.combined;
+  const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
 
-  function toggleSupplierStaff(supplierName: string) {
-    setStaffSuppliers(prev => {
-      const next = new Set(prev);
-      if (next.has(supplierName)) next.delete(supplierName);
-      else next.add(supplierName);
-      if (selectedCafe?.id) {
-        AsyncStorage.setItem(`staff-suppliers:${selectedCafe.id}`, JSON.stringify([...next]));
-      }
-      return next;
-    });
-  }
-
-  async function fetchCogsBreakdown(cafeId: string, periodMonths?: number) {
+  const loadSections = useCallback(async () => {
+    if (!listingId) return;
     const token = await getAuthToken();
     if (!token) return;
-    setLoadingCogs(true);
-    const months = periodMonths ?? latestSnapshot.combined?.periodMonths ?? 12;
+    setLoadingSections(true);
     try {
-      const res = await fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/cogs-breakdown?months=${months}`, {
+      const res = await fetch(`${API_BASE}/api/report-sections/${listingId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setCogsBreakdown(Array.isArray(data) ? data : []);
+        setSections(data.sections ?? []);
       }
-    } catch {
-      // non-critical, silent failure
-    } finally {
-      setLoadingCogs(false);
-    }
-  }
+    } catch { /* non-fatal */ }
+    finally { setLoadingSections(false); }
+  }, [listingId]);
+
+  useFocusEffect(useCallback(() => { loadSections(); }, [loadSections]));
+
+  const pct = completenessScore(sections);
+  const status = reportStatus(sections, pct);
+  const adjEbitda = Number(snap?.adjustedEbitda ?? 0);
+  const equipVal = Number(snap?.totalEquipmentValue ?? 0);
+  const blendedLow = Math.round((adjEbitda * 2.0 + equipVal) * 0.9);
+  const blendedHigh = Math.round((adjEbitda * 2.5 + equipVal) * 1.1);
+
+  const missingRequired = REQUIRED_KEYS.filter((k) => {
+    const s = sections.find((sec) => sec.sectionKey === k);
+    return !s || (!s.body?.trim() && s.status !== "complete");
+  });
 
   async function handlePublish() {
-    if (!selectedCafe?.id) return;
+    if (!listingId || !snap) return;
     const token = await getAuthToken();
     if (!token) return;
+    if (pct < 40) {
+      Alert.alert("Report incomplete", "Please complete at least 40% of required sections before publishing.");
+      return;
+    }
     Alert.alert(
-      "Publish to buyers?",
-      "This will make your verified financials visible to buyers on your listing page. You can re-sync and re-publish any time.",
+      "Publish IM Report?",
+      `This will snapshot your current ${sections.length} sections as Version 1 and make the report visible to approved buyers.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Publish",
-          style: "default",
           onPress: async () => {
             setPublishing(true);
             try {
-              const res = await fetch(`${API_BASE}/api/valuation/cafes/${selectedCafe.id}/snapshots/publish`, {
+              const res = await fetch(`${API_BASE}/api/report-versions`, {
                 method: "POST",
-                headers: { Authorization: `Bearer ${token}` },
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ listingId, title: `Version 1 — ${new Date().toLocaleDateString("en-AU")}` }),
               });
               if (res.ok) {
-                const data = await res.json();
-                setPublishedDate(data.snapshotDate ?? new Date().toISOString().slice(0, 10));
-                Alert.alert("Published!", "Your financials are now visible to buyers on your listing.");
+                Alert.alert("Published!", "Your IM report has been snapshotted and saved as a draft version.");
               } else {
                 const err = await res.json().catch(() => ({}));
-                Alert.alert("Error", err.error ?? "Failed to publish. Please try again.");
+                Alert.alert("Error", err.error ?? "Publish failed");
               }
-            } catch {
-              Alert.alert("Error", "Network error. Please try again.");
-            } finally {
-              setPublishing(false);
-            }
+            } catch { Alert.alert("Error", "Network error. Please try again."); }
+            finally { setPublishing(false); }
           },
         },
       ]
     );
   }
-
-  const tabs: { label: string; snap: ValSnapshot | null; unit?: ValUnit }[] = [
-    { label: "Combined", snap: latestSnapshot.combined },
-    ...latestSnapshot.units
-      .filter(({ unit }) => unit.isIncludedInSale !== false)
-      .map(({ unit, snapshot }) => ({ label: unit.name, snap: snapshot, unit })),
-  ];
-
-  const currentTab = tabs[activeTab];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -370,194 +158,198 @@ export default function ReportScreen() {
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>Valuation Report</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>IM Report</Text>
+          <View style={[styles.statusBadge, { backgroundColor: status.color + "22" }]}>
+            <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+          </View>
+        </View>
+
+        {/* Financial summary card */}
+        {snap ? (
+          <View style={[styles.summaryCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
+            <Text style={styles.bizName}>{selectedCafe?.name ?? "Business"}</Text>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryLeft}>
+                <Text style={styles.summaryLabel}>Estimated Value</Text>
+                <Text style={styles.summaryVal}>{fmt(snap.valuationMidpoint)}</Text>
+                <Text style={styles.summaryRange}>{fmt(blendedLow)} — {fmt(blendedHigh)}</Text>
+              </View>
+              <View style={styles.summaryRight}>
+                {([
+                  ["Revenue", snap.grossRevenue],
+                  ["Adj. EBITDA", snap.adjustedEbitda],
+                  ["Equipment", snap.totalEquipmentValue],
+                ] as [string, string | null | undefined][]).map(([label, val]) => (
+                  <View key={label} style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>{label}</Text>
+                    <Text style={styles.metaVal}>{fmt(val)}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            {snap.snapshotDate && (
+              <Text style={styles.updatedText}>Last synced {snap.snapshotDate}</Text>
+            )}
+          </View>
+        ) : (
+          <View style={[styles.noSnapCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Feather name="alert-circle" size={18} color={colors.mutedForeground} />
+            <Text style={[styles.noSnapText, { color: colors.mutedForeground }]}>No valuation snapshot — sync from the Valuation hub first.</Text>
+          </View>
+        )}
+
+        {/* Completeness bar */}
+        <View style={[styles.completenessCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.completenessHeader}>
+            <Text style={[styles.completenessTitle, { color: colors.foreground }]}>Report Completeness</Text>
+            {loadingSections
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Text style={[styles.completenessNum, { color: pct >= 80 ? "#16A34A" : pct >= 40 ? "#F59E0B" : colors.primary }]}>{pct}%</Text>}
+          </View>
+          <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
+            <View style={[styles.progressFill, { width: `${pct}%` as any, backgroundColor: pct >= 80 ? "#16A34A" : pct >= 40 ? "#F59E0B" : colors.primary }]} />
+          </View>
+          <Text style={[styles.completenessHint, { color: colors.mutedForeground }]}>
+            {sections.length === 0
+              ? 'Tap "Edit Report" to build your Information Memorandum with 40 guided sections.'
+              : `${sections.filter((s) => s.status === "complete" || (s.body?.trim().length ?? 0) > 10).length} of ${sections.length} sections have content`}
+          </Text>
+          {missingRequired.length > 0 && missingRequired.length <= 3 && (
+            <View style={styles.recommendRow}>
+              <Feather name="alert-triangle" size={13} color="#F59E0B" />
+              <Text style={[styles.recommendText, { color: "#F59E0B" }]}>
+                Missing: {missingRequired.slice(0, 3).map((k) => REQUIRED_LABELS[k]).join(", ")}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Primary actions */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ACTIONS</Text>
+        <View style={styles.primaryGrid}>
           <TouchableOpacity
-            onPress={() => router.push("/(seller)/valuation/report-access" as any)}
-            style={[styles.accessBtn, { backgroundColor: "#1E3A5C" }]}
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+            onPress={() => router.push("/(seller)/valuation/report-builder" as any)}
           >
-            <Feather name="lock" size={15} color={colors.foreground} />
-            <Text style={[styles.accessBtnText, { color: colors.foreground }]}>Access</Text>
+            <Feather name="edit-2" size={18} color="#fff" />
+            <Text style={styles.primaryBtnText}>Edit Report</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
+            onPress={() => Alert.alert("Preview", "HTML preview requires the HTML export task. Coming soon.")}
+          >
+            <Feather name="eye" size={18} color="#60A5FA" />
+            <Text style={[styles.primaryBtnText, { color: "#60A5FA" }]}>Preview Report</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
+            onPress={() => Alert.alert("Export PDF", "PDF export is coming in the next update.")}
+          >
+            <Feather name="file-text" size={18} color="#A78BFA" />
+            <Text style={[styles.primaryBtnText, { color: "#A78BFA" }]}>Export PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
+            onPress={() => Alert.alert("CSV Template", "CSV import/export is coming in the next update.")}
+          >
+            <Feather name="download" size={18} color="#34D399" />
+            <Text style={[styles.primaryBtnText, { color: "#34D399" }]}>Download CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
+            onPress={() => Alert.alert("Upload CSV", "CSV import is coming in the next update.")}
+          >
+            <Feather name="upload" size={18} color="#FBBF24" />
+            <Text style={[styles.primaryBtnText, { color: "#FBBF24" }]}>Upload CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: publishing ? "#1E3A5C" : "#16A34A" }]}
+            onPress={handlePublish}
+            disabled={publishing}
+          >
+            {publishing
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Feather name="upload-cloud" size={18} color="#fff" />}
+            <Text style={styles.primaryBtnText}>Publish</Text>
           </TouchableOpacity>
         </View>
 
-        {tabs.length > 1 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-            {tabs.map((tab, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[styles.tab, activeTab === i && { backgroundColor: colors.primary }]}
-                onPress={() => setActiveTab(i)}
-              >
-                <Text style={[styles.tabText, activeTab === i && { color: "#fff" }]}>{tab.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        {currentTab ? (
-          <>
-            <ReportCard
-              snap={currentTab.snap}
-              name={currentTab.label}
-              cogsBreakdown={cogsBreakdown}
-              loadingCogs={loadingCogs}
-              staffSuppliers={staffSuppliers}
-              showStaffNames={showStaffNames}
-              onToggleShowStaff={setShowStaffNames}
-              onToggleSupplierStaff={toggleSupplierStaff}
-              filterUnitId={currentTab.unit?.id}
-            />
-            {activeTab === 0 && latestSnapshot.units.length > 0 && (
-              <View style={[styles.bundleCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.bundleTitle, { color: colors.foreground }]}>Sale Bundle</Text>
-                <Text style={[styles.bundleSubtitle, { color: colors.mutedForeground }]}>
-                  Toggle divisions on or off to revalue the business in real time.
-                </Text>
-                {latestSnapshot.units.map(({ unit, snapshot }) => {
-                  const included = unit.isIncludedInSale !== false;
-                  const val = snapshot?.valuationMidpoint ? Number(snapshot.valuationMidpoint) : null;
-                  const isToggling = togglingUnit === unit.id;
-                  return (
-                    <View key={unit.id} style={[styles.bundleRow, { borderTopColor: colors.border }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.bundleUnitName, { color: colors.foreground }]}>{unit.name}</Text>
-                        <Text style={[styles.bundleUnitSub, { color: included ? "#16A34A" : colors.mutedForeground }]}>
-                          {included ? "Included in sale" : "Excluded from sale"}
-                          {val !== null ? `  ·  ${fmt(val)}` : ""}
-                        </Text>
-                      </View>
-                      {isToggling ? (
-                        <ActivityIndicator size="small" color={colors.primary} style={{ width: 50 }} />
-                      ) : (
-                        <Switch
-                          value={included}
-                          onValueChange={async (newVal) => {
-                            setTogglingUnit(unit.id);
-                            try {
-                              await updateUnit(unit.id, { is_included_in_sale: newVal });
-                              await recalculateSnapshot();
-                              if (selectedCafe?.id) fetchCogsBreakdown(selectedCafe.id);
-                            } finally {
-                              setTogglingUnit(null);
-                            }
-                          }}
-                          trackColor={{ false: "#374151", true: "#16A34A" }}
-                          thumbColor="#fff"
-                          ios_backgroundColor="#374151"
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </>
-        ) : (
-          <View style={styles.empty}>
-            <Feather name="file-text" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No snapshot yet</Text>
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Sync your data from the Valuation hub to generate a report.</Text>
-          </View>
-        )}
-
-        {latestSnapshot.combined && (
-          <View style={styles.publishSection}>
-            {publishedDate ? (
-              <View style={styles.publishedBadge}>
-                <Feather name="check-circle" size={16} color="#16A34A" />
-                <Text style={styles.publishedText}>Published to buyers · {publishedDate}</Text>
-              </View>
-            ) : null}
+        {/* Secondary actions */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>MORE</Text>
+        <View style={styles.secondaryGrid}>
+          {[
+            { label: "Report Sections", icon: "list", color: "#3B82F6", route: "/(seller)/valuation/report-builder" },
+            { label: "Access Settings", icon: "lock", color: "#8B5CF6", route: "/(seller)/valuation/report-access" },
+            { label: "Version History", icon: "clock", color: "#6B7280", route: null },
+            { label: "AI Draft Helper", icon: "zap", color: "#FBBF24", route: null },
+            { label: "Charts & Stats", icon: "bar-chart-2", color: "#34D399", route: null },
+            { label: "Due Diligence Pack", icon: "check-square", color: "#F87171", route: "/(seller)/valuation/due-diligence" },
+          ].map(({ label, icon, color, route }) => (
             <TouchableOpacity
-              style={[styles.publishBtn, { backgroundColor: publishedDate ? colors.card : "#16A34A", borderWidth: publishedDate ? 1 : 0, borderColor: colors.border }]}
-              onPress={handlePublish}
-              disabled={publishing}
+              key={label}
+              style={[styles.secondaryBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => {
+                if (route) router.push(route as any);
+                else Alert.alert(label, "Coming in a future update.");
+              }}
             >
-              {publishing ? (
-                <ActivityIndicator size="small" color={publishedDate ? colors.foreground : "#fff"} />
-              ) : (
-                <>
-                  <Feather name="upload-cloud" size={16} color={publishedDate ? colors.foreground : "#fff"} />
-                  <Text style={[styles.publishBtnText, { color: publishedDate ? colors.foreground : "#fff" }]}>
-                    {publishedDate ? "Re-publish to buyers" : "Publish to buyers"}
-                  </Text>
-                </>
-              )}
+              <View style={[styles.secondaryIcon, { backgroundColor: color + "18" }]}>
+                <Feather name={icon as any} size={18} color={color} />
+              </View>
+              <Text style={[styles.secondaryLabel, { color: colors.foreground }]}>{label}</Text>
+              <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
             </TouchableOpacity>
-          </View>
-        )}
+          ))}
+        </View>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:           { flex: 1 },
-  scroll:              { paddingHorizontal: 16, gap: 14 },
-  header:              { flexDirection: "row", alignItems: "center", gap: 12 },
-  backBtn:             { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  title:               { fontSize: 22, fontFamily: "Inter_700Bold" },
-  tabs:                { gap: 8, paddingBottom: 4 },
-  tab:                 { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: "#1E3A5C" },
-  tabText:             { fontSize: 13, fontFamily: "Inter_500Medium", color: "#8B9CB8" },
-  tabName:             { fontSize: 18, fontFamily: "Inter_700Bold" },
-  metricRow:           { flexDirection: "row", borderRadius: 14, padding: 16, borderWidth: 1 },
-  metricCell:          { flex: 1, alignItems: "center", gap: 4 },
-  metricLabel:         { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
-  metricVal:           { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
-  methodCard:          { borderRadius: 14, padding: 16, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
-  methodTitle:         { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  methodFormula:       { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  methodVal:           { fontSize: 20, fontFamily: "Inter_700Bold" },
-  blendedCard:         { borderRadius: 14, padding: 16, borderWidth: 1 },
-  blendedLabel:        { color: "#8B9CB8", fontSize: 12, fontFamily: "Inter_400Regular" },
-  blendedRange:        { color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 4 },
-  healthCard:          { borderRadius: 14, padding: 16, borderWidth: 1, flexDirection: "row", alignItems: "center" },
-  healthLabel:         { fontSize: 12, fontFamily: "Inter_400Regular" },
-  healthScore:         { fontSize: 18, fontFamily: "Inter_700Bold", marginTop: 2 },
-  healthBadge:         { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
-  healthBadgeText:     { fontSize: 18, fontFamily: "Inter_700Bold" },
-  detailRows:          { gap: 0 },
-  detailRow:           { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1 },
-  detailLabel:         { fontSize: 13, fontFamily: "Inter_400Regular" },
-  detailVal:           { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  squareVerifiedBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
-  squareVerifiedText:  { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#16A34A", letterSpacing: 0.3 },
-  advancedToggle:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 1 },
-  advancedToggleText:  { fontSize: 13, fontFamily: "Inter_500Medium" },
-  advancedBody:        { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  maskRow:             { flexDirection: "row", alignItems: "center", padding: 16, gap: 12 },
-  maskLabel:           { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  maskSub:             { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  cogsHeader:          { paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1 },
-  cogsTitle:           { fontSize: 13, fontFamily: "Inter_700Bold" },
-  cogsSub:             { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  cogsEmpty:           { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, paddingHorizontal: 16, paddingBottom: 16 },
-  cogsRow:             { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, gap: 12 },
-  cogsSupplier:        { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  cogsUnit:            { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  cogsAmount:          { fontSize: 13, fontFamily: "Inter_700Bold" },
-  staffPill:           { backgroundColor: "#1D3461", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start" },
-  staffPillText:       { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#60A5FA" },
-  eyeBtn:              { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
-  empty:               { alignItems: "center", paddingVertical: 60, gap: 12 },
-  emptyTitle:          { fontSize: 18, fontFamily: "Inter_700Bold" },
-  emptyText:           { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, maxWidth: 280 },
-  publishSection:      { gap: 10, paddingTop: 4 },
-  publishedBadge:      { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 },
-  publishedText:       { fontSize: 13, fontFamily: "Inter_500Medium", color: "#16A34A" },
-  publishBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, paddingVertical: 16 },
-  publishBtnText:      { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  accessBtn:           { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginLeft: "auto" },
-  accessBtnText:       { fontSize: 13, fontFamily: "Inter_500Medium" },
-  bundleCard:          { borderRadius: 14, padding: 16, borderWidth: 1, gap: 4 },
-  bundleTitle:         { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 2 },
-  bundleSubtitle:      { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 8 },
-  bundleRow:           { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderTopWidth: 1, gap: 12 },
-  bundleUnitName:      { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  bundleUnitSub:       { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  container:          { flex: 1 },
+  scroll:             { paddingHorizontal: 16, gap: 14 },
+  header:             { flexDirection: "row", alignItems: "center", gap: 12 },
+  backBtn:            { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  title:              { fontSize: 22, fontFamily: "Inter_700Bold", flex: 1 },
+  statusBadge:        { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  statusDot:          { width: 7, height: 7, borderRadius: 4 },
+  statusText:         { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  summaryCard:        { borderRadius: 16, padding: 18, borderWidth: 1, gap: 10 },
+  bizName:            { color: "#8B9CB8", fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  summaryRow:         { flexDirection: "row", alignItems: "flex-start", gap: 14 },
+  summaryLeft:        { flex: 1 },
+  summaryLabel:       { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
+  summaryVal:         { color: "#3B82F6", fontSize: 30, fontFamily: "Inter_700Bold", marginTop: 2 },
+  summaryRange:       { color: "#60A5FA", fontSize: 13, fontFamily: "Inter_500Medium", marginTop: 2 },
+  summaryRight:       { gap: 6, paddingLeft: 14, borderLeftWidth: 1, borderLeftColor: "#1E3A5C" },
+  metaRow:            { flexDirection: "row", justifyContent: "space-between", gap: 14 },
+  metaLabel:          { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
+  metaVal:            { color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  updatedText:        { color: "#6B7280", fontSize: 11, fontFamily: "Inter_400Regular" },
+  noSnapCard:         { flexDirection: "row", gap: 10, alignItems: "center", padding: 14, borderRadius: 14, borderWidth: 1 },
+  noSnapText:         { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  completenessCard:   { borderRadius: 14, padding: 16, borderWidth: 1, gap: 10 },
+  completenessHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  completenessTitle:  { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  completenessNum:    { fontSize: 22, fontFamily: "Inter_700Bold" },
+  progressBg:         { height: 8, borderRadius: 4, overflow: "hidden" },
+  progressFill:       { height: 8, borderRadius: 4 },
+  completenessHint:   { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  recommendRow:       { flexDirection: "row", alignItems: "center", gap: 6 },
+  recommendText:      { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
+  sectionLabel:       { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
+  primaryGrid:        { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  primaryBtn:         { width: "31.5%", borderRadius: 14, padding: 14, alignItems: "center", gap: 8 },
+  primaryBtnText:     { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  secondaryGrid:      { gap: 8 },
+  secondaryBtn:       { flexDirection: "row", alignItems: "center", gap: 14, padding: 14, borderRadius: 14, borderWidth: 1 },
+  secondaryIcon:      { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  secondaryLabel:     { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });
