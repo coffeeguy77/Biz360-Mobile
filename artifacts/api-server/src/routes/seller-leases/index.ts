@@ -105,8 +105,9 @@ router.post("/seller/leases/:id/clauses", requireAuth, async (req, res): Promise
       .limit(1);
 
     if (!lease.length) {
-      // Either the lease doesn't exist yet or it belongs to someone else — skip silently
-      res.json({ ok: true });
+      // Parent lease not found or belongs to a different user — client should retry
+      // after the lease save completes rather than silently dropping the clauses.
+      res.status(409).json({ error: "parent_lease_missing" });
       return;
     }
 

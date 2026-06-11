@@ -52,17 +52,23 @@ function serverSaveLease(lease: Lease) {
   })();
 }
 
-function serverSaveClauses(leaseId: string, clauses: Clause[]) {
+/** Best-effort clause sync with bounded retry on 409 (parent lease not yet on server). */
+function serverSaveClauses(leaseId: string, clauses: Clause[], attempt = 0) {
   if (!clauses.length) return;
   (async () => {
     try {
       const headers = await getAuthHeaders();
       if (!headers) return;
-      await fetch(`${API_BASE}/api/seller/leases/${leaseId}/clauses`, {
+      const res = await fetch(`${API_BASE}/api/seller/leases/${leaseId}/clauses`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ clauses }),
       });
+      if (res.status === 409 && attempt < 3) {
+        // Parent lease save hasn't landed yet — back off and retry (max 3 times)
+        await new Promise(r => setTimeout(r, 2_000 * (attempt + 1)));
+        serverSaveClauses(leaseId, clauses, attempt + 1);
+      }
     } catch { /* non-critical, best-effort */ }
   })();
 }
@@ -130,12 +136,27 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
       const body: { leases: Lease[]; clauses: Clause[] } = await res.json();
       const { leases: serverLeases, clauses: serverClauses } = body;
 
-      // First-launch migration: server is empty but local has data → push everything up
+      // First-launch migration: server is empty but local has data → push everything up.
+      // Use sequential awaited calls so clause saves always land after their parent lease.
       if (serverLeases.length === 0 && localLeases.length > 0) {
         for (const lease of localLeases) {
-          serverSaveLease(lease);
-          const leaseClauses = localClauses.filter(c => c.sourceLeaseId === lease.id);
-          if (leaseClauses.length) serverSaveClauses(lease.id, leaseClauses);
+          try {
+            const migrateHeaders = await getAuthHeaders();
+            if (!migrateHeaders) break;
+            await fetch(`${API_BASE}/api/seller/leases`, {
+              method: 'POST',
+              headers: migrateHeaders,
+              body: JSON.stringify({ lease }),
+            });
+            const leaseClauses = localClauses.filter(c => c.sourceLeaseId === lease.id);
+            if (leaseClauses.length) {
+              await fetch(`${API_BASE}/api/seller/leases/${lease.id}/clauses`, {
+                method: 'POST',
+                headers: migrateHeaders,
+                body: JSON.stringify({ clauses: leaseClauses }),
+              });
+            }
+          } catch { /* skip this lease, try next */ }
         }
         return;
       }
