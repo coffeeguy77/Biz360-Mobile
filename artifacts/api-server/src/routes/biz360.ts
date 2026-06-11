@@ -665,4 +665,80 @@ router.post("/biz360/auth/verify-otp", async (req, res): Promise<void> => {
   }
 });
 
+// ─── Buyer report access token issuance ───────────────────────────────────────
+// POST /biz360/report-access-tokens/issue
+// Body: { listingId, phone, otpCode }
+// 1. Verifies the OTP via Twilio Verify
+// 2. Checks the phone is in reportAccessGrantsTable for this listing
+// 3. Issues a short-lived signed JWT { listingId, phone, type:"buyer-report-access" }
+// The token is then passed as ?accessToken= to the HTML report endpoint to
+// unlock approved_buyers sections without requiring a server-side user account.
+router.post("/biz360/report-access-tokens/issue", async (req, res): Promise<void> => {
+  const { listingId, phone, otpCode } = req.body as {
+    listingId?: string;
+    phone?: string;
+    otpCode?: string;
+  };
+
+  if (!listingId || !phone || !otpCode) {
+    res.status(400).json({ error: "listingId, phone, and otpCode are required" });
+    return;
+  }
+
+  try {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken  = process.env.TWILIO_AUTH_TOKEN;
+    const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+    const jwtSecret  = process.env.JWT_SECRET;
+
+    if (!accountSid || !authToken || !serviceSid || !jwtSecret) {
+      res.status(503).json({ error: "OTP service not configured" });
+      return;
+    }
+
+    const twilioClient = twilio(accountSid, authToken);
+    const check = await twilioClient.verify.v2
+      .services(serviceSid)
+      .verificationChecks.create({ to: phone, code: otpCode });
+
+    if (check.status !== "approved") {
+      res.status(400).json({ error: "Incorrect or expired OTP" });
+      return;
+    }
+
+    // Verify the phone has been explicitly granted access for this listing
+    const normalised = phone.replace(/\s/g, "");
+    const [grant] = await db
+      .select({ id: reportAccessGrantsTable.id })
+      .from(reportAccessGrantsTable)
+      .where(
+        and(
+          eq(reportAccessGrantsTable.listingId, listingId),
+          eq(reportAccessGrantsTable.phone, normalised),
+        ),
+      )
+      .limit(1);
+
+    if (!grant) {
+      res.status(403).json({ error: "Phone number is not approved for this listing" });
+      return;
+    }
+
+    const accessToken = await new SignJWT({
+      listingId,
+      phone: normalised,
+      type: "buyer-report-access",
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("4h")
+      .sign(new TextEncoder().encode(jwtSecret));
+
+    res.json({ accessToken });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Token issuance failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
 export default router;

@@ -58,7 +58,22 @@ function recordAccessLog(listingId: string, eventType: string, extra?: Record<st
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function LockedSection({ title, subtitle }: { title: string; subtitle: string | null }) {
+function LockedSection({
+  title,
+  subtitle,
+  listingId,
+  sectionKey,
+}: {
+  title: string;
+  subtitle: string | null;
+  listingId: string;
+  sectionKey: string;
+}) {
+  const [requested, setRequested] = useState(false);
+  function handleRequest() {
+    setRequested(true);
+    recordAccessLog(listingId, "access_requested", { sectionKey });
+  }
   return (
     <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8 flex flex-col items-center gap-4 text-center">
       <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center">
@@ -71,10 +86,17 @@ function LockedSection({ title, subtitle }: { title: string; subtitle: string | 
       <p className="text-slate-400 text-sm max-w-xs">
         This section is available to approved buyers only. Request access to unlock full content.
       </p>
-      <button className="mt-1 inline-flex items-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm font-semibold px-4 py-2 rounded-lg border border-amber-500/30 transition-colors">
-        <Shield size={14} />
-        Request Access
-      </button>
+      {requested ? (
+        <p className="text-emerald-400 text-sm font-semibold">✓ Access request sent</p>
+      ) : (
+        <button
+          onClick={handleRequest}
+          className="mt-1 inline-flex items-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm font-semibold px-4 py-2 rounded-lg border border-amber-500/30 transition-colors"
+        >
+          <Shield size={14} />
+          Request Access
+        </button>
+      )}
     </div>
   );
 }
@@ -138,17 +160,24 @@ function SectionTable({ data }: { data: unknown }) {
   );
 }
 
-function SectionContent({ section }: { section: ReportSection }) {
+function SectionContent({
+  section,
+  listingId,
+}: {
+  section: ReportSection;
+  listingId: string;
+}) {
   const ChartComponent = SECTION_CHART_MAP[section.sectionKey];
   const chartData = section.chartData
     ? (typeof section.chartData === "string" ? JSON.parse(section.chartData) : section.chartData)
     : undefined;
 
   const hasContent = section.body || (section.bulletPoints?.length ?? 0) > 0 || section.tableData;
+  const is360 = section.sectionKey === "360_business_walkthrough";
 
   return (
     <div className="space-y-4">
-      {!hasContent && !ChartComponent && (
+      {!hasContent && !ChartComponent && !is360 && (
         <p className="text-slate-500 italic text-sm">This section has not yet been completed.</p>
       )}
       {section.body && <SectionBodyText body={section.body} />}
@@ -159,6 +188,16 @@ function SectionContent({ section }: { section: ReportSection }) {
       {ChartComponent && (
         <div className="mt-6 p-4 rounded-xl bg-[#070F1C]/60 border border-[#1E3A5C]/60">
           <ChartComponent data={chartData} />
+        </div>
+      )}
+      {is360 && (
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
+            className="inline-flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-sm px-5 py-2.5 rounded-xl border border-blue-500/30 transition-colors"
+          >
+            🎯 Enter Virtual Tour
+          </button>
         </div>
       )}
     </div>
@@ -192,18 +231,25 @@ export function ReportPage() {
     setLoading(true);
 
     if (versionId) {
-      // Versioned view: fetch the snapshot captured when this version was published.
-      // Requires seller token — unauthenticated viewers fall back to live sections.
+      // Versioned view: sellers use the auth-required snapshot endpoint (full view);
+      // unauthenticated/buyer viewers use the public-snapshot endpoint (published-only,
+      // seller_only sections filtered out).
       const token = localStorage.getItem("biz360_auth_token");
-      fetch(`/api/report-versions/snapshot/${versionId}`, {
+      const endpoint = token
+        ? `/api/report-versions/snapshot/${versionId}`
+        : `/api/report-versions/public-snapshot/${versionId}`;
+      fetch(endpoint, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
         .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
         .then((json: { sections: ReportSection[]; title?: string }) =>
-          setData({ sections: json.sections, accessLevel: "seller" }))
+          setData({ sections: json.sections, accessLevel: token ? "seller" : "public" }))
         .catch(() => {
           // Fall back to live sections if snapshot not accessible
-          fetch(`/api/report-sections/html/${listingId}`)
+          const liveToken = localStorage.getItem("biz360_auth_token");
+          fetch(`/api/report-sections/html/${listingId}`, {
+            headers: liveToken ? { Authorization: `Bearer ${liveToken}` } : {},
+          })
             .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
             .then((json: ReportData) => setData(json))
             .catch((e) => setError(String(e)));
@@ -484,8 +530,8 @@ export function ReportPage() {
               </div>
 
               {section.isLocked
-                ? <LockedSection title={section.title} subtitle={section.subtitle} />
-                : <SectionContent section={section} />
+                ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
+                : <SectionContent section={section} listingId={listingId} />
               }
 
               {/* Seller notes (only shown in seller mode) */}

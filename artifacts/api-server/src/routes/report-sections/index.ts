@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { and, asc, desc, eq, max, sql } from "drizzle-orm";
+import { jwtVerify } from "jose";
 import {
   db,
   cafesTable,
@@ -21,6 +22,26 @@ import multer from "multer";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
 import { buildDefaultSections, SECTION_DEFAULTS } from "../../lib/report-section-defaults";
+
+// ─── Buyer access token verification ─────────────────────────────────────────
+// Buyer JWTs are issued by POST /api/biz360/report-access-tokens/issue after
+// Twilio OTP verification. They carry { listingId, phone, type }.
+async function verifyBuyerAccessToken(
+  token: string,
+  listingId: string,
+): Promise<string | null> {
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+    const p = payload as Record<string, unknown>;
+    if (p["type"] !== "buyer-report-access") return null;
+    if (p["listingId"] !== listingId) return null;
+    return typeof p["phone"] === "string" ? p["phone"] : null;
+  } catch {
+    return null;
+  }
+}
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -907,11 +928,20 @@ router.patch("/report-versions/:id", requireAuth, async (req, res): Promise<void
       res.status(403).json({ error: "Version not found or access denied" });
       return;
     }
+    // Auto-generate shareable HTML URL when publishing for the first time
+    let computedHtmlUrl = generatedHtmlUrl;
+    if (status === "published" && !version.generatedHtmlUrl && !generatedHtmlUrl) {
+      const domain = process.env.REPLIT_DEV_DOMAIN;
+      if (domain) {
+        computedHtmlUrl = `https://${domain}/exit360-web/reports/${version.listingId}/${id}`;
+      }
+    }
+
     const [updated] = await db
       .update(reportVersionsTable)
       .set({
         ...(status !== undefined && { status }),
-        ...(generatedHtmlUrl !== undefined && { generatedHtmlUrl }),
+        ...(computedHtmlUrl !== undefined && { generatedHtmlUrl: computedHtmlUrl }),
         ...(generatedPdfUrl !== undefined && { generatedPdfUrl }),
         ...(title !== undefined && { title }),
       })
@@ -964,6 +994,29 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       } catch { /* fall through to public */ }
     }
 
+    // Check buyer access token (issued by /api/biz360/report-access-tokens/issue
+    // after Twilio OTP verification). Token carries phone + listingId claim.
+    let buyerGranted = false;
+    if (accessLevel === "public") {
+      const accessToken = req.query["accessToken"] as string | undefined;
+      if (accessToken) {
+        const phone = await verifyBuyerAccessToken(accessToken, listingId);
+        if (phone) {
+          const [grant] = await db
+            .select({ id: reportAccessGrantsTable.id })
+            .from(reportAccessGrantsTable)
+            .where(
+              and(
+                eq(reportAccessGrantsTable.listingId, listingId),
+                eq(reportAccessGrantsTable.phone, phone.replace(/\s/g, "")),
+              ),
+            )
+            .limit(1);
+          buyerGranted = !!grant;
+        }
+      }
+    }
+
     // Filter and gate sections based on access level
     const filtered = allSections
       .filter((s) => {
@@ -972,9 +1025,8 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         return true;
       })
       .map((s) => {
-        // approved_buyers: unlocked only for verified sellers.
-        // Buyers unlock these via OTP flow (Task #78).
-        if (s.visibility === "approved_buyers" && accessLevel !== "seller") {
+        // approved_buyers: unlocked for sellers and OTP-verified approved buyers.
+        if (s.visibility === "approved_buyers" && accessLevel !== "seller" && !buyerGranted) {
           return {
             ...s,
             body:         null,
@@ -987,10 +1039,45 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         return { ...s, isLocked: false };
       });
 
-    res.json({ sections: filtered, accessLevel });
+    res.json({ sections: filtered, accessLevel, buyerGranted });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });
+  }
+});
+
+// ─── GET /api/report-versions/public-snapshot/:versionId ─────────────────────
+// Public (no auth) — returns snapshot only for published versions.
+// Buyers use this to view a shared version link (/reports/:listingId/:versionId).
+router.get("/report-versions/public-snapshot/:versionId", async (req, res): Promise<void> => {
+  const { versionId } = req.params as { versionId: string };
+  try {
+    const [version] = await db
+      .select()
+      .from(reportVersionsTable)
+      .where(and(eq(reportVersionsTable.id, versionId), eq(reportVersionsTable.status, "published")))
+      .limit(1);
+
+    if (!version) {
+      res.status(404).json({ error: "Version not found or not yet published" });
+      return;
+    }
+
+    const snapshot = (version.snapshotJson ?? []) as unknown[];
+    // Filter out seller_only sections for public view
+    const publicSections = snapshot.filter(
+      (s: any) => s.visibility !== "seller_only" && s.visibility !== "hidden",
+    );
+    res.json({
+      sections:      publicSections,
+      versionNumber: version.versionNumber,
+      title:         version.title,
+      status:        version.status,
+      createdAt:     version.createdAt,
+    });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load public snapshot" });
   }
 });
 

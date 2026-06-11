@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import {
-  db, reportSectionsTable, reportExportsTable, cafesTable,
+  db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
 } from "@workspace/db";
 import { eq, asc, and } from "drizzle-orm";
 import { logger } from "../../lib/logger";
@@ -23,6 +23,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
   const userId    = req.user!.id as string;
   const listingId = req.params.listingId as string;
   const mode      = (req.query.mode as string | undefined) ?? "seller";
+  const versionId = req.query.versionId as string | undefined;
 
   try {
     const [cafe] = await db
@@ -36,13 +37,31 @@ async function handlePdf(req: any, res: any): Promise<void> {
       return;
     }
 
-    const allSections = await db
-      .select()
-      .from(reportSectionsTable)
-      .where(eq(reportSectionsTable.listingId, listingId))
-      .orderBy(asc(reportSectionsTable.sortOrder));
+    // When versionId is supplied, resolve sections from the published snapshot
+    // rather than live state — ensuring the PDF represents a specific version.
+    let allSections: any[];
+    if (versionId) {
+      const [version] = await db
+        .select()
+        .from(reportVersionsTable)
+        .where(and(eq(reportVersionsTable.id, versionId), eq(reportVersionsTable.ownerId, userId)))
+        .limit(1);
+      if (!version) {
+        res.status(404).json({ error: "Version not found or access denied" });
+        return;
+      }
+      allSections = ((version.snapshotJson ?? []) as any[]).sort(
+        (a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+      );
+    } else {
+      allSections = await db
+        .select()
+        .from(reportSectionsTable)
+        .where(eq(reportSectionsTable.listingId, listingId))
+        .orderBy(asc(reportSectionsTable.sortOrder));
+    }
 
-    const sections = allSections.filter((s) => {
+    const sections = allSections.filter((s: any) => {
       if (!s.includeInPdf) return false;
       if (s.visibility === "hidden") return false;
       if (mode === "buyer" && s.visibility === "seller_only") return false;
