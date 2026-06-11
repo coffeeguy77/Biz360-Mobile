@@ -40,3 +40,47 @@ export function getAnalysis(id: string): Record<string, unknown> | null {
   }
   return entry.data;
 }
+
+// ─── Async job status store ───────────────────────────────────────────────────
+// Used by the async lease-analysis pattern: POST returns a jobId immediately,
+// client polls GET /api/lease-analysis/status/:jobId until complete or failed.
+
+export type JobStatus = "pending" | "complete" | "failed";
+
+interface JobEntry {
+  status:  JobStatus;
+  data?:   Record<string, unknown>;
+  error?:  string;
+  expiry:  number;
+}
+
+const jobStore = new Map<string, JobEntry>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of jobStore.entries()) {
+    if (entry.expiry < now) jobStore.delete(key);
+  }
+}, 30 * 60 * 1000).unref();
+
+export function setJobPending(id: string): void {
+  jobStore.set(id, { status: "pending", expiry: Date.now() + EXPIRY_MS });
+}
+
+export function setJobComplete(id: string, data: Record<string, unknown>): void {
+  jobStore.set(id, { status: "complete", data, expiry: Date.now() + EXPIRY_MS });
+}
+
+export function setJobFailed(id: string, error: string): void {
+  jobStore.set(id, { status: "failed", error, expiry: Date.now() + EXPIRY_MS });
+}
+
+export function getJob(id: string): JobEntry | null {
+  const entry = jobStore.get(id);
+  if (!entry) return null;
+  if (entry.expiry < Date.now()) {
+    jobStore.delete(id);
+    return null;
+  }
+  return entry;
+}

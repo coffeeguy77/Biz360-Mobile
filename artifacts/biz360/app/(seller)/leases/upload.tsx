@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
@@ -16,6 +16,9 @@ import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}` : "";
 
+const POLL_INTERVAL_MS = 4000;
+const POLL_TIMEOUT_MS  = 5 * 60 * 1000; // 5 minutes
+
 function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substring(2, 9);
 }
@@ -27,6 +30,16 @@ export default function UploadLease() {
   const [status, setStatus] = useState<"idle" | "uploading" | "analysing" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ name: string; uri: string; mimeType?: string } | null>(null);
+
+  const pollTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollStartedRef = useRef<number>(0);
+  const leaseIdRef     = useRef<string>("");
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
 
   const pickDocument = async () => {
     try {
@@ -53,6 +66,113 @@ export default function UploadLease() {
     }
   };
 
+  const handleError = async (msg: string) => {
+    setErrorMsg(msg);
+    setStatus("error");
+    if (leaseIdRef.current) {
+      await updateLease(leaseIdRef.current, { status: "failed" });
+    }
+  };
+
+  const pollStatus = async (jobId: string, authToken: string | null) => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+
+    const elapsed = Date.now() - pollStartedRef.current;
+    if (elapsed > POLL_TIMEOUT_MS) {
+      await handleError("Analysis is taking too long. Please try again.");
+      return;
+    }
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/lease-analysis/status/${jobId}`, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
+
+      if (!resp.ok) {
+        await handleError(`Server error (${resp.status})`);
+        return;
+      }
+
+      const body = await resp.json() as {
+        status: "pending" | "complete" | "failed";
+        data?: Record<string, unknown>;
+        error?: string;
+      };
+
+      if (body.status === "pending") {
+        pollTimerRef.current = setTimeout(() => pollStatus(jobId, authToken), POLL_INTERVAL_MS);
+        return;
+      }
+
+      if (body.status === "failed") {
+        await handleError(body.error ?? "Analysis failed");
+        return;
+      }
+
+      // complete — process the data
+      const data = body.data as {
+        jurisdiction?: string;
+        leaseType?: string;
+        parties?: { tenant?: string; landlord?: string };
+        premises?: string;
+        term?: string;
+        rentAmount?: string;
+        clauses?: Array<{
+          title: string;
+          category: string;
+          rating: string;
+          riskLevel: string;
+          plainEnglish: string;
+          originalText: string;
+          suggestedText?: string;
+          cafeRelevanceScore: number;
+          negotiationScore: number;
+        }>;
+      };
+
+      const leaseId = leaseIdRef.current;
+      const builtClauses: Clause[] = (data.clauses ?? []).map(c => ({
+        id: genId(),
+        title: c.title ?? "Untitled Clause",
+        category: c.category ?? "Other",
+        rating: (c.rating as Clause["rating"]) ?? "balanced",
+        riskLevel: (c.riskLevel as Clause["riskLevel"]) ?? "medium",
+        plainEnglish: c.plainEnglish ?? "",
+        originalText: c.originalText ?? "",
+        suggestedText: c.suggestedText,
+        jurisdictions: data.jurisdiction ? [data.jurisdiction as Clause["jurisdictions"][0]] : [],
+        cafeRelevanceScore: c.cafeRelevanceScore ?? 3,
+        negotiationScore: c.negotiationScore ?? 3,
+        sourceLeaseId: leaseId,
+        isSeed: false,
+      }));
+      const clauseIds = builtClauses.map(c => c.id);
+      if (builtClauses.length) {
+        await addClauses(builtClauses);
+      }
+
+      await updateLease(leaseId, {
+        status: "complete",
+        jurisdiction: data.jurisdiction as Lease["jurisdiction"],
+        leaseType: data.leaseType as Lease["leaseType"],
+        parties: data.parties,
+        premises: data.premises,
+        term: data.term,
+        rentAmount: data.rentAmount,
+        clauseCount: clauseIds.length,
+        extractedClauseIds: clauseIds,
+      });
+
+      setStatus("done");
+      setTimeout(() => {
+        router.push({ pathname: "/(seller)/leases/lease-detail/[id]", params: { id: leaseId } } as any);
+      }, 1000);
+
+    } catch {
+      pollTimerRef.current = setTimeout(() => pollStatus(jobId, authToken), POLL_INTERVAL_MS);
+    }
+  };
+
   const analyse = async () => {
     if (!selectedFile) return;
     if (!API_BASE) {
@@ -61,6 +181,8 @@ export default function UploadLease() {
     }
 
     const leaseId = genId();
+    leaseIdRef.current = leaseId;
+
     const isPdf = selectedFile.name.toLowerCase().endsWith(".pdf") || selectedFile.mimeType === "application/pdf";
     const isDoc = selectedFile.name.toLowerCase().endsWith(".doc") || selectedFile.mimeType === "application/msword" || selectedFile.mimeType === "application/vnd.ms-word";
     const fileType = isPdf ? "pdf" : "docx";
@@ -99,72 +221,22 @@ export default function UploadLease() {
       });
 
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({ error: "Unknown error" }));
+        const errBody = await response.json().catch(() => ({ error: "Upload failed" }));
         throw new Error(errBody?.error ?? `HTTP ${response.status}`);
       }
 
-      const data = await response.json() as {
-        jurisdiction?: string;
-        leaseType?: string;
-        parties?: { tenant?: string; landlord?: string };
-        premises?: string;
-        term?: string;
-        rentAmount?: string;
-        clauses?: Array<{
-          title: string;
-          category: string;
-          rating: string;
-          riskLevel: string;
-          plainEnglish: string;
-          originalText: string;
-          suggestedText?: string;
-          cafeRelevanceScore: number;
-          negotiationScore: number;
-        }>;
-      };
+      const { jobId } = await response.json() as { jobId: string };
 
-      const builtClauses: Clause[] = (data.clauses ?? []).map(c => ({
-        id: genId(),
-        title: c.title ?? "Untitled Clause",
-        category: c.category ?? "Other",
-        rating: (c.rating as Clause["rating"]) ?? "balanced",
-        riskLevel: (c.riskLevel as Clause["riskLevel"]) ?? "medium",
-        plainEnglish: c.plainEnglish ?? "",
-        originalText: c.originalText ?? "",
-        suggestedText: c.suggestedText,
-        jurisdictions: data.jurisdiction ? [data.jurisdiction as Clause["jurisdictions"][0]] : [],
-        cafeRelevanceScore: c.cafeRelevanceScore ?? 3,
-        negotiationScore: c.negotiationScore ?? 3,
-        sourceLeaseId: leaseId,
-        isSeed: false,
-      }));
-      const clauseIds = builtClauses.map(c => c.id);
-      if (builtClauses.length) {
-        await addClauses(builtClauses);
+      if (!jobId) {
+        throw new Error("Server did not return a job ID");
       }
 
-      await updateLease(leaseId, {
-        status: "complete",
-        jurisdiction: data.jurisdiction as Lease["jurisdiction"],
-        leaseType: data.leaseType as Lease["leaseType"],
-        parties: data.parties,
-        premises: data.premises,
-        term: data.term,
-        rentAmount: data.rentAmount,
-        clauseCount: clauseIds.length,
-        extractedClauseIds: clauseIds,
-      });
-
-      setStatus("done");
-      setTimeout(() => {
-        router.push({ pathname: "/(seller)/leases/lease-detail/[id]", params: { id: leaseId } } as any);
-      }, 1000);
+      pollStartedRef.current = Date.now();
+      pollTimerRef.current = setTimeout(() => pollStatus(jobId, authToken), POLL_INTERVAL_MS);
 
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Analysis failed";
-      setErrorMsg(msg);
-      setStatus("error");
-      await updateLease(leaseId, { status: "failed" });
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      await handleError(msg);
     }
   };
 
@@ -248,7 +320,7 @@ export default function UploadLease() {
           <View style={[styles.statusCard, { backgroundColor: "#1E3A5C" }]}>
             <ActivityIndicator color="#F59E0B" />
             <Text style={[styles.statusText, { color: "#FCD34D" }]}>AI is analysing your lease…</Text>
-            <Text style={[styles.statusSub, { color: "#8B9CB8" }]}>This usually takes 20–40 seconds</Text>
+            <Text style={[styles.statusSub, { color: "#8B9CB8" }]}>Large documents can take 2–3 minutes</Text>
           </View>
         )}
         {status === "done" && (

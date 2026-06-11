@@ -11,7 +11,7 @@ import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db"
 import { logger } from "../../lib/logger";
 import { and, count, eq } from "drizzle-orm";
 import { extractTemplateFromAnalysis } from "../../lib/template-extraction";
-import { setAnalysis } from "../../lib/analysis-cache";
+import { setAnalysis, setJobPending, setJobComplete, setJobFailed, getJob } from "../../lib/analysis-cache";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require("mammoth");
 
@@ -159,6 +159,21 @@ async function storeAnalysisInBackground(
   }
 }
 
+// ─── Helper: extract error message from any thrown value ─────────────────────
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const e = err as Record<string, unknown>;
+    if (typeof e["message"] === "string") return e["message"];
+    if (typeof e["error"] === "string") return e["error"];
+    try { return JSON.stringify(e).slice(0, 300); } catch { /* circular */ }
+  }
+  return String(err);
+}
+
+// ─── POST /api/lease-analysis ─────────────────────────────────────────────────
+// Returns { jobId } immediately. The Anthropic call runs in the background.
+// Client polls GET /api/lease-analysis/status/:jobId for completion.
 router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
@@ -176,36 +191,14 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       return res.status(400).json({ error: "Only PDF, DOCX, and DOC files are supported" });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let message: any;
+    // For DOCX/DOC: extract text now (fast, sync-ish) so we can validate before returning jobId
     let base64PdfForBg: string | undefined;
     let extractedTextForBg: string | undefined;
 
     if (isPdf) {
-      const base64Pdf = file.buffer.toString("base64");
-      base64PdfForBg  = base64Pdf;
-
-      message = await anthropic.messages.create({
-        model:      "claude-sonnet-4-6",
-        max_tokens: 8192,
-        system:     SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            content: [
-              {
-                type:   "document",
-                source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
-              },
-              { type: "text", text: "Please analyse the commercial lease document provided above." },
-            ] as any,
-          },
-        ],
-      });
+      base64PdfForBg = file.buffer.toString("base64");
     } else {
       let text = "";
-
       if (isDoc) {
         const tmpPath = join(tmpdir(), `lease-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`);
         try {
@@ -234,67 +227,99 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
           error: "Could not extract text from document. The file may be corrupted or in an unsupported format. Please try saving as PDF or DOCX and uploading again.",
         });
       }
-
-      // Full text preserved for background extraction entity detection;
-      // only first 60k chars sent to primary analysis call.
       extractedTextForBg = text;
-
-      message = await anthropic.messages.create({
-        model:      "claude-sonnet-4-6",
-        max_tokens: 8192,
-        system:     SYSTEM_PROMPT,
-        messages:   [{ role: "user", content: `Please analyse the following commercial lease document:\n\n${text.slice(0, 60000)}` }],
-      });
     }
 
-    const raw = message.content[0];
-    if (raw.type !== "text") {
-      return res.status(500).json({ error: "Unexpected response from AI" });
-    }
+    // Create a job, return the ID immediately — no waiting on Anthropic
+    const jobId = randomUUID();
+    setJobPending(jobId);
+    res.json({ jobId });
 
-    let parsed: Record<string, unknown>;
-    try {
-      const cleaned = raw.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return res.status(500).json({ error: "AI returned invalid JSON", raw: raw.text.slice(0, 500) });
-    }
-
-    // Generate a unique ID for this analysis.
-    // Returned to the client so it can call POST /api/lease-templates { analysedLeaseId }
-    // for idempotent template retrieval/extraction.
-    const analysisId = randomUUID();
-
-    // Cache the analysis data for 2 hours (background task may still be running)
-    setAnalysis(analysisId, parsed);
-
-    // Include analysisId in the response alongside the full analysis result
-    res.json({ ...parsed, analysisId });
-
-    // Background: upsert clauses + extract and store template
     const userId = req.user!.id;
-    setImmediate(() => {
-      storeAnalysisInBackground(parsed, userId, analysisId, isPdf, base64PdfForBg, extractedTextForBg).catch(() => {});
+
+    // Run the Anthropic call in the background (outside the request lifecycle)
+    setImmediate(async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let message: any;
+
+        if (isPdf) {
+          message = await anthropic.messages.create({
+            model:      "claude-haiku-4-5",
+            max_tokens: 8192,
+            system:     SYSTEM_PROMPT,
+            messages: [
+              {
+                role: "user",
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                content: [
+                  {
+                    type:   "document",
+                    source: { type: "base64", media_type: "application/pdf", data: base64PdfForBg },
+                  },
+                  { type: "text", text: "Please analyse the commercial lease document provided above." },
+                ] as any,
+              },
+            ],
+          });
+        } else {
+          message = await anthropic.messages.create({
+            model:      "claude-haiku-4-5",
+            max_tokens: 8192,
+            system:     SYSTEM_PROMPT,
+            messages:   [{ role: "user", content: `Please analyse the following commercial lease document:\n\n${extractedTextForBg!.slice(0, 60000)}` }],
+          });
+        }
+
+        const raw = message.content[0];
+        if (raw.type !== "text") {
+          setJobFailed(jobId, "Unexpected response from AI");
+          return;
+        }
+
+        let parsed: Record<string, unknown>;
+        try {
+          const cleaned = raw.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+          parsed = JSON.parse(cleaned);
+        } catch {
+          setJobFailed(jobId, "AI returned invalid JSON");
+          return;
+        }
+
+        const analysisId = jobId; // reuse jobId as analysisId for simplicity
+        setAnalysis(analysisId, parsed);
+        setJobComplete(jobId, { ...parsed, analysisId });
+
+        // Background: upsert clauses + extract and store template
+        storeAnalysisInBackground(parsed, userId, analysisId, isPdf, base64PdfForBg, extractedTextForBg).catch(() => {});
+      } catch (err) {
+        const msg = extractErrorMessage(err);
+        logger.error({ err }, "Lease analysis job failed");
+        setJobFailed(jobId, msg);
+      }
     });
 
     return;
   } catch (err: unknown) {
-    // Anthropic SDK can throw APIError objects that don't always pass instanceof Error
-    // across module boundaries. Extract a useful message regardless of the shape.
-    let msg: string;
-    if (err instanceof Error) {
-      msg = err.message;
-    } else if (typeof err === "object" && err !== null) {
-      const e = err as Record<string, unknown>;
-      if (typeof e["message"] === "string") msg = e["message"];
-      else if (typeof e["error"] === "string") msg = e["error"];
-      else msg = JSON.stringify(e).slice(0, 300);
-    } else {
-      msg = String(err);
-    }
-    logger.error({ err }, "Lease analysis failed");
-    return res.status(500).json({ error: msg });
+    logger.error({ err }, "Lease analysis setup failed");
+    return res.status(500).json({ error: extractErrorMessage(err) });
   }
+});
+
+// ─── GET /api/lease-analysis/status/:jobId ────────────────────────────────────
+// Returns { status: 'pending' } | { status: 'complete', data: {...} } | { status: 'failed', error: '...' }
+router.get("/lease-analysis/status/:jobId", requireAuth, (req, res) => {
+  const job = getJob(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found or expired" });
+  }
+  if (job.status === "pending") {
+    return res.json({ status: "pending" });
+  }
+  if (job.status === "complete") {
+    return res.json({ status: "complete", data: job.data });
+  }
+  return res.json({ status: "failed", error: job.error ?? "Unknown error" });
 });
 
 export default router;
