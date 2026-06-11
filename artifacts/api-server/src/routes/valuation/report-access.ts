@@ -207,6 +207,51 @@ export async function signReportAccessToken(listingId: string): Promise<string> 
     .sign(getSecret());
 }
 
+// ─── GET /valuation/cafes/:cafeId/report-access/im-settings ─────────────────
+// Load IM report visibility settings stored in the KV store.
+router.get("/im-settings", async (req, res) => {
+  const { cafeId } = req.params as { cafeId: string };
+  const ownerId = req.user!.id;
+  const cafe = await requireCafeOwner(cafeId, ownerId);
+  if (!cafe) return res.status(403).json({ error: "Forbidden" });
+  const { kvStore } = await import("@workspace/db");
+  const { eq } = await import("drizzle-orm");
+  const key = `im_access_settings_cafe_${cafeId}`;
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, key));
+    const settings = rows[0]?.value ?? null;
+    return res.json({ settings });
+  } catch {
+    return res.json({ settings: null });
+  }
+});
+
+// ─── PUT /valuation/cafes/:cafeId/report-access/im-settings ─────────────────
+// Save IM report visibility settings to the KV store.
+router.put("/im-settings", async (req, res) => {
+  const { cafeId } = req.params as { cafeId: string };
+  const ownerId = req.user!.id;
+  const cafe = await requireCafeOwner(cafeId, ownerId);
+  if (!cafe) return res.status(403).json({ error: "Forbidden" });
+  const settings = req.body as Record<string, unknown>;
+  if (!settings || typeof settings !== "object") {
+    return res.status(400).json({ error: "Settings object required" });
+  }
+  const { kvStore } = await import("@workspace/db");
+  const { eq: eqKv } = await import("drizzle-orm");
+  const key = `im_access_settings_cafe_${cafeId}`;
+  try {
+    await db
+      .insert(kvStore)
+      .values({ key, value: settings as any })
+      .onConflictDoUpdate({ target: kvStore.key, set: { value: settings as any, updatedAt: new Date() } });
+    return res.json({ ok: true, settings });
+  } catch (err: unknown) {
+    const e = err as Error;
+    return res.status(500).json({ error: e.message ?? "Failed to save IM settings" });
+  }
+});
+
 export async function verifyReportAccessToken(
   token: string,
   listingId: string

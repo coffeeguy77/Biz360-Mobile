@@ -82,7 +82,7 @@ export default function ReportBuilderScreen() {
 
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
 
-  const loadSections = useCallback(async () => {
+  const loadSections = useCallback(async (autoSeed = false) => {
     if (!listingId) return;
     const token = await getAuthToken();
     if (!token) return;
@@ -93,13 +93,36 @@ export default function ReportBuilderScreen() {
       });
       if (res.ok) {
         const data = await res.json();
-        setSections((data.sections ?? []).sort((a: ReportSection, b: ReportSection) => a.sortOrder - b.sortOrder));
+        const fetched: ReportSection[] = (data.sections ?? []).sort(
+          (a: ReportSection, b: ReportSection) => a.sortOrder - b.sortOrder
+        );
+        if (fetched.length === 0 && autoSeed) {
+          // First visit with no sections: auto-create the 40 default guided sections
+          setSeeding(true);
+          try {
+            const seedRes = await fetch(`${API_BASE}/api/report-sections/defaults/${listingId}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            });
+            if (seedRes.ok) {
+              const seedData = await seedRes.json();
+              setSections((seedData.sections ?? []).sort(
+                (a: ReportSection, b: ReportSection) => a.sortOrder - b.sortOrder
+              ));
+            } else {
+              setSections([]);
+            }
+          } catch { setSections([]); }
+          finally { setSeeding(false); }
+        } else {
+          setSections(fetched);
+        }
       }
     } catch { /* non-fatal */ }
     finally { setLoading(false); }
   }, [listingId]);
 
-  useFocusEffect(useCallback(() => { loadSections(); }, [loadSections]));
+  useFocusEffect(useCallback(() => { loadSections(true); }, [loadSections]));
 
   async function handleSeedDefaults() {
     if (!listingId) return;

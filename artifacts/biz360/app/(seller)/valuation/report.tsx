@@ -66,22 +66,24 @@ interface ReportVersion {
   createdAt: string | null;
 }
 
-type ReportStatus = "empty" | "draft" | "ready" | "published";
+type ReportStatus = "empty" | "draft" | "ready" | "published" | "buyer_locked";
 
 function computeStatus(sections: ReportSection[], pct: number, versions: ReportVersion[]): ReportStatus {
   if (sections.length === 0) return "empty";
-  // Only show "Published" when there is a version the seller explicitly published on the backend
-  const publishedVersion = versions.find((v) => v.status === "published");
-  if (publishedVersion) return "published";
+  // buyer_locked = a version has been published to buyers (version.status === "published")
+  if (versions.some((v) => v.status === "published")) return "buyer_locked";
+  // published = a draft snapshot exists (internally saved/reviewed, not yet live to buyers)
+  if (versions.some((v) => v.status === "draft")) return "published";
   if (pct >= 80) return "ready";
   return "draft";
 }
 
 const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string }> = {
-  empty:     { label: "Empty",     color: "#6B7280" },
-  draft:     { label: "Draft",     color: "#3B82F6" },
-  ready:     { label: "Ready",     color: "#F59E0B" },
-  published: { label: "Published", color: "#16A34A" },
+  empty:        { label: "Empty",        color: "#6B7280" },
+  draft:        { label: "Draft",        color: "#3B82F6" },
+  ready:        { label: "Ready",        color: "#F59E0B" },
+  published:    { label: "Published",    color: "#16A34A" },
+  buyer_locked: { label: "Buyer Locked", color: "#A78BFA" },
 };
 
 function completenessScore(sections: ReportSection[]): number {
@@ -344,7 +346,7 @@ export default function ReportHubScreen() {
               ? <ActivityIndicator size="small" color="#fff" />
               : <Feather name="upload-cloud" size={18} color="#fff" />}
             <Text style={styles.primaryBtnText}>
-              {status === "published" ? "Re-publish" : "Publish"}
+              {status === "buyer_locked" ? "Re-publish" : "Publish"}
             </Text>
           </TouchableOpacity>
         </View>

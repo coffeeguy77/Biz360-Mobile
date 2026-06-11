@@ -158,10 +158,8 @@ export default function ReportAccessScreen() {
   const [addingGrant, setAddingGrant] = useState(false);
 
   const [imSettings, setImSettings] = useState<ImSettings>({ ...DEFAULT_IM });
-  const [imSectionId, setImSectionId] = useState<string | null>(null);
 
   const cafeId = selectedCafe?.id;
-  const listingId = selectedCafe?.listingId ?? (selectedCafe as any)?.listing_id;
 
   const load = useCallback(async () => {
     if (!cafeId) return;
@@ -169,16 +167,13 @@ export default function ReportAccessScreen() {
     if (!token) return;
     setLoading(true);
     try {
-      const requests: Promise<Response>[] = [
+      const [settingsRes, analyticsRes, ndaSettingsRes, ndaSignaturesRes, imSettingsRes] = await Promise.all([
         fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/report-access`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/report-access/analytics`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/nda-settings`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/nda-settings/signatures`, { headers: { Authorization: `Bearer ${token}` } }),
-      ];
-      if (listingId) {
-        requests.push(fetch(`${API_BASE}/api/report-sections/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }));
-      }
-      const [settingsRes, analyticsRes, ndaSettingsRes, ndaSignaturesRes, sectionsRes] = await Promise.all(requests);
+        fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/report-access/im-settings`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
 
       if (settingsRes.ok) {
         const data = await settingsRes.json();
@@ -206,21 +201,16 @@ export default function ReportAccessScreen() {
         const data = await ndaSignaturesRes.json();
         setNdaSignatures(data.signatures ?? []);
       }
-      if (sectionsRes?.ok) {
-        const data = await sectionsRes.json();
-        const imSec = (data.sections ?? []).find((s: { sectionKey: string }) => s.sectionKey === "im_access_settings");
-        if (imSec) {
-          setImSectionId(imSec.id);
-          try {
-            const parsed = JSON.parse(imSec.body ?? "{}") as Partial<ImSettings>;
-            setImSettings({ ...DEFAULT_IM, ...parsed });
-          } catch { /* use defaults */ }
+      if (imSettingsRes.ok) {
+        const data = await imSettingsRes.json();
+        if (data.settings && typeof data.settings === "object") {
+          setImSettings({ ...DEFAULT_IM, ...(data.settings as Partial<ImSettings>) });
         }
       }
     } finally {
       setLoading(false);
     }
-  }, [cafeId, listingId]);
+  }, [cafeId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -278,42 +268,20 @@ export default function ReportAccessScreen() {
   }
 
   async function handleImSave() {
-    if (!listingId) {
-      Alert.alert("No listing", "Link this business to a listing first.");
+    if (!cafeId) {
+      Alert.alert("Error", "No business selected.");
       return;
     }
     const token = await getToken();
     if (!token) return;
     setImSaving(true);
     try {
-      const settingsJson = JSON.stringify(imSettings);
-      let res: Response;
-      if (imSectionId) {
-        res = await fetch(`${API_BASE}/api/report-sections/${imSectionId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ body: settingsJson, status: "complete", visibility: "hidden" }),
-        });
-      } else {
-        res = await fetch(`${API_BASE}/api/report-sections`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            listingId,
-            sectionKey: "im_access_settings",
-            title: "IM Access Settings",
-            body: settingsJson,
-            status: "complete",
-            visibility: "hidden",
-            includeInPdf: false,
-            includeInHtml: false,
-            includeInApp: false,
-          }),
-        });
-      }
+      const res = await fetch(`${API_BASE}/api/valuation/cafes/${cafeId}/report-access/im-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(imSettings),
+      });
       if (res.ok) {
-        const data = await res.json();
-        if (!imSectionId && data.section?.id) setImSectionId(data.section.id);
         Alert.alert("Saved", "IM report settings updated.");
       } else {
         const err = await res.json().catch(() => ({}));

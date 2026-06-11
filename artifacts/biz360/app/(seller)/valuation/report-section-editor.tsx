@@ -18,6 +18,7 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 type Visibility = "public" | "verified_buyer" | "nda_signed" | "hidden";
+interface TableRow { label: string; value: string }
 
 interface SectionData {
   id: string;
@@ -25,7 +26,8 @@ interface SectionData {
   title: string;
   subtitle: string | null;
   body: string | null;
-  bullets: string[] | null;
+  bulletPoints: string[] | null;
+  tableData: { rows?: TableRow[] } | null;
   status: string;
   visibility: Visibility;
   includeInPdf: boolean;
@@ -33,6 +35,7 @@ interface SectionData {
   includeInApp: boolean;
   sortOrder: number;
   lastUpdatedAt: string | null;
+  dataSource: string | null;
 }
 
 const VISIBILITY_OPTIONS: { value: Visibility; label: string; desc: string; color: string }[] = [
@@ -41,6 +44,14 @@ const VISIBILITY_OPTIONS: { value: Visibility; label: string; desc: string; colo
   { value: "nda_signed",     label: "NDA Signed",     desc: "Buyers who signed the NDA",      color: "#A78BFA" },
   { value: "hidden",         label: "Hidden",         desc: "Not shown on any buyer view",    color: "#6B7280" },
 ];
+
+const DATA_SOURCE_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+  seller_supplied: { label: "Manual",       color: "#6B7280", icon: "edit" },
+  app_generated:   { label: "App Data",     color: "#3B82F6", icon: "database" },
+  csv_imported:    { label: "CSV Import",   color: "#16A34A", icon: "upload" },
+  ai_drafted:      { label: "AI Drafted",   color: "#FBBF24", icon: "zap" },
+  mixed:           { label: "Mixed",        color: "#A78BFA", icon: "layers" },
+};
 
 function formatRelativeDate(iso: string | null): string {
   if (!iso) return "Not saved yet";
@@ -60,13 +71,6 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter((w) => w.length > 0).length;
 }
 
-function deriveSourceLabel(body: string | null): string | null {
-  if (!body?.trim()) return null;
-  const lines = body.split("\n").filter((l) => l.trim());
-  const kvLines = lines.filter((l) => /^[A-Za-z].+:\s.+/.test(l)).length;
-  return (lines.length > 0 && kvLines / lines.length > 0.4) ? "App Data" : "Manual";
-}
-
 export default function ReportSectionEditorScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -82,17 +86,18 @@ export default function ReportSectionEditorScreen() {
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [body, setBody] = useState("");
-  const [bullets, setBullets] = useState<string[]>([]);
+  const [bulletPoints, setBulletPoints] = useState<string[]>([]);
+  const [tableRows, setTableRows] = useState<TableRow[]>([]);
+  const [showTable, setShowTable] = useState(false);
   const [visibility, setVisibility] = useState<Visibility>("verified_buyer");
   const [includeInPdf, setIncludeInPdf] = useState(true);
   const [includeInHtml, setIncludeInHtml] = useState(true);
   const [includeInApp, setIncludeInApp] = useState(true);
   const [showVisibility, setShowVisibility] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [originalBody, setOriginalBody] = useState<string | null>(null);
-  const [originalBullets, setOriginalBullets] = useState<string[]>([]);
+  const [dataSource, setDataSource] = useState<string>("seller_supplied");
 
-  const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
+  const listingId = selectedCafe?.listingId ?? (selectedCafe as any)?.listing_id;
 
   useEffect(() => {
     if (!sectionId) return;
@@ -111,14 +116,16 @@ export default function ReportSectionEditorScreen() {
           setTitle(s.title ?? "");
           setSubtitle(s.subtitle ?? "");
           setBody(s.body ?? "");
-          setBullets(Array.isArray(s.bullets) ? s.bullets : []);
+          setBulletPoints(Array.isArray(s.bulletPoints) ? s.bulletPoints : []);
+          const tRows = s.tableData?.rows ?? [];
+          setTableRows(tRows);
+          setShowTable(tRows.length > 0);
           setVisibility((s.visibility as Visibility) ?? "verified_buyer");
           setIncludeInPdf(s.includeInPdf ?? true);
           setIncludeInHtml(s.includeInHtml ?? true);
           setIncludeInApp(s.includeInApp ?? true);
           setSavedAt(s.lastUpdatedAt);
-          setOriginalBody(s.body ?? "");
-          setOriginalBullets(Array.isArray(s.bullets) ? s.bullets : []);
+          setDataSource(s.dataSource ?? "seller_supplied");
         } else {
           Alert.alert("Error", "Could not load section. Please try again.");
           router.back();
@@ -138,16 +145,19 @@ export default function ReportSectionEditorScreen() {
     if (!token) return;
     setSaving(true);
     try {
-      const cleanBullets = bullets.filter((b) => b.trim().length > 0);
+      const cleanBullets = bulletPoints.filter((b) => b.trim().length > 0);
+      const cleanRows = tableRows.filter((r) => r.label.trim() || r.value.trim());
       const payload: Record<string, unknown> = {
         title: title.trim(),
         subtitle: subtitle.trim() || null,
         body: body.trim() || null,
-        bullets: cleanBullets.length ? cleanBullets : null,
+        bulletPoints: cleanBullets.length ? cleanBullets : null,
+        tableData: cleanRows.length ? { rows: cleanRows } : null,
         visibility,
         includeInPdf,
         includeInHtml,
         includeInApp,
+        dataSource: "seller_supplied",
       };
       if (markComplete) payload.status = "complete";
 
@@ -159,8 +169,6 @@ export default function ReportSectionEditorScreen() {
       if (res.ok) {
         const data = await res.json();
         setSavedAt(data.section?.lastUpdatedAt ?? new Date().toISOString());
-        setOriginalBody(body.trim() || null);
-        setOriginalBullets(cleanBullets);
         if (markComplete) {
           Alert.alert("Marked Complete", "This section is now marked as complete.", [
             { text: "OK", onPress: () => router.back() },
@@ -191,16 +199,22 @@ export default function ReportSectionEditorScreen() {
         if (suggestion) {
           const sb = (suggestion.suggestedBody as string | undefined) ?? "";
           const sBullets = (suggestion.suggestedBullets as string[] | undefined) ?? [];
+          const sTable = (suggestion.suggestedTable as { rows?: TableRow[] } | undefined);
           Alert.alert(
             "Auto-fill Suggestion",
-            `${sb ? sb.slice(0, 200) + (sb.length > 200 ? "…" : "") : "(bullet points only)"}`,
+            `${sb ? sb.slice(0, 200) + (sb.length > 200 ? "…" : "") : "(bullet points / table data only)"}`,
             [
               { text: "Cancel", style: "cancel" },
               {
                 text: "Apply",
                 onPress: () => {
                   if (sb.trim()) setBody(sb.trim());
-                  if (sBullets.length) setBullets(sBullets);
+                  if (sBullets.length) setBulletPoints(sBullets);
+                  if (sTable?.rows?.length) {
+                    setTableRows(sTable.rows);
+                    setShowTable(true);
+                  }
+                  setDataSource("app_generated");
                 },
               },
             ]
@@ -215,38 +229,30 @@ export default function ReportSectionEditorScreen() {
     finally { setAutoFilling(false); }
   }
 
-  function handleRegenerate() {
-    handleAutoFill();
-  }
-
   async function handleCopy() {
-    const text = [title, subtitle, body, ...bullets].filter(Boolean).join("\n\n");
-    try {
-      await Share.share({ message: text, title });
-    } catch { /* cancelled */ }
+    const tableText = tableRows.filter((r) => r.label.trim() || r.value.trim())
+      .map((r) => `${r.label}: ${r.value}`).join("\n");
+    const text = [title, subtitle, body, tableText, ...bulletPoints].filter(Boolean).join("\n\n");
+    try { await Share.share({ message: text, title }); } catch { /* cancelled */ }
   }
 
   function handleClear() {
-    Alert.alert("Clear content?", "This will remove the body text and all bullet points.", [
+    Alert.alert("Clear content?", "This will remove body text, bullet points, and table rows.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Clear", style: "destructive", onPress: () => { setBody(""); setBullets([]); } },
+      { text: "Clear", style: "destructive", onPress: () => { setBody(""); setBulletPoints([]); setTableRows([]); } },
     ]);
   }
 
   function handleRestoreDefault() {
-    Alert.alert(
-      "Restore default?",
-      "This will restore the auto-fill suggestion for this section.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Restore", onPress: () => handleAutoFill() },
-      ]
-    );
+    Alert.alert("Restore default?", "Re-run auto-fill to restore suggested content.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Restore", onPress: () => handleAutoFill() },
+    ]);
   }
 
   const selVis = VISIBILITY_OPTIONS.find((v) => v.value === visibility)!;
   const wordCount = countWords(body);
-  const sourceLabel = deriveSourceLabel(body);
+  const srcCfg = DATA_SOURCE_LABELS[dataSource] ?? DATA_SOURCE_LABELS.seller_supplied;
 
   if (loading) {
     return (
@@ -301,14 +307,12 @@ export default function ReportSectionEditorScreen() {
               {wordCount} word{wordCount !== 1 ? "s" : ""}
             </Text>
           </View>
-          {sourceLabel && (
+          {dataSource && (
             <>
               <View style={styles.metaDivider} />
               <View style={styles.metaItem}>
-                <Feather name={sourceLabel === "App Data" ? "database" : "edit"} size={12} color={sourceLabel === "App Data" ? "#3B82F6" : colors.mutedForeground} />
-                <Text style={[styles.metaText, { color: sourceLabel === "App Data" ? "#3B82F6" : colors.mutedForeground }]}>
-                  {sourceLabel}
-                </Text>
+                <Feather name={srcCfg.icon as any} size={12} color={srcCfg.color} />
+                <Text style={[styles.metaText, { color: srcCfg.color }]}>{srcCfg.label}</Text>
               </View>
             </>
           )}
@@ -366,30 +370,88 @@ export default function ReportSectionEditorScreen() {
         <View style={styles.fieldBlock}>
           <View style={styles.fieldRow}>
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>KEY POINTS</Text>
-            <TouchableOpacity onPress={() => setBullets((prev) => [...prev, ""])}>
+            <TouchableOpacity onPress={() => setBulletPoints((prev) => [...prev, ""])}>
               <Text style={[styles.addLink, { color: colors.primary }]}>+ Add point</Text>
             </TouchableOpacity>
           </View>
-          {bullets.length === 0 && (
-            <Text style={[styles.emptyBullets, { color: colors.mutedForeground }]}>
+          {bulletPoints.length === 0 && (
+            <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
               Bullet points appear as a quick-reference list in the IM.
             </Text>
           )}
-          {bullets.map((bullet, idx) => (
+          {bulletPoints.map((bullet, idx) => (
             <View key={idx} style={styles.bulletRow}>
               <View style={[styles.bulletDot, { backgroundColor: colors.primary }]} />
               <TextInput
                 style={[styles.bulletInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
                 value={bullet}
-                onChangeText={(val) => setBullets((prev) => prev.map((b, i) => (i === idx ? val : b)))}
+                onChangeText={(val) => setBulletPoints((prev) => prev.map((b, i) => (i === idx ? val : b)))}
                 placeholder={`Key point ${idx + 1}`}
                 placeholderTextColor={colors.mutedForeground}
               />
-              <TouchableOpacity onPress={() => setBullets((prev) => prev.filter((_, i) => i !== idx))} style={styles.removeBulletBtn}>
+              <TouchableOpacity onPress={() => setBulletPoints((prev) => prev.filter((_, i) => i !== idx))} style={styles.removeBulletBtn}>
                 <Feather name="x" size={15} color="#EF4444" />
               </TouchableOpacity>
             </View>
           ))}
+        </View>
+
+        {/* Table editor */}
+        <View style={styles.fieldBlock}>
+          <View style={styles.fieldRow}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>TABLE (optional)</Text>
+            <TouchableOpacity onPress={() => setShowTable((v) => !v)}>
+              <Text style={[styles.addLink, { color: colors.primary }]}>{showTable ? "Hide table" : "Add table"}</Text>
+            </TouchableOpacity>
+          </View>
+          {showTable && (
+            <View style={[styles.tableContainer, { borderColor: colors.border }]}>
+              {/* Column headers */}
+              <View style={[styles.tableHeaderRow, { backgroundColor: colors.border + "40" }]}>
+                <Text style={[styles.tableHeaderCell, { color: colors.mutedForeground, flex: 1 }]}>Label / Metric</Text>
+                <View style={[styles.tableDivider, { backgroundColor: colors.border }]} />
+                <Text style={[styles.tableHeaderCell, { color: colors.mutedForeground, flex: 1 }]}>Value</Text>
+                <View style={{ width: 32 }} />
+              </View>
+              {tableRows.length === 0 && (
+                <Text style={[styles.emptyHint, { color: colors.mutedForeground, padding: 12 }]}>
+                  Tap "+ Add row" to add key/value pairs (e.g. Revenue: $2.5M).
+                </Text>
+              )}
+              {tableRows.map((row, idx) => (
+                <View key={idx} style={[styles.tableRow, { borderTopColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.tableCellInput, { color: colors.foreground, flex: 1 }]}
+                    value={row.label}
+                    onChangeText={(val) => setTableRows((prev) => prev.map((r, i) => i === idx ? { ...r, label: val } : r))}
+                    placeholder="e.g. Revenue"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                  <View style={[styles.tableDivider, { backgroundColor: colors.border }]} />
+                  <TextInput
+                    style={[styles.tableCellInput, { color: colors.foreground, flex: 1 }]}
+                    value={row.value}
+                    onChangeText={(val) => setTableRows((prev) => prev.map((r, i) => i === idx ? { ...r, value: val } : r))}
+                    placeholder="e.g. $2.5M"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setTableRows((prev) => prev.filter((_, i) => i !== idx))}
+                    style={styles.removeRowBtn}
+                  >
+                    <Feather name="x" size={14} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity
+                style={[styles.addRowBtn, { borderTopColor: colors.border }]}
+                onPress={() => setTableRows((prev) => [...prev, { label: "", value: "" }])}
+              >
+                <Feather name="plus" size={14} color={colors.primary} />
+                <Text style={[styles.addLink, { color: colors.primary }]}>Add row</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Visibility */}
@@ -475,7 +537,7 @@ export default function ReportSectionEditorScreen() {
         <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>MORE ACTIONS</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.secondaryRow}>
           {[
-            { label: "Regenerate", icon: "refresh-cw", color: "#FBBF24", action: handleRegenerate },
+            { label: "Regenerate", icon: "refresh-cw", color: "#FBBF24", action: handleAutoFill },
             { label: "Copy Text",  icon: "copy",       color: "#3B82F6", action: handleCopy },
             { label: "Clear",      icon: "trash-2",    color: "#EF4444", action: handleClear },
             { label: "Restore",    icon: "rotate-ccw", color: "#6B7280", action: handleRestoreDefault },
@@ -506,9 +568,19 @@ export default function ReportSectionEditorScreen() {
             <Text style={[styles.previewHeading, { color: colors.foreground }]}>{title}</Text>
             {subtitle ? <Text style={[styles.previewSubtitle, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
             {body ? <Text style={[styles.previewBodyText, { color: colors.foreground }]}>{body}</Text> : null}
-            {bullets.filter((b) => b.trim()).length > 0 && (
+            {tableRows.filter((r) => r.label.trim() || r.value.trim()).length > 0 && (
+              <View style={[styles.previewTable, { borderColor: colors.border }]}>
+                {tableRows.filter((r) => r.label.trim() || r.value.trim()).map((row, i) => (
+                  <View key={i} style={[styles.previewTableRow, { borderTopColor: i > 0 ? colors.border : "transparent", borderTopWidth: i > 0 ? StyleSheet.hairlineWidth : 0 }]}>
+                    <Text style={[styles.previewTableLabel, { color: colors.mutedForeground }]}>{row.label}</Text>
+                    <Text style={[styles.previewTableValue, { color: colors.foreground }]}>{row.value}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {bulletPoints.filter((b) => b.trim()).length > 0 && (
               <View style={styles.previewBullets}>
-                {bullets.filter((b) => b.trim()).map((b, i) => (
+                {bulletPoints.filter((b) => b.trim()).map((b, i) => (
                   <View key={i} style={styles.previewBulletRow}>
                     <View style={[styles.bulletDot, { backgroundColor: colors.primary }]} />
                     <Text style={[styles.previewBulletText, { color: colors.foreground }]}>{b}</Text>
@@ -516,7 +588,7 @@ export default function ReportSectionEditorScreen() {
                 ))}
               </View>
             )}
-            {!body && !bullets.length && (
+            {!body && !bulletPoints.length && !tableRows.length && (
               <Text style={[styles.previewEmpty, { color: colors.mutedForeground }]}>No content yet — use Auto-fill or type in the fields above.</Text>
             )}
           </ScrollView>
@@ -545,12 +617,20 @@ const styles = StyleSheet.create({
   bodyInput:         { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 160, lineHeight: 22 },
   charCount:         { fontSize: 11, fontFamily: "Inter_400Regular" },
   hintText:          { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16 },
+  emptyHint:         { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic" },
   addLink:           { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  emptyBullets:      { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic" },
   bulletRow:         { flexDirection: "row", alignItems: "center", gap: 8 },
   bulletDot:         { width: 6, height: 6, borderRadius: 3 },
   bulletInput:       { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_400Regular" },
   removeBulletBtn:   { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
+  tableContainer:    { borderWidth: 1, borderRadius: 12, overflow: "hidden" },
+  tableHeaderRow:    { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8 },
+  tableHeaderCell:   { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.4, textTransform: "uppercase" },
+  tableDivider:      { width: 1, height: "100%", minHeight: 20 },
+  tableRow:          { flexDirection: "row", alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth },
+  tableCellInput:    { paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, fontFamily: "Inter_400Regular" },
+  removeRowBtn:      { width: 32, height: 40, alignItems: "center", justifyContent: "center" },
+  addRowBtn:         { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1 },
   visSelector:       { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1 },
   visDot:            { width: 10, height: 10, borderRadius: 5 },
   visLabel:          { fontSize: 14, fontFamily: "Inter_600SemiBold" },
@@ -578,6 +658,10 @@ const styles = StyleSheet.create({
   previewHeading:    { fontSize: 22, fontFamily: "Inter_700Bold" },
   previewSubtitle:   { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
   previewBodyText:   { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22 },
+  previewTable:      { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
+  previewTableRow:   { flexDirection: "row", paddingHorizontal: 12, paddingVertical: 10 },
+  previewTableLabel: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  previewTableValue: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "right" },
   previewBullets:    { gap: 8 },
   previewBulletRow:  { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   previewBulletText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
