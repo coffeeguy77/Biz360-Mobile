@@ -1,0 +1,1036 @@
+We are expanding the existing Exit360 / Biz360 app reporting system into a premium broker-style Information Memorandum report builder.
+
+IMPORTANT:
+
+* Do not hardcode Bean Culture data into the app.
+* Do not use demo-only fake data except where existing seeded data is already in the project.
+* Use the current database, auth, valuation, listing, 360 tour, equipment, lease, and buyer-access systems already in the app.
+* Build reusable database-backed report sections that work for any business listing.
+* All report fields must be editable by the seller/admin.
+* Report content must be exportable to PDF, HTML, and CSV.
+* Report content must be importable from CSV so a user can download a template, fill it manually or with AI, then upload it back into the app.
+* The report must combine app-generated valuation figures with editable broker-style narrative content.
+* The output should feel like a high-end broker Information Memorandum, not a plain accounting report.
+* Keep the current dark premium mobile UI style.
+* Maintain mobile-first design.
+* Do not break existing 360 tours, valuation divisions, equipment, leases, listings, leads, or messaging.
+* No hardcoded prices, venues, suburbs, business names, or report content.
+* Use the current listing/business IDs and user ownership permissions.
+* The same report engine must work for seller app view, buyer HTML view, and PDF export.
+
+PROJECT GOAL
+
+Create a full Reporting / Information Memorandum module for the app.
+
+The new module must allow sellers to build an attractive, informative business valuation report using:
+
+* Existing app valuation figures
+* Xero/Square revenue data
+* Division-level valuation data
+* Equipment ledger totals
+* Lease analysis results
+* 360 tour scene/pin/audio data
+* Listing details
+* Seller-supplied editable fields
+* CSV imported narrative fields
+* Buyer access controls
+* HTML and PDF export
+
+The module should sit under the existing Valuation tab using the existing “Full Report” button.
+
+When the user taps Full Report, open a new reporting hub.
+
+REPORTING HUB SCREEN
+
+Create a new screen:
+
+Title:
+Valuation Report
+
+Subtitle:
+Broker-style Information Memorandum
+
+Main card:
+
+* Business name
+* Current estimated value
+* Valuation range
+* Revenue
+* Adjusted EBITDA
+* Equipment value
+* Business health score
+* Last updated date
+* Report status: Draft / Ready / Published / Buyer Locked
+
+Primary actions:
+
+* Edit Report
+* Preview HTML
+* Export PDF
+* Download CSV Template
+* Upload Completed CSV
+* Publish to Buyers
+
+Secondary actions:
+
+* Report Sections
+* Access Settings
+* Version History
+* AI Draft Helper
+* Charts & Stats
+* Due Diligence Pack
+
+REPORT SECTIONS
+
+Create database-backed report sections. Each section must have:
+
+* id
+* listing_id
+* business_id
+* section_key
+* title
+* subtitle
+* body
+* bullet_points JSON
+* table_data JSON
+* chart_data JSON
+* visibility: public / approved_buyers / seller_only / hidden
+* include_in_pdf boolean
+* include_in_html boolean
+* include_in_app boolean
+* sort_order
+* is_required boolean
+* is_auto_generated boolean
+* is_ai_editable boolean
+* status: empty / draft / complete / needs_review
+* last_updated_at
+* created_at
+
+Default report section keys:
+
+1. executive_summary
+2. business_overview
+3. key_selling_points
+4. reason_for_sale
+5. app_valuation_summary
+6. valuation_methodology
+7. valuation_range_explanation
+8. business_health_score
+9. division_breakdown
+10. revenue_stream_breakdown
+11. verified_revenue_sources
+12. financial_performance_summary
+13. cogs_mapping_summary
+14. addbacks_adjusted_ebitda
+15. plant_equipment_summary
+16. lease_premises_summary
+17. lease_risk_valuation_impact
+18. staff_owner_involvement
+19. operations_systems
+20. supplier_summary
+21. customer_base
+22. brand_digital_assets
+23. reviews_reputation
+24. business_location_market_context
+25. canberra_location_explainer
+26. 360_business_walkthrough
+27. key_tour_highlights
+28. growth_opportunities
+29. risks_mitigations
+30. swot_analysis
+31. sale_inclusions
+32. sale_exclusions
+33. stock_working_capital
+34. training_handover
+35. verified_information
+36. buyer_access_confidentiality
+37. due_diligence_documents_available
+38. buyer_suitability
+39. next_steps
+40. disclaimer
+
+SECTION EDITOR SCREEN
+
+Each report section should open into an editor.
+
+Editor fields:
+
+* Section title
+* Section subtitle
+* Main body text
+* Bullet points editor
+* Optional table editor
+* Optional chart selector
+* Visibility selector
+* Include in PDF toggle
+* Include in HTML toggle
+* Include in app view toggle
+* Auto-fill from app data button
+* AI draft prompt field
+* Save button
+* Mark complete button
+
+Top of editor:
+
+* Section status badge
+* Word count
+* Last saved
+* Data source badge: Seller supplied / App generated / CSV imported / AI drafted / Mixed
+
+Add buttons:
+
+* Regenerate from app data
+* Copy section text
+* Clear section
+* Restore default
+* Preview section
+
+CSV TEMPLATE EXPORT
+
+Add “Download CSV Template” button.
+
+Generate a CSV file with one row per report section.
+
+CSV columns:
+
+listing_id
+section_key
+section_title
+section_subtitle
+main_body
+bullet_1
+bullet_2
+bullet_3
+bullet_4
+bullet_5
+bullet_6
+bullet_7
+bullet_8
+table_json
+chart_json
+visibility
+include_in_pdf
+include_in_html
+include_in_app
+ai_instruction
+seller_notes
+status
+
+The CSV must include all required report sections.
+
+For each row, include helpful placeholder guidance in the main_body or ai_instruction field.
+
+Example rows:
+
+section_key: executive_summary
+section_title: Executive Summary
+ai_instruction:
+Write a polished broker-style summary of the business, explaining what it does, why it is valuable, key revenue streams, buyer appeal, and why the opportunity is attractive.
+
+section_key: valuation_methodology
+section_title: Valuation Methodology
+ai_instruction:
+Explain the valuation method in clear buyer-friendly language. Refer to adjusted EBITDA, valuation multiple, equipment support, goodwill, and limitations.
+
+section_key: canberra_location_explainer
+section_title: Canberra Location Context
+ai_instruction:
+Explain the business location in a way that interstate buyers can understand. Clarify Canberra’s north/south layout, major regions such as Gungahlin, Belconnen, Inner North, City, Fyshwick, Woden, Tuggeranong, and how the business location relates to customer access, commercial traffic, neutral meeting space, and buyer perception.
+
+The CSV export must not contain broken commas or unescaped quotes.
+Use proper CSV escaping.
+
+CSV IMPORT
+
+Add “Upload Completed CSV” button.
+
+Accept .csv file only.
+
+On upload:
+
+* Parse CSV safely.
+* Validate required columns.
+* Match rows by listing_id and section_key.
+* If listing_id is blank, apply to current listing only.
+* Update only sections included in the CSV.
+* Do not delete existing sections if missing from CSV.
+* Show preview before import.
+* Show count of sections to update.
+* Show warnings for unknown section keys.
+* Show warnings for invalid visibility values.
+* Let user confirm import.
+* Save imported content to report_sections table.
+* Mark data source as CSV imported.
+* Preserve existing app-generated financial values.
+
+CSV IMPORT PREVIEW SCREEN
+
+Show:
+
+* File name
+* Number of valid rows
+* Number of matching report sections
+* Number of unknown sections
+* Number of fields changed
+* Preview of first 5 rows
+* Confirm Import button
+* Cancel button
+
+After import:
+Show success toast:
+Report content imported successfully.
+
+CLOUD DATABASE STORAGE
+
+All report content must be saved in the cloud database, not local state only.
+
+Create or extend tables:
+
+report_sections
+report_versions
+report_exports
+report_access_logs
+report_csv_imports
+
+REPORT VERSIONS
+
+Every time a report is exported or published, save a version.
+
+report_versions fields:
+
+* id
+* listing_id
+* version_number
+* title
+* status: draft / published / archived
+* generated_html_url
+* generated_pdf_url
+* snapshot_json
+* created_by
+* created_at
+
+Version History screen:
+
+* Version number
+* Date/time
+* Export type
+* Published status
+* View HTML
+* Download PDF
+* Restore as draft
+
+APP-GENERATED DATA SOURCES
+
+The report builder must pull existing live app data from:
+
+Valuation:
+
+* Estimated value
+* Valuation range
+* Revenue
+* COGS
+* Gross profit
+* EBITDA
+* Adjusted EBITDA
+* Equipment value
+* Business health score
+* Multiple used
+* Valuation formula
+* Division values
+* Included/excluded sale bundle
+
+Equipment:
+
+* Total equipment value
+* Replacement value
+* Second-hand value
+* Number of items
+* Major categories
+* Top high-value assets
+* Equipment included/excluded
+
+Divisions:
+
+* Division name
+* Included in valuation
+* Revenue
+* COGS
+* Profit
+* Equipment allocated
+* Valuation
+* Income accounts mapped
+* COGS suppliers mapped
+
+Leases:
+
+* Number of leases
+* Clause count
+* Risk distribution
+* Critical/high/medium/low clauses
+* Top high-risk categories
+* Latest vs previous lease comparison
+* Key lease risks
+* Tenant-friendly clauses
+
+360 Tours:
+
+* Number of spaces/scenes
+* Number of pins
+* Number of audio narrations
+* Start scene
+* Tour public/private status
+* Key tour spaces
+* Key pins and hotspot notes
+
+Listing:
+
+* Business name
+* Suburb
+* State
+* Category
+* Description
+* Asking price
+* Staff count
+* Owner hours
+* Training period
+* Franchise/licence status
+* Growth opportunity
+* Verified badges
+* Buyer access settings
+
+Leads/engagement:
+
+* Listing views
+* Tour starts
+* Unique buyers
+* Messages
+* Calls clicked
+* Saved count
+* Document requests
+* Financial access requests
+
+STATISTICS AND GRAPHS
+
+Add a “Charts & Stats” section in the report builder.
+
+Generate chart components for app view, HTML report, and PDF export.
+
+Required charts:
+
+1. Valuation Bridge Chart
+    Shows:
+    Adjusted EBITDA × multiple + equipment value = indicative valuation
+2. Revenue by Division Chart
+    Shows each included division revenue.
+3. Valuation by Division Chart
+    Shows division contribution to total valuation.
+4. Equipment Value by Category Chart
+    Shows equipment categories and second-hand value.
+5. Buyer Engagement Funnel
+    Shows:
+    Listing views → Tour starts → Document requests → Messages → Inspections
+6. Lease Risk Distribution Chart
+    Shows critical/high/medium/low lease clauses.
+7. Revenue Source Verification Chart
+    Shows:
+    Xero revenue, Square revenue, imported/manual revenue, verified/unverified.
+8. Business Health Score Breakdown
+    Shows:
+    Financial strength
+    Revenue diversity
+    Asset support
+    Lease security
+    Transferability
+    Brand/reputation
+    Growth potential
+9. Canberra Location Context Map/Diagram
+    Not a full Google map dependency unless already available.
+    Create a simple visual section explaining Canberra regions:
+
+* North Canberra / Inner North
+* Gungahlin
+* Belconnen
+* City / Civic
+* Fyshwick
+* Woden
+* Tuggeranong
+* Queanbeyan
+* South Canberra
+
+Purpose:
+Many interstate buyers will not understand Canberra geography. The report must explain if the location is a neutral meeting space, central commercial zone, north/south accessible location, industrial hub, café precinct, office worker catchment, or regional service point.
+
+For Bean Culture-style listings, this is important because buyers from Sydney, Melbourne, Brisbane or regional areas may not understand Mitchell, Fyshwick, Gungahlin, Belconnen, Woden, Tuggeranong, Inner North or South Canberra.
+
+Add editable fields for location context:
+
+* Location positioning summary
+* Region type: Inner North / North Canberra / South Canberra / Industrial / CBD fringe / Destination / Suburban / Regional
+* Nearby demand drivers
+* North/South accessibility explanation
+* Parking and access notes
+* Interstate buyer explanation
+* Commercial catchment notes
+* Map image upload
+* Optional Google Maps embed URL
+* Nearby suburbs
+* Travel time notes
+* Meeting/inspection suitability
+* Why this location works
+
+GRAPH IMPLEMENTATION
+
+Use existing charting library if installed.
+If not installed, use a lightweight React charting package compatible with the current app.
+Charts must render in:
+
+* app view
+* web/html report
+* PDF export
+
+If PDF export cannot render interactive charts, render static chart snapshots or SVG charts.
+
+HTML REPORT
+
+Create a public/private HTML report route.
+
+Route:
+/reports/:listingId
+or
+/reports/:listingId/:versionId
+
+The HTML report must look like a high-end broker Information Memorandum.
+
+Design style:
+
+* Premium dark/blue theme with optional print-friendly white mode
+* Large cover hero
+* Clear report navigation
+* Section cards
+* Charts
+* Data badges
+* Verification badges
+* Buyer access locks
+* 360 tour preview
+* Download PDF button
+* Request Access button
+* Contact Seller button
+* Book Inspection button
+* Request Docs button
+
+HTML report must respect access visibility:
+
+* public sections visible to everyone
+* approved_buyer sections locked until approved
+* seller_only never visible to buyers
+* hidden not rendered
+
+HTML report sections:
+
+Cover:
+
+* Business name
+* Location
+* Category
+* Hero image
+* Asking price or price display mode
+* Valuation range if public
+* Confidentiality badge if enabled
+* Verified badges
+
+Executive Summary:
+
+* Business overview
+* Key selling points
+* Buyer opportunity summary
+
+Valuation Summary:
+
+* App valuation
+* Valuation range
+* Revenue
+* Adjusted EBITDA
+* Equipment value
+* Business health score
+* Formula cards
+
+Business Overview:
+
+* What the business does
+* Revenue streams
+* Customer base
+* Location
+
+Financial Summary:
+
+* Revenue
+* COGS
+* Gross profit
+* EBITDA
+* Adjusted EBITDA
+* Addbacks summary
+* Data verification badges
+
+Division Breakdown:
+
+* Cards/table per division
+* Included/excluded badges
+
+Plant and Equipment:
+
+* Summary only
+* Total value
+* Count
+* Category chart
+* Full ledger gated behind request
+
+Lease and Premises:
+
+* Lease summary
+* Risk score
+* Clause risk chart
+* Key risks
+* Tenant-friendly clauses
+
+360 Tour:
+
+* Tour preview image
+* Spaces count
+* Pins count
+* Audio count
+* Enter tour button
+
+Growth Opportunities:
+
+* Opportunity cards
+
+Risks and Mitigations:
+
+* Risk table
+
+Sale Inclusions/Exclusions:
+
+* Clear list
+
+Due Diligence:
+
+* Documents available
+* Locked sections
+* Request access
+
+Next Steps:
+
+* Contact seller
+* Book inspection
+* Request docs
+* Make enquiry
+
+PDF EXPORT
+
+Create a high-quality PDF export.
+
+The PDF should be broker Information Memorandum style.
+
+Must include:
+
+* Cover page
+* Confidentiality notice / disclaimer
+* Table of contents
+* Executive summary
+* Valuation summary
+* Valuation methodology
+* Business overview
+* Location and premises
+* Canberra location context
+* Financial summary
+* Revenue streams
+* Division breakdown
+* Addbacks and adjusted EBITDA
+* Plant and equipment summary
+* Lease and premises summary
+* Lease risk and valuation impact
+* 360 business walkthrough summary
+* Staff and owner involvement
+* Operations and systems
+* Brand and digital assets
+* Reviews and reputation
+* Growth opportunities
+* Risks and mitigations
+* Sale inclusions/exclusions
+* Due diligence documents available
+* Buyer process / next steps
+* Disclaimer
+
+PDF must use actual report_sections content.
+PDF must not hardcode Bean Culture.
+PDF must be generated from the current listing/report version.
+PDF must include charts where available.
+PDF must include page numbers.
+PDF must include a generated date.
+PDF must include confidentiality footer.
+
+PDF DESIGN
+
+Use a clean professional layout:
+
+* Cover page with hero image
+* Dark blue/navy brand accents
+* White report body for print readability
+* Section headers
+* Metric cards
+* Tables
+* Small chart blocks
+* Callout boxes
+* Verification badges
+* Locked-data notices where appropriate
+
+PDF page style:
+
+* A4 portrait
+* Good margins
+* Footer: Confidential Business Profile | Generated by Exit360/Biz360 | Page X
+* Header after cover: Business name | Information Memorandum
+
+The PDF should feel more polished than a generic broker report.
+
+APP VIEW REPORT BUILDER
+
+Create report builder app UI.
+
+Screen: Report Builder
+
+Top:
+
+* Report completeness percentage
+* Required sections complete count
+* Last updated
+* Report status
+* Preview button
+* Export PDF button
+
+Section list:
+Each section card shows:
+
+* Section title
+* Status
+* Visibility badge
+* Include in PDF badge
+* Source badge
+* Edit button
+* Reorder handle
+* Toggle visible/hidden
+
+Report completeness logic:
+Required sections:
+
+* Executive Summary
+* Business Overview
+* App Valuation Summary
+* Valuation Methodology
+* Financial Performance Summary
+* Plant and Equipment Summary
+* Lease and Premises Summary
+* Growth Opportunities
+* Risks and Mitigations
+* Sale Inclusions/Exclusions
+* Due Diligence Documents Available
+* Next Steps
+* Disclaimer
+
+Calculate completeness by:
+
+* required section body not empty
+* required app data exists
+* financial data synced
+* equipment value present
+* at least one growth opportunity
+* at least one risk/mitigation
+* access settings configured
+
+Show recommendations:
+
+* “Add a reason for sale to build buyer trust”
+* “Add Canberra location context for interstate buyers”
+* “Explain valuation multiple”
+* “Add risks and mitigations”
+* “Add growth opportunities”
+* “Upload lease or mark lease unavailable”
+* “Publish 360 tour to strengthen buyer confidence”
+
+AI-FILL WORKFLOW
+
+Add a cheeky workflow:
+
+Button:
+“Download AI Fill Template”
+
+Subtext:
+Download a CSV, give it to ChatGPT or your favourite AI, then upload it back to create a richer broker-style report.
+
+Flow:
+
+1. User clicks Download AI Fill Template
+2. App downloads CSV with section keys and AI instructions
+3. User fills it manually or with AI
+4. User uploads CSV
+5. App previews changes
+6. User confirms import
+7. Report sections update
+8. App marks imported sections as “CSV imported”
+
+Add warning:
+Do not upload confidential financial documents into third-party AI tools unless you are comfortable sharing that information.
+
+CSV AI instructions should be high quality and helpful.
+
+Example CSV AI instruction for executive_summary:
+“Write a polished, buyer-facing broker information memorandum summary. Focus on business strengths, revenue diversity, operational substance, verified information, and buyer appeal. Do not invent facts. Use only the supplied data.”
+
+Example CSV AI instruction for risks_mitigations:
+“Create a balanced risks and mitigations section. Include operational, lease, staff, financial, customer, supplier, and transfer risks where relevant. Keep the tone credible, not negative.”
+
+Example CSV AI instruction for canberra_location_explainer:
+“Explain this Canberra location clearly for interstate buyers. Describe the region, north/south accessibility, nearby commercial areas, customer catchment, parking/access, and why the location is commercially useful.”
+
+BUYER ACCESS
+
+Report access must integrate with buyer access controls.
+
+Access states:
+
+* Public viewer
+* Logged-in buyer
+* Buyer requested access
+* Seller approved buyer
+* NDA accepted
+* Full access granted
+
+Locked report sections should show:
+
+* Section title
+* Locked preview
+* Request Access button
+* Seller approval required notice
+
+Examples:
+Verified Financials locked
+Full Equipment Register locked
+Lease Documents locked
+Detailed Addbacks locked
+Customer/Supplier List locked
+
+SELLER CONTROLS
+
+Add Access Settings screen for report.
+
+Fields:
+
+* Public report enabled toggle
+* Require login to view full report
+* Require seller approval for financials
+* Require NDA for documents
+* Require password for financials
+* Hide business name toggle
+* Hide exact address toggle
+* Show asking price toggle
+* Show valuation range toggle
+* Show equipment value toggle
+* Show lease risk toggle
+* Show 360 tour toggle
+* Allow PDF download toggle
+* Allow document requests toggle
+* Notify seller on report view toggle
+* Notify seller on access request toggle
+
+REPORT ACCESS LOGS
+
+Track:
+
+* Buyer viewed report
+* Buyer viewed section
+* Buyer clicked 360 tour
+* Buyer requested documents
+* Buyer downloaded PDF
+* Buyer requested access
+* Buyer unlocked financials
+* Buyer clicked contact
+* Buyer booked inspection
+
+Use this to improve seller dashboard stats later.
+
+DATA SAFETY
+
+Do not expose seller-only fields in public API responses.
+
+Use server-side filtering for report sections based on access level.
+
+Do not rely only on frontend hiding.
+
+PDF exports for buyers must only include sections they are allowed to access.
+
+Seller PDF exports can include everything.
+
+HTML reports must respect access level.
+
+REPORT DISCLAIMERS
+
+Add default disclaimer section.
+
+Editable default text:
+
+“This Information Memorandum has been prepared using information supplied by the seller and app-connected data sources where available. It is provided for general information only and does not constitute financial, legal or accounting advice. Buyers must conduct their own due diligence and obtain independent professional advice before making any decision to purchase. Valuation outputs are indicative only and are based on selected assumptions, data inputs, valuation multiples, and seller-supplied information.”
+
+Add disclaimer visibility:
+
+* Always included in PDF
+* Always included in HTML
+* Seller can edit but not remove entirely
+
+CANBERRA LOCATION CONTEXT SECTION
+
+Add special section designed to help interstate buyers understand location.
+
+Fields:
+
+* Region name
+* Suburb
+* State
+* Canberra area type
+* Nearby regions
+* North/South explanation
+* Travel time to CBD
+* Travel time to airport
+* Travel time to major business hubs
+* Parking/access notes
+* Customer catchment
+* Commercial demand drivers
+* Why the location works
+* Interstate buyer explanation
+* Optional map image
+* Optional suburb map
+* Optional drive-time chart
+
+Default report text should explain:
+
+* Canberra is a planned city with distinct business/residential regions.
+* Interstate buyers may not understand the difference between Mitchell, Fyshwick, Gungahlin, Belconnen, Woden, Tuggeranong, Inner North, South Canberra, and the CBD.
+* The report should explain whether the location is a destination venue, industrial/commercial hub, central meeting point, high-foot-traffic retail area, office worker catchment, or convenient north/south access point.
+* The location context should be buyer-friendly and commercial, not just demographic.
+
+For a Mitchell-style business, the app should allow text such as:
+“The business is positioned in Mitchell, one of Canberra’s key northern commercial and industrial precincts. It is close to Gungahlin, North Canberra and major arterial roads, making it accessible for wholesale customers, training students, suppliers and destination café visitors.”
+
+Do not hardcode this text globally. Use it as example helper text only.
+
+DUE DILIGENCE PACK SECTION
+
+Add document checklist fields:
+
+* P&L available
+* BAS available
+* Tax returns available
+* POS reports available
+* Xero reports available
+* Square reports available
+* Lease documents available
+* Equipment register available
+* Staff wage summary available
+* Supplier list available
+* Customer list available
+* Training manuals available
+* Recipes/IP available
+* Insurance documents available
+* Licences/permits available
+* Franchise/licence agreement available
+* Disclosure statement available
+* Stock valuation available
+* Bank statements available
+* Contract templates available
+
+Each item:
+
+* available yes/no
+* access level
+* uploaded file link optional
+* notes
+
+REPORT EXPORT BUTTONS
+
+From Report Hub:
+
+* Preview App Report
+* Preview HTML Report
+* Export Seller PDF
+* Export Buyer PDF
+* Download CSV Template
+* Upload CSV
+* Publish HTML Report
+
+Seller PDF:
+Includes seller-only notes if selected.
+
+Buyer PDF:
+Only includes buyer-visible/approved sections.
+
+HTML Report:
+Public share link, access-controlled.
+
+REPLIT IMPLEMENTATION NOTES
+
+Before building:
+
+* Inspect existing database schema.
+* Identify current tables for listings, valuation, equipment, leases, tours, pins, users, leads.
+* Add migrations carefully.
+* Do not rename existing columns unless necessary.
+* Do not break current app navigation.
+* Reuse current UI components, card styles, buttons, icons, tabs, and bottom nav.
+* Use existing auth and permission patterns.
+* Use existing file upload/cloud storage pattern if available.
+* If no cloud file storage exists, add a clean abstraction for report exports and CSV uploads.
+* Use environment variables for any storage credentials.
+* Never expose private report sections to unauthorised buyers.
+
+DELIVERABLES
+
+Build the following:
+
+1. Report Hub screen
+2. Report Builder screen
+3. Report Section Editor screen
+4. CSV template download
+5. CSV import with preview/confirm
+6. Report sections database table
+7. Report versions database table
+8. HTML report route
+9. PDF export system
+10. Chart/stat components
+11. Canberra location context section
+12. Buyer access filtering
+13. Seller access settings
+14. Report completeness score
+15. Due diligence checklist section
+16. Report access logging
+17. Seller PDF and Buyer PDF export modes
+18. Public/private HTML report modes
+
+SUCCESS CRITERIA
+
+The system is successful when:
+
+* A seller can open Full Report from the Valuation tab.
+* The seller can see all report sections.
+* The seller can edit each section.
+* The app can auto-fill sections from valuation/listing/tour/lease/equipment data.
+* The seller can download a CSV template.
+* The seller can upload a completed CSV.
+* Uploaded CSV content updates report sections.
+* The seller can preview the report inside the app.
+* The seller can publish a web-based HTML report.
+* The seller can export a polished broker-style PDF.
+* Buyer visibility rules are respected.
+* Locked buyer sections show access request prompts.
+* Charts display in app, HTML, and PDF.
+* The report looks substantially better and more informative than a traditional broker PDF.
+* No hardcoded demo business data is used.
+* Existing valuation/tour/equipment/lease/listing features still work.
