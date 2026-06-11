@@ -66,7 +66,6 @@ export default function ClauseLibrary() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { clauses: localClauses, leases } = useLease();
-  // leaseId is passed when navigating from a lease-detail screen
   const { leaseId } = useLocalSearchParams<{ leaseId?: string }>();
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState<RiskLevel | "all">("all");
@@ -76,7 +75,6 @@ export default function ClauseLibrary() {
   const [serverClauses, setServerClauses] = useState<Clause[]>([]);
   const [serverFetched, setServerFetched] = useState(false);
 
-  // Fetch shared master clauses from the server on mount
   useEffect(() => {
     (async () => {
       try {
@@ -91,16 +89,18 @@ export default function ClauseLibrary() {
     })();
   }, []);
 
-  // When leaseId is provided, find which clause IDs belong to that lease
-  const leaseClauseIds = useMemo((): Set<string> | null => {
+  // Find the lease name for the scope banner
+  const scopedLease = useMemo(() => {
     if (!leaseId) return null;
-    const lease = leases.find(l => l.id === leaseId);
-    if (!lease?.extractedClauseIds?.length) return new Set();
-    return new Set(lease.extractedClauseIds);
+    return leases.find(l => l.id === leaseId) ?? null;
   }, [leaseId, leases]);
 
-  // Merge: seeds first, then unique server clauses, then user-extracted clauses.
-  // When leaseId is set, restrict to only that lease's extracted clauses.
+  const leaseClauseIds = useMemo((): Set<string> | null => {
+    if (!leaseId) return null;
+    if (!scopedLease?.extractedClauseIds?.length) return new Set();
+    return new Set(scopedLease.extractedClauseIds);
+  }, [leaseId, scopedLease]);
+
   const clauses = useMemo((): Clause[] => {
     const seedIds     = new Set(LEASE_SEED_CLAUSES.map(s => s.id));
     const seedTitles  = new Set(LEASE_SEED_CLAUSES.map(s => s.title.toLowerCase()));
@@ -108,7 +108,6 @@ export default function ClauseLibrary() {
     const userExtracted = localClauses.filter(c => !seedIds.has(c.id) && !c.isSeed);
 
     if (leaseClauseIds !== null) {
-      // Per-lease view: only show that lease's extracted clauses
       return userExtracted.filter(c => leaseClauseIds.has(c.id));
     }
     return [...LEASE_SEED_CLAUSES, ...serverUniq, ...userExtracted];
@@ -131,6 +130,42 @@ export default function ClauseLibrary() {
       return true;
     });
   }, [clauses, riskFilter, ratingFilter, categoryFilter, search, showOnlySeed]);
+
+  // Pre-compute which filter values would yield 0 results in the current scope.
+  // Only computed when in per-lease mode; in the full library we never dim chips.
+  const { disabledRisk, disabledRating, disabledCategory } = useMemo(() => {
+    if (!leaseId) return { disabledRisk: new Set<string>(), disabledRating: new Set<string>(), disabledCategory: new Set<string>() };
+
+    function passesOtherFilters(c: Clause, skipFilter: "risk" | "rating" | "category"): boolean {
+      if (skipFilter !== "risk"     && riskFilter !== "all"     && c.riskLevel !== riskFilter)   return false;
+      if (skipFilter !== "rating"   && ratingFilter !== "all"   && c.rating    !== ratingFilter) return false;
+      if (skipFilter !== "category" && categoryFilter !== "All" && c.category  !== categoryFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        if (!c.title.toLowerCase().includes(q) && !c.plainEnglish.toLowerCase().includes(q) && !c.category.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    }
+
+    const disabledRisk = new Set(
+      RISK_FILTERS
+        .filter(f => f.value !== "all" && !clauses.some(c => c.riskLevel === f.value && passesOtherFilters(c, "risk")))
+        .map(f => f.value)
+    );
+
+    const disabledRating = new Set(
+      RATING_FILTERS
+        .filter(f => f.value !== "all" && !clauses.some(c => c.rating === f.value && passesOtherFilters(c, "rating")))
+        .map(f => f.value)
+    );
+
+    const disabledCategory = new Set(
+      CATEGORIES
+        .filter(cat => cat !== "All" && !clauses.some(c => c.category === cat && passesOtherFilters(c, "category")))
+    );
+
+    return { disabledRisk, disabledRating, disabledCategory };
+  }, [leaseId, clauses, riskFilter, ratingFilter, categoryFilter, search]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -156,7 +191,6 @@ export default function ClauseLibrary() {
                 : `${filtered.length} of ${clauses.length} clauses`}
             </Text>
           </View>
-          {/* Hide seed toggle when in per-lease view — all clauses are user-extracted */}
           {!leaseId && (
             <TouchableOpacity
               style={[styles.seedToggle, { backgroundColor: showOnlySeed ? "#1E3A5C" : colors.card, borderColor: showOnlySeed ? "#3B82F6" : colors.border }]}
@@ -167,6 +201,28 @@ export default function ClauseLibrary() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Per-lease scope banner */}
+        {leaseId && (
+          <View style={styles.scopeBanner}>
+            <View style={styles.scopeBannerLeft}>
+              <Feather name="file-text" size={14} color="#93C5FD" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scopeBannerLabel}>Viewing clauses from</Text>
+                <Text style={styles.scopeBannerName} numberOfLines={1}>
+                  {scopedLease?.name ?? "this lease"}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.scopeBannerLink}
+              onPress={() => router.replace("/(seller)/leases/library" as any)}
+            >
+              <Text style={styles.scopeBannerLinkText}>Full library</Text>
+              <Feather name="arrow-right" size={12} color="#93C5FD" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Server clause indicator — only shown in global library view */}
         {!leaseId && serverFetched && serverCount > 0 && (
@@ -198,45 +254,81 @@ export default function ClauseLibrary() {
         {/* Risk filter */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.filterRow}>
-            {RISK_FILTERS.map(f => (
-              <TouchableOpacity
-                key={f.value}
-                style={[styles.filterChip, { borderColor: riskFilter === f.value ? "#3B82F6" : colors.border, backgroundColor: riskFilter === f.value ? "#1E3A5C" : colors.card }]}
-                onPress={() => setRiskFilter(f.value)}
-              >
-                <Text style={[styles.filterText, { color: riskFilter === f.value ? "#93C5FD" : colors.mutedForeground }]}>{f.label}</Text>
-              </TouchableOpacity>
-            ))}
+            {RISK_FILTERS.map(f => {
+              const isActive   = riskFilter === f.value;
+              const isDisabled = leaseId ? (f.value !== "all" && disabledRisk.has(f.value)) : false;
+              return (
+                <TouchableOpacity
+                  key={f.value}
+                  disabled={isDisabled}
+                  style={[
+                    styles.filterChip,
+                    {
+                      borderColor:     isActive ? "#3B82F6" : colors.border,
+                      backgroundColor: isActive ? "#1E3A5C" : colors.card,
+                      opacity:         isDisabled ? 0.35 : 1,
+                    },
+                  ]}
+                  onPress={() => setRiskFilter(f.value)}
+                >
+                  <Text style={[styles.filterText, { color: isActive ? "#93C5FD" : colors.mutedForeground }]}>{f.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </ScrollView>
 
         {/* Rating filter */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.filterRow}>
-            {RATING_FILTERS.map(f => (
-              <TouchableOpacity
-                key={f.value}
-                style={[styles.filterChip, { borderColor: ratingFilter === f.value ? "#8B5CF6" : colors.border, backgroundColor: ratingFilter === f.value ? "#2D1B69" : colors.card }]}
-                onPress={() => setRatingFilter(f.value)}
-              >
-                <Text style={[styles.filterText, { color: ratingFilter === f.value ? "#C4B5FD" : colors.mutedForeground }]}>{f.label}</Text>
-              </TouchableOpacity>
-            ))}
+            {RATING_FILTERS.map(f => {
+              const isActive   = ratingFilter === f.value;
+              const isDisabled = leaseId ? (f.value !== "all" && disabledRating.has(f.value)) : false;
+              return (
+                <TouchableOpacity
+                  key={f.value}
+                  disabled={isDisabled}
+                  style={[
+                    styles.filterChip,
+                    {
+                      borderColor:     isActive ? "#8B5CF6" : colors.border,
+                      backgroundColor: isActive ? "#2D1B69" : colors.card,
+                      opacity:         isDisabled ? 0.35 : 1,
+                    },
+                  ]}
+                  onPress={() => setRatingFilter(f.value)}
+                >
+                  <Text style={[styles.filterText, { color: isActive ? "#C4B5FD" : colors.mutedForeground }]}>{f.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </ScrollView>
 
         {/* Category filter */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.filterRow}>
-            {CATEGORIES.map(cat => (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.filterChip, { borderColor: categoryFilter === cat ? "#F59E0B" : colors.border, backgroundColor: categoryFilter === cat ? "#431407" : colors.card }]}
-                onPress={() => setCategoryFilter(cat)}
-              >
-                <Text style={[styles.filterText, { color: categoryFilter === cat ? "#FCD34D" : colors.mutedForeground }]}>{cat}</Text>
-              </TouchableOpacity>
-            ))}
+            {CATEGORIES.map(cat => {
+              const isActive   = categoryFilter === cat;
+              const isDisabled = leaseId ? (cat !== "All" && disabledCategory.has(cat)) : false;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  disabled={isDisabled}
+                  style={[
+                    styles.filterChip,
+                    {
+                      borderColor:     isActive ? "#F59E0B" : colors.border,
+                      backgroundColor: isActive ? "#431407" : colors.card,
+                      opacity:         isDisabled ? 0.35 : 1,
+                    },
+                  ]}
+                  onPress={() => setCategoryFilter(cat)}
+                >
+                  <Text style={[styles.filterText, { color: isActive ? "#FCD34D" : colors.mutedForeground }]}>{cat}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </ScrollView>
 
@@ -248,8 +340,6 @@ export default function ClauseLibrary() {
           </View>
         ) : (
           filtered.map(clause => {
-            // Server-only clauses (not in local AsyncStorage or seed data) carry their
-            // data as a JSON param so clause-detail can render them without a local lookup.
             const isLocalOrSeed =
               LEASE_SEED_CLAUSES.some(s => s.id === clause.id) ||
               localClauses.some(c => c.id === clause.id);
@@ -263,6 +353,7 @@ export default function ClauseLibrary() {
                     params: {
                       id: clause.id,
                       ...(isLocalOrSeed ? {} : { clauseJson: JSON.stringify(clause) }),
+                      ...(leaseId ? { leaseId } : {}),
                     },
                   } as any)
                 }
@@ -284,6 +375,23 @@ const styles = StyleSheet.create({
   sub:            { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   seedToggle:     { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   seedToggleText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  scopeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0F2A4A",
+    borderColor: "#1E3A5C",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  scopeBannerLeft: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
+  scopeBannerLabel: { fontSize: 10, fontFamily: "Inter_400Regular", color: "#8B9CB8", marginBottom: 1 },
+  scopeBannerName:  { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#E2E8F0" },
+  scopeBannerLink:  { flexDirection: "row", alignItems: "center", gap: 4, paddingLeft: 8 },
+  scopeBannerLinkText: { fontSize: 12, fontFamily: "Inter_500Medium", color: "#93C5FD" },
   serverBanner:     { flexDirection: "row", alignItems: "center", gap: 6, padding: 8, borderRadius: 10, borderWidth: 1 },
   serverBannerText: { fontSize: 11, fontFamily: "Inter_400Regular" },
   searchRow:      { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, padding: 10, borderWidth: 1 },
