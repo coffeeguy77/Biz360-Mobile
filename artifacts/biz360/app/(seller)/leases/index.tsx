@@ -10,6 +10,7 @@ import { useLease } from "@/context/LeaseContext";
 import { LeaseCard } from "@/components/lease/LeaseCard";
 import { RiskBadge } from "@/components/lease/RiskBadge";
 import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
+import { PortfolioInsights } from "@/components/lease/PortfolioInsights";
 
 const ACTIONS = [
   { icon: "upload-cloud", label: "Upload & Analyse",   route: "/(seller)/leases/upload",    color: "#3B82F6", bg: "#1E3A5C" },
@@ -77,6 +78,9 @@ export default function LeasesHub() {
             <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Drafts</Text>
           </View>
         </View>
+
+        {/* Portfolio Insights — shown when ≥1 lease has been analysed */}
+        <PortfolioInsights leases={leases} clauses={clauses} />
 
         {/* Quick Actions */}
         <View style={styles.actionsGrid}>
