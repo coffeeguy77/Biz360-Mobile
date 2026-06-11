@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Clause, DraftLease, Lease } from './leaseTypes';
 import { LEASE_SEED_CLAUSES } from '@/data/leaseSeedClauses';
@@ -6,6 +6,7 @@ import { LEASE_SEED_CLAUSES } from '@/data/leaseSeedClauses';
 const LEASES_KEY  = 'biz360_lease_leases';
 const CLAUSES_KEY = 'biz360_lease_clauses';
 const DRAFTS_KEY  = 'biz360_lease_drafts';
+const TOKEN_KEY   = 'biz360_auth_token';
 
 const domain   = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}` : '';
@@ -26,27 +27,75 @@ interface LeaseContextValue {
 
 const LeaseContext = createContext<LeaseContextValue | null>(null);
 
+// ─── Server sync helpers ─────────────────────────────────────────────────────
+// Token is read fresh from AsyncStorage on every call so these functions work
+// correctly even if the user logs in after LeaseProvider first mounts.
+
+async function getAuthHeaders(): Promise<Record<string, string> | null> {
+  if (!API_BASE) return null;
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
+  if (!token) return null;
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
+
+function serverSaveLease(lease: Lease) {
+  (async () => {
+    try {
+      const headers = await getAuthHeaders();
+      if (!headers) return;
+      await fetch(`${API_BASE}/api/seller/leases`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ lease }),
+      });
+    } catch { /* non-critical, best-effort */ }
+  })();
+}
+
+function serverSaveClauses(leaseId: string, clauses: Clause[]) {
+  if (!clauses.length) return;
+  (async () => {
+    try {
+      const headers = await getAuthHeaders();
+      if (!headers) return;
+      await fetch(`${API_BASE}/api/seller/leases/${leaseId}/clauses`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ clauses }),
+      });
+    } catch { /* non-critical, best-effort */ }
+  })();
+}
+
+function serverDeleteLease(id: string) {
+  (async () => {
+    try {
+      const token = await AsyncStorage.getItem(TOKEN_KEY);
+      if (!token || !API_BASE) return;
+      await fetch(`${API_BASE}/api/seller/leases/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch { /* non-critical, best-effort */ }
+  })();
+}
+
+// ─── Provider ────────────────────────────────────────────────────────────────
+
 export function LeaseProvider({ children }: { children: React.ReactNode }) {
   const [leases,      setLeases]      = useState<Lease[]>([]);
   const [userClauses, setUserClauses] = useState<Clause[]>([]);
   const [drafts,      setDrafts]      = useState<DraftLease[]>([]);
 
-  // Auth token ref — kept in sync but never causes re-renders
-  const tokenRef = useRef<string | null>(null);
-
-  // ─── Startup: load from AsyncStorage, clean orphans, then sync from server ──
-
+  // Startup: load from AsyncStorage, clean orphaned clauses, then sync from server
   useEffect(() => {
     (async () => {
       try {
-        const [lRaw, cRaw, dRaw, token] = await Promise.all([
+        const [lRaw, cRaw, dRaw] = await Promise.all([
           AsyncStorage.getItem(LEASES_KEY),
           AsyncStorage.getItem(CLAUSES_KEY),
           AsyncStorage.getItem(DRAFTS_KEY),
-          AsyncStorage.getItem('biz360_auth_token'),
         ]);
-
-        tokenRef.current = token;
 
         const loadedLeases: Lease[]   = lRaw ? JSON.parse(lRaw) : [];
         const loadedClauses: Clause[] = cRaw ? JSON.parse(cRaw) : [];
@@ -54,8 +103,7 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
         setLeases(loadedLeases);
         if (dRaw) setDrafts(JSON.parse(dRaw));
 
-        // Clean up orphaned clauses: remove any extracted clause whose parent lease
-        // no longer exists (e.g. Expo Go cache cleared between sessions).
+        // Remove orphaned clauses — any extracted clause whose parent lease is gone
         const leaseIds = new Set(loadedLeases.map(l => l.id));
         const cleaned  = loadedClauses.filter(
           c => !c.sourceLeaseId || leaseIds.has(c.sourceLeaseId),
@@ -65,25 +113,18 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem(CLAUSES_KEY, JSON.stringify(cleaned));
         }
 
-        // Background server sync — must not block the UI
-        if (token && API_BASE) {
-          syncFromServer(loadedLeases, cleaned, token).catch(() => {});
-        }
+        // Background server sync — does not block the UI
+        syncFromServer(loadedLeases, cleaned).catch(() => {});
       } catch { /* non-critical */ }
     })();
   }, []);
 
-  // ─── Server sync helpers ─────────────────────────────────────────────────────
-
-  async function syncFromServer(
-    localLeases: Lease[],
-    localClauses: Clause[],
-    token: string,
-  ) {
+  async function syncFromServer(localLeases: Lease[], localClauses: Clause[]) {
     try {
-      const res = await fetch(`${API_BASE}/api/seller/leases`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const headers = await getAuthHeaders();
+      if (!headers) return;
+
+      const res = await fetch(`${API_BASE}/api/seller/leases`, { headers });
       if (!res.ok) return;
 
       const body: { leases: Lease[]; clauses: Clause[] } = await res.json();
@@ -92,24 +133,14 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
       // First-launch migration: server is empty but local has data → push everything up
       if (serverLeases.length === 0 && localLeases.length > 0) {
         for (const lease of localLeases) {
-          fetch(`${API_BASE}/api/seller/leases`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ lease }),
-          }).catch(() => {});
+          serverSaveLease(lease);
           const leaseClauses = localClauses.filter(c => c.sourceLeaseId === lease.id);
-          if (leaseClauses.length) {
-            fetch(`${API_BASE}/api/seller/leases/${lease.id}/clauses`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ clauses: leaseClauses }),
-            }).catch(() => {});
-          }
+          if (leaseClauses.length) serverSaveClauses(lease.id, leaseClauses);
         }
         return;
       }
 
-      // Merge: server is authoritative; include any local leases the server doesn't have
+      // Normal merge: server is authoritative; keep any local leases server doesn't have
       const serverLeaseIds  = new Set(serverLeases.map(l => l.id));
       const serverClauseIds = new Set(serverClauses.map(c => c.id));
 
@@ -131,36 +162,7 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
     } catch { /* offline or server unavailable — local data stays */ }
   }
 
-  function serverSaveLease(lease: Lease) {
-    const token = tokenRef.current;
-    if (!token || !API_BASE) return;
-    fetch(`${API_BASE}/api/seller/leases`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ lease }),
-    }).catch(() => {});
-  }
-
-  function serverSaveClauses(leaseId: string, clauses: Clause[]) {
-    const token = tokenRef.current;
-    if (!token || !API_BASE || !clauses.length) return;
-    fetch(`${API_BASE}/api/seller/leases/${leaseId}/clauses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ clauses }),
-    }).catch(() => {});
-  }
-
-  function serverDeleteLease(id: string) {
-    const token = tokenRef.current;
-    if (!token || !API_BASE) return;
-    fetch(`${API_BASE}/api/seller/leases/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => {});
-  }
-
-  // ─── Mutations ───────────────────────────────────────────────────────────────
+  // ─── Mutations ─────────────────────────────────────────────────────────────
 
   async function addLease(lease: Lease) {
     let saved: Lease[] = [];
@@ -186,7 +188,6 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
   async function deleteLease(id: string) {
     let savedLeases: Lease[]   = [];
     let savedClauses: Clause[] = [];
-
     setLeases(prev => {
       savedLeases = prev.filter(l => l.id !== id);
       return savedLeases;
@@ -195,7 +196,6 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
       savedClauses = prev.filter(c => c.sourceLeaseId !== id);
       return savedClauses;
     });
-
     await Promise.all([
       AsyncStorage.setItem(LEASES_KEY,  JSON.stringify(savedLeases)),
       AsyncStorage.setItem(CLAUSES_KEY, JSON.stringify(savedClauses)),
