@@ -91,12 +91,25 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
         ],
       });
     } else {
-      // DOC / DOCX — extract text with mammoth, send as text
-      const parsed = await mammoth.extractRawText({ buffer: file.buffer });
-      const text: string = parsed.value ?? "";
+      // DOCX / DOC — extract text with mammoth.
+      // Mammoth handles DOCX natively. It also handles .doc files that are
+      // actually in OOXML format (mislabelled). True legacy binary .doc files
+      // will produce an empty result; we surface a clear error in that case.
+      let text = "";
+      try {
+        const parsed = await mammoth.extractRawText({ buffer: file.buffer });
+        text = parsed.value ?? "";
+      } catch {
+        text = "";
+      }
 
       if (!text.trim()) {
-        return res.status(422).json({ error: "Could not extract text from document. The file may be corrupted or empty." });
+        return res.status(422).json({
+          error:
+            isDoc
+              ? "Could not read this Word document. Legacy .doc files are not fully supported — please save the document as PDF or DOCX (.docx) and try again."
+              : "Could not extract text from document. The file may be corrupted or empty.",
+        });
       }
 
       const truncated = text.slice(0, 60000);

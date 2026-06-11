@@ -186,7 +186,7 @@ export default function UploadLease() {
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: colors.foreground }]}>Upload Lease</Text>
-            <Text style={[styles.sub, { color: colors.mutedForeground }]}>PDF or DOCX · Max 20MB</Text>
+            <Text style={[styles.sub, { color: colors.mutedForeground }]}>PDF or DOCX recommended · Max 20MB</Text>
           </View>
         </View>
 
