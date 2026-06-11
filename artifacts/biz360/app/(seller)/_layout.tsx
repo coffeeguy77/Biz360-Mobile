@@ -80,6 +80,9 @@ function ClassicLayout() {
 }
 
 export default function SellerTabLayout() {
-  const layout = isLiquidGlassAvailable() ? <NativeLayout /> : <ClassicLayout />;
-  return <ValuationProvider>{layout}</ValuationProvider>;
+  // NativeTabs (used when isLiquidGlassAvailable()) does not support hidden screens:
+  // router.push to a screen without a Trigger causes NativeTabsView to receive a
+  // focused route with shouldTabBeVisible=false, which silently reverts to the first
+  // tab in prod. ClassicLayout uses Tabs with href:null which handles this correctly.
+  return <ValuationProvider><ClassicLayout /></ValuationProvider>;
 }
