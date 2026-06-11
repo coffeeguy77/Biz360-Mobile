@@ -199,7 +199,7 @@ export default function ReportSectionEditorScreen() {
         if (suggestion) {
           const sb = (suggestion.suggestedBody as string | undefined) ?? "";
           const sBullets = (suggestion.suggestedBullets as string[] | undefined) ?? [];
-          const sTable = (suggestion.suggestedTable as { rows?: TableRow[] } | undefined);
+          const sTable = (suggestion.tableData as { rows?: TableRow[] } | undefined);
           Alert.alert(
             "Auto-fill Suggestion",
             `${sb ? sb.slice(0, 200) + (sb.length > 200 ? "…" : "") : "(bullet points / table data only)"}`,

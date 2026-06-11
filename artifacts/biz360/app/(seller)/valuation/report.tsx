@@ -70,12 +70,20 @@ type ReportStatus = "empty" | "draft" | "ready" | "published" | "buyer_locked";
 
 function computeStatus(sections: ReportSection[], pct: number, versions: ReportVersion[]): ReportStatus {
   if (sections.length === 0) return "empty";
-  // buyer_locked = a version has been published to buyers (version.status === "published")
+  // buyer_locked: at least one version has been pushed live to buyers
   if (versions.some((v) => v.status === "published")) return "buyer_locked";
-  // published = a draft snapshot exists (internally saved/reviewed, not yet live to buyers)
-  if (versions.some((v) => v.status === "draft")) return "published";
+  // published: at least one version snapshot exists (even if still draft in DB)
+  if (versions.length > 0) return "published";
   if (pct >= 80) return "ready";
   return "draft";
+}
+
+function healthScore(pct: number, sections: ReportSection[]): number {
+  const filled = sections.filter((s) => s.status === "complete" || (s.body?.trim().length ?? 0) > 10).length;
+  const total = sections.length;
+  const coverageScore = total > 0 ? Math.round((filled / total) * 100) : 0;
+  // Blend completeness (50%) with required-key coverage (50%)
+  return Math.round((pct * 0.5) + (coverageScore * 0.5));
 }
 
 const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string }> = {
@@ -132,6 +140,7 @@ export default function ReportHubScreen() {
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const pct = completenessScore(sections);
+  const score = healthScore(pct, sections);
   const status = computeStatus(sections, pct, versions);
   const statusCfg = STATUS_CONFIG[status];
   const adjEbitda = Number(snap?.adjustedEbitda ?? 0);
@@ -249,6 +258,12 @@ export default function ReportHubScreen() {
                     <Text style={styles.metaVal}>{fmt(val)}</Text>
                   </View>
                 ))}
+                <View style={[styles.metaRow, { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: "#1E3A5C" }]}>
+                  <Text style={styles.metaLabel}>Report Health</Text>
+                  <Text style={[styles.metaVal, { color: score >= 70 ? "#16A34A" : score >= 40 ? "#F59E0B" : "#EF4444" }]}>
+                    {score}%
+                  </Text>
+                </View>
               </View>
             </View>
             {snap.snapshotDate && (
