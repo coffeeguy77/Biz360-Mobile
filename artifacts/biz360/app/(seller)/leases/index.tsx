@@ -35,7 +35,8 @@ export default function LeasesHub() {
     ]);
   };
 
-  const userClauseCount = clauses.filter(c => !c.isSeed).length;
+  // Count clauses that are actually associated with existing leases, not orphaned ones.
+  const userClauseCount = leases.reduce((sum, l) => sum + (l.extractedClauseIds?.length ?? 0), 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

@@ -36,9 +36,23 @@ export function LeaseProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(CLAUSES_KEY),
           AsyncStorage.getItem(DRAFTS_KEY),
         ]);
-        if (lRaw) setLeases(JSON.parse(lRaw));
-        if (cRaw) setUserClauses(JSON.parse(cRaw));
+        const loadedLeases: Lease[]   = lRaw ? JSON.parse(lRaw) : [];
+        const loadedClauses: Clause[] = cRaw ? JSON.parse(cRaw) : [];
+
+        setLeases(loadedLeases);
         if (dRaw) setDrafts(JSON.parse(dRaw));
+
+        // Clean up orphaned clauses: remove any user-extracted clause whose parent
+        // lease no longer exists (e.g. Expo cache was cleared while leases persisted
+        // in CLAUSES_KEY but leases were wiped from LEASES_KEY or vice-versa).
+        const leaseIds = new Set(loadedLeases.map(l => l.id));
+        const cleaned  = loadedClauses.filter(
+          c => !c.sourceLeaseId || leaseIds.has(c.sourceLeaseId),
+        );
+        setUserClauses(cleaned);
+        if (cleaned.length !== loadedClauses.length) {
+          await AsyncStorage.setItem(CLAUSES_KEY, JSON.stringify(cleaned));
+        }
       } catch { /* non-critical */ }
     })();
   }, []);
