@@ -8,6 +8,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAuth } from "../../middlewares/auth";
 import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { and, count, eq } from "drizzle-orm";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require("mammoth");
 
@@ -181,13 +182,30 @@ async function storeAnalysisInBackground(
       templateData.template_clauses ?? rawClauses,
     );
 
+    // Mark as master if this is the first template for this jurisdiction + leaseType combination
+    const leaseType = (analysisResult.leaseType as string | null) ?? null;
+    let isMaster = false;
+    try {
+      const conditions = [
+        jurisdiction ? eq(leaseTemplatesTable.jurisdiction, jurisdiction) : undefined,
+        leaseType    ? eq(leaseTemplatesTable.leaseType,    leaseType)    : undefined,
+      ].filter(Boolean) as ReturnType<typeof eq>[];
+
+      const existing = await db
+        .select({ n: count() })
+        .from(leaseTemplatesTable)
+        .where(conditions.length > 1 ? and(...conditions) : conditions[0]);
+
+      isMaster = Number(existing[0]?.n ?? 0) === 0;
+    } catch { /* non-critical — fall back to false */ }
+
     await db.insert(leaseTemplatesTable).values({
       name:            templateName,
       jurisdiction,
-      leaseType:       (analysisResult.leaseType as string | null) ?? null,
+      leaseType,
       templateContent,
       variableMap:     templateData.variable_map ?? {},
-      isMaster:        false,
+      isMaster,
       createdByUserId: userId,
     });
 
