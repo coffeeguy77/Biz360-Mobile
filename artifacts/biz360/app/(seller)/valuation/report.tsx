@@ -191,8 +191,9 @@ export default function ReportHubScreen() {
           Alert.alert("Sharing unavailable", "File saved to cache but sharing is not available on this device.");
         }
       }
-    } catch {
-      Alert.alert("Error", "Download failed. Please check your connection.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      Alert.alert("Error", `Download failed: ${msg}`);
     } finally {
       setDownloading(false);
     }

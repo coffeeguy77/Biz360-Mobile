@@ -58,9 +58,9 @@
   "dependencies": {
     "expo-av": "^16.0.8",
     "expo-document-picker": "^14.0.8",
-    "expo-file-system": "^19.0.22",
+    "expo-file-system": "~19.0.23",
     "expo-image-manipulator": "~14.0.8",
-    "expo-sharing": "~13.0.1",
+    "expo-sharing": "~14.0.8",
     "react-native-webview": "^13.16.1"
   }
 }
