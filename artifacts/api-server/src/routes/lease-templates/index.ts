@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { asc, count, desc, eq, and } from "drizzle-orm";
+import { asc, count, desc, eq, and, or } from "drizzle-orm";
 import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
 import { requireAuth } from "../../middlewares/auth";
 import { extractTemplateFromAnalysis } from "../../lib/template-extraction";
@@ -15,8 +15,10 @@ function toVariableKeys(variableMap: Record<string, string> | null | undefined):
 }
 
 // ─── GET /api/lease-templates ─────────────────────────────────────────────────
-// List all lease templates. variableMap values are stripped; only keys are returned.
-router.get("/lease-templates", requireAuth, async (_req, res): Promise<void> => {
+// List templates visible to this user: master templates + own non-master templates.
+// Non-master templates created by other users are never returned.
+router.get("/lease-templates", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
   try {
     const rows = await db
       .select({
@@ -30,6 +32,12 @@ router.get("/lease-templates", requireAuth, async (_req, res): Promise<void> => 
         createdAt:    leaseTemplatesTable.createdAt,
       })
       .from(leaseTemplatesTable)
+      .where(
+        or(
+          eq(leaseTemplatesTable.isMaster, true),
+          eq(leaseTemplatesTable.createdByUserId, userId),
+        ),
+      )
       .orderBy(desc(leaseTemplatesTable.createdAt));
 
     const templates = rows.map(r => ({
@@ -52,8 +60,11 @@ router.get("/lease-templates", requireAuth, async (_req, res): Promise<void> => 
 
 // ─── GET /api/lease-templates/:id ────────────────────────────────────────────
 // Full template with templateContent and variableKeys (never raw values).
+// Access is gated: master templates are public to all auth'd users;
+// non-master templates are only accessible by their creator.
 router.get("/lease-templates/:id", requireAuth, async (req, res): Promise<void> => {
   const { id } = req.params;
+  const userId = req.user!.id;
   try {
     const rows = await db
       .select()
@@ -66,6 +77,13 @@ router.get("/lease-templates/:id", requireAuth, async (req, res): Promise<void> 
     }
 
     const row = rows[0];
+
+    // Access control: non-master templates are private to their creator
+    if (!row.isMaster && row.createdByUserId !== userId) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
     // Return variableKeys (placeholder names) but NOT the raw variableMap values,
     // which originate from another user's private lease document.
     const template = {
