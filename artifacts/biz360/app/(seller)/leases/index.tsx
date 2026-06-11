@@ -35,8 +35,13 @@ export default function LeasesHub() {
     ]);
   };
 
-  // Count clauses that are actually associated with existing leases, not orphaned ones.
-  const userClauseCount = leases.reduce((sum, l) => sum + (l.extractedClauseIds?.length ?? 0), 0);
+  // Count non-seed clauses that belong to an existing lease.
+  // Reading from the live clauses array (not extractedClauseIds) ensures the count
+  // is correct even for leases saved before that field was introduced.
+  const existingLeaseIds = new Set(leases.map(l => l.id));
+  const userClauseCount = clauses.filter(
+    c => !c.isSeed && !!c.sourceLeaseId && existingLeaseIds.has(c.sourceLeaseId),
+  ).length;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

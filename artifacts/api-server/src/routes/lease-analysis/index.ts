@@ -279,7 +279,20 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
 
     return;
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
+    // Anthropic SDK can throw APIError objects that don't always pass instanceof Error
+    // across module boundaries. Extract a useful message regardless of the shape.
+    let msg: string;
+    if (err instanceof Error) {
+      msg = err.message;
+    } else if (typeof err === "object" && err !== null) {
+      const e = err as Record<string, unknown>;
+      if (typeof e["message"] === "string") msg = e["message"];
+      else if (typeof e["error"] === "string") msg = e["error"];
+      else msg = JSON.stringify(e).slice(0, 300);
+    } else {
+      msg = String(err);
+    }
+    logger.error({ err }, "Lease analysis failed");
     return res.status(500).json({ error: msg });
   }
 });
