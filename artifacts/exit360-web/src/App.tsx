@@ -7,6 +7,7 @@ import { Home } from "@/pages/home";
 import { Listings } from "@/pages/listings";
 import { ListingDetail } from "@/pages/listing-detail";
 import { SignIn } from "@/pages/sign-in";
+import { ReportPage } from "@/pages/report";
 
 const queryClient = new QueryClient();
 
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/listings" component={Listings} />
       <Route path="/listings/:id" component={ListingDetail} />
+      <Route path="/reports/:listingId" component={ReportPage} />
       <Route path="/sign-in" component={SignIn} />
       <Route component={NotFound} />
     </Switch>

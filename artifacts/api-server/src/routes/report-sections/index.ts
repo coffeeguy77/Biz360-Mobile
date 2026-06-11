@@ -14,6 +14,7 @@ import {
   reportCsvImportsTable,
   reportExportsTable,
   reportAccessLogsTable,
+  reportAccessGrantsTable,
   kvStore,
 } from "@workspace/db";
 import multer from "multer";
@@ -964,17 +965,48 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       } catch { /* fall through to public */ }
     }
 
-    // Filter sections based on access level
+    // Check if a buyer phone has an approved_buyers grant for this listing
+    const buyerPhone = req.query["buyerPhone"] as string | undefined;
+    let hasApprovedBuyerAccess = false;
+    if (buyerPhone && accessLevel === "public") {
+      try {
+        const [grant] = await db
+          .select({ id: reportAccessGrantsTable.id })
+          .from(reportAccessGrantsTable)
+          .where(
+            and(
+              eq(reportAccessGrantsTable.listingId, listingId),
+              eq(reportAccessGrantsTable.phone, buyerPhone),
+            ),
+          )
+          .limit(1);
+        hasApprovedBuyerAccess = !!grant;
+      } catch { /* fall through */ }
+    }
+
+    // Filter and gate sections based on access level
     const filtered = allSections
       .filter((s) => {
         if (s.visibility === "hidden") return false;
         if (s.visibility === "seller_only") return accessLevel === "seller";
-        if (s.visibility === "approved_buyers") return false; // buyer-token gate deferred
-        return true; // public
+        return true; // public and approved_buyers both pass the filter
       })
-      .map((s) => ({ ...s, isLocked: false }));
+      .map((s) => {
+        // approved_buyers sections: unlock for sellers and approved buyers, lock for everyone else
+        if (s.visibility === "approved_buyers" && accessLevel !== "seller" && !hasApprovedBuyerAccess) {
+          return {
+            ...s,
+            body:         null,
+            bulletPoints: [] as string[],
+            tableData:    null,
+            chartData:    null,
+            isLocked:     true,
+          };
+        }
+        return { ...s, isLocked: false };
+      });
 
-    res.json({ sections: filtered, accessLevel });
+    res.json({ sections: filtered, accessLevel, hasApprovedBuyerAccess });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });

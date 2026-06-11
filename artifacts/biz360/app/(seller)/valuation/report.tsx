@@ -2,13 +2,14 @@ import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator, Alert, Platform, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Alert, Linking, Platform, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { useColors } from "@/hooks/useColors";
 import { useValuation } from "@/context/ValuationContext";
 
@@ -260,6 +261,57 @@ export default function ReportHubScreen() {
     }
   }
 
+  async function handlePreviewReport() {
+    if (!listingId) return;
+    const token = await getAuthToken();
+    const base = domain ? `https://${domain}` : "";
+    const url = `${base}/exit360-web/reports/${listingId}${token ? `?token=${token}` : ""}`;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) await Linking.openURL(url);
+      else Alert.alert("Cannot open URL", url);
+    } catch {
+      Alert.alert("Error", "Could not open the report preview.");
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!listingId) return;
+    const token = await getAuthToken();
+    if (!token) { Alert.alert("Not signed in", "Please sign in to export the PDF."); return; }
+    setDownloading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/report-exports/pdf/${listingId}?mode=seller`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert("Error", err.error ?? "Could not generate PDF. Please try again.");
+        return;
+      }
+      const filename = `im-report-${listingId.slice(0, 8)}-seller.pdf`;
+      if (Platform.OS === "web") {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const path = `${FileSystem.cacheDirectory}${filename}`;
+        const buffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const binary = Array.from(bytes).map((b) => String.fromCharCode(b)).join("");
+        const base64 = btoa(binary);
+        await FileSystem.writeAsStringAsync(path, base64, { encoding: FileSystem.EncodingType.Base64 });
+        await Sharing.shareAsync(path, { mimeType: "application/pdf", dialogTitle: "Share IM Report PDF" });
+      }
+    } catch {
+      Alert.alert("Error", "PDF export failed. Please check your connection.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handlePublish() {
     if (!listingId || !snap) return;
     const token = await getAuthToken();
@@ -433,17 +485,22 @@ export default function ReportHubScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
-            onPress={() => Alert.alert("Preview", "HTML preview is coming in the HTML/PDF export task.")}
+            onPress={handlePreviewReport}
           >
             <Feather name="eye" size={18} color="#60A5FA" />
             <Text style={[styles.primaryBtnText, { color: "#60A5FA" }]}>Preview Report</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: "#1E3A5C" }]}
-            onPress={() => Alert.alert("Export PDF", "PDF export is coming in the HTML/PDF export task.")}
+            style={[styles.primaryBtn, { backgroundColor: downloading ? "#0F2040" : "#1E3A5C", opacity: downloading ? 0.7 : 1 }]}
+            onPress={handleExportPdf}
+            disabled={downloading}
           >
-            <Feather name="file-text" size={18} color="#A78BFA" />
-            <Text style={[styles.primaryBtnText, { color: "#A78BFA" }]}>Export PDF</Text>
+            {downloading
+              ? <ActivityIndicator size="small" color="#A78BFA" />
+              : <Feather name="file-text" size={18} color="#A78BFA" />}
+            <Text style={[styles.primaryBtnText, { color: "#A78BFA" }]}>
+              {downloading ? "Generating…" : "Export PDF"}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: downloading ? "#0F2040" : "#1E3A5C", opacity: downloading ? 0.7 : 1 }]}
@@ -497,7 +554,7 @@ export default function ReportHubScreen() {
           {[
             { label: "Report Sections", icon: "list", color: "#3B82F6", route: "/(seller)/valuation/report-builder" },
             { label: "Access Settings", icon: "lock", color: "#8B5CF6", route: "/(seller)/valuation/report-access" },
-            { label: "Version History", icon: "clock", color: "#6B7280", route: null, badge: versions.length > 0 ? `${versions.length}` : null },
+            { label: "Version History", icon: "clock", color: "#6B7280", route: "/(seller)/valuation/report-versions", badge: versions.length > 0 ? `${versions.length}` : null },
             { label: "AI Draft Helper", icon: "zap", color: "#FBBF24", route: null },
             { label: "Charts & Stats", icon: "bar-chart-2", color: "#34D399", route: null },
             { label: "Due Diligence Pack", icon: "check-square", color: "#F87171", route: "/(seller)/valuation/due-diligence" },
