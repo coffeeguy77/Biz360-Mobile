@@ -66,24 +66,22 @@ interface ReportVersion {
   createdAt: string | null;
 }
 
-type ReportStatus = "empty" | "draft" | "ready" | "published" | "buyer_locked";
+type ReportStatus = "empty" | "draft" | "ready" | "published";
 
 function computeStatus(sections: ReportSection[], pct: number, versions: ReportVersion[]): ReportStatus {
   if (sections.length === 0) return "empty";
-  const latestVersion = versions[0] ?? null;
-  if (latestVersion?.status === "published") return "buyer_locked";
-  if (latestVersion) return "published";
+  // Only show "Published" when there is a version the seller explicitly published on the backend
+  const publishedVersion = versions.find((v) => v.status === "published");
+  if (publishedVersion) return "published";
   if (pct >= 80) return "ready";
-  if (pct >= 20) return "draft";
   return "draft";
 }
 
 const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string }> = {
-  empty:        { label: "Empty",        color: "#6B7280" },
-  draft:        { label: "Draft",        color: "#3B82F6" },
-  ready:        { label: "Ready",        color: "#F59E0B" },
-  published:    { label: "Published",    color: "#16A34A" },
-  buyer_locked: { label: "Buyer Locked", color: "#A78BFA" },
+  empty:     { label: "Empty",     color: "#6B7280" },
+  draft:     { label: "Draft",     color: "#3B82F6" },
+  ready:     { label: "Ready",     color: "#F59E0B" },
+  published: { label: "Published", color: "#16A34A" },
 };
 
 function completenessScore(sections: ReportSection[]): number {
@@ -155,7 +153,7 @@ export default function ReportHubScreen() {
     const versionNum = (versions[0]?.versionNumber ?? 0) + 1;
     Alert.alert(
       "Publish IM Report?",
-      `This will snapshot your current ${sections.length} sections as Version ${versionNum}.`,
+      `This will snapshot your current ${sections.length} sections as Version ${versionNum} and make it visible to approved buyers.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -163,18 +161,34 @@ export default function ReportHubScreen() {
           onPress: async () => {
             setPublishing(true);
             try {
-              const res = await fetch(`${API_BASE}/api/report-versions`, {
+              // Step 1: Create the version snapshot (starts as "draft")
+              const createRes = await fetch(`${API_BASE}/api/report-versions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ listingId, title: `Version ${versionNum} — ${new Date().toLocaleDateString("en-AU")}` }),
               });
-              if (res.ok) {
-                const data = await res.json();
-                setVersions((prev) => [data.version, ...prev]);
-                Alert.alert("Published!", `Version ${versionNum} snapshot created.`);
+              if (!createRes.ok) {
+                const err = await createRes.json().catch(() => ({}));
+                Alert.alert("Error", err.error ?? "Could not create version snapshot");
+                return;
+              }
+              const { version: draftVersion } = await createRes.json();
+
+              // Step 2: Immediately mark the version as "published" so buyers can see it
+              const publishRes = await fetch(`${API_BASE}/api/report-versions/${draftVersion.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ status: "published" }),
+              });
+              if (publishRes.ok) {
+                const { version: publishedVersion } = await publishRes.json();
+                setVersions((prev) => [publishedVersion, ...prev]);
+                Alert.alert("Published!", `Version ${versionNum} is now live. Approved buyers can view the IM report.`);
               } else {
-                const err = await res.json().catch(() => ({}));
-                Alert.alert("Error", err.error ?? "Publish failed");
+                // Snapshot was created but not yet published — surface this clearly
+                setVersions((prev) => [draftVersion, ...prev]);
+                const err = await publishRes.json().catch(() => ({}));
+                Alert.alert("Partially saved", `Snapshot created but could not be published: ${err.error ?? "unknown error"}. Go to Version History to publish it manually.`);
               }
             } catch { Alert.alert("Error", "Network error. Please try again."); }
             finally { setPublishing(false); }
@@ -330,7 +344,7 @@ export default function ReportHubScreen() {
               ? <ActivityIndicator size="small" color="#fff" />
               : <Feather name="upload-cloud" size={18} color="#fff" />}
             <Text style={styles.primaryBtnText}>
-              {status === "buyer_locked" ? "Re-publish" : "Publish"}
+              {status === "published" ? "Re-publish" : "Publish"}
             </Text>
           </TouchableOpacity>
         </View>
