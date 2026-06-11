@@ -12,10 +12,11 @@ import { RiskBadge } from "@/components/lease/RiskBadge";
 import { DisclaimerBanner } from "@/components/lease/DisclaimerBanner";
 
 const ACTIONS = [
-  { icon: "upload-cloud", label: "Upload & Analyse",   route: "/(seller)/leases/upload",  color: "#3B82F6", bg: "#1E3A5C" },
-  { icon: "book-open",    label: "Clause Library",     route: "/(seller)/leases/library", color: "#8B5CF6", bg: "#2D1B69" },
-  { icon: "edit-3",       label: "Lease Builder",      route: "/(seller)/leases/builder", color: "#F59E0B", bg: "#431407" },
-  { icon: "file-text",    label: "My Drafts",          route: "/(seller)/leases/reports", color: "#16A34A", bg: "#052E16" },
+  { icon: "upload-cloud", label: "Upload & Analyse",   route: "/(seller)/leases/upload",    color: "#3B82F6", bg: "#1E3A5C" },
+  { icon: "book-open",    label: "Clause Library",     route: "/(seller)/leases/library",   color: "#8B5CF6", bg: "#2D1B69" },
+  { icon: "edit-3",       label: "Lease Builder",      route: "/(seller)/leases/builder",   color: "#F59E0B", bg: "#431407" },
+  { icon: "file-text",    label: "My Drafts",          route: "/(seller)/leases/reports",   color: "#16A34A", bg: "#052E16" },
+  { icon: "copy",         label: "Templates",          route: "/(seller)/leases/templates", color: "#EC4899", bg: "#4A0020" },
 ] as const;
 
 export default function LeasesHub() {

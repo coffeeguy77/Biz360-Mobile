@@ -4,8 +4,11 @@ import { execSync } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAuth } from "../../middlewares/auth";
+import { db, leaseClausesMasterTable, leaseTemplatesTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require("mammoth");
 
@@ -45,6 +48,128 @@ Return this exact structure:
 
 Focus on clauses that significantly affect café operators: rent terms, options, exclusivity, assignment, make-good, outgoings, services, disruption, and exit rights. Extract 8-20 key clauses.`;
 
+const TEMPLATE_SYSTEM_PROMPT = `You are extracting template variables from a commercial lease analysis result.
+Given the JSON analysis of a lease, identify all specific named entities to replace with template variables.
+Return ONLY a valid JSON object — no markdown, no explanation.
+
+Return this exact structure:
+{
+  "template_name": "<descriptive name, e.g. 'VIC Retail Café Lease 5+5 Years'>",
+  "variable_map": {
+    "TENANT_NAME": "<actual tenant name if found, else omit key>",
+    "LANDLORD_NAME": "<actual landlord name if found, else omit key>",
+    "BUSINESS_NAME": "<trading/business name if found, else omit key>",
+    "PREMISES_ADDRESS": "<full premises address if found, else omit key>",
+    "LEASE_DATE": "<commencement date if found, else omit key>",
+    "RENT_AMOUNT": "<weekly/monthly rent if found, else omit key>",
+    "LEASE_TERM": "<full term description if found, else omit key>"
+  }
+}
+
+Only include keys that have actual known values from the document. Omit keys with null or unknown values.`;
+
+// ─── Background: upsert clauses + extract template ───────────────────────────
+async function storeAnalysisInBackground(
+  analysisResult: Record<string, unknown>,
+  userId: string,
+  isPdf: boolean,
+  base64Pdf: string | undefined,
+  text: string | undefined,
+): Promise<void> {
+  try {
+    // 1. Upsert extracted clauses into lease_clauses_master
+    const clauses = (analysisResult.clauses ?? []) as Array<Record<string, unknown>>;
+    const jurisdiction = (analysisResult.jurisdiction as string | null) ?? null;
+
+    for (const clause of clauses) {
+      const title = clause.title as string;
+      if (!title) continue;
+      try {
+        await db
+          .insert(leaseClausesMasterTable)
+          .values({
+            title,
+            category:           (clause.category as string) || "Other",
+            rating:             (clause.rating as string) || "balanced",
+            riskLevel:          (clause.riskLevel as string) || "medium",
+            plainEnglish:       (clause.plainEnglish as string) || "",
+            originalText:       (clause.originalText as string) || "",
+            suggestedText:      (clause.suggestedText as string | undefined),
+            jurisdiction,
+            cafeRelevanceScore: (clause.cafeRelevanceScore as number) || 3,
+            negotiationScore:   (clause.negotiationScore as number) || 3,
+            isSeed:             false,
+          })
+          .onConflictDoNothing();
+      } catch (e) {
+        logger.warn({ err: e, title }, "Failed to upsert master clause");
+      }
+    }
+
+    // 2. Second Claude call: extract variable map + template name
+    let templateMessage: Awaited<ReturnType<typeof anthropic.messages.create>>;
+
+    const userContent = `Here is the commercial lease analysis JSON:\n${JSON.stringify(analysisResult)}`;
+
+    if (isPdf && base64Pdf) {
+      templateMessage = await anthropic.messages.create({
+        model:      "claude-haiku-4-5",
+        max_tokens: 1024,
+        system:     TEMPLATE_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            content: [
+              {
+                type:   "document",
+                source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
+              },
+              { type: "text", text: userContent },
+            ] as any,
+          },
+        ],
+      });
+    } else {
+      templateMessage = await anthropic.messages.create({
+        model:      "claude-haiku-4-5",
+        max_tokens: 1024,
+        system:     TEMPLATE_SYSTEM_PROMPT,
+        messages:   [{ role: "user", content: userContent }],
+      });
+    }
+
+    const rawTemplate = templateMessage.content[0];
+    if (rawTemplate.type !== "text") return;
+
+    let templateData: { template_name?: string; variable_map?: Record<string, string> };
+    try {
+      const cleaned = rawTemplate.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      templateData = JSON.parse(cleaned);
+    } catch {
+      logger.warn("Template extraction returned invalid JSON — skipping DB storage");
+      return;
+    }
+
+    const templateName = templateData.template_name
+      || `${jurisdiction ?? "AU"} ${(analysisResult.leaseType as string) ?? "Commercial"} Lease`;
+
+    await db.insert(leaseTemplatesTable).values({
+      name:            templateName,
+      jurisdiction,
+      leaseType:       (analysisResult.leaseType as string | null) ?? null,
+      templateContent: JSON.stringify(analysisResult.clauses ?? []),
+      variableMap:     templateData.variable_map ?? {},
+      isMaster:        false,
+      createdByUserId: userId,
+    });
+
+    logger.info({ templateName, clauses: clauses.length }, "Template stored");
+  } catch (err) {
+    logger.error({ err }, "Background template extraction failed");
+  }
+}
+
 router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
@@ -64,32 +189,27 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let message: any;
+    let base64PdfForBg: string | undefined;
+    let textForBg: string | undefined;
 
     if (isPdf) {
-      // Use Claude's native PDF document API — reads both text-based and scanned/image PDFs
       const base64Pdf = file.buffer.toString("base64");
+      base64PdfForBg = base64Pdf;
 
       message = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
+        model:      "claude-sonnet-4-6",
         max_tokens: 8192,
-        system: SYSTEM_PROMPT,
+        system:     SYSTEM_PROMPT,
         messages: [
           {
             role: "user",
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             content: [
               {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: "application/pdf",
-                  data: base64Pdf,
-                },
+                type:   "document",
+                source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
               },
-              {
-                type: "text",
-                text: "Please analyse the commercial lease document provided above.",
-              },
+              { type: "text", text: "Please analyse the commercial lease document provided above." },
             ] as any,
           },
         ],
@@ -98,9 +218,6 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       let text = "";
 
       if (isDoc) {
-        // Legacy binary .doc: use antiword (system tool) for extraction.
-        // Antiword handles binary Word 97-2003 format natively.
-        // Fallback to mammoth for mislabelled .doc files that are actually OOXML.
         const tmpPath = join(tmpdir(), `lease-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`);
         try {
           writeFileSync(tmpPath, file.buffer);
@@ -112,7 +229,6 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
         }
 
         if (!text.trim()) {
-          // Fallback: mammoth handles OOXML .doc (mislabelled DOCX files)
           try {
             const parsed = await mammoth.extractRawText({ buffer: file.buffer });
             text = parsed.value ?? "";
@@ -121,7 +237,6 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
           }
         }
       } else {
-        // DOCX — extract text with mammoth
         try {
           const parsed = await mammoth.extractRawText({ buffer: file.buffer });
           text = parsed.value ?? "";
@@ -137,17 +252,13 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       }
 
       const truncated = text.slice(0, 60000);
+      textForBg = truncated;
 
       message = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
+        model:      "claude-sonnet-4-6",
         max_tokens: 8192,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `Please analyse the following commercial lease document:\n\n${truncated}`,
-          },
-        ],
+        system:     SYSTEM_PROMPT,
+        messages:   [{ role: "user", content: `Please analyse the following commercial lease document:\n\n${truncated}` }],
       });
     }
 
@@ -156,7 +267,7 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       return res.status(500).json({ error: "Unexpected response from AI" });
     }
 
-    let parsed: unknown;
+    let parsed: Record<string, unknown>;
     try {
       const cleaned = raw.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       parsed = JSON.parse(cleaned);
@@ -164,7 +275,15 @@ router.post("/lease-analysis", requireAuth, upload.single("file"), async (req, r
       return res.status(500).json({ error: "AI returned invalid JSON", raw: raw.text.slice(0, 500) });
     }
 
-    return res.json(parsed);
+    // Send result immediately — then store clauses + template in background
+    res.json(parsed);
+
+    const userId = req.user!.id;
+    setImmediate(() => {
+      storeAnalysisInBackground(parsed, userId, isPdf, base64PdfForBg, textForBg).catch(() => {});
+    });
+
+    return;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return res.status(500).json({ error: msg });

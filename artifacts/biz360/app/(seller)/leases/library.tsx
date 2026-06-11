@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
@@ -8,7 +8,28 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useLease } from "@/context/LeaseContext";
 import { ClauseCard } from "@/components/lease/ClauseCard";
-import { RiskLevel, ClauseRating } from "@/context/leaseTypes";
+import { RiskLevel, ClauseRating, Clause } from "@/context/leaseTypes";
+import { LEASE_SEED_CLAUSES } from "@/data/leaseSeedClauses";
+
+const domain   = process.env.EXPO_PUBLIC_DOMAIN;
+const API_BASE = domain ? `https://${domain}` : "";
+
+function serverRowToClause(row: Record<string, unknown>): Clause {
+  return {
+    id:                 String(row.id ?? ""),
+    title:              String(row.title ?? ""),
+    category:           String(row.category ?? "Other"),
+    rating:             (row.rating as Clause["rating"]) ?? "balanced",
+    riskLevel:          (row.risk_level as Clause["riskLevel"]) ?? "medium",
+    plainEnglish:       String(row.plain_english ?? ""),
+    originalText:       String(row.original_text ?? ""),
+    suggestedText:      row.suggested_text ? String(row.suggested_text) : undefined,
+    jurisdictions:      row.jurisdiction ? [String(row.jurisdiction) as any] : [],
+    cafeRelevanceScore: Number(row.cafe_relevance_score ?? 3),
+    negotiationScore:   Number(row.negotiation_score ?? 3),
+    isSeed:             Boolean(row.is_seed ?? false),
+  };
+}
 
 const RISK_FILTERS: Array<{ label: string; value: RiskLevel | "all" }> = [
   { label: "All",      value: "all" },
@@ -44,12 +65,42 @@ const CATEGORIES = [
 export default function ClauseLibrary() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { clauses } = useLease();
+  const { clauses: localClauses } = useLease();
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState<RiskLevel | "all">("all");
   const [ratingFilter, setRatingFilter] = useState<ClauseRating | "all">("all");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [showOnlySeed, setShowOnlySeed] = useState(false);
+  const [serverClauses, setServerClauses] = useState<Clause[]>([]);
+  const [serverFetched, setServerFetched] = useState(false);
+
+  // Fetch shared master clauses from the server on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/api/lease-clauses`);
+        if (!resp.ok) return;
+        const data = await resp.json() as { clauses: Record<string, unknown>[] };
+        if (Array.isArray(data.clauses) && data.clauses.length > 0) {
+          setServerClauses(data.clauses.map(serverRowToClause));
+        }
+      } catch { /* offline — seed data used as fallback */ }
+      finally { setServerFetched(true); }
+    })();
+  }, []);
+
+  // Merge: seeds first, then unique server clauses, then user-extracted clauses
+  const clauses = useMemo((): Clause[] => {
+    const seedIds     = new Set(LEASE_SEED_CLAUSES.map(s => s.id));
+    const seedTitles  = new Set(LEASE_SEED_CLAUSES.map(s => s.title.toLowerCase()));
+    const serverUniq  = serverClauses.filter(c => !seedTitles.has(c.title.toLowerCase()));
+    const userExtracted = localClauses.filter(c => !seedIds.has(c.id) && !c.isSeed);
+    return [...LEASE_SEED_CLAUSES, ...serverUniq, ...userExtracted];
+  }, [localClauses, serverClauses]);
+
+  const serverCount = serverClauses.filter(c =>
+    !LEASE_SEED_CLAUSES.some(s => s.title.toLowerCase() === c.title.toLowerCase())
+  ).length;
 
   const filtered = useMemo(() => {
     return clauses.filter(c => {
@@ -91,6 +142,16 @@ export default function ClauseLibrary() {
             <Text style={[styles.seedToggleText, { color: showOnlySeed ? "#3B82F6" : colors.mutedForeground }]}>Templates</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Server clause indicator */}
+        {serverFetched && serverCount > 0 && (
+          <View style={[styles.serverBanner, { backgroundColor: "#052E16", borderColor: "#16A34A40" }]}>
+            <Feather name="cloud" size={12} color="#16A34A" />
+            <Text style={[styles.serverBannerText, { color: "#86EFAC" }]}>
+              {serverCount} community clause{serverCount !== 1 ? "s" : ""} loaded from shared library
+            </Text>
+          </View>
+        )}
 
         {/* Search */}
         <View style={[styles.searchRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -183,6 +244,8 @@ const styles = StyleSheet.create({
   sub:            { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   seedToggle:     { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   seedToggleText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  serverBanner:     { flexDirection: "row", alignItems: "center", gap: 6, padding: 8, borderRadius: 10, borderWidth: 1 },
+  serverBannerText: { fontSize: 11, fontFamily: "Inter_400Regular" },
   searchRow:      { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, padding: 10, borderWidth: 1 },
   searchInput:    { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", padding: 0 },
   filterRow:      { flexDirection: "row", gap: 8, paddingRight: 16 },

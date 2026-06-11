@@ -4,6 +4,7 @@ import stitchRouter from "./stitch";
 import biz360Router from "./biz360";
 import valuationRouter from "./valuation/index";
 import leaseAnalysisRouter from "./lease-analysis/index";
+import leaseTemplatesRouter from "./lease-templates/index";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(stitchRouter);
 router.use(biz360Router);
 router.use(valuationRouter);
 router.use(leaseAnalysisRouter);
+router.use(leaseTemplatesRouter);
 
 export default router;
