@@ -741,4 +741,65 @@ router.post("/biz360/report-access-tokens/issue", async (req, res): Promise<void
   }
 });
 
+// ─── Seller preview — one-time code exchange ──────────────────────────────────
+// Mobile "Preview Report" uses a short-lived code (never a raw JWT in the URL).
+// Step 1: POST /api/report-preview-tokens  (requires seller JWT)
+//   → issues a 90-second single-use code stored in KV.
+// Step 2: POST /api/report-preview-tokens/exchange  (public)
+//   → swaps code for a 4-hour report-view JWT; code deleted immediately.
+// This keeps the long-lived seller JWT out of browser history/referrer headers.
+router.post("/report-preview-tokens", async (req, res): Promise<void> => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const userId = await verifyToken(authHeader.slice(7)).catch(() => null);
+  if (!userId) { res.status(401).json({ error: "Invalid token" }); return; }
+
+  const { listingId } = req.body as { listingId?: string };
+  if (!listingId) { res.status(400).json({ error: "listingId required" }); return; }
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { randomBytes } = require("crypto") as typeof import("crypto");
+  const code = randomBytes(20).toString("hex");       // 40 hex chars
+  const exp  = Date.now() + 90_000;                  // 90 seconds
+  const payload = JSON.stringify({ userId, listingId, exp });
+
+  await db.insert(kvStore)
+    .values({ key: `preview_code:${code}`, value: payload })
+    .onConflictDoUpdate({ target: kvStore.key, set: { value: payload } });
+
+  res.json({ previewCode: code });
+});
+
+router.post("/report-preview-tokens/exchange", async (req, res): Promise<void> => {
+  const { previewCode } = req.body as { previewCode?: string };
+  if (!previewCode || !/^[0-9a-f]{40}$/.test(previewCode)) {
+    res.status(400).json({ error: "Invalid previewCode format" }); return;
+  }
+
+  const rows = await db.select().from(kvStore)
+    .where(eq(kvStore.key, `preview_code:${previewCode}`)).limit(1);
+  if (!rows.length) { res.status(404).json({ error: "Invalid preview code" }); return; }
+
+  // Always delete immediately — single-use
+  await db.delete(kvStore).where(eq(kvStore.key, `preview_code:${previewCode}`));
+
+  const data = (typeof rows[0].value === "string"
+    ? JSON.parse(rows[0].value)
+    : rows[0].value) as { userId: string; listingId: string; exp: number };
+
+  if (Date.now() > data.exp) { res.status(410).json({ error: "Preview code expired" }); return; }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) { res.status(503).json({ error: "Server misconfigured" }); return; }
+
+  const token = await new SignJWT({ sub: data.userId, listingId: data.listingId, type: "seller-preview" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("4h")
+    .sign(new TextEncoder().encode(secret));
+
+  res.json({ token });
+});
+
 export default router;
+

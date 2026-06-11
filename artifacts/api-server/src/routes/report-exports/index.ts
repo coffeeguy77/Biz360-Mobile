@@ -311,7 +311,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
           } else if (isHBar) {
             // Horizontal bar chart (division_breakdown, buyer funnel)
-            const valKey  = rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "stage") ?? "value";
+            const valKey  = (rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "stage")) ?? "value";
             const lblKey  = rawData[0] && ("stage" in rawData[0] ? "stage" : "name");
             const maxVal  = Math.max(...rawData.map((r: Record<string, unknown>) => Number(r[valKey] ?? 0))) || 1;
             doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED)
@@ -333,7 +333,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
           } else {
             // Vertical bar chart (default: app_valuation_summary, verified_revenue_sources, etc.)
-            const valKey  = rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "source" && k !== "type") ?? "value";
+            const valKey  = (rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "source" && k !== "type")) ?? "value";
             const lblKey  = rawData[0] && ("source" in rawData[0] ? "source" : "name");
             const maxVal  = Math.max(...rawData.map((r: Record<string, unknown>) => Number(r[valKey] ?? 0))) || 1;
             const n       = Math.min(rawData.length, 8);
@@ -388,10 +388,35 @@ router.get("/report-exports/pdf/:listingId",  requireAuth, handlePdf);
 router.post("/report-exports/pdf/:listingId", requireAuth, handlePdf);
 
 // ─── GET /api/report-exports/pdf-public/:listingId ───────────────────────────
-// Public (no auth) buyer-mode PDF — only includes visibility=public sections.
-// Safe for anonymous buyers to download as a teaser before NDA/OTP approval.
+// Public buyer-mode PDF.
+// Without ?accessToken: includes only visibility=public sections (teaser).
+// With valid ?accessToken (OTP-verified buyer JWT): also includes approved_buyers
+// sections, matching the section set the buyer can see in the HTML report.
 router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): Promise<void> => {
-  const listingId = req.params.listingId as string;
+  const listingId     = req.params.listingId as string;
+  const rawToken      = req.query.accessToken as string | undefined;
+  let   buyerUnlocked = false;
+
+  if (rawToken) {
+    try {
+      const { jwtVerify } = await import("jose");
+      const secret = process.env.JWT_SECRET;
+      if (secret) {
+        const { payload } = await jwtVerify(rawToken, new TextEncoder().encode(secret));
+        // Accept buyer-report-access tokens issued for this specific listing
+        // A valid JWT with the correct type + listingId is sufficient proof of access.
+        // The JWT is issued only after OTP verification and grant lookup succeed, so
+        // its existence + validity is equivalent to a live grant check.
+        if (
+          (payload.type === "buyer-report-access" || payload.type === "seller-preview") &&
+          payload.listingId === listingId
+        ) {
+          buyerUnlocked = true;
+        }
+      }
+    } catch { /* invalid token — treat as unauthenticated */ }
+  }
+
   try {
     const allSections = await db
       .select()
@@ -399,9 +424,12 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       .where(eq(reportSectionsTable.listingId, listingId))
       .orderBy(asc(reportSectionsTable.sortOrder));
 
-    const sections = allSections.filter(
-      (s) => s.includeInPdf && s.visibility === "public",
-    );
+    const sections = allSections.filter((s) => {
+      if (!s.includeInPdf) return false;
+      if (s.visibility === "public") return true;
+      if (s.visibility === "approved_buyers" && buyerUnlocked) return true;
+      return false;
+    });
 
     const dateStr  = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
     const filename = `im-report-${listingId.slice(0, 8)}-buyer.pdf`;

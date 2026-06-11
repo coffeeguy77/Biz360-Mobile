@@ -189,7 +189,7 @@ function SectionContent({
       {section.bulletPoints && section.bulletPoints.length > 0 && (
         <SectionBullets bullets={section.bulletPoints} />
       )}
-      {section.tableData && <SectionTable data={section.tableData} />}
+      {!!section.tableData && <SectionTable data={section.tableData} />}
       {ChartComponent && (
         <div className="mt-6 p-4 rounded-xl bg-[#070F1C]/60 border border-[#1E3A5C]/60">
           <ChartComponent data={chartData} />
@@ -224,25 +224,51 @@ export function ReportPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const versionId    = params.versionId ?? urlParams.get("v") ?? undefined;
   const accessToken  = urlParams.get("accessToken") ?? undefined;
-  // ?token= is passed by the mobile app's "Preview Report" button so the
-  // seller's JWT can be used even when localStorage is not populated in-browser.
-  const urlToken     = urlParams.get("token") ?? undefined;
+  // ?previewCode= is a short-lived (90s) one-time code issued by the API.
+  // The mobile "Preview Report" button exchanges the seller JWT for a previewCode
+  // server-side, so the long-lived JWT never appears in the browser URL / history.
+  const previewCode  = urlParams.get("previewCode") ?? undefined;
 
-  const [data, setData]           = useState<ReportData | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [printMode, setPrintMode] = useState(false);
+  const [data, setData]               = useState<ReportData | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [printMode, setPrintMode]     = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Token obtained by exchanging a one-time previewCode (stored in sessionStorage
+  // so re-renders within the same tab don't re-fire the already-consumed code).
+  const [previewToken, setPreviewToken] = useState<string | null>(() => {
+    if (!previewCode) return null;
+    return sessionStorage.getItem(`preview_tok_${previewCode.slice(0, 8)}`) ?? null;
+  });
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Exchange the one-time previewCode for a short-lived JWT on first load.
+  useEffect(() => {
+    if (!previewCode || previewToken) return;
+    fetch("/api/report-preview-tokens/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ previewCode }),
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { token?: string } | null) => {
+        if (d?.token) {
+          sessionStorage.setItem(`preview_tok_${previewCode.slice(0, 8)}`, d.token);
+          setPreviewToken(d.token);
+        }
+      })
+      .catch(() => {/* non-fatal — falls back to public view */});
+  }, [previewCode, previewToken]);
 
   useEffect(() => {
     if (!listingId) { setError("No listing ID provided."); setLoading(false); return; }
+    // Wait for previewCode exchange to complete before fetching data
+    if (previewCode && !previewToken) return;
     setLoading(true);
 
-    // Resolve bearer token: prefer ?token= (mobile seller preview) over localStorage.
-    // This ensures seller auth works even when localStorage is not populated in a
-    // freshly-opened browser tab from the mobile deep-link flow.
-    const authToken = urlToken || localStorage.getItem("biz360_auth_token") || null;
+    // Resolve bearer token: prefer exchanged previewToken (mobile seller preview)
+    // over localStorage. The raw JWT is never passed in the URL.
+    const authToken = previewToken || localStorage.getItem("biz360_auth_token") || null;
 
     // Build query string helper (appends accessToken when present)
     function qs(base: string): string {
@@ -287,20 +313,24 @@ export function ReportPage() {
     }
 
     recordAccessLog(listingId, "report_viewed", versionId ? { versionId } : {});
-  }, [listingId, versionId, accessToken, urlToken]);
+  }, [listingId, versionId, accessToken, previewToken, previewCode]);
 
   async function handleDownloadPdf() {
     setDownloading(true);
     try {
-      // Public buyer PDF — no auth required. Includes only public sections.
-      const res = await fetch(`/api/report-exports/pdf-public/${listingId}`);
+      // If the buyer has a verified accessToken, include approved_buyers sections.
+      // Otherwise fall back to the teaser-only public PDF.
+      const endpoint = accessToken
+        ? `/api/report-exports/pdf-public/${listingId}?accessToken=${encodeURIComponent(accessToken)}`
+        : `/api/report-exports/pdf-public/${listingId}`;
+      const res = await fetch(endpoint);
       if (!res.ok) throw new Error("PDF generation failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = `im-report-${listingId}.pdf`; a.click();
       URL.revokeObjectURL(url);
-      recordAccessLog(listingId, "pdf_downloaded", { mode: "buyer_public" });
+      recordAccessLog(listingId, "pdf_downloaded", { mode: accessToken ? "buyer_approved" : "buyer_public" });
     } catch {
       alert("Could not generate PDF. Please try again.");
     } finally { setDownloading(false); }

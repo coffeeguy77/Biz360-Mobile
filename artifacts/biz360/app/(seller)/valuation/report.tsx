@@ -265,8 +265,23 @@ export default function ReportHubScreen() {
     if (!listingId) return;
     const token = await getAuthToken();
     const base = domain ? `https://${domain}` : "";
-    const url = `${base}/exit360-web/reports/${listingId}${token ? `?token=${token}` : ""}`;
     try {
+      let previewParam = "";
+      if (token) {
+        // Exchange the long-lived seller JWT for a single-use 90-second preview code.
+        // The code (never the raw JWT) is appended to the URL, keeping the JWT out of
+        // browser history, referrer headers, and server access logs.
+        const codeRes = await fetch(`${API_BASE}/api/report-preview-tokens`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ listingId }),
+        });
+        if (codeRes.ok) {
+          const { previewCode } = await codeRes.json() as { previewCode?: string };
+          if (previewCode) previewParam = `?previewCode=${previewCode}`;
+        }
+      }
+      const url = `${base}/exit360-web/reports/${listingId}${previewParam}`;
       const supported = await Linking.canOpenURL(url);
       if (supported) await Linking.openURL(url);
       else Alert.alert("Cannot open URL", url);
@@ -384,9 +399,19 @@ export default function ReportHubScreen() {
                 body: JSON.stringify({ status: "published" }),
               });
               if (publishRes.ok) {
-                const { version: publishedVersion } = await publishRes.json();
-                setVersions((prev) => [publishedVersion, ...prev]);
-                Alert.alert("Published!", `Version ${versionNum} is now live. Approved buyers can view the IM report.`);
+                const { version: publishedVersion } = await publishRes.json() as { version: { versionNumber: number; generatedHtmlUrl?: string | null } };
+                setVersions((prev) => [publishedVersion as any, ...prev]);
+                const htmlUrl = publishedVersion.generatedHtmlUrl;
+                Alert.alert(
+                  "Published!",
+                  `Version ${versionNum} is now live. Approved buyers can view the IM report.${htmlUrl ? `\n\nShareable link:\n${htmlUrl}` : ""}`,
+                  htmlUrl
+                    ? [
+                        { text: "Close", style: "cancel" },
+                        { text: "Open Link", onPress: () => Linking.openURL(htmlUrl) },
+                      ]
+                    : [{ text: "OK" }],
+                );
               } else {
                 // Snapshot was created but not yet published — surface this clearly
                 setVersions((prev) => [draftVersion, ...prev]);
