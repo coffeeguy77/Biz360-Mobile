@@ -487,6 +487,21 @@ export function ReportPage() {
             </div>
           )}
 
+          {/* Hero image — rendered when the listing has a cover photo set */}
+          {data?.meta?.heroImageUrl && (
+            <div className={cn(
+              "mb-6 rounded-2xl overflow-hidden border max-h-72",
+              printMode ? "border-slate-200" : "border-[#1E3A5C]"
+            )}>
+              <img
+                src={data.meta.heroImageUrl}
+                alt={`${businessName} — cover photo`}
+                className="w-full h-72 object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            </div>
+          )}
+
           <p className={cn("text-base mb-8", printMode ? "text-slate-500" : "text-slate-400")}>
             Confidential Business Profile · Prepared by Exit360
           </p>

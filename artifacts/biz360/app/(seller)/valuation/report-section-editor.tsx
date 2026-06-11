@@ -20,6 +20,50 @@ async function getAuthToken(): Promise<string | null> {
 type Visibility = "public" | "verified_buyer" | "nda_signed" | "hidden";
 interface TableRow { label: string; value: string }
 
+// ── Canberra location context structured fields ────────────────────────────────
+// Shown in place of the generic table editor for the two Canberra location
+// sections. Values are stored in tableData.rows so the same data appears
+// in the HTML/PDF report table.
+const LOCATION_SECTION_KEYS = ["business_location_market_context", "canberra_location_explainer"] as const;
+type LocationSectionKey = typeof LOCATION_SECTION_KEYS[number];
+
+const LOCATION_FIELDS: Record<LocationSectionKey, Array<{ label: string; placeholder: string }>> = {
+  business_location_market_context: [
+    { label: "Suburb / Location",       placeholder: "e.g. Dickson, Braddon, Kingston" },
+    { label: "Trade Area Type",         placeholder: "e.g. Inner-north retail strip, light industrial estate" },
+    { label: "Foot Traffic",            placeholder: "e.g. High weekday lunch traffic from office workers" },
+    { label: "Competitive Environment", placeholder: "e.g. 3 cafes within 200m; no direct format competitor" },
+    { label: "Nearby Demand Drivers",   placeholder: "e.g. 2 hospitals, ANU, ACT Government offices" },
+    { label: "Demographic Profile",     placeholder: "e.g. 25–45 professionals, above-average household income" },
+  ],
+  canberra_location_explainer: [
+    { label: "Canberra Area",              placeholder: "e.g. Inner North, Gungahlin, City/Civic, Belconnen" },
+    { label: "North/South Accessibility", placeholder: "e.g. Easy access from north Canberra, 5 min from Braddon" },
+    { label: "Commercial Catchment",      placeholder: "e.g. Large residential catchment + high office foot traffic" },
+    { label: "Parking",                   placeholder: "e.g. Free street parking; 200 m from multi-storey car park" },
+    { label: "Landmark References",       placeholder: "e.g. Opposite Dickson shops, adjacent Northbourne Ave" },
+    { label: "Public Transport",          placeholder: "e.g. Rapid bus stop 50 m; light rail 600 m" },
+  ],
+};
+
+function isLocationSection(key: string | undefined): key is LocationSectionKey {
+  return LOCATION_SECTION_KEYS.includes(key as LocationSectionKey);
+}
+
+/** Read a location field value from the current tableRows by matching label. */
+function getLocField(rows: TableRow[], label: string): string {
+  return rows.find((r) => r.label === label)?.value ?? "";
+}
+
+/** Update (or insert) a location field value in tableRows by label. */
+function setLocField(rows: TableRow[], label: string, value: string): TableRow[] {
+  const idx = rows.findIndex((r) => r.label === label);
+  if (idx >= 0) {
+    return rows.map((r, i) => (i === idx ? { ...r, value } : r));
+  }
+  return [...rows, { label, value }];
+}
+
 interface SectionData {
   id: string;
   sectionKey: string;
@@ -396,10 +440,42 @@ export default function ReportSectionEditorScreen() {
           ))}
         </View>
 
-        {/* Table editor */}
+        {/* ── Canberra location context structured editor ─────────────────────
+             Replaces the generic table editor for business_location_market_context
+             and canberra_location_explainer. Values are persisted in tableData.rows
+             using the field label as the row key so they appear in the report table. */}
+        {isLocationSection(section?.sectionKey) && (
+          <View style={styles.fieldBlock}>
+            <View style={[styles.locationHeader, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
+              <Feather name="map-pin" size={14} color="#3B82F6" />
+              <Text style={styles.locationHeaderText}>Location Context Fields</Text>
+              <Text style={[styles.locationHeaderSub, { color: colors.mutedForeground }]}>
+                Stored in report table · shown to buyers
+              </Text>
+            </View>
+            {LOCATION_FIELDS[section!.sectionKey as LocationSectionKey].map((field) => (
+              <View key={field.label} style={styles.fieldBlock}>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+                  {field.label.toUpperCase()}
+                </Text>
+                <TextInput
+                  style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
+                  value={getLocField(tableRows, field.label)}
+                  onChangeText={(val) => setTableRows((prev) => setLocField(prev, field.label, val))}
+                  placeholder={field.placeholder}
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Table editor — shown for all sections; hidden label for location sections */}
         <View style={styles.fieldBlock}>
           <View style={styles.fieldRow}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>TABLE (optional)</Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+              {isLocationSection(section?.sectionKey) ? "RAW TABLE DATA" : "TABLE (optional)"}
+            </Text>
             <TouchableOpacity onPress={() => setShowTable((v) => !v)}>
               <Text style={[styles.addLink, { color: colors.primary }]}>{showTable ? "Hide table" : "Add table"}</Text>
             </TouchableOpacity>
@@ -666,4 +742,7 @@ const styles = StyleSheet.create({
   previewBulletRow:  { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   previewBulletText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
   previewEmpty:      { fontSize: 14, fontFamily: "Inter_400Regular", fontStyle: "italic", textAlign: "center", paddingVertical: 40 },
+  locationHeader:    { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, flexWrap: "wrap" },
+  locationHeaderText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#3B82F6" },
+  locationHeaderSub: { fontSize: 11, fontFamily: "Inter_400Regular", width: "100%", marginTop: 2 },
 });

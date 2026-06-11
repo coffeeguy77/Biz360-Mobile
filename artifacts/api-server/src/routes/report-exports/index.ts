@@ -5,6 +5,10 @@ import {
 } from "@workspace/db";
 import { eq, asc, and } from "drizzle-orm";
 import { logger } from "../../lib/logger";
+import { generateChartSvg } from "../../lib/chart-svg";
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SVGtoPDF = require("svg-to-pdfkit");
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PDFDocument = require("pdfkit");
@@ -234,9 +238,10 @@ async function handlePdf(req: any, res: any): Promise<void> {
         }
       }
 
-      // ── Chart visualisation ─────────────────────────────────────────────────
-      // Draw a simple pdfkit-native chart if chartData is present for the
-      // section's key. Falls back to a compact data table for Radar-type charts.
+      // ── Chart visualisation (SVG pipeline — reused by mobile RN via SvgXml) ─
+      // generateChartSvg produces a pure-SVG string; SVGtoPDF embeds it in the
+      // pdfkit document. The same SVG generator is consumed by biz360 mobile
+      // (ChartComponents.tsx → SvgXml), keeping the chart output consistent.
       if (section.chartData && bodyY < PAGE_H - 120) {
         const rawData = typeof section.chartData === "string"
           ? (() => { try { return JSON.parse(section.chartData); } catch { return null; } })()
@@ -244,120 +249,14 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
         if (rawData && Array.isArray(rawData) && rawData.length > 0) {
           bodyY += 10;
-          const CHART_H   = 120;
-          const CHART_Y   = bodyY;
-          const CHART_MAX_W = CONTENT_W;
-          const BAR_PAD  = 6;
-          const COLORS   = ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EC4899", "#14B8A6", "#F97316", "#6366F1"];
-          const sk = section.sectionKey as string;
-
-          // Helper: format money / number
-          function fmtV(v: unknown): string {
-            const n = Number(v ?? 0);
-            if (!isFinite(n)) return String(v ?? "");
-            if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-            if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-            if (n === Math.floor(n)) return n.toLocaleString();
-            return n.toFixed(1);
+          const CHART_H = 140;
+          try {
+            const svgStr = generateChartSvg(section.sectionKey as string, rawData as Array<Record<string, unknown>>, CONTENT_W, CHART_H);
+            SVGtoPDF(doc, svgStr, MARGIN, bodyY, { width: CONTENT_W, height: CHART_H, preserveAspectRatio: "xMinYMin meet" });
+            bodyY += CHART_H + 10;
+          } catch {
+            // SVG rendering failure is non-fatal; section body is still shown.
           }
-
-          // Radar-style sections → render as horizontal score bars
-          const isRadar = sk === "lease_premises_summary" || sk === "business_health_score";
-          const isPie   = sk === "revenue_stream_breakdown" || sk === "plant_equipment_summary";
-          const isHBar  = sk === "division_breakdown" || sk === "buyer_access_confidentiality";
-
-          if (isRadar) {
-            // Score table: subject + filled bar (0–100)
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED)
-              .text("SCORE BREAKDOWN", MARGIN, bodyY);
-            bodyY += 12;
-            const rowH = 14;
-            rawData.slice(0, 8).forEach((row: Record<string, unknown>) => {
-              const label = String(row["subject"] ?? row["name"] ?? "");
-              const score = Math.min(100, Math.max(0, Number(row["score"] ?? row["value"] ?? 0)));
-              if (bodyY > PAGE_H - 60) return;
-              doc.font("Helvetica").fontSize(8).fillColor(LIGHT)
-                .text(label, MARGIN, bodyY, { width: 100 });
-              const barX = MARGIN + 110;
-              const barW = CONTENT_W - 120;
-              doc.save().rect(barX, bodyY + 1, barW, 9).fill("#1E3A5C").restore();
-              doc.save().rect(barX, bodyY + 1, barW * (score / 100), 9).fill(BLUE_ACC).restore();
-              doc.font("Helvetica-Bold").fontSize(7).fillColor(WHITE)
-                .text(`${score}`, barX + barW + 4, bodyY + 1, { width: 30 });
-              bodyY += rowH;
-            });
-
-          } else if (isPie) {
-            // Render pie data as horizontal bar legend
-            const total = rawData.reduce((s: number, r: Record<string, unknown>) => s + Number(r["value"] ?? 0), 0) || 1;
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED)
-              .text("DISTRIBUTION", MARGIN, bodyY);
-            bodyY += 12;
-            rawData.slice(0, 8).forEach((row: Record<string, unknown>, ci: number) => {
-              if (bodyY > PAGE_H - 60) return;
-              const label = String(row["name"] ?? "");
-              const val   = Number(row["value"] ?? 0);
-              const pct   = val / total;
-              const barW  = CONTENT_W - 130;
-              doc.save().rect(MARGIN, bodyY + 2, 8, 8).fill(COLORS[ci % COLORS.length]).restore();
-              doc.font("Helvetica").fontSize(8).fillColor(LIGHT)
-                .text(label, MARGIN + 12, bodyY, { width: 110 });
-              doc.save().rect(MARGIN + 130, bodyY + 1, barW, 9).fill("#1E3A5C").restore();
-              doc.save().rect(MARGIN + 130, bodyY + 1, Math.max(4, barW * pct), 9).fill(COLORS[ci % COLORS.length]).restore();
-              doc.font("Helvetica").fontSize(7).fillColor(MUTED)
-                .text(`${(pct * 100).toFixed(0)}%`, MARGIN + 130 + barW + 4, bodyY + 1, { width: 30 });
-              bodyY += 14;
-            });
-
-          } else if (isHBar) {
-            // Horizontal bar chart (division_breakdown, buyer funnel)
-            const valKey  = (rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "stage")) ?? "value";
-            const lblKey  = rawData[0] && ("stage" in rawData[0] ? "stage" : "name");
-            const maxVal  = Math.max(...rawData.map((r: Record<string, unknown>) => Number(r[valKey] ?? 0))) || 1;
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED)
-              .text(String(valKey).toUpperCase(), MARGIN, bodyY);
-            bodyY += 12;
-            rawData.slice(0, 8).forEach((row: Record<string, unknown>, ci: number) => {
-              if (bodyY > PAGE_H - 60) return;
-              const label = String(row[lblKey] ?? "");
-              const val   = Number(row[valKey] ?? 0);
-              const barW  = CONTENT_W - 130;
-              doc.font("Helvetica").fontSize(8).fillColor(LIGHT)
-                .text(label, MARGIN, bodyY, { width: 120 });
-              doc.save().rect(MARGIN + 130, bodyY + 1, barW, 9).fill("#1E3A5C").restore();
-              doc.save().rect(MARGIN + 130, bodyY + 1, Math.max(4, barW * (val / maxVal)), 9).fill(COLORS[ci % COLORS.length]).restore();
-              doc.font("Helvetica").fontSize(7).fillColor(MUTED)
-                .text(fmtV(val), MARGIN + 130 + barW + 4, bodyY + 1, { width: 50 });
-              bodyY += 14;
-            });
-
-          } else {
-            // Vertical bar chart (default: app_valuation_summary, verified_revenue_sources, etc.)
-            const valKey  = (rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "source" && k !== "type")) ?? "value";
-            const lblKey  = rawData[0] && ("source" in rawData[0] ? "source" : "name");
-            const maxVal  = Math.max(...rawData.map((r: Record<string, unknown>) => Number(r[valKey] ?? 0))) || 1;
-            const n       = Math.min(rawData.length, 8);
-            const barW    = Math.floor((CHART_MAX_W - BAR_PAD * (n + 1)) / n);
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED)
-              .text(String(valKey).toUpperCase(), MARGIN, CHART_Y);
-            rawData.slice(0, n).forEach((row: Record<string, unknown>, ci: number) => {
-              const val    = Number(row[valKey] ?? 0);
-              const ratio  = val / maxVal;
-              const bx     = MARGIN + BAR_PAD + ci * (barW + BAR_PAD);
-              const bh     = Math.max(4, CHART_H * ratio);
-              const by     = CHART_Y + 10 + CHART_H - bh;
-              doc.save().rect(bx, by, barW, bh).fill(COLORS[ci % COLORS.length]).restore();
-              // x-axis label
-              doc.font("Helvetica").fontSize(7).fillColor(MUTED)
-                .text(String(row[lblKey] ?? "").slice(0, 12), bx, CHART_Y + 10 + CHART_H + 3, { width: barW + BAR_PAD, align: "center" });
-              // value label on bar top
-              doc.font("Helvetica-Bold").fontSize(6).fillColor(WHITE)
-                .text(fmtV(val), bx, Math.max(CHART_Y + 12, by - 9), { width: barW, align: "center" });
-            });
-            bodyY = CHART_Y + 10 + CHART_H + 20;
-          }
-
-          bodyY += 6;
         }
       }
 
@@ -514,7 +413,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
         doc.font("Helvetica").fontSize(10).fillColor(LIGHT).text(b.trim(), MARGIN + 16, bodyY, { width: CONTENT_W - 16, lineGap: 2 });
         bodyY = doc.y + 4;
       }
-      // ── Chart visualisation (same 8-type logic as authenticated PDF) ──────────
+      // ── Chart visualisation (SVG pipeline — same shared generator as authenticated PDF) ─
       if (section.chartData && bodyY < PAGE_H - 120) {
         const rawData = typeof section.chartData === "string"
           ? (() => { try { return JSON.parse(section.chartData as string); } catch { return null; } })()
@@ -522,90 +421,14 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
 
         if (rawData && Array.isArray(rawData) && rawData.length > 0) {
           bodyY += 10;
-          const CHART_H     = 120;
-          const CHART_Y     = bodyY;
-          const CHART_MAX_W = CONTENT_W;
-          const BAR_PAD     = 6;
-          const COLORS      = ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EC4899", "#14B8A6", "#F97316", "#6366F1"];
-          const sk = section.sectionKey as string;
-
-          function fmtV(v: unknown): string {
-            const n = Number(v ?? 0);
-            if (!isFinite(n)) return String(v ?? "");
-            if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-            if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-            if (n === Math.floor(n)) return n.toLocaleString();
-            return n.toFixed(1);
+          const CHART_H = 140;
+          try {
+            const svgStr = generateChartSvg(section.sectionKey as string, rawData as Array<Record<string, unknown>>, CONTENT_W, CHART_H);
+            SVGtoPDF(doc, svgStr, MARGIN, bodyY, { width: CONTENT_W, height: CHART_H, preserveAspectRatio: "xMinYMin meet" });
+            bodyY += CHART_H + 10;
+          } catch {
+            // SVG rendering failure is non-fatal; section body is still shown.
           }
-
-          const isRadar = sk === "lease_premises_summary" || sk === "business_health_score";
-          const isPie   = sk === "revenue_stream_breakdown" || sk === "plant_equipment_summary";
-          const isHBar  = sk === "division_breakdown" || sk === "buyer_access_confidentiality";
-
-          if (isRadar) {
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED).text("SCORE BREAKDOWN", MARGIN, bodyY);
-            bodyY += 12;
-            rawData.slice(0, 8).forEach((row: Record<string, unknown>) => {
-              const label = String(row["subject"] ?? row["name"] ?? "");
-              const score = Math.min(100, Math.max(0, Number(row["score"] ?? row["value"] ?? 0)));
-              if (bodyY > PAGE_H - 60) return;
-              doc.font("Helvetica").fontSize(8).fillColor(LIGHT).text(label, MARGIN, bodyY, { width: 100 });
-              const barX = MARGIN + 110; const barW = CONTENT_W - 120;
-              doc.save().rect(barX, bodyY + 1, barW, 9).fill("#1E3A5C").restore();
-              doc.save().rect(barX, bodyY + 1, barW * (score / 100), 9).fill(BLUE_ACC).restore();
-              doc.font("Helvetica-Bold").fontSize(7).fillColor(WHITE).text(`${score}`, barX + barW + 4, bodyY + 1, { width: 30 });
-              bodyY += 14;
-            });
-          } else if (isPie) {
-            const total = rawData.reduce((s: number, r: Record<string, unknown>) => s + Number(r["value"] ?? 0), 0) || 1;
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED).text("DISTRIBUTION", MARGIN, bodyY);
-            bodyY += 12;
-            rawData.slice(0, 8).forEach((row: Record<string, unknown>, ci: number) => {
-              if (bodyY > PAGE_H - 60) return;
-              const label = String(row["name"] ?? ""); const val = Number(row["value"] ?? 0); const pct = val / total;
-              const barW = CONTENT_W - 130;
-              doc.save().rect(MARGIN, bodyY + 2, 8, 8).fill(COLORS[ci % COLORS.length]).restore();
-              doc.font("Helvetica").fontSize(8).fillColor(LIGHT).text(label, MARGIN + 12, bodyY, { width: 110 });
-              doc.save().rect(MARGIN + 130, bodyY + 1, barW, 9).fill("#1E3A5C").restore();
-              doc.save().rect(MARGIN + 130, bodyY + 1, Math.max(4, barW * pct), 9).fill(COLORS[ci % COLORS.length]).restore();
-              doc.font("Helvetica").fontSize(7).fillColor(MUTED).text(`${(pct * 100).toFixed(0)}%`, MARGIN + 130 + barW + 4, bodyY + 1, { width: 30 });
-              bodyY += 14;
-            });
-          } else if (isHBar) {
-            const valKey = (rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "stage")) ?? "value";
-            const lblKey = rawData[0] && ("stage" in rawData[0] ? "stage" : "name");
-            const maxVal = Math.max(...rawData.map((r: Record<string, unknown>) => Number(r[valKey] ?? 0))) || 1;
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED).text(String(valKey).toUpperCase(), MARGIN, bodyY);
-            bodyY += 12;
-            rawData.slice(0, 8).forEach((row: Record<string, unknown>, ci: number) => {
-              if (bodyY > PAGE_H - 60) return;
-              const label = String(row[lblKey] ?? ""); const val = Number(row[valKey] ?? 0); const barW = CONTENT_W - 130;
-              doc.font("Helvetica").fontSize(8).fillColor(LIGHT).text(label, MARGIN, bodyY, { width: 120 });
-              doc.save().rect(MARGIN + 130, bodyY + 1, barW, 9).fill("#1E3A5C").restore();
-              doc.save().rect(MARGIN + 130, bodyY + 1, Math.max(4, barW * (val / maxVal)), 9).fill(COLORS[ci % COLORS.length]).restore();
-              doc.font("Helvetica").fontSize(7).fillColor(MUTED).text(fmtV(val), MARGIN + 130 + barW + 4, bodyY + 1, { width: 50 });
-              bodyY += 14;
-            });
-          } else {
-            const valKey = (rawData[0] && Object.keys(rawData[0]).find(k => k !== "name" && k !== "source" && k !== "type")) ?? "value";
-            const lblKey = rawData[0] && ("source" in rawData[0] ? "source" : "name");
-            const maxVal = Math.max(...rawData.map((r: Record<string, unknown>) => Number(r[valKey] ?? 0))) || 1;
-            const n = Math.min(rawData.length, 8);
-            const barW = Math.floor((CHART_MAX_W - BAR_PAD * (n + 1)) / n);
-            doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED).text(String(valKey).toUpperCase(), MARGIN, CHART_Y);
-            rawData.slice(0, n).forEach((row: Record<string, unknown>, ci: number) => {
-              const val = Number(row[valKey] ?? 0); const ratio = val / maxVal;
-              const bx = MARGIN + BAR_PAD + ci * (barW + BAR_PAD);
-              const bh = Math.max(4, CHART_H * ratio); const by = CHART_Y + 10 + CHART_H - bh;
-              doc.save().rect(bx, by, barW, bh).fill(COLORS[ci % COLORS.length]).restore();
-              doc.font("Helvetica").fontSize(7).fillColor(MUTED)
-                .text(String(row[lblKey] ?? "").slice(0, 12), bx, CHART_Y + 10 + CHART_H + 3, { width: barW + BAR_PAD, align: "center" });
-              doc.font("Helvetica-Bold").fontSize(6).fillColor(WHITE)
-                .text(fmtV(val), bx, Math.max(CHART_Y + 12, by - 9), { width: barW, align: "center" });
-            });
-            bodyY = CHART_Y + 10 + CHART_H + 20;
-          }
-          bodyY += 6;
         }
       }
 
