@@ -100,14 +100,30 @@ async function storeAnalysisInBackground(
     );
 
     if (!templateData) {
-      logger.warn("Template extraction returned null — skipping DB storage");
+      logger.warn("Template extraction returned null — skipping DB storage to prevent raw data exposure");
+      return;
+    }
+
+    // Fail closed: require valid template_clauses to avoid storing raw clauses with real party names
+    const templateClauses = templateData.template_clauses;
+    if (!Array.isArray(templateClauses) || templateClauses.length === 0) {
+      logger.warn("Template extraction returned empty/missing template_clauses — skipping DB storage");
+      return;
+    }
+
+    // Validate that at least some clauses have been templatised (contain {{VAR}} tokens)
+    const hasPlaceholders = templateClauses.some(
+      c => /{{[A-Z_]+}}/.test(JSON.stringify(c)),
+    );
+    if (!hasPlaceholders) {
+      logger.warn("Template clauses contain no {{PLACEHOLDER}} tokens — skipping DB storage");
       return;
     }
 
     const templateName = templateData.template_name
       || `${jurisdiction ?? "AU"} ${(analysisResult.leaseType as string) ?? "Commercial"} Lease Template`;
 
-    const templateContent = JSON.stringify(templateData.template_clauses ?? rawClauses);
+    const templateContent = JSON.stringify(templateClauses);
 
     // Mark as master if first template for this jurisdiction + leaseType combination
     const leaseType = (analysisResult.leaseType as string | null) ?? null;

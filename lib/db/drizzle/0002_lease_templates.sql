@@ -12,6 +12,13 @@ CREATE TABLE "lease_templates" (
   "created_at" timestamp DEFAULT now()
 );
 
+-- Partial unique index: one template per analysis UUID, NULLs excluded
+-- (PostgreSQL treats NULLs as distinct in unique indexes, but WHERE IS NOT NULL
+-- makes the intent explicit and avoids any ambiguity with partial null handling)
+CREATE UNIQUE INDEX "lease_templates_source_analysis_id_idx"
+  ON "lease_templates" ("source_analysis_id")
+  WHERE source_analysis_id IS NOT NULL;
+
 CREATE TABLE "lease_clauses_master" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "title" text NOT NULL,

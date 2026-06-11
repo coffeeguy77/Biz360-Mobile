@@ -151,11 +151,22 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
         return;
       }
 
+      // Fail closed: require valid template_clauses to prevent exposing raw lease data cross-user
+      const tplClauses = templateData.template_clauses;
+      if (!Array.isArray(tplClauses) || tplClauses.length === 0) {
+        res.status(500).json({ error: "Template extraction returned no clauses — refusing to store raw lease data" });
+        return;
+      }
+      if (!tplClauses.some(c => /{{[A-Z_]+}}/.test(JSON.stringify(c)))) {
+        res.status(500).json({ error: "Template clauses contain no {{PLACEHOLDER}} tokens — refusing to store" });
+        return;
+      }
+
       const jurisdiction = (analysisData.jurisdiction as string | null) ?? null;
       const leaseType    = (analysisData.leaseType    as string | null) ?? null;
       const templateName = templateData.template_name
         || `${jurisdiction ?? "AU"} ${leaseType ?? "Commercial"} Lease Template`;
-      const templateContent = JSON.stringify(templateData.template_clauses ?? []);
+      const templateContent = JSON.stringify(tplClauses);
 
       let isMaster = false;
       try {
@@ -217,11 +228,22 @@ router.post("/lease-templates", requireAuth, async (req, res): Promise<void> => 
         return;
       }
 
+      // Fail closed: require valid template_clauses to prevent exposing raw lease data cross-user
+      const tplClauses2 = templateData.template_clauses;
+      if (!Array.isArray(tplClauses2) || tplClauses2.length === 0) {
+        res.status(500).json({ error: "Template extraction returned no clauses — refusing to store raw lease data" });
+        return;
+      }
+      if (!tplClauses2.some(c => /{{[A-Z_]+}}/.test(JSON.stringify(c)))) {
+        res.status(500).json({ error: "Template clauses contain no {{PLACEHOLDER}} tokens — refusing to store" });
+        return;
+      }
+
       const jurisdiction = (analysisResult.jurisdiction as string | null) ?? null;
       const leaseType    = (analysisResult.leaseType    as string | null) ?? null;
       const templateName = templateData.template_name
         || `${jurisdiction ?? "AU"} ${leaseType ?? "Commercial"} Lease Template`;
-      const templateContent = JSON.stringify(templateData.template_clauses ?? []);
+      const templateContent = JSON.stringify(tplClauses2);
 
       let isMaster = false;
       try {

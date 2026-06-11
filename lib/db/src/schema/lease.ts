@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   integer,
@@ -14,21 +15,30 @@ import {
 // template_content: JSON string of the extracted clauses (Clause[] shape).
 // variable_map: maps placeholder names (TENANT_NAME) → original document values.
 
-export const leaseTemplatesTable = pgTable("lease_templates", {
-  id:               uuid("id").primaryKey().defaultRandom(),
-  name:             text("name").notNull(),
-  jurisdiction:     text("jurisdiction"),
-  leaseType:        text("lease_type"),
-  premisesType:     text("premises_type"),
-  templateContent:  text("template_content").notNull(),
-  variableMap:      jsonb("variable_map").$type<Record<string, string>>().notNull().default({}),
-  isMaster:         boolean("is_master").notNull().default(false),
-  // Tracks which analysis UUID this template was generated from.
-  // Used by POST /api/lease-templates { analysedLeaseId } for idempotent retrieval.
-  sourceAnalysisId: text("source_analysis_id"),
-  createdByUserId:  text("created_by_user_id"),
-  createdAt:        timestamp("created_at").defaultNow(),
-});
+export const leaseTemplatesTable = pgTable(
+  "lease_templates",
+  {
+    id:               uuid("id").primaryKey().defaultRandom(),
+    name:             text("name").notNull(),
+    jurisdiction:     text("jurisdiction"),
+    leaseType:        text("lease_type"),
+    premisesType:     text("premises_type"),
+    templateContent:  text("template_content").notNull(),
+    variableMap:      jsonb("variable_map").$type<Record<string, string>>().notNull().default({}),
+    isMaster:         boolean("is_master").notNull().default(false),
+    // Tracks which analysis UUID this template was generated from.
+    // Unique index ensures idempotent creation: one template per analysis, even under concurrency.
+    // NULL values are intentionally allowed (manual templates have no source analysis).
+    sourceAnalysisId: text("source_analysis_id"),
+    createdByUserId:  text("created_by_user_id"),
+    createdAt:        timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("lease_templates_source_analysis_id_idx")
+      .on(t.sourceAnalysisId)
+      .where(sql`source_analysis_id IS NOT NULL`),
+  ],
+);
 
 export type LeaseTemplate = typeof leaseTemplatesTable.$inferSelect;
 
