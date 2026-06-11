@@ -411,7 +411,7 @@ export default function EquipmentScreen() {
 
       let text: string;
       try {
-        text = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+        text = await FileSystem.readAsStringAsync(uri, { encoding: "utf8" });
       } catch {
         // Fallback: fetch the file directly
         const resp = await fetch(uri);

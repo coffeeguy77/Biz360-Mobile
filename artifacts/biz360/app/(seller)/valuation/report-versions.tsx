@@ -106,7 +106,7 @@ export default function ReportVersionsScreen() {
         const bytes = new Uint8Array(buffer);
         const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join("");
         const base64 = btoa(binary);
-        await FileSystem.writeAsStringAsync(path, base64, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(path, base64, { encoding: "base64" });
         await Sharing.shareAsync(path, { mimeType: "application/pdf", dialogTitle: "Share IM Report PDF" });
       }
     } catch {

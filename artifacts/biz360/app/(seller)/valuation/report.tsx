@@ -184,7 +184,7 @@ export default function ReportHubScreen() {
         URL.revokeObjectURL(url);
       } else {
         const path = `${FileSystem.cacheDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(path, csvText, { encoding: FileSystem.EncodingType.UTF8 });
+        await FileSystem.writeAsStringAsync(path, csvText, { encoding: "utf8" });
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(path, { mimeType: "text/csv", dialogTitle: "IM Report AI Fill Template" });
         } else {
@@ -220,7 +220,7 @@ export default function ReportHubScreen() {
         const resp = await fetch(file.uri);
         csvText = await resp.text();
       } else {
-        csvText = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 });
+        csvText = await FileSystem.readAsStringAsync(file.uri, { encoding: "utf8" });
       }
 
       if (!csvText.trim()) {
@@ -337,7 +337,7 @@ export default function ReportHubScreen() {
         const bytes = new Uint8Array(buffer);
         const binary = Array.from(bytes).map((b) => String.fromCharCode(b)).join("");
         const base64 = btoa(binary);
-        await FileSystem.writeAsStringAsync(path, base64, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(path, base64, { encoding: "base64" });
         await Sharing.shareAsync(path, { mimeType: "application/pdf", dialogTitle: "Share IM Report PDF" });
       }
     } catch {

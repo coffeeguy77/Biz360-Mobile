@@ -80,7 +80,7 @@ export default function CsvImportPreviewScreen() {
         formData.append("file", blob, fileName);
       } else {
         const tempPath = `${FileSystem.cacheDirectory}confirm_import.csv`;
-        await FileSystem.writeAsStringAsync(tempPath, csvText ?? "", { encoding: FileSystem.EncodingType.UTF8 });
+        await FileSystem.writeAsStringAsync(tempPath, csvText ?? "", { encoding: "utf8" });
         formData.append("file", { uri: tempPath, type: "text/csv", name: fileName } as any);
       }
 
