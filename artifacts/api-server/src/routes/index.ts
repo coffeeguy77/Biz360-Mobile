@@ -6,6 +6,7 @@ import valuationRouter from "./valuation/index";
 import leaseAnalysisRouter from "./lease-analysis/index";
 import leaseTemplatesRouter from "./lease-templates/index";
 import sellerLeasesRouter from "./seller-leases/index";
+import reportSectionsRouter from "./report-sections/index";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(valuationRouter);
 router.use(leaseAnalysisRouter);
 router.use(leaseTemplatesRouter);
 router.use(sellerLeasesRouter);
+router.use(reportSectionsRouter);
 
 export default router;

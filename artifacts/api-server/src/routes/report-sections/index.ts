@@ -1,0 +1,661 @@
+import { Router } from "express";
+import { and, asc, desc, eq, max, sql } from "drizzle-orm";
+import {
+  db,
+  cafesTable,
+  valuationSnapshotsTable,
+  businessUnitsTable,
+  cafeEquipmentTable,
+  ownerAdjustmentsTable,
+  sellerLeasesTable,
+  sellerLeaseClausesTable,
+  reportSectionsTable,
+  reportVersionsTable,
+  reportCsvImportsTable,
+  reportExportsTable,
+  reportAccessLogsTable,
+} from "@workspace/db";
+import { requireAuth } from "../../middlewares/auth";
+import { logger } from "../../lib/logger";
+import { buildDefaultSections } from "../../lib/report-section-defaults";
+
+const router = Router();
+
+// ─── Ownership helpers ────────────────────────────────────────────────────────
+
+/**
+ * Verify a listing belongs to the authenticated user by checking val_cafes.
+ * Returns the cafe row or throws a 403-tagged error.
+ */
+async function assertListingOwner(listingId: string, ownerId: string) {
+  const [cafe] = await db
+    .select()
+    .from(cafesTable)
+    .where(and(eq(cafesTable.listingId, listingId), eq(cafesTable.ownerId, ownerId)));
+  if (!cafe) {
+    const err: Error & { status?: number } = new Error("Listing not found or access denied");
+    err.status = 403;
+    throw err;
+  }
+  return cafe;
+}
+
+/**
+ * Verify a report section belongs to the authenticated user.
+ */
+async function assertSectionOwner(sectionId: string, ownerId: string) {
+  const [section] = await db
+    .select()
+    .from(reportSectionsTable)
+    .where(and(eq(reportSectionsTable.id, sectionId), eq(reportSectionsTable.ownerId, ownerId)));
+  if (!section) {
+    const err: Error & { status?: number } = new Error("Report section not found or access denied");
+    err.status = 403;
+    throw err;
+  }
+  return section;
+}
+
+// ─── GET /api/report-sections/listing/:listingId ─────────────────────────────
+// Returns all sections for a listing, ordered by sort_order.
+router.get("/report-sections/listing/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  try {
+    await assertListingOwner(listingId, userId);
+    const sections = await db
+      .select()
+      .from(reportSectionsTable)
+      .where(eq(reportSectionsTable.listingId, listingId))
+      .orderBy(asc(reportSectionsTable.sortOrder));
+    res.json({ sections });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load report sections" });
+  }
+});
+
+// ─── POST /api/report-sections/defaults/:listingId ───────────────────────────
+// Seeds the 40 default section rows for a listing (skips any that already exist).
+router.post("/report-sections/defaults/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  try {
+    await assertListingOwner(listingId, userId);
+    const defaults = buildDefaultSections(listingId, userId);
+    // Insert each default, skip if section_key already exists for this listing
+    const inserted = await db
+      .insert(reportSectionsTable)
+      .values(defaults)
+      .onConflictDoNothing()
+      .returning({ id: reportSectionsTable.id, sectionKey: reportSectionsTable.sectionKey });
+    res.json({ seeded: inserted.length, total: defaults.length });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to seed defaults" });
+  }
+});
+
+// ─── GET /api/report-sections/auto-fill/:listingId ───────────────────────────
+// Returns suggested content for each section key, pulled from live app data.
+// Does NOT write to the database — the mobile app confirms before saving.
+router.get("/report-sections/auto-fill/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  try {
+    const cafe = await assertListingOwner(listingId, userId);
+
+    // ── Fetch all data sources in parallel ──────────────────────────────────
+    const [latestSnapshot, units, equipment, adjustments, leaseRows, clauseRows] = await Promise.all([
+      db
+        .select()
+        .from(valuationSnapshotsTable)
+        .where(and(eq(valuationSnapshotsTable.cafeId, cafe.id), eq(valuationSnapshotsTable.isPublished, true), sql`${valuationSnapshotsTable.unitId} IS NULL`))
+        .orderBy(desc(valuationSnapshotsTable.createdAt))
+        .limit(1),
+      db.select().from(businessUnitsTable).where(eq(businessUnitsTable.cafeId, cafe.id)),
+      db.select().from(cafeEquipmentTable).where(and(eq(cafeEquipmentTable.cafeId, cafe.id), eq(cafeEquipmentTable.suspended, false))),
+      db.select().from(ownerAdjustmentsTable).where(eq(ownerAdjustmentsTable.cafeId, cafe.id)),
+      db.select().from(sellerLeasesTable).where(eq(sellerLeasesTable.userId, userId)),
+      db.select().from(sellerLeaseClausesTable).where(eq(sellerLeaseClausesTable.userId, userId)),
+    ]);
+
+    const snap = latestSnapshot[0] ?? null;
+    const includedUnits = units.filter((u) => u.isIncludedInSale);
+
+    // ── Format helpers ───────────────────────────────────────────────────────
+    const fmt = (n: string | null | undefined) =>
+      n ? `$${Number(n).toLocaleString("en-AU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "Not available";
+
+    const suggestions: Record<string, {
+      suggestedBody: string;
+      suggestedBullets: string[];
+      tableData: Record<string, unknown> | null;
+      sourceLabel: string;
+    }> = {};
+
+    // ── app_valuation_summary ────────────────────────────────────────────────
+    if (snap) {
+      const low  = snap.adjustedEbitda ? Number(snap.adjustedEbitda) * 2.0 + Number(snap.totalEquipmentValue ?? 0) : null;
+      const high = snap.adjustedEbitda ? Number(snap.adjustedEbitda) * 2.5 + Number(snap.totalEquipmentValue ?? 0) : null;
+      suggestions["app_valuation_summary"] = {
+        suggestedBody: [
+          `Business Name: ${cafe.name}`,
+          `Estimated Value: ${fmt(snap.valuationMidpoint?.toString())}`,
+          snap.grossRevenue    ? `Revenue: ${fmt(snap.grossRevenue.toString())}`          : null,
+          snap.adjustedEbitda  ? `Adjusted EBITDA: ${fmt(snap.adjustedEbitda.toString())}` : null,
+          snap.totalEquipmentValue ? `Equipment Value: ${fmt(snap.totalEquipmentValue.toString())}` : null,
+          low && high ? `Valuation Range: ${fmt(low.toString())} – ${fmt(high.toString())}` : null,
+        ].filter(Boolean).join("\n"),
+        suggestedBullets: [],
+        tableData: {
+          rows: [
+            { label: "Gross Revenue",    value: fmt(snap.grossRevenue?.toString()) },
+            { label: "COGS",             value: fmt(snap.cogs?.toString()) },
+            { label: "Gross Profit",     value: fmt(snap.grossProfit?.toString()) },
+            { label: "EBITDA",           value: fmt(snap.ebitda?.toString()) },
+            { label: "Adjusted EBITDA",  value: fmt(snap.adjustedEbitda?.toString()) },
+            { label: "Equipment Value",  value: fmt(snap.totalEquipmentValue?.toString()) },
+            { label: "Indicative Value", value: fmt(snap.valuationMidpoint?.toString()) },
+          ],
+        },
+        sourceLabel: "app_generated",
+      };
+    }
+
+    // ── financial_performance_summary ────────────────────────────────────────
+    if (snap) {
+      suggestions["financial_performance_summary"] = {
+        suggestedBody: [
+          snap.grossRevenue   ? `Gross Revenue: ${fmt(snap.grossRevenue.toString())}` : null,
+          snap.cogs           ? `COGS: ${fmt(snap.cogs.toString())}` : null,
+          snap.grossProfit    ? `Gross Profit: ${fmt(snap.grossProfit.toString())}` : null,
+          snap.ebitda         ? `EBITDA: ${fmt(snap.ebitda.toString())}` : null,
+          snap.adjustedEbitda ? `Adjusted EBITDA: ${fmt(snap.adjustedEbitda.toString())}` : null,
+        ].filter(Boolean).join("\n"),
+        suggestedBullets: [],
+        tableData: null,
+        sourceLabel: "app_generated",
+      };
+    }
+
+    // ── addbacks_adjusted_ebitda ─────────────────────────────────────────────
+    if (adjustments.length > 0) {
+      const bullets = adjustments.map(
+        (a) => `${a.label}: ${fmt(a.annualAmount.toString())} per year`,
+      );
+      const totalAddbacks = adjustments.reduce((s, a) => s + Number(a.annualAmount), 0);
+      suggestions["addbacks_adjusted_ebitda"] = {
+        suggestedBody: `Total addbacks: ${fmt(totalAddbacks.toString())} per year across ${adjustments.length} item${adjustments.length !== 1 ? "s" : ""}.`,
+        suggestedBullets: bullets,
+        tableData: null,
+        sourceLabel: "app_generated",
+      };
+    }
+
+    // ── division_breakdown ───────────────────────────────────────────────────
+    if (units.length > 0) {
+      const bullets = units.map(
+        (u) => `${u.name} — ${u.isIncludedInSale ? "Included in sale" : "Excluded from sale"} (${u.revenueSharePct}% of revenue)`,
+      );
+      suggestions["division_breakdown"] = {
+        suggestedBody: `This business has ${units.length} division${units.length !== 1 ? "s" : ""}. ${includedUnits.length} ${includedUnits.length !== 1 ? "are" : "is"} included in the sale.`,
+        suggestedBullets: bullets,
+        tableData: null,
+        sourceLabel: "app_generated",
+      };
+    }
+
+    // ── plant_equipment_summary ──────────────────────────────────────────────
+    if (equipment.length > 0) {
+      const totalSecondhand = equipment.reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
+      const categories: Record<string, number> = {};
+      for (const e of equipment) {
+        const cat = e.category ?? "Other";
+        categories[cat] = (categories[cat] ?? 0) + 1;
+      }
+      const catSummary = Object.entries(categories)
+        .map(([cat, count]) => `${cat} (${count} item${count !== 1 ? "s" : ""})`)
+        .join(", ");
+      suggestions["plant_equipment_summary"] = {
+        suggestedBody: `${equipment.length} items in the equipment register with a total estimated second-hand value of ${fmt(totalSecondhand.toString())}. Categories: ${catSummary}.`,
+        suggestedBullets: equipment
+          .sort((a, b) => Number(b.secondhandValue ?? b.currentValue ?? 0) - Number(a.secondhandValue ?? a.currentValue ?? 0))
+          .slice(0, 10)
+          .map((e) => `${e.name}${e.category ? ` (${e.category})` : ""} — ${fmt((e.secondhandValue ?? e.currentValue)?.toString())}`),
+        tableData: { totalItems: equipment.length, totalSecondhandValue: totalSecondhand, categories },
+        sourceLabel: "app_generated",
+      };
+    }
+
+    // ── lease_premises_summary ───────────────────────────────────────────────
+    if (leaseRows.length > 0) {
+      const leaseData = leaseRows.map((r) => r.data as Record<string, unknown>);
+      const leaseCount = leaseData.length;
+      const clauseCount = clauseRows.length;
+
+      const riskCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+      for (const cr of clauseRows) {
+        const d = cr.data as Record<string, unknown>;
+        const risk = (d.riskLevel as string)?.toLowerCase();
+        if (risk === "critical") riskCounts.critical++;
+        else if (risk === "high") riskCounts.high++;
+        else if (risk === "medium") riskCounts.medium++;
+        else if (risk === "low") riskCounts.low++;
+      }
+
+      suggestions["lease_premises_summary"] = {
+        suggestedBody: `${leaseCount} lease document${leaseCount !== 1 ? "s" : ""} have been uploaded and analysed. ${clauseCount} clause${clauseCount !== 1 ? "s" : ""} identified.`,
+        suggestedBullets: [],
+        tableData: { leaseCount, clauseCount, riskCounts },
+        sourceLabel: "app_generated",
+      };
+
+      // ── lease_risk_valuation_impact ────────────────────────────────────────
+      suggestions["lease_risk_valuation_impact"] = {
+        suggestedBody: `Lease risk profile: ${riskCounts.critical} critical, ${riskCounts.high} high, ${riskCounts.medium} medium, ${riskCounts.low} low risk clauses.`,
+        suggestedBullets: [],
+        tableData: { riskCounts },
+        sourceLabel: "app_generated",
+      };
+    }
+
+    // ── 360_business_walkthrough ─────────────────────────────────────────────
+    // Tour data lives in the KV store / biz360 data layer. We signal it exists
+    // but don't pull it here — the mobile app's tour store provides counts.
+    suggestions["360_business_walkthrough"] = {
+      suggestedBody: "A virtual 360° walkthrough of the business premises is available. Open the tour to explore each space, view equipment in context, and listen to audio narrations for key areas.",
+      suggestedBullets: [],
+      tableData: null,
+      sourceLabel: "app_generated",
+    };
+
+    res.json({ suggestions, cafeId: cafe.id });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Auto-fill failed" });
+  }
+});
+
+// ─── POST /api/report-sections ────────────────────────────────────────────────
+// Create a single report section. Used when the mobile app saves a new custom section.
+router.post("/report-sections", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const body = req.body as Partial<typeof reportSectionsTable.$inferInsert>;
+  if (!body.listingId || !body.sectionKey || !body.title) {
+    res.status(400).json({ error: "listingId, sectionKey, and title are required" });
+    return;
+  }
+  try {
+    await assertListingOwner(body.listingId, userId);
+    const [created] = await db
+      .insert(reportSectionsTable)
+      .values({ ...body, listingId: body.listingId!, sectionKey: body.sectionKey!, title: body.title!, ownerId: userId, lastUpdatedAt: new Date() })
+      .returning();
+    res.status(201).json({ section: created });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to create section" });
+  }
+});
+
+// ─── PUT /api/report-sections/:id ────────────────────────────────────────────
+// Full replace of an existing section (ownership verified).
+router.put("/report-sections/:id", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { id } = req.params as { id: string };
+  try {
+    await assertSectionOwner(id, userId);
+    const updates = req.body as Partial<typeof reportSectionsTable.$inferInsert>;
+    const [updated] = await db
+      .update(reportSectionsTable)
+      .set({ ...updates, ownerId: userId, lastUpdatedAt: new Date() })
+      .where(and(eq(reportSectionsTable.id, id), eq(reportSectionsTable.ownerId, userId)))
+      .returning();
+    res.json({ section: updated });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to update section" });
+  }
+});
+
+// ─── PATCH /api/report-sections/:id ──────────────────────────────────────────
+// Partial update — used for toggling visibility, sort order, include flags, status.
+router.patch("/report-sections/:id", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { id } = req.params as { id: string };
+  try {
+    await assertSectionOwner(id, userId);
+    const updates = req.body as Partial<typeof reportSectionsTable.$inferInsert>;
+    // Strip fields that should never be patched this way
+    const { listingId: _l, ownerId: _o, id: _i, createdAt: _c, ...safe } = updates as Record<string, unknown>;
+    void _l; void _o; void _i; void _c;
+    const [updated] = await db
+      .update(reportSectionsTable)
+      .set({ ...(safe as Partial<typeof reportSectionsTable.$inferInsert>), lastUpdatedAt: new Date() })
+      .where(and(eq(reportSectionsTable.id, id), eq(reportSectionsTable.ownerId, userId)))
+      .returning();
+    res.json({ section: updated });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to patch section" });
+  }
+});
+
+// ─── DELETE /api/report-sections/:id ─────────────────────────────────────────
+router.delete("/report-sections/:id", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { id } = req.params as { id: string };
+  try {
+    const section = await assertSectionOwner(id, userId);
+    if (section.isRequired) {
+      res.status(400).json({ error: "Required sections cannot be deleted" });
+      return;
+    }
+    await db
+      .delete(reportSectionsTable)
+      .where(and(eq(reportSectionsTable.id, id), eq(reportSectionsTable.ownerId, userId)));
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to delete section" });
+  }
+});
+
+// ─── POST /api/report-sections/bulk-update ────────────────────────────────────
+// Bulk-update multiple sections at once (used by CSV import and sort reorder).
+// Body: { listingId, updates: Array<{ id?, sectionKey, ...fields }> }
+router.post("/report-sections/bulk-update", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId, updates } = req.body as {
+    listingId: string;
+    updates: Array<Partial<typeof reportSectionsTable.$inferInsert> & { sectionKey: string }>;
+  };
+  if (!listingId || !Array.isArray(updates)) {
+    res.status(400).json({ error: "listingId and updates array required" });
+    return;
+  }
+  try {
+    await assertListingOwner(listingId, userId);
+    const results: unknown[] = [];
+    for (const u of updates) {
+      const { sectionKey, id, listingId: _l, ownerId: _o, createdAt: _c, ...fields } = u as Record<string, unknown>;
+      void _l; void _o; void _c;
+      const [updated] = await db
+        .update(reportSectionsTable)
+        .set({ ...(fields as Partial<typeof reportSectionsTable.$inferInsert>), lastUpdatedAt: new Date() })
+        .where(
+          and(
+            eq(reportSectionsTable.listingId, listingId),
+            eq(reportSectionsTable.ownerId, userId),
+            sectionKey ? eq(reportSectionsTable.sectionKey, sectionKey as string) : eq(reportSectionsTable.id, id as string),
+          ),
+        )
+        .returning();
+      if (updated) results.push(updated);
+    }
+    res.json({ updated: results.length });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Bulk update failed" });
+  }
+});
+
+// ─── GET /api/report-versions/listing/:listingId ─────────────────────────────
+router.get("/report-versions/listing/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  try {
+    await assertListingOwner(listingId, userId);
+    const versions = await db
+      .select()
+      .from(reportVersionsTable)
+      .where(and(eq(reportVersionsTable.listingId, listingId), eq(reportVersionsTable.ownerId, userId)))
+      .orderBy(desc(reportVersionsTable.versionNumber));
+    res.json({ versions });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load versions" });
+  }
+});
+
+// ─── POST /api/report-versions ───────────────────────────────────────────────
+// Creates a new version snapshot from all current section content.
+router.post("/report-versions", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId, title, status } = req.body as {
+    listingId: string;
+    title?: string;
+    status?: string;
+  };
+  if (!listingId) {
+    res.status(400).json({ error: "listingId required" });
+    return;
+  }
+  try {
+    await assertListingOwner(listingId, userId);
+
+    // Get current max version number
+    const [maxRow] = await db
+      .select({ maxVer: max(reportVersionsTable.versionNumber) })
+      .from(reportVersionsTable)
+      .where(eq(reportVersionsTable.listingId, listingId));
+    const nextVersion = (maxRow?.maxVer ?? 0) + 1;
+
+    // Snapshot all current sections
+    const sections = await db
+      .select()
+      .from(reportSectionsTable)
+      .where(eq(reportSectionsTable.listingId, listingId))
+      .orderBy(asc(reportSectionsTable.sortOrder));
+
+    const [version] = await db
+      .insert(reportVersionsTable)
+      .values({
+        listingId,
+        ownerId: userId,
+        versionNumber: nextVersion,
+        title: title ?? `Version ${nextVersion}`,
+        status: status ?? "draft",
+        snapshotJson: sections as unknown as Record<string, unknown>,
+        createdBy: userId,
+      })
+      .returning();
+
+    // Log the export
+    await db.insert(reportExportsTable).values({
+      listingId,
+      ownerId: userId,
+      versionId: version.id,
+      exportType: "version_snapshot",
+    });
+
+    res.status(201).json({ version });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to create version" });
+  }
+});
+
+// ─── PATCH /api/report-versions/:id ──────────────────────────────────────────
+// Update version status (e.g. draft → published) and store HTML/PDF URLs.
+router.patch("/report-versions/:id", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { id } = req.params as { id: string };
+  const { status, generatedHtmlUrl, generatedPdfUrl, title } = req.body as {
+    status?: string;
+    generatedHtmlUrl?: string;
+    generatedPdfUrl?: string;
+    title?: string;
+  };
+  try {
+    const [version] = await db
+      .select()
+      .from(reportVersionsTable)
+      .where(and(eq(reportVersionsTable.id, id), eq(reportVersionsTable.ownerId, userId)));
+    if (!version) {
+      res.status(403).json({ error: "Version not found or access denied" });
+      return;
+    }
+    const [updated] = await db
+      .update(reportVersionsTable)
+      .set({
+        ...(status !== undefined && { status }),
+        ...(generatedHtmlUrl !== undefined && { generatedHtmlUrl }),
+        ...(generatedPdfUrl !== undefined && { generatedPdfUrl }),
+        ...(title !== undefined && { title }),
+      })
+      .where(and(eq(reportVersionsTable.id, id), eq(reportVersionsTable.ownerId, userId)))
+      .returning();
+    res.json({ version: updated });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to update version" });
+  }
+});
+
+// ─── GET /api/report-sections/html/:listingId ────────────────────────────────
+// Public endpoint returning sections filtered by access level.
+// Used by the HTML report route to build the buyer-facing report.
+// Access levels:
+//   - No token: public sections only
+//   - x-report-token (valid): public + approved_buyers sections
+//   - Seller (JWT): all non-hidden sections
+router.get("/report-sections/html/:listingId", async (req, res): Promise<void> => {
+  const { listingId } = req.params as { listingId: string };
+  try {
+    const allSections = await db
+      .select()
+      .from(reportSectionsTable)
+      .where(eq(reportSectionsTable.listingId, listingId))
+      .orderBy(asc(reportSectionsTable.sortOrder));
+
+    if (!allSections.length) {
+      res.json({ sections: [], accessLevel: "public" });
+      return;
+    }
+
+    // Determine who is asking
+    const authHeader = req.headers.authorization;
+    const reportToken = req.headers["x-report-token"];
+    let accessLevel: "public" | "buyer" | "seller" = "public";
+
+    if (authHeader?.startsWith("Bearer ")) {
+      // Could be seller JWT — verify ownership
+      try {
+        const { verifyToken } = await import("../../middlewares/auth");
+        const userId = await verifyToken(authHeader.slice(7));
+        if (userId) {
+          const ownerId = allSections[0]?.ownerId;
+          if (userId === ownerId) {
+            accessLevel = "seller";
+          } else {
+            accessLevel = "buyer";
+          }
+        }
+      } catch { /* fall through to public */ }
+    } else if (reportToken) {
+      accessLevel = "buyer";
+    }
+
+    // Filter and sanitise sections based on access level
+    const filtered = allSections
+      .filter((s) => {
+        if (s.visibility === "hidden") return false;
+        if (s.visibility === "seller_only") return accessLevel === "seller";
+        if (s.visibility === "approved_buyers") return accessLevel !== "public";
+        return true; // public
+      })
+      .map((s) => {
+        const isLocked = s.visibility === "approved_buyers" && accessLevel === "public";
+        if (isLocked) {
+          return {
+            id: s.id,
+            sectionKey: s.sectionKey,
+            title: s.title,
+            subtitle: s.subtitle,
+            visibility: s.visibility,
+            includeInHtml: s.includeInHtml,
+            sortOrder: s.sortOrder,
+            isLocked: true,
+            body: null,
+            bulletPoints: [],
+            tableData: null,
+            chartData: null,
+          };
+        }
+        return { ...s, isLocked: false };
+      });
+
+    res.json({ sections: filtered, accessLevel });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });
+  }
+});
+
+// ─── POST /api/report-access-logs ────────────────────────────────────────────
+// Records a buyer-side event (section viewed, PDF downloaded, tour clicked, etc.).
+// Public endpoint — no auth required (buyers may not be logged in).
+router.post("/report-access-logs", async (req, res): Promise<void> => {
+  const {
+    listingId,
+    eventType,
+    sectionKey,
+    buyerId,
+    buyerPhone,
+    metadata,
+  } = req.body as {
+    listingId: string;
+    eventType: string;
+    sectionKey?: string;
+    buyerId?: string;
+    buyerPhone?: string;
+    metadata?: Record<string, unknown>;
+  };
+  if (!listingId || !eventType) {
+    res.status(400).json({ error: "listingId and eventType required" });
+    return;
+  }
+  try {
+    const buyerIp =
+      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??
+      req.socket.remoteAddress ?? null;
+    await db.insert(reportAccessLogsTable).values({
+      listingId,
+      eventType,
+      sectionKey: sectionKey ?? null,
+      buyerId: buyerId ?? null,
+      buyerPhone: buyerPhone ?? null,
+      buyerIp,
+      userAgent: req.headers["user-agent"] ?? null,
+      metadata: metadata ?? null,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.warn({ err }, "Failed to log report access event");
+    res.json({ ok: false }); // non-fatal — don't block the buyer
+  }
+});
+
+// ─── GET /api/report-access-logs/listing/:listingId ──────────────────────────
+// Returns access log events for the seller's listing.
+router.get("/report-access-logs/listing/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  try {
+    await assertListingOwner(listingId, userId);
+    const events = await db
+      .select()
+      .from(reportAccessLogsTable)
+      .where(eq(reportAccessLogsTable.listingId, listingId))
+      .orderBy(desc(reportAccessLogsTable.createdAt))
+      .limit(200);
+    res.json({ events });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load access logs" });
+  }
+});
+
+export default router;
