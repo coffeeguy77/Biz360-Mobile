@@ -217,7 +217,8 @@ export function ReportPage() {
   const params = useParams<{ listingId: string; versionId?: string }>();
   const listingId = params.listingId ?? "";
   const urlParams = new URLSearchParams(window.location.search);
-  const versionId = params.versionId ?? urlParams.get("v") ?? undefined;
+  const versionId    = params.versionId ?? urlParams.get("v") ?? undefined;
+  const accessToken  = urlParams.get("accessToken") ?? undefined;
 
   const [data, setData]           = useState<ReportData | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -230,14 +231,21 @@ export function ReportPage() {
     if (!listingId) { setError("No listing ID provided."); setLoading(false); return; }
     setLoading(true);
 
+    // Build query string helper (appends accessToken when present)
+    function qs(base: string): string {
+      const at = accessToken;
+      return at ? `${base}${base.includes("?") ? "&" : "?"}accessToken=${encodeURIComponent(at)}` : base;
+    }
+
     if (versionId) {
       // Versioned view: sellers use the auth-required snapshot endpoint (full view);
       // unauthenticated/buyer viewers use the public-snapshot endpoint (published-only,
-      // seller_only sections filtered out).
+      // seller_only sections filtered out). accessToken is forwarded so approved_buyers
+      // sections can be unlocked for OTP-verified buyers on versioned links.
       const token = localStorage.getItem("biz360_auth_token");
       const endpoint = token
         ? `/api/report-versions/snapshot/${versionId}`
-        : `/api/report-versions/public-snapshot/${versionId}`;
+        : qs(`/api/report-versions/public-snapshot/${versionId}`);
       fetch(endpoint, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
@@ -247,7 +255,7 @@ export function ReportPage() {
         .catch(() => {
           // Fall back to live sections if snapshot not accessible
           const liveToken = localStorage.getItem("biz360_auth_token");
-          fetch(`/api/report-sections/html/${listingId}`, {
+          fetch(qs(`/api/report-sections/html/${listingId}`), {
             headers: liveToken ? { Authorization: `Bearer ${liveToken}` } : {},
           })
             .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
@@ -256,9 +264,10 @@ export function ReportPage() {
         })
         .finally(() => setLoading(false));
     } else {
-      // Live view: send seller token if present (unlocks approved_buyers sections)
+      // Live view: send seller token if present (unlocks approved_buyers sections).
+      // accessToken forwarded so OTP-verified buyers can unlock approved_buyers sections.
       const token = localStorage.getItem("biz360_auth_token");
-      fetch(`/api/report-sections/html/${listingId}`, {
+      fetch(qs(`/api/report-sections/html/${listingId}`), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
         .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
@@ -268,7 +277,7 @@ export function ReportPage() {
     }
 
     recordAccessLog(listingId, "report_viewed", versionId ? { versionId } : {});
-  }, [listingId, versionId]);
+  }, [listingId, versionId, accessToken]);
 
   async function handleDownloadPdf() {
     setDownloading(true);

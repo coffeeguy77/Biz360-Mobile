@@ -1049,6 +1049,8 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
 // ─── GET /api/report-versions/public-snapshot/:versionId ─────────────────────
 // Public (no auth) — returns snapshot only for published versions.
 // Buyers use this to view a shared version link (/reports/:listingId/:versionId).
+// Optional ?accessToken=<jwt> (buyer-report-access token) unlocks approved_buyers
+// sections; without it those sections are returned as locked placeholders.
 router.get("/report-versions/public-snapshot/:versionId", async (req, res): Promise<void> => {
   const { versionId } = req.params as { versionId: string };
   try {
@@ -1063,17 +1065,53 @@ router.get("/report-versions/public-snapshot/:versionId", async (req, res): Prom
       return;
     }
 
-    const snapshot = (version.snapshotJson ?? []) as unknown[];
-    // Filter out seller_only sections for public view
-    const publicSections = snapshot.filter(
-      (s: any) => s.visibility !== "seller_only" && s.visibility !== "hidden",
-    );
+    // Check optional buyer access token to unlock approved_buyers sections
+    let buyerGranted = false;
+    const accessToken = req.query["accessToken"] as string | undefined;
+    if (accessToken) {
+      const phone = await verifyBuyerAccessToken(accessToken, version.listingId);
+      if (phone) {
+        const [grant] = await db
+          .select({ id: reportAccessGrantsTable.id })
+          .from(reportAccessGrantsTable)
+          .where(
+            and(
+              eq(reportAccessGrantsTable.listingId, version.listingId),
+              eq(reportAccessGrantsTable.phone, phone.replace(/\s/g, "")),
+            ),
+          )
+          .limit(1);
+        buyerGranted = !!grant;
+      }
+    }
+
+    const snapshot = (version.snapshotJson ?? []) as any[];
+    const publicSections = snapshot
+      .map((s: any) => {
+        // Always hide seller-only and hidden sections from public view
+        if (s.visibility === "seller_only" || s.visibility === "hidden") return null;
+        // Gate approved_buyers sections: return locked placeholder without content
+        if (s.visibility === "approved_buyers" && !buyerGranted) {
+          return {
+            ...s,
+            body:         null,
+            bulletPoints: [] as string[],
+            tableData:    null,
+            chartData:    null,
+            isLocked:     true,
+          };
+        }
+        return { ...s, isLocked: false };
+      })
+      .filter(Boolean);
+
     res.json({
       sections:      publicSections,
       versionNumber: version.versionNumber,
       title:         version.title,
       status:        version.status,
       createdAt:     version.createdAt,
+      buyerGranted,
     });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
