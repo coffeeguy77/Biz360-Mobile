@@ -971,8 +971,35 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       .orderBy(asc(reportSectionsTable.sortOrder));
 
     if (!allSections.length) {
-      res.json({ sections: [], accessLevel: "public" });
+      res.json({ sections: [], accessLevel: "public", meta: { businessName: "Confidential Business", listingId } });
       return;
+    }
+
+    // Fetch business cover metadata from the KV store / cafes table
+    const [cafeRow] = await db
+      .select({ name: cafesTable.name })
+      .from(cafesTable)
+      .where(eq(cafesTable.listingId, listingId))
+      .limit(1);
+
+    let coverMeta: Record<string, unknown> = {
+      businessName: cafeRow?.name ?? "Confidential Business",
+      listingId,
+    };
+
+    // Supplement with richer listing data from the KV store
+    const kvRows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2")).limit(1);
+    const allListings = Array.isArray(kvRows[0]?.value) ? (kvRows[0].value as any[]) : [];
+    const listing = allListings.find((l: any) => l.listingId === listingId);
+    if (listing) {
+      coverMeta = {
+        ...coverMeta,
+        location:      listing.location ?? listing.suburb ?? listing.state ?? null,
+        category:      listing.category ?? listing.businessType ?? listing.industry ?? null,
+        askingPrice:   listing.askingPrice ?? listing.asking_price ?? null,
+        badges:        listing.badges ?? (listing.verified ? ["Exit360 Verified"] : []),
+        heroImageUrl:  listing.heroImage ?? listing.hero_image ?? listing.imageUrl ?? null,
+      };
     }
 
     // Determine who is asking — only a verified seller JWT elevates above public.
@@ -1048,7 +1075,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         return accessLevel === "seller" ? withLock : sanitiseForNonSeller(withLock);
       });
 
-    res.json({ sections: filtered, accessLevel, buyerGranted });
+    res.json({ sections: filtered, accessLevel, buyerGranted, meta: coverMeta });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });

@@ -32,6 +32,11 @@ interface ReportSection {
 interface ReportMeta {
   businessName: string;
   listingId: string;
+  location?: string;
+  category?: string;
+  askingPrice?: number | null;
+  badges?: string[];
+  heroImageUrl?: string | null;
 }
 
 interface ReportData {
@@ -219,6 +224,9 @@ export function ReportPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const versionId    = params.versionId ?? urlParams.get("v") ?? undefined;
   const accessToken  = urlParams.get("accessToken") ?? undefined;
+  // ?token= is passed by the mobile app's "Preview Report" button so the
+  // seller's JWT can be used even when localStorage is not populated in-browser.
+  const urlToken     = urlParams.get("token") ?? undefined;
 
   const [data, setData]           = useState<ReportData | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -231,6 +239,11 @@ export function ReportPage() {
     if (!listingId) { setError("No listing ID provided."); setLoading(false); return; }
     setLoading(true);
 
+    // Resolve bearer token: prefer ?token= (mobile seller preview) over localStorage.
+    // This ensures seller auth works even when localStorage is not populated in a
+    // freshly-opened browser tab from the mobile deep-link flow.
+    const authToken = urlToken || localStorage.getItem("biz360_auth_token") || null;
+
     // Build query string helper (appends accessToken when present)
     function qs(base: string): string {
       const at = accessToken;
@@ -242,21 +255,19 @@ export function ReportPage() {
       // unauthenticated/buyer viewers use the public-snapshot endpoint (published-only,
       // seller_only sections filtered out). accessToken is forwarded so approved_buyers
       // sections can be unlocked for OTP-verified buyers on versioned links.
-      const token = localStorage.getItem("biz360_auth_token");
-      const endpoint = token
+      const endpoint = authToken
         ? `/api/report-versions/snapshot/${versionId}`
         : qs(`/api/report-versions/public-snapshot/${versionId}`);
       fetch(endpoint, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       })
         .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
         .then((json: { sections: ReportSection[]; title?: string }) =>
-          setData({ sections: json.sections, accessLevel: token ? "seller" : "public" }))
+          setData({ sections: json.sections, accessLevel: authToken ? "seller" : "public" }))
         .catch(() => {
           // Fall back to live sections if snapshot not accessible
-          const liveToken = localStorage.getItem("biz360_auth_token");
           fetch(qs(`/api/report-sections/html/${listingId}`), {
-            headers: liveToken ? { Authorization: `Bearer ${liveToken}` } : {},
+            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
           })
             .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
             .then((json: ReportData) => setData(json))
@@ -264,11 +275,10 @@ export function ReportPage() {
         })
         .finally(() => setLoading(false));
     } else {
-      // Live view: send seller token if present (unlocks approved_buyers sections).
+      // Live view: send seller token if present (unlocks approved_buyers + seller_only sections).
       // accessToken forwarded so OTP-verified buyers can unlock approved_buyers sections.
-      const token = localStorage.getItem("biz360_auth_token");
       fetch(qs(`/api/report-sections/html/${listingId}`), {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       })
         .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
         .then((json: ReportData) => setData(json))
@@ -277,7 +287,7 @@ export function ReportPage() {
     }
 
     recordAccessLog(listingId, "report_viewed", versionId ? { versionId } : {});
-  }, [listingId, versionId, accessToken]);
+  }, [listingId, versionId, accessToken, urlToken]);
 
   async function handleDownloadPdf() {
     setDownloading(true);
@@ -409,11 +419,49 @@ export function ReportPage() {
           <h1 className={cn("text-4xl md:text-5xl font-bold mb-3 leading-tight", printMode ? "text-slate-900" : "text-white")}>
             {businessName}
           </h1>
+
+          {/* Business metadata row: location · category · asking price */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
+            {data?.meta?.category && (
+              <span className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
+                🏷️ {data.meta.category}
+              </span>
+            )}
+            {data?.meta?.location && (
+              <span className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
+                📍 {data.meta.location}
+              </span>
+            )}
+            {data?.meta?.askingPrice != null && (
+              <span className={cn("text-sm font-semibold", printMode ? "text-emerald-700" : "text-emerald-400")}>
+                💰 {data.meta.askingPrice >= 1_000_000
+                  ? `$${(data.meta.askingPrice / 1_000_000).toFixed(2)}M`
+                  : data.meta.askingPrice >= 1_000
+                  ? `$${(data.meta.askingPrice / 1_000).toFixed(0)}K`
+                  : `$${data.meta.askingPrice.toLocaleString()}`}
+              </span>
+            )}
+          </div>
+
+          {/* Extra badges from listing data */}
+          {(data?.meta?.badges ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {(data!.meta!.badges!).map((badge) => (
+                <span key={badge} className={cn(
+                  "inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border",
+                  printMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                )}>
+                  <CheckCircle2 size={10} /> {badge}
+                </span>
+              ))}
+            </div>
+          )}
+
           <p className={cn("text-base mb-8", printMode ? "text-slate-500" : "text-slate-400")}>
             Confidential Business Profile · Prepared by Exit360
           </p>
 
-          {/* Metric cards from auto-fill data (shown if section body has figures) */}
+          {/* Metric cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
             {[
               { label: "Listing Ref.", value: listingId.slice(0, 8).toUpperCase(), icon: FileText },
