@@ -77,12 +77,13 @@ interface UsageItem {
 
 // ─── Image Editor Modal ────────────────────────────────────────────────────────
 function ImageEditorModal({
-  image, colors, onClose, onSave,
+  image, colors, onClose, onSave, onSetPrimary,
 }: {
   image: ReportImage;
   colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
   onClose: () => void;
   onSave: (patch: Partial<ReportImage>) => void;
+  onSetPrimary?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const [imageRole, setImageRole] = useState<RoleKey>(image.imageRole);
@@ -91,7 +92,9 @@ function ImageEditorModal({
   const [altText, setAltText] = useState(image.altText ?? "");
   const [sectionKey, setSectionKey] = useState(image.sectionKey ?? "");
   const [includeInPdf, setIncludeInPdf] = useState(image.includeInPdf);
+  const [includeInHtml, setIncludeInHtml] = useState(image.includeInHtml);
   const [includeInBuyerReport, setIncludeInBuyerReport] = useState(image.includeInBuyerReport);
+  const [includeInSellerReport, setIncludeInSellerReport] = useState(image.includeInSellerReport);
   const [saving, setSaving] = useState(false);
   const [rolePickerOpen, setRolePickerOpen] = useState(false);
 
@@ -105,7 +108,7 @@ function ImageEditorModal({
         imageRole, displayName: displayName.trim() || null,
         caption: caption.trim() || null, altText: altText.trim() || null,
         sectionKey: sectionKey.trim() || (suggestedSection ?? null) || null,
-        includeInPdf, includeInBuyerReport,
+        includeInPdf, includeInHtml, includeInBuyerReport, includeInSellerReport,
       });
     } finally {
       setSaving(false);
@@ -231,11 +234,30 @@ function ImageEditorModal({
               />
             </View>
 
-            {/* Toggles */}
+            {/* Toggles — row 1 */}
             <View style={editorStyles.toggleRow}>
               <Toggle label="Include in PDF" value={includeInPdf} onToggle={() => setIncludeInPdf((v) => !v)} colors={colors} />
-              <Toggle label="Visible to Buyer" value={includeInBuyerReport} onToggle={() => setIncludeInBuyerReport((v) => !v)} colors={colors} />
+              <Toggle label="Include in HTML" value={includeInHtml} onToggle={() => setIncludeInHtml((v) => !v)} colors={colors} />
             </View>
+
+            {/* Toggles — row 2 */}
+            <View style={editorStyles.toggleRow}>
+              <Toggle label="Visible to Buyer" value={includeInBuyerReport} onToggle={() => setIncludeInBuyerReport((v) => !v)} colors={colors} />
+              <Toggle label="Visible to Seller" value={includeInSellerReport} onToggle={() => setIncludeInSellerReport((v) => !v)} colors={colors} />
+            </View>
+
+            {/* Set as Cover (non-panoramic only) */}
+            {!image.isPanoramic && onSetPrimary && (
+              <TouchableOpacity
+                style={[editorStyles.saveBtn, { backgroundColor: image.isPrimary ? "#16A34A" : "#1E3A5C" }]}
+                onPress={() => { onSetPrimary(); onClose(); }}
+              >
+                <Feather name="star" size={16} color={image.isPrimary ? "#fff" : "#60A5FA"} />
+                <Text style={[editorStyles.saveBtnText, { color: image.isPrimary ? "#fff" : "#60A5FA" }]}>
+                  {image.isPrimary ? "✓ Primary Cover" : "Set as Primary Cover"}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[editorStyles.saveBtn, { opacity: saving ? 0.6 : 1 }]}
@@ -918,6 +940,7 @@ export default function ReportImagesScreen() {
           colors={colors}
           onClose={() => setEditingImage(null)}
           onSave={(patch) => handleSaveEdit(editingImage, patch)}
+          onSetPrimary={() => handleSetPrimary(editingImage)}
         />
       )}
 

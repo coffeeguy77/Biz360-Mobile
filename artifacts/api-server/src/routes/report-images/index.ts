@@ -465,18 +465,17 @@ router.patch("/report-images/:listingId/:imageId", requireAuth, async (req, res)
       ));
     if (!existing) { res.status(404).json({ error: "Image not found" }); return; }
 
-    // Validate role change
+    // Validate role change — panoramic images may ONLY use 360_preview.
+    // Override silently (consistent with upload behaviour) so the client gets
+    // a resolved value rather than an error for a legitimate edit.
+    let resolvedImageRole = imageRole;
     if (imageRole !== undefined) {
       if (!ALL_ROLES.includes(imageRole as ImageRole)) {
         res.status(400).json({ error: `Invalid imageRole. Must be one of: ${ALL_ROLES.join(", ")}` });
         return;
       }
-      if (existing.isPanoramic && PANORAMIC_BLOCKED_ROLES.includes(imageRole as typeof PANORAMIC_BLOCKED_ROLES[number])) {
-        res.status(400).json({
-          error: "360° panoramic images can look distorted in reports. Please upload a normal photo or choose a cropped thumbnail.",
-          isPanoramic: true,
-        });
-        return;
+      if (existing.isPanoramic && imageRole !== "360_preview") {
+        resolvedImageRole = "360_preview"; // force panoramic images to 360_preview only
       }
     }
 
@@ -500,7 +499,7 @@ router.patch("/report-images/:listingId/:imageId", requireAuth, async (req, res)
     }
 
     const updates: Partial<typeof reportImagesTable.$inferInsert> = {
-      ...(imageRole !== undefined        && { imageRole: imageRole as ImageRole }),
+      ...(resolvedImageRole !== undefined && { imageRole: resolvedImageRole as ImageRole }),
       ...(caption !== undefined          && { caption }),
       ...(displayName !== undefined      && { displayName }),
       ...(altText !== undefined          && { altText }),

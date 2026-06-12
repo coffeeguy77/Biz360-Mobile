@@ -28,6 +28,22 @@ interface ReportSection {
   sellerNotes?: string | null;
 }
 
+interface ReportImageEntry {
+  id: string;
+  url: string;
+  cloudinaryPublicId: string;
+  imageRole: string;
+  displayName: string | null;
+  caption: string | null;
+  altText: string | null;
+  sectionKey: string | null;
+  isPrimary: boolean;
+  includeInPdf: boolean;
+  includeInBuyerReport: boolean;
+  isPanoramic: boolean;
+  sortOrder: number;
+}
+
 interface ReportMeta {
   businessName: string;
   listingId: string;
@@ -36,6 +52,8 @@ interface ReportMeta {
   askingPrice?: number | null;
   badges?: string[];
   heroImageUrl?: string | null;
+  reportHeroImageUrl?: string | null;
+  reportImages?: ReportImageEntry[];
 }
 
 interface ReportData {
@@ -252,12 +270,60 @@ function SellerNotesBlock({ notes, printMode }: { notes: string; printMode: bool
   );
 }
 
+// ── Section image strip (from report_images) ──────────────────────────────────
+function SectionImageStrip({
+  images,
+  printMode,
+}: {
+  images: ReportImageEntry[];
+  printMode: boolean;
+}) {
+  if (!images.length) return null;
+  return (
+    <div className={cn("mt-5 rounded-xl overflow-hidden border", printMode ? "border-slate-200" : "border-[#1E3A5C]")}>
+      <div className={cn(
+        "flex gap-2 overflow-x-auto p-3",
+        images.length === 1 ? "justify-center" : "",
+      )}>
+        {images.map((img) => {
+          // Build 800w Cloudinary thumbnail URL
+          const thumbUrl = img.cloudinaryPublicId
+            ? `https://res.cloudinary.com/${(img.url.match(/cloudinary\.com\/([^/]+)/) ?? [])[1] ?? "biz360"}/image/upload/w_800,q_auto,f_auto/${img.cloudinaryPublicId}`
+            : img.url;
+          return (
+            <div key={img.id} className="flex-shrink-0" style={{ maxWidth: images.length === 1 ? "100%" : "48%" }}>
+              <img
+                src={thumbUrl}
+                alt={img.altText ?? img.displayName ?? "Section image"}
+                className={cn(
+                  "rounded-lg object-cover w-full",
+                  images.length === 1 ? "max-h-64" : "h-40",
+                )}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+              {img.caption && (
+                <p className={cn("text-xs mt-1.5 text-center px-1", printMode ? "text-slate-500" : "text-slate-400")}>
+                  {img.caption}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SectionContent({
   section,
   listingId,
+  reportImages,
+  printMode,
 }: {
   section: ReportSection;
   listingId: string;
+  reportImages?: ReportImageEntry[];
+  printMode: boolean;
 }) {
   const ChartComponent = SECTION_CHART_MAP[section.sectionKey];
   const chartData = section.chartData
@@ -284,6 +350,30 @@ function SectionContent({
   const chartWillRender = ChartComponent && sectionHasChartData(section.sectionKey, chartData);
   const hasAnything = hasContent || chartWillRender || is360;
 
+  // Find report_images that belong to this section — match by sectionKey first, then
+  // fall back to role-based match for typical roles associated with this section type.
+  const SECTION_ROLE_MAP: Record<string, string[]> = {
+    business_overview:          ["interior", "listing_hero"],
+    plant_equipment_summary:    ["equipment"],
+    sale_inclusions:            ["equipment"],
+    lease_premises_summary:     ["exterior"],
+    business_location_market_context: ["exterior"],
+    "360_business_walkthrough": ["360_preview"],
+  };
+  const sectionImages: ReportImageEntry[] = reportImages
+    ? (() => {
+        const bySectionKey = reportImages.filter(
+          (img) => img.sectionKey === section.sectionKey && !img.isPanoramic,
+        );
+        if (bySectionKey.length) return bySectionKey.slice(0, 3);
+        const roleMatches = SECTION_ROLE_MAP[section.sectionKey] ?? [];
+        if (!roleMatches.length) return [];
+        return reportImages
+          .filter((img) => roleMatches.includes(img.imageRole))
+          .slice(0, 2);
+      })()
+    : [];
+
   return (
     <div className="space-y-4">
       {!hasAnything && (
@@ -298,6 +388,10 @@ function SectionContent({
         <div className="mt-6 p-4 rounded-xl bg-[#070F1C]/60 border border-[#1E3A5C]/60">
           <ChartComponent data={chartData} />
         </div>
+      )}
+      {/* Section images from report_images — rendered below charts/text */}
+      {sectionImages.length > 0 && (
+        <SectionImageStrip images={sectionImages} printMode={printMode} />
       )}
       {is360 && (
         tourUrl ? (
@@ -496,7 +590,8 @@ export function ReportPage() {
   const [activeChapter, setActiveChapter] = useState<string | null>(null);
 
   // Data Integrity Panel — computed for seller view only.
-  // Tells the seller which charts rendered from real data vs which were hidden.
+  // Tells the seller which charts rendered from real data vs which were hidden,
+  // and summarises the image readiness across report_images.
   const dataIntegrity = useMemo(() => {
     const rendered: { key: string; title: string }[] = [];
     const missing: { key: string; title: string }[] = [];
@@ -516,8 +611,21 @@ export function ReportPage() {
         !s.tableData &&
         !sectionHasChartData(s.sectionKey, s.chartData),
     );
-    return { rendered, missing, placeholderCount: placeholderSections.length };
-  }, [sections]);
+    // Image readiness summary
+    const imgs = data?.meta?.reportImages ?? [];
+    const coverSet = imgs.some((i) => i.isPrimary) || imgs.some((i) => i.imageRole === "listing_hero");
+    const imageWarnings: string[] = [];
+    if (!coverSet && data?.accessLevel === "seller") {
+      imageWarnings.push("No cover image set — mark a Listing Hero or set a primary image");
+    }
+    if (!imgs.some((i) => i.imageRole === "equipment") && data?.accessLevel === "seller") {
+      imageWarnings.push("No equipment photos added");
+    }
+    if (!imgs.some((i) => i.imageRole === "360_preview") && data?.accessLevel === "seller") {
+      imageWarnings.push("No 360° preview image added");
+    }
+    return { rendered, missing, placeholderCount: placeholderSections.length, imageTotal: imgs.length, coverSet, imageWarnings };
+  }, [sections, data?.meta?.reportImages, data?.accessLevel]);
 
   // IntersectionObserver — highlights the chapter link in sidebar + tab strip
   // as the user scrolls, using a top-biased rootMargin so the active chapter
@@ -810,6 +918,25 @@ export function ReportPage() {
               ⚠️ {dataIntegrity.placeholderCount} section{dataIntegrity.placeholderCount !== 1 ? "s" : ""} have no content yet — add body text, bullet points, table data, or chart data in the Biz360 app to complete them.
             </p>
           )}
+          {/* Image readiness diagnostics */}
+          {dataIntegrity.imageTotal > 0 && (
+            <div className={cn("text-xs border-t pt-3 mt-3 space-y-1", printMode ? "border-amber-200" : "border-amber-500/20")}>
+              <p className={cn("font-bold uppercase tracking-wider text-[10px]", printMode ? "text-slate-500" : "text-slate-500")}>
+                📸 Report Images ({dataIntegrity.imageTotal} photo{dataIntegrity.imageTotal !== 1 ? "s" : ""})
+              </p>
+              {dataIntegrity.coverSet
+                ? <p className={cn("text-xs", printMode ? "text-green-700" : "text-green-400")}>✅ Cover image set</p>
+                : <p className={cn("text-xs", printMode ? "text-amber-700" : "text-amber-400/80")}>⚠️ No cover set — mark a Listing Hero or set a primary image</p>}
+              {dataIntegrity.imageWarnings.filter((w) => !w.includes("cover")).map((w) => (
+                <p key={w} className={cn("text-xs", printMode ? "text-amber-700" : "text-amber-400/80")}>⚠️ {w}</p>
+              ))}
+            </div>
+          )}
+          {dataIntegrity.imageTotal === 0 && (
+            <p className={cn("text-xs border-t pt-3", printMode ? "border-amber-200 text-amber-700" : "border-amber-500/20 text-amber-400/80")}>
+              📸 No report images added yet — open Report Images in the Biz360 app to add cover and section photos.
+            </p>
+          )}
         </div>
       )}
 
@@ -1051,7 +1178,7 @@ export function ReportPage() {
 
                       {section.isLocked
                         ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                        : <SectionContent section={section} listingId={listingId} />
+                        : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} />
                       }
 
                       {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
@@ -1086,7 +1213,7 @@ export function ReportPage() {
               </div>
               {section.isLocked
                 ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                : <SectionContent section={section} listingId={listingId} />
+                : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} />
               }
             </section>
           );
