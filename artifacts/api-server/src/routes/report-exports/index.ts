@@ -69,52 +69,145 @@ function checkY(ctx: PdfCtx, y: number, need: number): number {
   return y + need > CONTENT_BOTTOM ? whitePage(ctx) : y;
 }
 
+// ── Cover metrics extractor ────────────────────────────────────────────────────
+function extractCoverMetrics(sections: any[]): { label: string; value: string }[] {
+  for (const key of ["app_valuation_summary", "financial_performance_summary"]) {
+    const sec = sections.find((s) => s.sectionKey === key);
+    if (!sec?.tableData) continue;
+    const td = sec.tableData;
+    const parsed = typeof td === "string"
+      ? (() => { try { return JSON.parse(td); } catch { return null; } })()
+      : td;
+    if (!Array.isArray(parsed) || parsed.length === 0) continue;
+    const metrics: { label: string; value: string }[] = [];
+    for (const row of parsed) {
+      const keys = Object.keys(row);
+      if (keys.length < 2) continue;
+      const label = String(row[keys[0]] ?? "").trim();
+      const value = String(row[keys[1]] ?? "").trim();
+      if (label && value) metrics.push({ label, value });
+      if (metrics.length >= 4) break;
+    }
+    if (metrics.length > 0) return metrics;
+  }
+  return [];
+}
+
 // ── Cover page (dark navy) ─────────────────────────────────────────────────────
 function renderCover(
   ctx: PdfCtx,
   meta: { listingId: string; modeLabel: string; styleLabel: string; dateStr: string },
+  metrics: { label: string; value: string }[],
 ): void {
   const { doc, biz } = ctx;
   doc.rect(0, 0, PAGE_W, PAGE_H).fill(DARK);
   doc.save().rect(0, 0, PAGE_W, 7).fill(BLUE_ACC).restore();
 
   doc.font("Helvetica-Bold").fontSize(9).fillColor(BLUE_ACC)
-    .text("CONFIDENTIAL", MARGIN, 56, { width: CONTENT_W, align: "center" });
-  doc.font("Helvetica-Bold").fontSize(26).fillColor(WHITE)
-    .text("Information Memorandum", MARGIN, 76, { width: CONTENT_W, align: "center" });
-  doc.font("Helvetica-Bold").fontSize(20).fillColor("#60A5FA")
-    .text(biz, MARGIN, 116, { width: CONTENT_W, align: "center" });
-  doc.font("Helvetica").fontSize(10).fillColor(SUBTITLE_C)
-    .text("Prepared by Exit360 · Verified Business Profile", MARGIN, 152, { width: CONTENT_W, align: "center" });
+    .text("CONFIDENTIAL", MARGIN, 48, { width: CONTENT_W, align: "center" });
+  doc.font("Helvetica-Bold").fontSize(24).fillColor(WHITE)
+    .text("Information Memorandum", MARGIN, 68, { width: CONTENT_W, align: "center" });
+  doc.font("Helvetica-Bold").fontSize(18).fillColor("#60A5FA")
+    .text(biz, MARGIN, 104, { width: CONTENT_W, align: "center" });
+  doc.font("Helvetica").fontSize(9).fillColor(SUBTITLE_C)
+    .text("Prepared by Exit360 · Verified Business Profile", MARGIN, 134, { width: CONTENT_W, align: "center" });
 
-  doc.save().moveTo(MARGIN, 180).lineTo(PAGE_W - MARGIN, 180).lineWidth(1).strokeColor("#1E3A5C").stroke().restore();
+  doc.save().moveTo(MARGIN, 160).lineTo(PAGE_W - MARGIN, 160).lineWidth(1).strokeColor("#1E3A5C").stroke().restore();
 
-  doc.save().rect(MARGIN, 196, CONTENT_W, 108).fill(DARK_MID).restore();
-  const cards = [
-    ["Listing Reference", meta.listingId.slice(0, 8).toUpperCase()],
-    ["Report Mode",       meta.modeLabel],
-    ["Date Prepared",     meta.dateStr],
-    ["Export Style",      meta.styleLabel],
-  ];
-  cards.forEach(([label, value], i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const cx = MARGIN + 16 + col * (CONTENT_W / 2);
-    const cy = 212 + row * 44;
-    doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C).text(label.toUpperCase(), cx, cy);
-    doc.font("Helvetica-Bold").fontSize(11).fillColor(WHITE).text(value, cx, cy + 11);
-  });
+  let yPos = 172;
+
+  if (metrics.length > 0) {
+    // Key metrics header
+    doc.save().rect(MARGIN, yPos, CONTENT_W, 18).fill("#0A1E3C").restore();
+    doc.font("Helvetica-Bold").fontSize(7).fillColor("#60A5FA")
+      .text("KEY METRICS", MARGIN + 8, yPos + 5, { width: CONTENT_W });
+    yPos += 22;
+
+    // 2-column metric cards
+    const colW = CONTENT_W / 2;
+    metrics.slice(0, 4).forEach(({ label, value }, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const cx = MARGIN + col * colW + 10;
+      const cy = yPos + row * 46;
+      doc.save().rect(MARGIN + col * colW + 2, cy, colW - 6, 40).fill(DARK_MID).restore();
+      doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C).text(label.slice(0, 28).toUpperCase(), cx, cy + 6);
+      doc.font("Helvetica-Bold").fontSize(13).fillColor(WHITE).text(value.slice(0, 22), cx, cy + 18);
+    });
+    yPos += Math.ceil(Math.min(metrics.length, 4) / 2) * 46 + 14;
+
+    // Compact meta row
+    doc.font("Helvetica").fontSize(8).fillColor("#475569")
+      .text(
+        `${meta.modeLabel} · Ref: ${meta.listingId.slice(0, 8).toUpperCase()} · ${meta.styleLabel} · ${meta.dateStr}`,
+        MARGIN, yPos, { width: CONTENT_W, align: "center" },
+      );
+    yPos += 22;
+  } else {
+    // Standard meta cards (no metrics available)
+    doc.save().rect(MARGIN, yPos, CONTENT_W, 108).fill(DARK_MID).restore();
+    const cards = [
+      ["Listing Reference", meta.listingId.slice(0, 8).toUpperCase()],
+      ["Report Mode",       meta.modeLabel],
+      ["Date Prepared",     meta.dateStr],
+      ["Export Style",      meta.styleLabel],
+    ];
+    cards.forEach(([label, value], i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const cx = MARGIN + 16 + col * (CONTENT_W / 2);
+      const cy = yPos + 16 + row * 44;
+      doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C).text(label.toUpperCase(), cx, cy);
+      doc.font("Helvetica-Bold").fontSize(11).fillColor(WHITE).text(value, cx, cy + 11);
+    });
+    yPos += 120;
+  }
 
   doc.font("Helvetica").fontSize(8).fillColor("#475569")
     .text(
       "This document is confidential and intended solely for the named recipient.\nUnauthorised disclosure is strictly prohibited.",
-      MARGIN, 346, { width: CONTENT_W, align: "center", lineGap: 3 },
+      MARGIN, yPos + 10, { width: CONTENT_W, align: "center", lineGap: 3 },
     );
 
   doc.font("Helvetica-Bold").fontSize(16).fillColor(BLUE_ACC)
     .text("Exit360", MARGIN, PAGE_H - 116, { width: CONTENT_W, align: "center" });
   doc.font("Helvetica").fontSize(9).fillColor(SUBTITLE_C)
     .text("exit360.com.au", MARGIN, PAGE_H - 96, { width: CONTENT_W, align: "center" });
+}
+
+// ── Chapter metric card grid (valuation chapter opener) ───────────────────────
+function renderChapterMetricCards(ctx: PdfCtx, chapterKey: string, sections: any[], y: number): number {
+  if (chapterKey !== "valuation_financials") return y;
+  const valSec = sections.find((s) => s.sectionKey === "app_valuation_summary");
+  if (!valSec?.tableData) return y;
+  const td = valSec.tableData;
+  const parsed = typeof td === "string"
+    ? (() => { try { return JSON.parse(td); } catch { return null; } })()
+    : td;
+  if (!Array.isArray(parsed) || parsed.length === 0) return y;
+  const metrics: { label: string; value: string }[] = [];
+  for (const row of parsed) {
+    const keys = Object.keys(row);
+    if (keys.length < 2) continue;
+    const label = String(row[keys[0]] ?? "").trim();
+    const value = String(row[keys[1]] ?? "").trim();
+    if (label && value) metrics.push({ label, value });
+    if (metrics.length >= 4) break;
+  }
+  if (!metrics.length) return y;
+  y = checkY(ctx, y, 90);
+  const colW = CONTENT_W / 2;
+  metrics.slice(0, 4).forEach(({ label, value }, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const cx = MARGIN + col * colW + 8;
+    const cy = y + row * 44;
+    ctx.doc.save().rect(MARGIN + col * colW, cy, colW - 6, 38).fill(CHAPTER_BG).restore();
+    ctx.doc.save().rect(MARGIN + col * colW, cy, 4, 38).fill(BLUE_ACC).restore();
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(BLUE_ACC).text(label.slice(0, 28).toUpperCase(), cx + 4, cy + 6);
+    ctx.doc.font("Helvetica-Bold").fontSize(13).fillColor(HEADING_C).text(value.slice(0, 22), cx + 4, cy + 17);
+  });
+  return y + Math.ceil(Math.min(metrics.length, 4) / 2) * 44 + 16;
 }
 
 // ── TOC page ──────────────────────────────────────────────────────────────────
@@ -312,18 +405,21 @@ async function buildPdf(
   ctx: PdfCtx,
   sections: any[],
   style: PdfStyle,
+  mode: string,
   meta: { listingId: string; modeLabel: string; styleLabel: string; dateStr: string },
 ): Promise<void> {
-  const isBuyerMode = style === "buyer_summary";
+  // Buyer mode applies when mode=buyer OR buyer_summary style is selected
+  const isBuyerMode = mode === "buyer" || style === "buyer_summary";
 
   // ── 1. Cover page ──────────────────────────────────────────────────────────
-  renderCover(ctx, meta);
+  const coverMetrics = extractCoverMetrics(sections);
+  renderCover(ctx, meta, coverMetrics);
 
   // ── 2. Group sections ──────────────────────────────────────────────────────
   let renderGroups: { key: string; title: string; secs: any[] }[];
 
   if (style === "data_room") {
-    // Data-room: each section on its own page (no chapter grouping needed)
+    // Data-room: each section on its own page
     renderGroups = DATA_ROOM_SECTION_KEYS.map((k) => {
       const sec = sections.find((s) => s.sectionKey === k);
       return sec && sectionHasContent(sec) ? { key: k, title: sec.title, secs: [sec] } : null;
@@ -355,13 +451,14 @@ async function buildPdf(
 
     if (style !== "data_room") {
       y = renderChapterHeader(ctx, group, gi + 1, y);
+      // Render key-metric cards on the valuation chapter opener
+      y = renderChapterMetricCards(ctx, group.key, sections, y);
     }
 
     for (const sec of group.secs) {
-      // In detailed mode, each section gets a bit more breathing room
+      // In detailed mode, give each section a bit more breathing room
       if (style === "detailed") {
         y = checkY(ctx, y, 80);
-        // Light chapter-colour top strip on new sections in detailed mode
         if (y > CONTENT_TOP + 10) {
           ctx.doc.save().moveTo(MARGIN, y - 6).lineTo(PAGE_W - MARGIN, y - 6)
             .lineWidth(0.8).strokeColor(BORDER_C).stroke().restore();
@@ -442,7 +539,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
     doc.pipe(res);
 
     const ctx: PdfCtx = { doc, biz, pg: 1 };
-    await buildPdf(ctx, sections, style, { listingId, modeLabel, styleLabel, dateStr });
+    await buildPdf(ctx, sections, style, mode, { listingId, modeLabel, styleLabel, dateStr });
 
     db.insert(reportExportsTable).values({
       listingId,
@@ -512,7 +609,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
     doc.pipe(res);
 
     const ctx: PdfCtx = { doc, biz: "Confidential Business", pg: 1 };
-    await buildPdf(ctx, sections, effectiveStyle, {
+    await buildPdf(ctx, sections, effectiveStyle, "buyer", {
       listingId,
       modeLabel:  "Buyer Copy",
       styleLabel,

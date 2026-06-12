@@ -106,13 +106,44 @@ function LockedSection({
   );
 }
 
+const BODY_COLLAPSE_THRESHOLD = 600;
+
 function SectionBodyText({ body }: { body: string }) {
   const paras = body.split(/\n{2,}/).filter(Boolean);
+  const fullText = paras.join("\n\n");
+  const isLong = fullText.length > BODY_COLLAPSE_THRESHOLD;
+  const [expanded, setExpanded] = useState(false);
+
+  const visibleParas = isLong && !expanded
+    ? (() => {
+        let chars = 0;
+        const result: string[] = [];
+        for (const p of paras) {
+          if (chars + p.length > BODY_COLLAPSE_THRESHOLD) {
+            // Include a truncated first paragraph that goes over the limit
+            if (!result.length) result.push(p.slice(0, BODY_COLLAPSE_THRESHOLD) + "…");
+            break;
+          }
+          chars += p.length;
+          result.push(p);
+        }
+        return result;
+      })()
+    : paras;
+
   return (
     <div className="space-y-3">
-      {paras.map((p, i) => (
+      {visibleParas.map((p, i) => (
         <p key={i} className="text-slate-300 leading-relaxed text-[15px]">{p.trim()}</p>
       ))}
+      {isLong && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-sm font-semibold mt-1 transition-colors"
+        >
+          {expanded ? "Show less ▲" : "Show more ▼"}
+        </button>
+      )}
     </div>
   );
 }
@@ -672,8 +703,43 @@ export function ReportPage() {
         </nav>
       )}
 
+      {/* ── Desktop sidebar ───────────────────────────────────────────────────── */}
+      {groupedSections.length > 0 && (
+        <aside className={cn(
+          "hidden xl:flex flex-col fixed left-0 top-14 bottom-0 w-52 overflow-y-auto border-r z-30 py-5 print:hidden",
+          printMode ? "bg-white border-slate-200" : "bg-[#070F1C]/98 border-[#1E3A5C]"
+        )}>
+          <p className={cn("text-[9px] font-bold uppercase tracking-widest px-4 mb-3", printMode ? "text-slate-400" : "text-slate-600")}>
+            Chapters
+          </p>
+          {groupedSections.map((g, i) => (
+            <a
+              key={g.key}
+              href={`#chapter-${g.key}`}
+              onClick={() => setActiveChapter(g.key)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-xs transition-colors border-l-2",
+                activeChapter === g.key
+                  ? "border-blue-500 bg-blue-500/10 text-blue-300 font-semibold"
+                  : printMode
+                  ? "border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  : "border-transparent text-slate-500 hover:bg-[#1E3A5C]/40 hover:text-white"
+              )}
+            >
+              <span className={cn(
+                "text-[9px] font-bold flex-shrink-0 w-5",
+                activeChapter === g.key ? "text-blue-400" : "text-blue-600"
+              )}>
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className="truncate">{g.title}</span>
+            </a>
+          ))}
+        </aside>
+      )}
+
       {/* ── Chapter Groups ────────────────────────────────────────────────────── */}
-      <main className="max-w-5xl mx-auto px-6 py-10 space-y-14">
+      <main className={cn("px-6 py-10 space-y-14", groupedSections.length > 0 ? "xl:pl-56 max-w-5xl xl:max-w-none xl:ml-52 xl:mr-auto xl:pr-8" : "max-w-5xl mx-auto")}>
         {groupedSections.map((group, gIdx) => {
           const chapterAccent = ACCENT_COLORS[gIdx % ACCENT_COLORS.length];
           let sectionCounter = 0;
