@@ -243,17 +243,21 @@ function SectionContent({
 // ── Chapter grouping ──────────────────────────────────────────────────────────
 interface ReportGroup { key: string; title: string; sectionKeys: string[]; }
 
+// 13-chapter map — must stay in sync with api-server/src/lib/report-groups.ts
 const REPORT_GROUPS: ReportGroup[] = [
-  { key: "executive_summary",  title: "Executive Summary",               sectionKeys: ["executive_summary","key_selling_points","reason_for_sale"] },
-  { key: "business_overview",  title: "Business Overview",               sectionKeys: ["business_overview","buyer_suitability","training_handover"] },
-  { key: "valuation_financials", title: "Valuation and Financials",      sectionKeys: ["app_valuation_summary","valuation_methodology","valuation_range_explanation","business_health_score","verified_revenue_sources","financial_performance_summary"] },
-  { key: "divisions_earnings", title: "Divisions and Earnings",          sectionKeys: ["division_breakdown","revenue_stream_breakdown","cogs_mapping_summary","addbacks_adjusted_ebitda"] },
-  { key: "assets_equipment",   title: "Assets and Equipment",            sectionKeys: ["plant_equipment_summary","sale_inclusions","sale_exclusions","stock_working_capital"] },
-  { key: "lease_premises",     title: "Lease and Premises",              sectionKeys: ["lease_premises_summary","lease_risk_valuation_impact","business_location_market_context","canberra_location_explainer"] },
-  { key: "tour_operations",    title: "Tour and Operations",             sectionKeys: ["360_business_walkthrough","key_tour_highlights","operations_systems","staff_owner_involvement"] },
-  { key: "brand_customers",    title: "Brand, Customers and Suppliers",  sectionKeys: ["supplier_summary","customer_base","brand_digital_assets","reviews_reputation"] },
-  { key: "growth_risk",        title: "Growth and Risk",                 sectionKeys: ["growth_opportunities","risks_mitigations","swot_analysis"] },
-  { key: "buyer_pack",         title: "Buyer Pack",                      sectionKeys: ["verified_information","buyer_access_confidentiality","due_diligence_documents_available","next_steps","disclaimer"] },
+  { key: "executive_summary",   title: "Executive Summary",               sectionKeys: ["executive_summary","key_selling_points","reason_for_sale"] },
+  { key: "business_overview",   title: "Business Overview",               sectionKeys: ["business_overview","buyer_suitability","training_handover"] },
+  { key: "financial_performance", title: "Financial Performance",          sectionKeys: ["financial_performance_summary","verified_revenue_sources","division_breakdown","revenue_stream_breakdown"] },
+  { key: "valuation",           title: "Valuation & Pricing",             sectionKeys: ["app_valuation_summary","valuation_methodology","valuation_range_explanation","business_health_score"] },
+  { key: "earnings_adjustments", title: "Earnings & Adjustments",         sectionKeys: ["cogs_mapping_summary","addbacks_adjusted_ebitda"] },
+  { key: "assets_equipment",    title: "Assets & Equipment",              sectionKeys: ["plant_equipment_summary","sale_inclusions","sale_exclusions","stock_working_capital"] },
+  { key: "lease_premises",      title: "Lease & Premises",                sectionKeys: ["lease_premises_summary","lease_risk_valuation_impact","business_location_market_context","canberra_location_explainer"] },
+  { key: "staff_operations",    title: "Staff & Operations",              sectionKeys: ["staff_owner_involvement","operations_systems"] },
+  { key: "brand_customers",     title: "Brand, Customers & Suppliers",    sectionKeys: ["supplier_summary","customer_base","brand_digital_assets","reviews_reputation"] },
+  { key: "growth_risk",         title: "Growth & Risk",                   sectionKeys: ["growth_opportunities","risks_mitigations","swot_analysis"] },
+  { key: "virtual_tour",        title: "Virtual Tour & Property",         sectionKeys: ["360_business_walkthrough","key_tour_highlights"] },
+  { key: "due_diligence",       title: "Due Diligence",                   sectionKeys: ["due_diligence_documents_available","verified_information","buyer_access_confidentiality"] },
+  { key: "buyer_pack",          title: "Buyer Pack & Next Steps",         sectionKeys: ["next_steps","disclaimer"] },
 ];
 
 // ── Section number → visual style ─────────────────────────────────────────────

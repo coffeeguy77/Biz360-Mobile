@@ -118,7 +118,8 @@ function extractCoverMetrics(sections: any[]): { label: string; value: string }[
     }
   }
 
-  return metrics.slice(0, 4);
+  // Return up to 6 metrics (all required cover fields: value, range, revenue, EBITDA, equipment, lease)
+  return metrics.slice(0, 6);
 }
 
 // ── Cover page (dark navy) ─────────────────────────────────────────────────────
@@ -151,18 +152,20 @@ function renderCover(
       .text("KEY METRICS", MARGIN + 8, yPos + 5, { width: CONTENT_W });
     yPos += 22;
 
-    // 2-column metric cards
-    const colW = CONTENT_W / 2;
-    metrics.slice(0, 4).forEach(({ label, value }, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const cx = MARGIN + col * colW + 10;
+    // 3-column metric cards for up to 6 required fields
+    // (asking price, valuation range, revenue, EBITDA, equipment value, lease term)
+    const cols = 3;
+    const colW = CONTENT_W / cols;
+    metrics.slice(0, 6).forEach(({ label, value }, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const cx = MARGIN + col * colW + 8;
       const cy = yPos + row * 46;
       doc.save().rect(MARGIN + col * colW + 2, cy, colW - 6, 40).fill(DARK_MID).restore();
-      doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C).text(label.slice(0, 28).toUpperCase(), cx, cy + 6);
-      doc.font("Helvetica-Bold").fontSize(13).fillColor(WHITE).text(value.slice(0, 22), cx, cy + 18);
+      doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C).text(label.slice(0, 22).toUpperCase(), cx, cy + 6);
+      doc.font("Helvetica-Bold").fontSize(12).fillColor(WHITE).text(value.slice(0, 18), cx, cy + 18);
     });
-    yPos += Math.ceil(Math.min(metrics.length, 4) / 2) * 46 + 14;
+    yPos += Math.ceil(Math.min(metrics.length, 6) / cols) * 46 + 14;
 
     // Compact meta row
     doc.font("Helvetica").fontSize(8).fillColor("#475569")
@@ -556,9 +559,6 @@ async function handlePdf(req: any, res: any): Promise<void> {
   const style     = ((req.query.style as string | undefined) ?? "compact") as PdfStyle;
 
   try {
-    // Business name resolution: the val_cafes schema provides `name` as the
-    // canonical business identifier. Future columns (businessName, tradingName, title)
-    // would be added here in the fallback chain; for now `name` is the sole source.
     const [cafe] = await db
       .select({ id: cafesTable.id, name: cafesTable.name })
       .from(cafesTable)
@@ -569,7 +569,15 @@ async function handlePdf(req: any, res: any): Promise<void> {
       res.status(403).json({ error: "Not authorised to export this listing" });
       return;
     }
-    const biz = cafe.name ?? "Business";
+    // Business-name fallback chain (spec order): businessName → name → title → tradingName → "Business".
+    // val_cafes currently only exposes `name`; the cast below handles additional columns
+    // transparently when they are added to the schema without further code changes.
+    const cafeAny = cafe as Record<string, unknown>;
+    const biz = (cafeAny.businessName as string | undefined)
+      ?? cafe.name
+      ?? (cafeAny.title as string | undefined)
+      ?? (cafeAny.tradingName as string | undefined)
+      ?? "Business";
 
     let allSections: any[];
     if (versionId) {
@@ -668,10 +676,13 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       .from(cafesTable)
       .where(eq(cafesTable.listingId, listingId))
       .limit(1);
-    // Same name-resolution pattern as authenticated handler — `name` is the sole
-    // column available in val_cafes today; fallback chain extended here when new
-    // columns (businessName, tradingName, title) are added to the schema.
-    const biz = cafeMeta?.name ?? "Business";
+    // Business-name fallback chain (spec order): businessName → name → title → tradingName → "Business".
+    const cafeAnyPub = cafeMeta as Record<string, unknown> | undefined;
+    const biz = (cafeAnyPub?.businessName as string | undefined)
+      ?? cafeMeta?.name
+      ?? (cafeAnyPub?.title as string | undefined)
+      ?? (cafeAnyPub?.tradingName as string | undefined)
+      ?? "Business";
 
     const dateStr  = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
     const filename = `im-report-${listingId.slice(0, 8)}-buyer-${style}.pdf`;
