@@ -18,6 +18,8 @@ export const cafesTable = pgTable("val_cafes", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerId: text("owner_id").notNull(),
   name: text("name").notNull(),
+  businessName: text("business_name"),
+  tradingName: text("trading_name"),
   city: text("city"),
   businessType: text("business_type").default("cafe"),
   currency: text("currency").default("AUD"),

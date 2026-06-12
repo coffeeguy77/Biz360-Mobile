@@ -84,7 +84,7 @@ function sanitizePdfText(text: string): string {
 
 // ── Business name extractor from section data ─────────────────────────────────
 // Scans section tableData for a "Business Name" or "Trading Name" row — used as
-// a fallback when val_cafes.name is empty or generic.
+// a fallback when val_cafes DB fields are empty or generic.
 function extractBusinessNameFromSections(sections: any[]): string | null {
   function parseTable(td: unknown): Record<string, unknown>[] | null {
     if (typeof td === "string") { try { return JSON.parse(td); } catch { return null; } }
@@ -107,6 +107,24 @@ function extractBusinessNameFromSections(sections: any[]): string | null {
     }
   }
   return null;
+}
+
+// ── Business name resolver — shared by both PDF handlers ──────────────────────
+// Required fallback chain (task spec):
+//   listing.business_name → listing.name → listing.trading_name
+//   → section tableData "Business Name" / "Trading Name" row
+//   → "My Business"
+// Both businessName and tradingName are now real DB columns in val_cafes.
+function resolveBusinessName(
+  cafe: { name: string; businessName?: string | null; tradingName?: string | null } | undefined | null,
+  sections: any[],
+): string {
+  const raw = cafe?.businessName
+    ?? cafe?.name
+    ?? cafe?.tradingName
+    ?? extractBusinessNameFromSections(sections)
+    ?? "My Business";
+  return sanitizePdfText(raw);
 }
 
 // ── Cover metrics extractor ────────────────────────────────────────────────────
@@ -628,7 +646,14 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
   try {
     const [cafe] = await db
-      .select({ id: cafesTable.id, name: cafesTable.name, city: cafesTable.city, businessType: cafesTable.businessType })
+      .select({
+        id: cafesTable.id,
+        name: cafesTable.name,
+        businessName: cafesTable.businessName,
+        tradingName: cafesTable.tradingName,
+        city: cafesTable.city,
+        businessType: cafesTable.businessType,
+      })
       .from(cafesTable)
       .where(and(eq(cafesTable.listingId, listingId), eq(cafesTable.ownerId, userId)))
       .limit(1);
@@ -657,19 +682,9 @@ async function handlePdf(req: any, res: any): Promise<void> {
         .orderBy(asc(reportSectionsTable.sortOrder));
     }
 
-    // Business-name fallback chain:
-    //   DB columns (businessName/name/title/tradingName via cast, whichever are populated)
-    //   → section tableData "Business Name" / "Trading Name" row
-    //   → "My Business"
-    // Emoji and supplementary-plane characters are stripped before PDF embedding.
-    const cafeAny = cafe as Record<string, unknown>;
-    const cafeNameRaw = (cafeAny.businessName as string | undefined)
-      ?? cafe.name
-      ?? (cafeAny.title as string | undefined)
-      ?? (cafeAny.tradingName as string | undefined);
-    const biz = sanitizePdfText(
-      cafeNameRaw ?? extractBusinessNameFromSections(allSections) ?? "My Business",
-    );
+    // Business-name — uses the shared resolver (business_name → name → trading_name
+    // → section tableData → "My Business"); emoji stripped before PDF embedding.
+    const biz = resolveBusinessName(cafe, allSections);
 
     const sections  = filterSections(allSections, mode, style);
     const modeLabel = mode === "seller" ? "Seller Copy" : "Buyer Copy";
@@ -747,23 +762,20 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       return false;
     });
 
-    // Look up the business name, location, and category (no owner check — public endpoint)
+    // Look up business name, location, and category (no owner check — public endpoint)
     const [cafeMeta] = await db
-      .select({ name: cafesTable.name, city: cafesTable.city, businessType: cafesTable.businessType })
+      .select({
+        name: cafesTable.name,
+        businessName: cafesTable.businessName,
+        tradingName: cafesTable.tradingName,
+        city: cafesTable.city,
+        businessType: cafesTable.businessType,
+      })
       .from(cafesTable)
       .where(eq(cafesTable.listingId, listingId))
       .limit(1);
-    // Business-name fallback chain (public endpoint — no owner auth check):
-    //   DB columns → section tableData "Business Name" row → "My Business"
-    // allSections is already loaded above; emoji stripped before PDF embedding.
-    const cafeAnyPub = cafeMeta as Record<string, unknown> | undefined;
-    const cafeNameRawPub = (cafeAnyPub?.businessName as string | undefined)
-      ?? cafeMeta?.name
-      ?? (cafeAnyPub?.title as string | undefined)
-      ?? (cafeAnyPub?.tradingName as string | undefined);
-    const biz = sanitizePdfText(
-      cafeNameRawPub ?? extractBusinessNameFromSections(allSections) ?? "My Business",
-    );
+    // Shared resolver: business_name → name → trading_name → section data → "My Business"
+    const biz = resolveBusinessName(cafeMeta, allSections);
 
     const dateStr  = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
     const filename = `im-report-${listingId.slice(0, 8)}-buyer-${style}.pdf`;
