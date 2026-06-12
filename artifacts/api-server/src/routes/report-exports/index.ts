@@ -188,6 +188,30 @@ async function fetchImageBuffer(url: string, timeoutMs = 4000): Promise<Buffer |
   }
 }
 
+/**
+ * Resolves the cover hero image URL using a formal priority chain.
+ * Only visibility-filtered sections are passed in — safe for all export modes.
+ *
+ * Priority:
+ *   1. cafe.heroImageUrl  — not yet a DB column; wire in here when added to cafesTable
+ *   2. cafe.coverImageUrl — not yet a DB column; wire in here when added to cafesTable
+ *   3. First image URL from the 360_business_walkthrough section (panorama thumbnail)
+ *   4. First image URL from business_overview or location_market_context sections
+ *   5. null → caller renders branded gradient fallback
+ */
+function resolveHeroImageUrl(
+  filteredSections: any[],
+  cafeHeroUrl?: string | null,
+  cafeCoverUrl?: string | null,
+): string | null {
+  if (cafeHeroUrl?.startsWith("https://")) return cafeHeroUrl;
+  if (cafeCoverUrl?.startsWith("https://")) return cafeCoverUrl;
+  const url3 = resolveImageUrl(filteredSections, "360_business_walkthrough");
+  if (url3) return url3;
+  const url4 = resolveImageUrl(filteredSections, "business_overview", "business_location_market_context");
+  return url4;
+}
+
 function resolveImageUrl(sections: any[], ...sectionKeys: string[]): string | null {
   for (const key of sectionKeys) {
     const sec = sections.find((s) => s.sectionKey === key);
@@ -1355,14 +1379,14 @@ async function handlePdf(req: any, res: any): Promise<void> {
       ...(uniqueBuyerIds.size > 0 ? [{ eventType: "unique_buyers", count: uniqueBuyerIds.size }] : []),
     ];
 
-    // Resolve image URLs from section data (no DB column needed)
-    const heroUrl = resolveImageUrl(allSections,
-      "360_business_walkthrough", "business_overview", "business_location_market_context");
+    // Resolve image URLs — use visibility-filtered `sections` only; allSections is NOT
+    // used here to prevent seller-only section content leaking into buyer/public exports.
+    const heroUrl = resolveHeroImageUrl(sections /* cafeHeroUrl: none yet, cafeCoverUrl: none yet */);
     const bodyUrls: Array<[string, string | null]> = [
-      ["business_overview",  resolveImageUrl(allSections, "business_overview")],
-      ["assets_equipment",   resolveImageUrl(allSections, "plant_equipment_summary")],
-      ["lease_premises",     resolveImageUrl(allSections, "business_location_market_context", "lease_premises_summary")],
-      ["virtual_tour",       resolveImageUrl(allSections, "360_business_walkthrough")],
+      ["business_overview",  resolveImageUrl(sections, "business_overview")],
+      ["assets_equipment",   resolveImageUrl(sections, "plant_equipment_summary")],
+      ["lease_premises",     resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
+      ["virtual_tour",       resolveImageUrl(sections, "360_business_walkthrough")],
     ];
     const [heroImageBuffer, ...bodyBuffers] = await Promise.all([
       heroUrl ? fetchImageBuffer(heroUrl) : Promise.resolve(null),
@@ -1507,14 +1531,14 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       pubExtra.equipment = pubEquipRows;
     }
 
-    // Image resolution — same priority order as authenticated handler
-    const pubHeroUrl = resolveImageUrl(allSections,
-      "360_business_walkthrough", "business_overview", "business_location_market_context");
+    // Image resolution — visibility-filtered `sections` only; allSections is NOT used
+    // here to avoid leaking seller-only section content into public buyer exports.
+    const pubHeroUrl = resolveHeroImageUrl(sections /* cafeHeroUrl: none yet, cafeCoverUrl: none yet */);
     const pubBodyUrls: Array<[string, string | null]> = [
-      ["business_overview", resolveImageUrl(allSections, "business_overview")],
-      ["assets_equipment",  resolveImageUrl(allSections, "plant_equipment_summary")],
-      ["lease_premises",    resolveImageUrl(allSections, "business_location_market_context", "lease_premises_summary")],
-      ["virtual_tour",      resolveImageUrl(allSections, "360_business_walkthrough")],
+      ["business_overview", resolveImageUrl(sections, "business_overview")],
+      ["assets_equipment",  resolveImageUrl(sections, "plant_equipment_summary")],
+      ["lease_premises",    resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
+      ["virtual_tour",      resolveImageUrl(sections, "360_business_walkthrough")],
     ];
     const [pubHeroBuf, ...pubBodyBufs] = await Promise.all([
       pubHeroUrl ? fetchImageBuffer(pubHeroUrl) : Promise.resolve(null),
