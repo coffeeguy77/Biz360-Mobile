@@ -85,12 +85,12 @@ function visibilityConfig(v: Visibility): { icon: string; color: string; label: 
 }
 
 function statusConfig(s: ReportSection): { label: string; color: string } {
-  if (s.status === "complete")           return { label: "Complete",        color: "#16A34A" };
-  if (s.status === "needs_review")       return { label: "Needs Review",    color: "#F87171" };
-  if (hasContent(s) && needsReview(s))   return { label: "Needs Review",    color: "#F59E0B" };
-  if (hasContent(s))                     return { label: "Draft",           color: "#F59E0B" };
   if (s.visibility === "hidden")         return { label: "Hidden",          color: "#6B7280" };
-  if (s.isRequired)                      return { label: "Missing Content", color: "#EF4444" };
+  if (s.isRequired && !hasContent(s))    return { label: "Missing Content", color: "#EF4444" };
+  if (hasContent(s) && needsReview(s))   return { label: "Needs Review",    color: "#F59E0B" };
+  if (s.status === "needs_review")       return { label: "Needs Review",    color: "#F87171" };
+  if (s.status === "complete")           return { label: "Complete",        color: "#16A34A" };
+  if (hasContent(s))                     return { label: "Draft",           color: "#F59E0B" };
   return { label: "Empty",               color: "#9CA3AF" };
 }
 

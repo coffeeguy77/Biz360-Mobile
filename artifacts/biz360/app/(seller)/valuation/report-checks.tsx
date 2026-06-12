@@ -198,8 +198,8 @@ export default function ReportChecksScreen() {
       status: "warn",
       label: "No publicly visible sections",
       detail: "Buyers with basic access can only see public sections. Set at least one section to Public visibility.",
-      actionLabel: "Configure Visibility",
-      onAction: () => router.push("/(seller)/valuation/report-builder" as any),
+      actionLabel: "Configure Access",
+      onAction: () => router.push("/(seller)/valuation/report-access" as any),
     });
   }
 

@@ -168,7 +168,7 @@ export default function ReportHubScreen() {
       }
       if (cafeRes.ok) {
         const data = await cafeRes.json();
-        const cafes: any[] = data.cafes ?? [];
+        const cafes: any[] = Array.isArray(data) ? data : (data.cafes ?? []);
         const cafe = cafes.find((c) => c.id === selectedCafe?.id) ?? cafes[0];
         // Fallback chain: businessName → title → name → context name → default
         const sc = selectedCafe as any;
