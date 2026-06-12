@@ -1,0 +1,70 @@
+Apply the same grouped report chapter structure to the HTML report view as the Compact Broker IM PDF.
+
+Do not render the HTML report as 40 separate disconnected sections.
+
+Use the same report grouping map:
+- Executive Summary
+- Business Overview
+- Valuation and Financials
+- Divisions and Earnings
+- Assets and Equipment
+- Lease and Premises
+- Tour and Operations
+- Brand, Customers and Suppliers
+- Growth and Risk
+- Buyer Pack
+
+The HTML report should be more interactive than the PDF:
+- Sticky chapter navigation
+- Expand/collapse detailed sections
+- Metric cards
+- Charts
+- Tables
+- Locked buyer sections
+- Request Access buttons
+- Enter 360 Tour button
+- Download PDF button
+- Contact Seller button
+- Book Inspection button
+- Request Docs button
+
+Use one shared report data model and grouping system for:
+1. PDF export
+2. HTML report
+3. App preview
+
+Do not duplicate section mapping logic separately in multiple places.
+
+Create a shared report grouping config, for example:
+reportGroups = [
+  {
+    key: "executive_summary",
+    title: "Executive Summary",
+    sections: ["executive_summary", "key_selling_points", "reason_for_sale"]
+  },
+  ...
+]
+
+Both the PDF and HTML renderers should consume this shared config.
+
+HTML-specific behaviour:
+- Do not worry about page breaks.
+- Avoid huge empty vertical spacing.
+- Group short sections into cards within the same chapter.
+- Allow users to expand “More detail” for long content.
+- Show charts interactively where possible.
+- Show locked sections as preview cards with request access CTA.
+- Use responsive desktop and mobile layouts.
+- On desktop, use a two-column layout where useful.
+- On mobile, use stacked premium cards.
+
+PDF-specific behaviour:
+- Use print-friendly layout.
+- Use page-conscious grouping.
+- Use static charts/tables.
+- Avoid dark background on every content page.
+
+The result should be:
+- PDF feels like a polished broker IM.
+- HTML feels like a premium interactive buyer report.
+- App view remains the editable seller/admin report builder.

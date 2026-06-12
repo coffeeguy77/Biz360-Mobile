@@ -1,0 +1,440 @@
+We need to improve the IM Report PDF layout so it flows like a professional broker Information Memorandum instead of creating one page per report section.
+
+Current issue:
+The generated PDF is 42 pages because each report section is rendered on its own page, even when the section only contains one paragraph and a few bullet points. This creates too much empty space and makes the report feel thin and repetitive.
+
+Do not remove the 40 report sections from the app or database.
+The app should still allow sellers to edit all 40 sections.
+But the PDF export must intelligently group and condense sections into fewer designed pages.
+
+Target:
+The same 40 report sections should export as approximately 14–22 polished PDF pages, depending on available content, charts, images, tables and access mode.
+
+IMPORTANT:
+
+* Do not hardcode Bean Culture.
+* Do not delete existing report sections.
+* Do not break HTML report, app view, CSV import, valuation, equipment, lease, 360 tour or buyer access logic.
+* This is a PDF layout and flow improvement.
+* Keep all report content available, but render it more intelligently.
+* Buyer PDF and seller PDF must both use the improved layout.
+* Seller-only/private sections must still respect access rules.
+
+PDF FLOW REQUIREMENTS
+
+Stop rendering every report section as a full page.
+
+Instead, create grouped report chapters.
+
+Suggested PDF structure:
+
+1. Cover Page
+2. Important Notice / Disclaimer + Report Snapshot
+3. Table of Contents
+4. Executive Summary + Key Selling Points
+5. Business Overview + Reason for Sale + Buyer Suitability
+6. Valuation Snapshot
+7. Valuation Methodology + Range Explanation + Business Health Score
+8. Financial Performance + Verified Revenue Sources
+9. Division Breakdown + Revenue Stream Breakdown
+10. COGS Breakdown + Addbacks and Adjusted EBITDA
+11. Plant and Equipment Summary
+12. Lease and Premises Summary + Lease Risk and Valuation Impact
+13. Location and Market Context + Canberra Location Context
+14. 360° Business Walkthrough + Key Tour Highlights
+15. Operations and Systems + Staff and Owner Involvement
+16. Supplier Summary + Customer Base
+17. Brand and Digital Assets + Reviews and Reputation
+18. Growth Opportunities + SWOT Analysis
+19. Risks and Mitigations
+20. Sale Inclusions + Sale Exclusions + Stock and Working Capital
+21. Training and Handover + Due Diligence Documents Available
+22. Verified Information + Buyer Access and Confidentiality + Next Steps
+23. Final Disclaimer / Contact / Call to Action
+
+This does not mean every report must be exactly 23 pages.
+If content is short, combine further.
+If charts/tables/images are present, allow extra pages.
+The PDF engine should adapt to content length.
+
+LAYOUT RULES
+
+Create a layout system with these block types:
+
+1. Cover block
+2. Chapter divider block
+3. Metric card grid
+4. Two-column text block
+5. Section group block
+6. Table block
+7. Chart block
+8. Callout block
+9. Verification badge block
+10. Due diligence checklist block
+11. CTA block
+
+Do not force page breaks after every section.
+
+Only force page breaks for:
+
+* Cover
+* Table of contents
+* Major chapter dividers, if enabled
+* Large charts/tables that need space
+* Final call-to-action/disclaimer page
+
+CONTENT DENSITY RULES
+
+For short sections:
+If a section has fewer than 250 words and no chart/table/image, allow it to share a page with related sections.
+
+For medium sections:
+If a section has 250–600 words, allow it to share a page if space remains.
+
+For long sections:
+If a section has over 600 words, allow it to occupy its own page or continue naturally.
+
+For bullet-heavy sections:
+Render bullets in compact two-column layout where appropriate.
+
+For repeated short sections:
+Group them under one larger chapter heading.
+
+Example:
+Instead of:
+Page 3 Executive Summary
+Page 4 Business Overview
+Page 5 Key Selling Points
+Page 6 Reason for Sale
+
+Render:
+Page 4: Executive Summary
+
+* Left column: Executive Summary paragraph
+* Right column: Key Selling Points cards/bullets
+* Bottom row: Reason for Sale short note or Buyer Opportunity note
+
+VISUAL DESIGN IMPROVEMENTS
+
+The current dark background on every page creates a heavy app-export feel.
+Update PDF design to feel like a premium broker report.
+
+Use:
+
+* White or very light report body pages for print readability
+* Navy headers and section accents
+* Blue highlight lines
+* Metric cards with light backgrounds
+* Tables with clear spacing
+* Dark navy cover page allowed
+* Dark navy chapter divider pages optional
+* Avoid full dark background on every content page
+
+Cover page must include:
+
+* Actual listing/business name, not “My Business”
+* Hero image if available
+* Location
+* Category
+* Report mode
+* Date prepared
+* Estimated value
+* Valuation range
+* Revenue
+* Adjusted EBITDA
+* Equipment value
+* Confidential badge
+* Exit360 branding
+
+If no hero image exists, use a clean gradient or brand pattern, but still show the business name and key metrics.
+
+Fix business name:
+Use listing.business_name, listing.title, business.name or business.trading_name.
+Only fall back to “My Business” if no name exists.
+
+TABLE OF CONTENTS
+
+Update the table of contents to show grouped chapters rather than all 40 tiny sections.
+
+Example TOC:
+
+1. Executive Summary
+2. Business Overview
+3. Valuation and Financial Summary
+4. Division and Revenue Breakdown
+5. Assets and Equipment
+6. Lease and Premises
+7. Location and Market Context
+8. 360° Business Walkthrough
+9. Operations, Staff and Systems
+10. Brand, Customers and Suppliers
+11. Growth, Risks and SWOT
+12. Sale Terms and Due Diligence
+13. Buyer Access and Next Steps
+
+The detailed 40 section keys can remain in the database but should not all appear as separate TOC pages unless the seller chooses “Detailed TOC”.
+
+ADD PDF EXPORT MODES
+
+Add export mode setting:
+
+1. Compact Broker IM
+   Recommended default.
+   Groups short sections.
+   Target 14–22 pages.
+
+2. Detailed Full Report
+   One section per page or near-one-section-per-page.
+   Useful for internal seller review.
+   Current style can be kept here but improved.
+
+3. Buyer Summary
+   Shorter buyer-facing version.
+   Target 8–12 pages.
+   Includes only public/approved-buyer content.
+
+4. Data Room Appendix
+   Optional appendix containing equipment register, due diligence checklist, lease clause summary, addbacks and detailed tables.
+
+Default export should be:
+Compact Broker IM
+
+Do not default to one-section-per-page.
+
+SECTION GROUPING MAP
+
+Implement this section grouping map for Compact Broker IM:
+
+Group: Executive Summary
+Sections:
+
+* executive_summary
+* key_selling_points
+* reason_for_sale
+
+Group: Business Overview
+Sections:
+
+* business_overview
+* buyer_suitability
+* training_handover
+
+Group: Valuation and Financials
+Sections:
+
+* app_valuation_summary
+* valuation_methodology
+* valuation_range_explanation
+* business_health_score
+* verified_revenue_sources
+* financial_performance_summary
+
+Group: Divisions and Earnings
+Sections:
+
+* division_breakdown
+* revenue_stream_breakdown
+* cogs_mapping_summary
+* addbacks_adjusted_ebitda
+
+Group: Assets and Equipment
+Sections:
+
+* plant_equipment_summary
+* sale_inclusions
+* sale_exclusions
+* stock_working_capital
+
+Group: Lease and Premises
+Sections:
+
+* lease_premises_summary
+* lease_risk_valuation_impact
+* business_location_market_context
+* canberra_location_explainer
+
+Group: Tour and Operations
+Sections:
+
+* 360_business_walkthrough
+* key_tour_highlights
+* operations_systems
+* staff_owner_involvement
+
+Group: Brand, Customers and Suppliers
+Sections:
+
+* supplier_summary
+* customer_base
+* brand_digital_assets
+* reviews_reputation
+
+Group: Growth and Risk
+Sections:
+
+* growth_opportunities
+* risks_mitigations
+* swot_analysis
+
+Group: Buyer Pack
+Sections:
+
+* verified_information
+* buyer_access_confidentiality
+* due_diligence_documents_available
+* next_steps
+* disclaimer
+
+Each group should render as a chapter with multiple section blocks.
+
+Do not render an empty section.
+If a section is hidden or not accessible in buyer mode, skip it.
+
+METRIC CARDS
+
+Add metric cards to the top of relevant grouped pages.
+
+Valuation and Financials page should include cards:
+
+* Estimated Value
+* Valuation Range
+* Revenue
+* Adjusted EBITDA
+* Equipment Value
+* Business Health
+
+Division page should include:
+
+* Included divisions count
+* Excluded divisions count
+* Total included revenue
+* Total included valuation
+
+Equipment page should include:
+
+* Total equipment value
+* Number of assets
+* Valuation basis
+* Full register availability
+
+Lease page should include:
+
+* Leases analysed
+* Clauses analysed
+* Critical clauses
+* High-risk clauses
+
+Tour page should include:
+
+* Spaces
+* Pins
+* Audio tracks
+* Start scene
+
+CHARTS AND TABLES
+
+Where data exists, replace plain bullet lists with charts/tables.
+
+Required visual inserts:
+
+* Valuation bridge chart/table
+* Revenue by division table/chart
+* Valuation by division table/chart
+* Equipment summary table
+* Lease risk distribution chart/table
+* Due diligence checklist table
+* Growth opportunities table
+* Risks and mitigations table
+* Sale inclusions/exclusions two-column table
+* Canberra location context callout or map placeholder
+
+If chart rendering is difficult in PDF, use clean tables first.
+Do not leave giant empty chart placeholders.
+
+PAGE FILLING LOGIC
+
+PDF renderer should use natural content flow.
+
+Avoid leaving large blank areas at the bottom of pages.
+
+If there is room after a short section, render the next related section on the same page.
+
+Use CSS print rules:
+
+* Avoid page-break-after on every section.
+* Use page-break-inside: avoid for cards/tables where possible.
+* Use page-break-before only for cover, TOC and major chapters.
+* Allow paragraphs and normal section groups to flow.
+* Use widows/orphans control if available.
+
+PLACEHOLDER CONTENT RULES
+
+If a section contains placeholder guidance phrases like:
+
+* seller should
+* add the genuine
+* before publishing
+* to be confirmed
+* insert
+* placeholder
+* example only
+* replace this
+
+Then:
+
+* In Seller Draft PDF: show the section with an amber “Needs Review” badge.
+* In Buyer PDF: do not show the placeholder guidance. Instead, either hide the section or show “Information to be confirmed by seller.”
+* In Published PDF: block publish or warn strongly depending on settings.
+
+The Reason for Sale section currently contains seller guidance. It should not appear as final buyer-facing text.
+
+REPORT LENGTH TARGET
+
+Compact Broker IM:
+
+* Aim for 14–22 pages
+* Never create 40+ pages unless content genuinely requires it
+* A one-paragraph section should never be a whole page by itself
+
+Detailed Full Report:
+
+* Can be 30–45 pages if user deliberately chooses detailed mode
+
+Buyer Summary:
+
+* Aim for 8–12 pages
+
+APP UI CHANGES
+
+On Export PDF screen, add:
+
+PDF Style:
+
+* Compact Broker IM — recommended
+* Detailed Full Report
+* Buyer Summary
+* Data Room Appendix
+
+Add description:
+Compact Broker IM combines related sections into a polished broker-style report and avoids wasting pages.
+
+Add estimated page count before export:
+Example:
+Estimated length: 16–20 pages
+
+SUCCESS CRITERIA
+
+This task is complete when:
+
+1. Compact Broker IM no longer renders one section per page.
+2. Short sections are grouped together.
+3. The same report content exports in significantly fewer pages.
+4. The report visually flows like a professional broker IM.
+5. Cover page uses actual listing/business name.
+6. Cover page includes key valuation metrics.
+7. Body pages are print-friendly, not all dark backgrounds.
+8. Tables and metric cards replace repetitive bullet-only pages where possible.
+9. Placeholder seller guidance is not shown as final buyer-facing copy.
+10. Seller can still export a detailed full report if they wants every section separated.
+11. Buyer PDF respects access permissions.
+12. Existing report sections, CSV import, HTML report and app report builder continue working.
