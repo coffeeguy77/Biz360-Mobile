@@ -1336,8 +1336,25 @@ async function buildPdf(
   // ── 4. Content pages ────────────────────────────────────────────────────────
   // In compact / buyer_summary: chapters share pages when space allows.
   // In detailed / data_room: every chapter starts a new page (existing behaviour).
-  const CHAPTER_MIN_H = 90; // space needed for chapter strip + first section heading
   let carryY = CONTENT_TOP; // tracks y across chapters in compact mode
+
+  // Chapter-aware minimum space required before placing a chapter inline.
+  // Accounts for: header strip (34px) + metric cards when applicable (88px) +
+  // first-section heading guard (80px).  Prevents the header from being placed
+  // so close to the page bottom that the very next checkY triggers a page-break,
+  // leaving the chapter header alone (orphaned) on the previous page.
+  const METRIC_CHAPTER_KEYS = new Set([
+    "valuation", "assets_equipment", "lease_premises", "virtual_tour",
+  ]);
+  function chapterMinSpace(groupKey: string): number {
+    let h = 34; // chapter header strip height
+    if (
+      style !== "buyer_summary" && style !== "data_room" &&
+      METRIC_CHAPTER_KEYS.has(groupKey)
+    ) h += 88; // metric-card row estimate
+    h += 80;   // first section heading guard
+    return h;
+  }
 
   for (let gi = 0; gi < renderGroups.length; gi++) {
     const group = renderGroups[gi];
@@ -1346,16 +1363,20 @@ async function buildPdf(
     if (!isCompact || gi === 0) {
       // Always start first chapter + detailed/data_room on a fresh page
       y = whitePage(ctx);
-    } else if (carryY + CHAPTER_MIN_H > CONTENT_BOTTOM) {
-      // Not enough room — new page
+    } else if (carryY + chapterMinSpace(group.key) > CONTENT_BOTTOM) {
+      // Not enough room for header + content minimum — new page
       y = whitePage(ctx);
     } else {
       // Continue on the current page with a small inter-chapter gap
       y = carryY + 14;
     }
 
+    // Track page number so we can detect if visuals orphan the chapter header
+    let pgAtHeader = ctx.pg;
+
     if (style !== "data_room") {
       y = renderChapterHeader(ctx, group, gi + 1, y);
+      pgAtHeader = ctx.pg; // update: header always fits on single page (26px)
       // Skip metric cards in buyer_summary — sections are already tightly curated
       if (style !== "buyer_summary") {
         y = renderChapterMetricCards(ctx, group.key, group.secs, y);
@@ -1462,6 +1483,15 @@ async function buildPdf(
           }
           break;
       }
+    }
+
+    // ── Post-visual orphan guard ────────────────────────────────────────────
+    // If any chapter visual (metric cards, body image, chart, etc.) caused a
+    // page-break, the chapter header is now alone on the previous page.
+    // Re-render the header at the top of the current (content) page so every
+    // content page always begins with its chapter label.
+    if (style !== "data_room" && ctx.pg > pgAtHeader) {
+      y = renderChapterHeader(ctx, group, gi + 1, y);
     }
 
     // ── Section content ──────────────────────────────────────────────────────
