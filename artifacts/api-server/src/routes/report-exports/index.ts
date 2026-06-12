@@ -1773,9 +1773,9 @@ async function handlePdf(req: any, res: any): Promise<void> {
         ?? resolveImageUrl(sections, "plant_equipment_summary")],
       ["lease_premises",    resolveReportSectionImageUrl(["business_location_market_context", "lease_premises_summary"], ["exterior"])
         ?? resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
-      // virtual_tour allows panoramic images — they render as a static preview thumbnail
-      ["virtual_tour",      resolveReportSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)
-        ?? resolveImageUrl(sections, "360_business_walkthrough")],
+      // virtual_tour: only use an explicitly-confirmed report_image (360_preview role).
+      // Never fall back to raw section/tour imagery — raw panoramics look distorted in PDF.
+      ["virtual_tour",      resolveReportSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)],
     ];
     const [heroImageBuffer, ...bodyBuffers] = await Promise.all([
       heroUrl ? fetchImageBuffer(heroUrl) : Promise.resolve(null),

@@ -465,9 +465,9 @@ router.patch("/report-images/:listingId/:imageId", requireAuth, async (req, res)
       ));
     if (!existing) { res.status(404).json({ error: "Image not found" }); return; }
 
-    // Validate role change — panoramic images may ONLY use 360_preview.
-    // Override silently (consistent with upload behaviour) so the client gets
-    // a resolved value rather than an error for a legitimate edit.
+    // Validate role change.
+    // Panoramic images may ONLY use 360_preview — reject any other role explicitly.
+    // (Upload path also enforces this; PATCH must be consistent so clients can rely on errors.)
     let resolvedImageRole = imageRole;
     if (imageRole !== undefined) {
       if (!ALL_ROLES.includes(imageRole as ImageRole)) {
@@ -475,7 +475,11 @@ router.patch("/report-images/:listingId/:imageId", requireAuth, async (req, res)
         return;
       }
       if (existing.isPanoramic && imageRole !== "360_preview") {
-        resolvedImageRole = "360_preview"; // force panoramic images to 360_preview only
+        res.status(400).json({
+          error: "360° panoramic images can only use the '360_preview' role — they look distorted in reports. Upload a cropped flat photo and assign it a different role.",
+          isPanoramic: true,
+        });
+        return;
       }
     }
 
@@ -579,6 +583,7 @@ router.delete("/report-images/:listingId/:imageId", requireAuth, async (req, res
 
 // ─── GET /api/report-images/:listingId/primary-cover (public) ─────────────────
 // Returns the best available cover image URL (non-panoramic, not soft-deleted).
+// Public endpoint: must only return images the buyer is allowed to see.
 // Priority: isPrimary=true → imageRole=listing_hero → first non-panoramic.
 router.get("/report-images/:listingId/primary-cover", async (req, res): Promise<void> => {
   const { listingId } = req.params as { listingId: string };
@@ -590,6 +595,7 @@ router.get("/report-images/:listingId/primary-cover", async (req, res): Promise<
         eq(reportImagesTable.listingId, listingId),
         eq(reportImagesTable.isPanoramic, false),
         eq(reportImagesTable.includeInHtml, true),
+        eq(reportImagesTable.includeInBuyerReport, true),
         isNull(reportImagesTable.deletedAt),
       ))
       .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder))
