@@ -140,14 +140,48 @@ function fmtCurrency(n: number): string {
 }
 
 // ── Image pipeline ─────────────────────────────────────────────────────────────
+// SSRF safety: only fetch images from known-safe HTTPS CDN hosts.
+// Private/link-local IPs, metadata endpoints, and arbitrary hosts are blocked.
+const ALLOWED_IMG_HOSTS = new Set([
+  "res.cloudinary.com",
+  "images.unsplash.com",
+  "lh3.googleusercontent.com",
+  "storage.googleapis.com",
+  "cdn.exit360.com.au",
+]);
+const ALLOWED_IMG_PATTERNS: RegExp[] = [
+  /^[a-z0-9-]+\.cloudinary\.com$/,
+  /^[a-z0-9-]+\.s3\.[a-z0-9-]+\.amazonaws\.com$/,
+  /^[a-z0-9-]+\.s3\.amazonaws\.com$/,
+  /^[a-z0-9-]+\.replit\.app$/,
+  /^[a-z0-9-]+\.replit\.dev$/,
+  /^[a-z0-9-]+\.exit360\.com\.au$/,
+];
+const MAX_IMG_BYTES = 8_000_000; // 8 MB
+
+function isAllowedImageUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try { parsed = new URL(rawUrl); } catch { return false; }
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  if (ALLOWED_IMG_HOSTS.has(host)) return true;
+  if (ALLOWED_IMG_PATTERNS.some((p) => p.test(host))) return true;
+  return false;
+}
+
 async function fetchImageBuffer(url: string, timeoutMs = 4000): Promise<Buffer | null> {
+  if (!isAllowedImageUrl(url)) return null;
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), timeoutMs);
     const resp = await fetch(url, { signal: controller.signal });
     clearTimeout(tid);
     if (!resp.ok) return null;
+    // Reject oversized responses before buffering
+    const contentLength = resp.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > MAX_IMG_BYTES) return null;
     const arr = await resp.arrayBuffer();
+    if (arr.byteLength > MAX_IMG_BYTES) return null;
     return Buffer.from(arr);
   } catch {
     return null;
@@ -411,13 +445,14 @@ function renderHealthScore(
 function renderBuyerFunnel(
   ctx: PdfCtx, funnel: Array<{ eventType: string; count: number }>, y: number,
 ): number {
+  // Order matches spec: Views → Tour Starts → Unique Buyers → Messages → Calls → Saves
   const EVENT_ORDER = [
-    { key: "section_viewed",    label: "Report Views" },
+    { key: "section_viewed",    label: "Views" },
     { key: "tour_clicked",      label: "Tour Starts" },
-    { key: "pdf_downloaded",    label: "PDF Downloads" },
-    { key: "access_requested",  label: "Access Requested" },
-    { key: "contact_clicked",   label: "Contact Clicks" },
-    { key: "inspection_booked", label: "Inspections" },
+    { key: "unique_buyers",     label: "Unique Buyers" },
+    { key: "contact_clicked",   label: "Messages" },
+    { key: "inspection_booked", label: "Calls / Inspections" },
+    { key: "pdf_downloaded",    label: "Saves (PDF)" },
   ];
   const mapped = EVENT_ORDER
     .map(({ key, label }) => ({ label, count: funnel.find((f) => f.eventType === key)?.count ?? 0 }))
@@ -442,6 +477,69 @@ function renderBuyerFunnel(
     y += 17;
   });
   return y + 8;
+}
+
+// ── Revenue / Valuation by Division horizontal bar chart ──────────────────────
+// Excluded divisions (included:false | is_included_in_sale:false) are rendered in
+// a muted grey so buyers can distinguish what is and isn't part of the sale.
+function renderDivisionChart(
+  ctx: PdfCtx,
+  chartData: Array<Record<string, unknown>>,
+  valueKey: string,
+  title: string,
+  y: number,
+  isSellerDraft: boolean,
+): number {
+  if (!chartData?.length) {
+    if (!isSellerDraft) return y;
+    y = checkY(ctx, y, 28);
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+    ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+      .text(`${title}: Data not available.`, MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+    return y + 22 + 10;
+  }
+
+  // Detect the value key — fall back to any numeric-looking key if specified one is absent
+  const rows = chartData.slice(0, 8);
+  const actualValueKey = (rows[0] && rows[0][valueKey] !== undefined)
+    ? valueKey
+    : Object.keys(rows[0]).find((k) =>
+        !["name", "division", "included", "is_included_in_sale", "id", "unit_id", "cafeId"].includes(k)
+      ) ?? valueKey;
+
+  const maxVal = Math.max(...rows.map((r) => Math.abs(Number(r[actualValueKey] ?? 0)))) || 1;
+  const LABEL_W = Math.floor(CONTENT_W * 0.33);
+  const BAR_AREA_W = Math.floor(CONTENT_W * 0.50);
+  const VAL_W = CONTENT_W - LABEL_W - BAR_AREA_W - 4;
+  const ROW_H = 20;
+
+  y = checkY(ctx, y, 30 + rows.length * (ROW_H + 2));
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text(title.toUpperCase(), MARGIN, y, { width: CONTENT_W });
+  y += 14;
+
+  rows.forEach((row) => {
+    const nameStr = String(row.name ?? row.division ?? "").slice(0, 30);
+    const val     = Number(row[actualValueKey] ?? 0);
+    // Excluded = explicitly false in any common field name
+    const isExcluded = row.included === false
+      || row.is_included_in_sale === false
+      || String(row.included ?? "").toLowerCase() === "false"
+      || String(row.is_included_in_sale ?? "").toLowerCase() === "false";
+    const barColor  = isExcluded ? "#94A3B8" : BLUE_ACC;
+    const textColor = isExcluded ? SUBTITLE_C : BODY_TEXT;
+    const barW = Math.max(4, Math.floor(BAR_AREA_W * Math.abs(val) / maxVal));
+
+    const label = isExcluded ? `${nameStr} (excl.)` : nameStr;
+    ctx.doc.font("Helvetica").fontSize(8).fillColor(textColor)
+      .text(label.slice(0, 34), MARGIN, y + 4, { width: LABEL_W });
+    ctx.doc.save().rect(MARGIN + LABEL_W, y + 2, BAR_AREA_W, ROW_H - 6).fill("#F1F5F9").restore();
+    ctx.doc.save().rect(MARGIN + LABEL_W, y + 2, barW, ROW_H - 6).fill(barColor).restore();
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(textColor)
+      .text(fmtCurrency(val), MARGIN + LABEL_W + BAR_AREA_W + 4, y + 4, { width: VAL_W });
+    y += ROW_H;
+  });
+  return y + 12;
 }
 
 // ── Due Diligence Checklist badge grid ─────────────────────────────────────────
@@ -1039,14 +1137,41 @@ async function buildPdf(
           );
           break;
 
+        case "financial_performance": {
+          // Revenue by Division — horizontal bars, excluded divisions greyed
+          const revDivSec = group.secs.find((s) => s.sectionKey === "division_breakdown")
+            ?? sections.find((s: any) => s.sectionKey === "division_breakdown");
+          const revDivData = parseChartData(revDivSec);
+          y = renderDivisionChart(ctx, revDivData ?? [], "revenue", "Revenue by Division", y, extra.isSellerDraft);
+          break;
+        }
+
         case "valuation": {
           // Valuation Bridge from snapshot data
           y = renderValuationBridge(ctx, extra.snapshot, y, extra.isSellerDraft);
-          // Business Health Score from section data
+          // Valuation by Division — same division_breakdown source, valuation key
+          const valDivSec = sections.find((s: any) => s.sectionKey === "division_breakdown");
+          const valDivData = parseChartData(valDivSec);
+          y = renderDivisionChart(ctx, valDivData ?? [], "valuation", "Valuation by Division", y, extra.isSellerDraft);
+          // Business Health Score from section data — with seller fallback when absent
           const healthSec = group.secs.find((s) => s.sectionKey === "business_health_score");
           if (healthSec) {
             const score = extractScore(healthSec);
-            if (score !== null) y = renderHealthScore(ctx, score, y);
+            if (score !== null) {
+              y = renderHealthScore(ctx, score, y);
+            } else if (extra.isSellerDraft) {
+              y = checkY(ctx, y, 28);
+              ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+              ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+                .text("Business health score: Data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+              y += 22 + 10;
+            }
+          } else if (extra.isSellerDraft) {
+            y = checkY(ctx, y, 28);
+            ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+            ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+              .text("Business health score: Data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+            y += 22 + 10;
           }
           break;
         }
@@ -1079,14 +1204,30 @@ async function buildPdf(
         case "due_diligence": {
           const ddSec = group.secs.find((s) => s.sectionKey === "due_diligence_documents_available");
           const ddBullets = Array.isArray(ddSec?.bulletPoints) ? (ddSec.bulletPoints as string[]) : [];
-          if (ddBullets.length > 0) y = renderDueDiligenceChecklist(ctx, ddBullets, y);
+          if (ddBullets.length > 0) {
+            y = renderDueDiligenceChecklist(ctx, ddBullets, y);
+          } else if (extra.isSellerDraft) {
+            y = checkY(ctx, y, 28);
+            ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+            ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+              .text("Due diligence checklist: Data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+            y += 22 + 10;
+          }
           break;
         }
 
         case "executive_summary":
           // Buyer engagement funnel — seller draft only
-          if (extra.isSellerDraft && extra.buyerFunnel.length > 0) {
-            y = renderBuyerFunnel(ctx, extra.buyerFunnel, y);
+          if (extra.isSellerDraft) {
+            if (extra.buyerFunnel.length > 0) {
+              y = renderBuyerFunnel(ctx, extra.buyerFunnel, y);
+            } else {
+              y = checkY(ctx, y, 28);
+              ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+              ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+                .text("Buyer engagement: No activity recorded yet.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+              y += 22 + 10;
+            }
           }
           break;
       }
@@ -1194,18 +1335,25 @@ async function handlePdf(req: any, res: any): Promise<void> {
           eq(cafeEquipmentTable.cafeId, cafe.id),
           eq(cafeEquipmentTable.suspended, false),
         )),
-      db.select({ eventType: reportAccessLogsTable.eventType })
-        .from(reportAccessLogsTable)
+      db.select({
+        eventType: reportAccessLogsTable.eventType,
+        buyerId:   reportAccessLogsTable.buyerId,
+      }).from(reportAccessLogsTable)
         .where(eq(reportAccessLogsTable.listingId, listingId)),
     ]);
 
     const snapshot = snapshotRows[0] ?? null;
     const equipment = equipmentRows;
     const funnelMap = new Map<string, number>();
-    for (const { eventType } of funnelLogs) {
+    const uniqueBuyerIds = new Set<string>();
+    for (const { eventType, buyerId } of funnelLogs) {
       funnelMap.set(eventType, (funnelMap.get(eventType) ?? 0) + 1);
+      if (buyerId) uniqueBuyerIds.add(buyerId);
     }
-    const buyerFunnel = Array.from(funnelMap.entries()).map(([eventType, count]) => ({ eventType, count }));
+    const buyerFunnel: Array<{ eventType: string; count: number }> = [
+      ...Array.from(funnelMap.entries()).map(([eventType, count]) => ({ eventType, count })),
+      ...(uniqueBuyerIds.size > 0 ? [{ eventType: "unique_buyers", count: uniqueBuyerIds.size }] : []),
+    ];
 
     // Resolve image URLs from section data (no DB column needed)
     const heroUrl = resolveImageUrl(allSections,
