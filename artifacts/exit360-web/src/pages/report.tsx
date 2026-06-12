@@ -211,6 +211,19 @@ function SectionContent({
   const hasContent = section.body || (section.bulletPoints?.length ?? 0) > 0 || section.tableData;
   const is360 = section.sectionKey === "360_business_walkthrough";
 
+  // Resolve 360 tour URL from chartData (supports plain string URL or object
+  // with common key names: url | tourUrl | src | iframe | link | pannellumUrl)
+  let tourUrl: string | null = null;
+  if (is360 && chartData != null) {
+    if (typeof chartData === "string" && /^https?:\/\//.test(chartData)) {
+      tourUrl = chartData;
+    } else if (typeof chartData === "object" && !Array.isArray(chartData)) {
+      const cd = chartData as Record<string, unknown>;
+      const raw = cd.url ?? cd.tourUrl ?? cd.src ?? cd.iframe ?? cd.link ?? cd.pannellumUrl ?? "";
+      if (raw && /^https?:\/\//.test(String(raw))) tourUrl = String(raw);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {!hasContent && !ChartComponent && !is360 && (
@@ -227,14 +240,26 @@ function SectionContent({
         </div>
       )}
       {is360 && (
-        <div className="mt-4 flex justify-center">
-          <button
-            onClick={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
-            className="inline-flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-sm px-5 py-2.5 rounded-xl border border-blue-500/30 transition-colors"
-          >
-            🎯 Enter Virtual Tour
-          </button>
-        </div>
+        tourUrl ? (
+          <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ aspectRatio: "16/9" }}>
+            <iframe
+              src={tourUrl}
+              className="w-full h-full"
+              allow="fullscreen; xr-spatial-tracking"
+              title="360° Business Walkthrough"
+              onLoad={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
+            />
+          </div>
+        ) : (
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
+              className="inline-flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-sm px-5 py-2.5 rounded-xl border border-blue-500/30 transition-colors"
+            >
+              🎯 Enter Virtual Tour
+            </button>
+          </div>
+        )
       )}
     </div>
   );
@@ -409,6 +434,30 @@ export function ReportPage() {
   const ungroupedSections = sections.filter((s) => !allGroupedKeys.has(s.sectionKey));
 
   const [activeChapter, setActiveChapter] = useState<string | null>(null);
+
+  // IntersectionObserver — highlights the chapter link in sidebar + tab strip
+  // as the user scrolls, using a top-biased rootMargin so the active chapter
+  // updates as soon as its header enters the top 30% of the viewport.
+  useEffect(() => {
+    if (groupedSections.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length > 0) {
+          const id = visible[0].target.id;
+          if (id.startsWith("chapter-")) setActiveChapter(id.slice("chapter-".length));
+        }
+      },
+      { rootMargin: "-80px 0px -65% 0px", threshold: 0 },
+    );
+    groupedSections.forEach((g) => {
+      const el = document.getElementById(`chapter-${g.key}`);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [groupedSections]);
 
   // ── LOADING ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -614,6 +663,15 @@ export function ReportPage() {
               )}
             >
               <Calendar size={15} /> Book Inspection
+            </button>
+            <button
+              onClick={() => recordAccessLog(listingId, "document_requested")}
+              className={cn(
+                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
+                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
+              )}
+            >
+              <FileText size={15} /> Request Docs
             </button>
           </div>
         </div>

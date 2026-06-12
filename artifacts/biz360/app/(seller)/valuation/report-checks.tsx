@@ -18,28 +18,31 @@ async function getAuthToken(): Promise<string | null> {
   return AsyncStorage.getItem("biz360_auth_token");
 }
 
+// All keys map to real section_key values from the 40-section REPORT_GROUPS.
+// Formerly: products_services → key_selling_points, staffing_workforce →
+// staff_owner_involvement, operations_overview → operations_systems,
+// asking_price_terms removed (covered by app_valuation_summary).
 const REQUIRED_KEYS = [
-  "business_overview", "reason_for_sale", "products_services",
+  "business_overview", "reason_for_sale", "key_selling_points",
   "financial_performance_summary", "addbacks_adjusted_ebitda",
   "app_valuation_summary", "plant_equipment_summary",
-  "lease_premises_summary", "staffing_workforce", "customer_base",
-  "operations_overview", "growth_opportunities", "asking_price_terms",
+  "lease_premises_summary", "staff_owner_involvement", "customer_base",
+  "operations_systems", "growth_opportunities",
 ];
 
 const REQUIRED_LABELS: Record<string, string> = {
   business_overview: "Business Overview",
   reason_for_sale: "Reason for Sale",
-  products_services: "Products & Services",
+  key_selling_points: "Key Selling Points",
   financial_performance_summary: "Financial Summary",
   addbacks_adjusted_ebitda: "Add-backs & Adjusted EBITDA",
   app_valuation_summary: "Valuation Summary",
   plant_equipment_summary: "Plant & Equipment",
   lease_premises_summary: "Lease & Premises",
-  staffing_workforce: "Staffing & Workforce",
+  staff_owner_involvement: "Staff & Operations",
   customer_base: "Customer Base",
-  operations_overview: "Operations Overview",
+  operations_systems: "Operations & Systems",
   growth_opportunities: "Growth Opportunities",
-  asking_price_terms: "Asking Price & Terms",
 };
 
 const PLACEHOLDER_PHRASES = [
