@@ -119,10 +119,13 @@ function resolveBusinessName(
   cafe: { name: string; businessName?: string | null; title?: string | null; tradingName?: string | null } | undefined | null,
   sections: any[],
 ): string {
-  const raw = cafe?.businessName
-    ?? cafe?.title
-    ?? cafe?.name
-    ?? cafe?.tradingName
+  // Use trim+truthy so empty strings fall through to the next candidate
+  const t = (v: string | null | undefined): string | undefined =>
+    v?.trim() || undefined;
+  const raw = t(cafe?.businessName)
+    ?? t(cafe?.title)
+    ?? t(cafe?.name)
+    ?? t(cafe?.tradingName)
     ?? extractBusinessNameFromSections(sections)
     ?? "My Business";
   return sanitizePdfText(raw);
