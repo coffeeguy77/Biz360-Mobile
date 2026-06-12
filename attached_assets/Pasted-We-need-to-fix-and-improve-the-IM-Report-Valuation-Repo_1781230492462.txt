@@ -1,0 +1,383 @@
+We need to fix and improve the IM Report / Valuation Report completeness logic, report status wording, and active listing naming.
+
+Context:
+The CSV import flow is now working correctly.
+
+Current successful import example:
+- 40 valid rows
+- 40 sections matched
+- 177 fields changed
+- 0 unknown keys
+
+However, after import, the IM Report screen shows:
+- “40 of 40 sections have content”
+- but also shows “4 required sections need content — tap to complete”
+
+This is confusing and contradictory. If all 40 sections have imported content, the app should not say sections “need content” unless the actual section content is empty. The app needs to separate narrative section completeness from app data readiness, placeholder review, access settings, and publishing checks.
+
+Do not break existing CSV import, report sections, valuation, equipment, leases, tours, listing, or buyer access features.
+
+TASK 1 — Fix contradictory completeness wording
+
+Current wording:
+“4 required sections need content — tap to complete”
+
+Replace this with:
+“4 report checks need attention”
+
+Only use “need content” when a required report section is genuinely empty.
+
+If a section has main_body, bullet points, table_json, or chart_json content, it should count as having content.
+
+Sections with content but placeholder wording should be marked “Needs Review”, not “Missing Content”.
+
+Update the Report Completeness card to show clearer lines:
+
+Example:
+Report Completeness: 69%
+
+40 of 40 sections have content
+4 report checks need attention
+
+Do not show:
+“4 required sections need content”
+when the section bodies are populated.
+
+TASK 2 — Separate completeness categories
+
+Refactor the completeness calculation so it separates:
+
+1. Narrative Section Completeness
+2. App Data Completeness
+3. Structured Data Completeness
+4. Buyer Access / Publish Readiness
+5. Placeholder / Needs Review Checks
+
+Suggested scoring weights:
+
+- Report narrative sections: 35%
+- Financial / valuation data: 25%
+- Equipment / asset data: 10%
+- Lease / premises data: 10%
+- 360 tour data: 10%
+- Buyer access / publish settings: 10%
+
+The UI should be able to display something like:
+
+Narrative: 100%
+Valuation Data: 85%
+Equipment: 100%
+Lease: 60%
+360 Tour: 100%
+Buyer Access: 40%
+Publishing Readiness: Needs review
+
+The final report completeness percentage can still be one number, but the warnings must clearly explain what is missing or needs review.
+
+TASK 3 — Create a Report Checks screen
+
+When the user taps the orange warning card, open a Report Checks screen or modal.
+
+Title:
+Report Checks
+
+Show positive checks:
+✅ 40 / 40 sections contain text
+✅ CSV import complete
+✅ Valuation data available
+✅ Equipment value available
+✅ 360 tour data available
+
+Show attention items:
+⚠️ 4 checks need attention
+
+Example checks:
+- Replace placeholder Reason for Sale text
+- Confirm buyer access settings
+- Confirm due diligence document availability
+- Confirm public/private visibility for financial sections
+
+The checks should be generated dynamically from the current listing/report data.
+
+The screen should not make the user feel the CSV import failed if it succeeded.
+
+TASK 4 — Add placeholder detection
+
+Add placeholder detection to report sections.
+
+If a section body or bullets contain placeholder phrases, mark that section as needs_review.
+
+Do not mark it as empty.
+
+Placeholder phrases to detect, case-insensitive:
+
+- seller should
+- to be confirmed
+- insert
+- placeholder
+- example only
+- not yet provided
+- replace this
+- add details
+- update this
+- enter details
+- pending
+- tbc
+- n/a where inappropriate
+- lorem ipsum
+
+Example:
+If the Reason for Sale section says:
+“The seller should use this section to clearly explain why the business is being offered for sale...”
+
+Then:
+- section_has_content = true
+- section_status = needs_review
+- warning = “Reason for Sale contains placeholder guidance. Replace with seller-specific wording.”
+
+TASK 5 — Required section logic
+
+Required sections should only be classed as “missing content” if they do not have any meaningful content in:
+
+- main_body
+- bullet_points
+- table_json
+- chart_json
+
+A required section with imported content should not be counted as missing.
+
+Required section statuses should be:
+
+- Complete
+- Needs Review
+- Missing Content
+- Missing App Data
+- Hidden From Report
+- Access Not Configured
+
+Do not collapse all of these into “needs content”.
+
+TASK 6 — Improve warning language
+
+Use these warning labels:
+
+For actual empty sections:
+“Required sections missing content”
+
+For placeholder text:
+“Sections need review”
+
+For missing financial sync/data:
+“Valuation data needs attention”
+
+For missing lease uploads/summaries:
+“Lease information needs attention”
+
+For due diligence checklist:
+“Due diligence checklist incomplete”
+
+For access settings:
+“Buyer access settings need review”
+
+For visibility:
+“Report visibility needs review”
+
+TASK 7 — Fix business name on IM Report screen
+
+The IM Report screen currently shows “My Business”.
+
+Replace “My Business” with the active listing/business name.
+
+Use the first available value from:
+
+1. listing.business_name
+2. listing.title
+3. business.name
+4. business.trading_name
+5. fallback: “My Business”
+
+For the current Bean Culture listing, it should show:
+“Bean Culture Espresso Bar”
+
+Do not hardcode Bean Culture. Pull from the active listing/business record.
+
+TASK 8 — Improve Report Hub data labels
+
+On the IM Report screen, keep the main valuation card but update the labels to be clearer:
+
+Current:
+Estimated Value
+Revenue
+Adj. EBITDA
+Equipment
+Report Health
+
+Improved:
+Estimated Business Value
+Revenue
+Adjusted EBITDA
+Equipment Value
+Report Health
+
+Show valuation range clearly underneath the estimate.
+
+If the report is draft, show a Draft badge.
+If published, show Published.
+If buyer-visible but locked, show Buyer Locked.
+If incomplete, show Needs Review.
+
+TASK 9 — Add section status badges in Report Sections list
+
+In the Report Sections screen, each section card should show:
+
+- Section title
+- Status badge:
+  - Complete
+  - Needs Review
+  - Missing Content
+  - Missing App Data
+  - Hidden
+- Visibility badge:
+  - Public
+  - Approved Buyers
+  - Seller Only
+  - Hidden
+- Source badge:
+  - CSV Imported
+  - App Generated
+  - Seller Supplied
+  - AI Drafted
+  - Mixed
+- Include in PDF icon
+- Include in HTML icon
+
+Do not make users open every section to find the problem.
+
+TASK 10 — Add “Fix Issues” flow
+
+On the Report Hub, if there are warnings, add a button:
+
+“Review Issues”
+
+This opens the Report Checks screen.
+
+Each warning row should have an action button:
+
+- Edit Section
+- Configure Access
+- Upload Lease
+- Review Due Diligence
+- Review Visibility
+- Sync Data
+
+Example:
+Warning:
+Reason for Sale contains placeholder text.
+Action:
+Edit Section
+
+Warning:
+Buyer access settings are not configured.
+Action:
+Configure Access
+
+TASK 11 — CSV import success messaging
+
+After a successful CSV import, show a clear success message:
+
+“CSV imported successfully. 40 sections matched and 177 fields were updated.”
+
+Then, if there are still report warnings, show:
+
+“Your report content was imported. Some sections may still need review before publishing.”
+
+Do not imply that the import failed.
+
+TASK 12 — Preserve app-generated financial data
+
+CSV import should update narrative/report fields only.
+
+It must not overwrite:
+- Valuation figures
+- Revenue sync figures
+- Xero connection state
+- Square connection state
+- Equipment totals
+- Lease analysis data
+- Tour scene/pin counts
+- Buyer access logs
+- Division calculations
+
+CSV can update text, bullets, tables, chart JSON metadata, section titles, subtitles, visibility, and include toggles.
+
+TASK 13 — Publish gating
+
+Publishing should not be blocked just because a section is “Needs Review”, unless the seller chooses strict mode.
+
+Add publish readiness categories:
+
+Hard blockers:
+- Missing required report title/business name
+- Missing valuation data
+- No public/approved-buyer visibility configured
+- Disclaimer missing
+- Seller does not have permission
+
+Soft warnings:
+- Placeholder text detected
+- Reason for sale not personalised
+- Lease not uploaded
+- Due diligence checklist incomplete
+- Buyer access settings incomplete
+- Some financial sections are hidden
+- No growth opportunities added
+- No risks/mitigations added
+
+If soft warnings exist, allow publish but show:
+“Publish with warnings?”
+
+TASK 14 — Report completeness example target
+
+After the filled 40-row CSV is imported, the app should show something closer to:
+
+Report Completeness: 85%
+
+40 of 40 sections have content
+4 sections need review
+2 publishing checks need attention
+
+Not:
+69%
+4 required sections need content
+
+Unless there are genuinely empty required sections.
+
+TASK 15 — Do not break current UI style
+
+Keep the current premium dark blue mobile style:
+- rounded cards
+- blue highlight actions
+- orange warnings
+- green success
+- purple export/report accents
+- existing bottom nav
+- existing Valuation tab structure
+
+This is a logic and UX clarity fix, not a redesign.
+
+SUCCESS CRITERIA
+
+This work is complete when:
+
+1. CSV import still works.
+2. The import preview still shows valid rows, matched sections, changed fields, and unknown keys.
+3. A successful 40-row import does not incorrectly say “required sections need content”.
+4. The IM Report screen uses the active listing name instead of “My Business”.
+5. Report completeness separates content, data, review, and access readiness.
+6. Placeholder text is detected and marked as Needs Review.
+7. The orange warning opens a useful Report Checks screen.
+8. The user can see exactly what needs fixing and why.
+9. The user can click through from each issue to the relevant edit/configuration screen.
+10. App-generated financial, valuation, equipment, lease, and tour data is preserved during CSV import.
+11. Publishing distinguishes hard blockers from soft warnings.
+12. The report builder feels clear, professional, and ready for sellers to use.
