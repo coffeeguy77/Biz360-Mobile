@@ -333,7 +333,7 @@ export default function ReportHubScreen() {
           if (previewCode) previewParam = `?previewCode=${previewCode}`;
         }
       }
-      const url = `${base}/exit360-web/reports/${listingId}${previewParam}`;
+      const url = `${base}/reports/${listingId}${previewParam}`;
       const supported = await Linking.canOpenURL(url);
       if (supported) await Linking.openURL(url);
       else Alert.alert("Cannot open URL", url);
