@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, desc, eq, isNull, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, max, or, sql } from "drizzle-orm";
 import { jwtVerify } from "jose";
 import {
   db,
@@ -1090,39 +1090,46 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         return accessLevel === "seller" ? withLock : sanitiseForNonSeller(withLock);
       });
 
-    // ── Fetch report images (non-panoramic, included in HTML) ──────────────────
-    // Provides the cover hero priority chain: isPrimaryCover=true first → cover_primary role.
-    // These are never panoramic — the API blocks panoramic images from cover/listing roles.
-    // Fetch non-deleted, non-panoramic, HTML-visible report images.
-    // Ordered: isPrimary=true first (DESC bool), then by sortOrder ASC.
+    // ── Fetch report images (HTML-visible) ────────────────────────────────────
+    // Includes non-panoramic images + 360_preview panoramics (for section cards
+    // and diagnostics). Cover-hero chain only picks non-panoramic images.
+    // Ordered: isPrimary=true first, then sortOrder ASC.
     const reportImages = await db
       .select({
-        id:              reportImagesTable.id,
-        url:             reportImagesTable.cloudinarySecureUrl,
-        thumbnailUrl:    reportImagesTable.cloudinarySecureUrl, // client uses buildThumbnailUrl on public_id
-        cloudinaryPublicId: reportImagesTable.cloudinaryPublicId,
-        imageRole:       reportImagesTable.imageRole,
-        displayName:     reportImagesTable.displayName,
-        caption:         reportImagesTable.caption,
-        altText:         reportImagesTable.altText,
-        isPrimary:       reportImagesTable.isPrimary,
-        includeInPdf:    reportImagesTable.includeInPdf,
+        id:                   reportImagesTable.id,
+        url:                  reportImagesTable.cloudinarySecureUrl,
+        thumbnailUrl:         reportImagesTable.cloudinarySecureUrl,
+        cloudinaryPublicId:   reportImagesTable.cloudinaryPublicId,
+        imageRole:            reportImagesTable.imageRole,
+        displayName:          reportImagesTable.displayName,
+        caption:              reportImagesTable.caption,
+        altText:              reportImagesTable.altText,
+        isPrimary:            reportImagesTable.isPrimary,
+        includeInPdf:         reportImagesTable.includeInPdf,
+        includeInHtml:        reportImagesTable.includeInHtml,
         includeInBuyerReport: reportImagesTable.includeInBuyerReport,
-        sectionKey:      reportImagesTable.sectionKey,
-        sortOrder:       reportImagesTable.sortOrder,
-        isPanoramic:     reportImagesTable.isPanoramic,
-        sourceType:      reportImagesTable.sourceType,
+        includeInSellerReport:reportImagesTable.includeInSellerReport,
+        sectionKey:           reportImagesTable.sectionKey,
+        sortOrder:            reportImagesTable.sortOrder,
+        isPanoramic:          reportImagesTable.isPanoramic,
+        sourceType:           reportImagesTable.sourceType,
       })
       .from(reportImagesTable)
       .where(
         and(
           eq(reportImagesTable.listingId, listingId),
-          eq(reportImagesTable.isPanoramic, false),
+          // Allow non-panoramic images AND 360_preview panoramics (for section rendering
+          // and diagnostics); panoramics with other roles are excluded from all surfaces.
+          or(
+            eq(reportImagesTable.isPanoramic, false),
+            eq(reportImagesTable.imageRole, "360_preview"),
+          ),
           eq(reportImagesTable.includeInHtml, true),
           isNull(reportImagesTable.deletedAt),
-          // Non-seller viewers (public / buyer) must not see seller-hidden images.
-          // Sellers see all images regardless of includeInBuyerReport.
-          ...(accessLevel === "seller" ? [] : [eq(reportImagesTable.includeInBuyerReport, true)]),
+          // Seller: respect includeInSellerReport; buyers/public: respect includeInBuyerReport.
+          ...(accessLevel === "seller"
+            ? [eq(reportImagesTable.includeInSellerReport, true)]
+            : [eq(reportImagesTable.includeInBuyerReport, true)]),
         ),
       )
       .orderBy(

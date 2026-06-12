@@ -1665,6 +1665,10 @@ async function handlePdf(req: any, res: any): Promise<void> {
           eq(reportImagesTable.isPanoramic, false),
           eq(reportImagesTable.includeInPdf, true),
           isNull(reportImagesTable.deletedAt),
+          // Seller copy: respect includeInSellerReport; buyer/public: respect includeInBuyerReport
+          isSellerDraft
+            ? eq(reportImagesTable.includeInSellerReport, true)
+            : eq(reportImagesTable.includeInBuyerReport, true),
         ))
         .orderBy(
           desc(reportImagesTable.isPrimary),
@@ -1706,6 +1710,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
     // ── report_images section resolver ────────────────────────────────────────
     // Fetch all non-deleted, PDF-included report_images for the listing so we can
     // resolve per-chapter section images. Panoramic allowed for virtual_tour only.
+    // Visibility: seller copy respects includeInSellerReport; buyer/public respects includeInBuyerReport.
     const allReportImages = await db
       .select({
         publicId:   reportImagesTable.cloudinaryPublicId,
@@ -1720,6 +1725,9 @@ async function handlePdf(req: any, res: any): Promise<void> {
         eq(reportImagesTable.listingId, listingId),
         eq(reportImagesTable.includeInPdf, true),
         isNull(reportImagesTable.deletedAt),
+        isSellerDraft
+          ? eq(reportImagesTable.includeInSellerReport, true)
+          : eq(reportImagesTable.includeInBuyerReport, true),
       ))
       .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder));
 
