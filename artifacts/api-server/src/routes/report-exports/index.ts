@@ -9,6 +9,7 @@ import { logger } from "../../lib/logger";
 import { generateChartSvg } from "../../lib/chart-svg";
 import {
   REPORT_GROUPS, DATA_ROOM_SECTION_KEYS, METRIC_CARD_CHAPTER_KEYS,
+  BUYER_SUMMARY_PRIORITY_SECTION_KEYS,
   COVER_METRIC_TARGETS, sectionHasContent, sectionIsPlaceholder,
   type PdfStyle,
 } from "../../lib/report-groups";
@@ -25,10 +26,10 @@ const PAGE_W     = 595.28;
 const PAGE_H     = 841.89;
 const MARGIN     = 52;
 const CONTENT_W  = PAGE_W - MARGIN * 2;
-const HDR_H      = 36;
-const FTR_H      = 30;
-const CONTENT_TOP    = HDR_H + 16;
-const CONTENT_BOTTOM = PAGE_H - FTR_H - 14;
+const HDR_H      = 26;   // was 36 — tighter header frees vertical space
+const FTR_H      = 22;   // was 30 — tighter footer
+const CONTENT_TOP    = HDR_H + 12;  // 38 — was 52
+const CONTENT_BOTTOM = PAGE_H - FTR_H - 10;  // ~809 — was ~797
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // Cover / chapter-divider pages
@@ -53,15 +54,15 @@ function whitePage(ctx: PdfCtx): number {
   ctx.pg++;
   ctx.doc.save().rect(0, 0, PAGE_W, PAGE_H).fill(WHITE).restore();
   ctx.doc.save().rect(0, 0, PAGE_W, HDR_H).fill(NAVY).restore();
-  ctx.doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED_HDR)
-    .text(ctx.biz.slice(0, 50), MARGIN, 14, { width: CONTENT_W / 2 });
-  ctx.doc.font("Helvetica").fontSize(7).fillColor(MUTED_HDR)
-    .text("Information Memorandum", MARGIN + CONTENT_W / 2, 14, { width: CONTENT_W / 2, align: "right" });
+  ctx.doc.font("Helvetica-Bold").fontSize(6.5).fillColor(MUTED_HDR)
+    .text(ctx.biz.slice(0, 50), MARGIN, 9, { width: CONTENT_W / 2 });
+  ctx.doc.font("Helvetica").fontSize(6.5).fillColor(MUTED_HDR)
+    .text("Information Memorandum", MARGIN + CONTENT_W / 2, 9, { width: CONTENT_W / 2, align: "right" });
   ctx.doc.save().rect(0, PAGE_H - FTR_H, PAGE_W, FTR_H).fill(NAVY).restore();
-  ctx.doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C)
-    .text("Confidential · Exit360", MARGIN, PAGE_H - 19, { width: CONTENT_W / 2 });
-  ctx.doc.font("Helvetica-Bold").fontSize(7).fillColor(MUTED_HDR)
-    .text(`${ctx.pg}`, MARGIN, PAGE_H - 19, { width: CONTENT_W, align: "right" });
+  ctx.doc.font("Helvetica").fontSize(6.5).fillColor(SUBTITLE_C)
+    .text("Confidential · Exit360", MARGIN, PAGE_H - 14, { width: CONTENT_W / 2 });
+  ctx.doc.font("Helvetica-Bold").fontSize(6.5).fillColor(MUTED_HDR)
+    .text(`${ctx.pg}`, MARGIN, PAGE_H - 14, { width: CONTENT_W, align: "right" });
   return CONTENT_TOP;
 }
 
@@ -876,6 +877,7 @@ function renderTOC(
 }
 
 // ── Chapter header banner ─────────────────────────────────────────────────────
+// Compact inline strip (28px) — renders inline above first section, no full page.
 function renderChapterHeader(
   ctx: PdfCtx,
   group: { key: string; title: string },
@@ -883,13 +885,16 @@ function renderChapterHeader(
   y: number,
 ): number {
   const { doc } = ctx;
-  doc.save().rect(0, y, PAGE_W, 44).fill(CHAPTER_BG).restore();
-  doc.save().rect(0, y, 5, 44).fill(BLUE_ACC).restore();
-  doc.font("Helvetica-Bold").fontSize(8).fillColor(BLUE_ACC)
-    .text(`Chapter ${chapterNum}`, MARGIN + 6, y + 7, { width: CONTENT_W });
-  doc.font("Helvetica-Bold").fontSize(14).fillColor(HEADING_C)
-    .text(group.title, MARGIN + 6, y + 20, { width: CONTENT_W });
-  return y + 44 + 18;
+  const STRIP_H = 26;
+  doc.save().rect(0, y, PAGE_W, STRIP_H).fill(CHAPTER_BG).restore();
+  doc.save().rect(0, y, 4, STRIP_H).fill(BLUE_ACC).restore();
+  // Chapter number badge
+  doc.font("Helvetica-Bold").fontSize(6.5).fillColor(BLUE_ACC)
+    .text(`CH. ${String(chapterNum).padStart(2, "0")}`, MARGIN + 6, y + 7, { width: 36 });
+  // Chapter title inline on same strip
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(HEADING_C)
+    .text(group.title, MARGIN + 48, y + 7, { width: CONTENT_W - 54, lineBreak: false });
+  return y + STRIP_H + 8;  // 34px total (was 62px)
 }
 
 // ── Table renderer ────────────────────────────────────────────────────────────
@@ -923,50 +928,69 @@ function renderTable(ctx: PdfCtx, rows: Record<string, unknown>[], y: number): n
 }
 
 // ── Section block renderer ────────────────────────────────────────────────────
-function renderSection(ctx: PdfCtx, section: any, y: number, isBuyerMode: boolean): number {
+// colX / colW allow two-column placement (default = full-width at MARGIN).
+// compact = true tightens spacing for compact / buyer_summary styles.
+function renderSection(
+  ctx: PdfCtx,
+  section: any,
+  y: number,
+  isBuyerMode: boolean,
+  compact = false,
+  colX = MARGIN,
+  colW = CONTENT_W,
+): number {
   const { doc } = ctx;
+  const bodyFontSize  = compact ? 9   : 9.5;
+  const titleFontSize = compact ? 10  : 12;
+  const afterSection  = compact ? 8   : 14;
+  const gapBeforeSep  = compact ? 3   : 6;
+  const gapAfterSep   = compact ? 6   : 10;
+  const afterPara     = compact ? 5   : 8;
+  const afterBullet   = compact ? 3   : 4;
 
-  // In buyer mode, replace placeholder content with a notice
+  // In buyer mode, replace placeholder content with a slim notice
   const isPlaceholder = sectionIsPlaceholder(section);
   if (isBuyerMode && isPlaceholder) {
-    y = checkY(ctx, y, 36);
-    doc.save().rect(MARGIN, y, CONTENT_W, 28).fill("#FEF3C7").restore();
-    doc.font("Helvetica-Oblique").fontSize(9).fillColor("#92400E")
-      .text(`${section.title}: Information to be confirmed by seller.`, MARGIN + 8, y + 9, { width: CONTENT_W - 16 });
-    return y + 28 + 12;
+    y = checkY(ctx, y, 24);
+    doc.save().rect(colX, y, colW, 16).fill("#FEF9EC").restore();
+    doc.save().rect(colX, y, 3, 16).fill("#F59E0B").restore();
+    doc.font("Helvetica-Oblique").fontSize(7.5).fillColor("#92400E")
+      .text(`${section.title}: Information to be confirmed by seller.`, colX + 8, y + 4, { width: colW - 12 });
+    return y + 16 + 6;
   }
 
-  // Section header needs ~52px; start new page if tight
-  y = checkY(ctx, y, 52);
+  // Section heading guard — ensure heading + at least 3 body lines fit before breaking
+  const headingGuard = compact ? 80 : 100;
+  y = checkY(ctx, y, headingGuard);
 
   // Blue left accent bar
-  doc.save().rect(MARGIN, y, 3, 36).fill(BLUE_ACC).restore();
+  doc.save().rect(colX, y, 3, compact ? 26 : 32).fill(BLUE_ACC).restore();
 
   // Title
-  doc.font("Helvetica-Bold").fontSize(12).fillColor(HEADING_C)
-    .text(section.title, MARGIN + 10, y, { width: CONTENT_W - 10 });
+  doc.font("Helvetica-Bold").fontSize(titleFontSize).fillColor(HEADING_C)
+    .text(section.title, colX + 10, y, { width: colW - 10 });
   y = doc.y + 2;
 
   // Subtitle
   if (section.subtitle) {
-    doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
-      .text(section.subtitle, MARGIN + 10, y, { width: CONTENT_W - 10 });
-    y = doc.y + 4;
+    doc.font("Helvetica").fontSize(7.5).fillColor(SUBTITLE_C)
+      .text(section.subtitle, colX + 10, y, { width: colW - 10 });
+    y = doc.y + 3;
   }
 
   // Placeholder badge (seller view only)
   if (!isBuyerMode && isPlaceholder) {
-    doc.save().rect(MARGIN + 10, y, 90, 14).fill("#FEF3C7").restore();
+    doc.save().rect(colX + 10, y, 90, 14).fill("#FEF3C7").restore();
     doc.font("Helvetica-Bold").fontSize(7).fillColor("#92400E")
-      .text("! NEEDS REVIEW", MARGIN + 14, y + 3, { width: 84 });
+      .text("! NEEDS REVIEW", colX + 14, y + 3, { width: 84 });
     y += 18;
   }
 
   // Separator line
-  y += 6;
-  doc.save().moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y)
-    .lineWidth(0.5).strokeColor(BORDER_C).stroke().restore();
-  y += 10;
+  y += gapBeforeSep;
+  doc.save().moveTo(colX, y).lineTo(colX + colW, y)
+    .lineWidth(0.4).strokeColor(BORDER_C).stroke().restore();
+  y += gapAfterSep;
 
   // Body paragraphs
   if (section.body && section.body.trim()) {
@@ -975,32 +999,37 @@ function renderSection(ctx: PdfCtx, section: any, y: number, isBuyerMode: boolea
       const trimmed = para.trim();
       if (!trimmed) continue;
       let est: number;
-      try { est = doc.heightOfString(trimmed, { width: CONTENT_W, lineGap: 2 }); }
+      try { est = doc.heightOfString(trimmed, { width: colW, lineGap: 1.5 }); }
       catch { est = 60; }
-      y = checkY(ctx, y, est + 10);
-      doc.font("Helvetica").fontSize(9.5).fillColor(BODY_TEXT)
-        .text(trimmed, MARGIN, y, { width: CONTENT_W, lineGap: 2 });
-      y = doc.y + 8;
+      y = checkY(ctx, y, est + afterPara);
+      doc.font("Helvetica").fontSize(bodyFontSize).fillColor(BODY_TEXT)
+        .text(trimmed, colX, y, { width: colW, lineGap: 1.5 });
+      y = doc.y + afterPara;
     }
   }
 
-  // Bullets
+  // Bullets — with orphan-prevention: ensure at least 2 bullets can follow before breaking
   const bullets = Array.isArray(section.bulletPoints) ? (section.bulletPoints as string[]).filter(Boolean) : [];
   if (bullets.length > 0) {
-    y = checkY(ctx, y, 18);
-    for (const b of bullets) {
-      const trimmed = b.trim();
+    // Move whole first cluster to new page if less than 3 bullets fit
+    const clusterGuard = Math.min(bullets.length, 3) * 18;
+    y = checkY(ctx, y, clusterGuard);
+
+    for (let bi = 0; bi < bullets.length; bi++) {
+      const trimmed = bullets[bi].trim();
       if (!trimmed) continue;
       let est: number;
-      try { est = doc.heightOfString(trimmed, { width: CONTENT_W - 14, lineGap: 1.5 }); }
-      catch { est = 20; }
-      y = checkY(ctx, y, est + 6);
-      doc.save().circle(MARGIN + 4, y + 4.5, 2.5).fill(BLUE_ACC).restore();
-      doc.font("Helvetica").fontSize(9.5).fillColor(BODY_TEXT)
-        .text(trimmed, MARGIN + 13, y, { width: CONTENT_W - 13, lineGap: 1.5 });
-      y = doc.y + 4;
+      try { est = doc.heightOfString(trimmed, { width: colW - 14, lineGap: 1.5 }); }
+      catch { est = 18; }
+      // Orphan guard: if there are 2+ more bullets, require room for this one + 1 more
+      const orphanGuard = bi < bullets.length - 2 ? est + afterBullet + 16 : est + afterBullet;
+      y = checkY(ctx, y, orphanGuard);
+      doc.save().circle(colX + 5, y + 4, 2).fill(BLUE_ACC).restore();
+      doc.font("Helvetica").fontSize(bodyFontSize).fillColor(BODY_TEXT)
+        .text(trimmed, colX + 13, y, { width: colW - 13, lineGap: 1.5 });
+      y = doc.y + afterBullet;
     }
-    y += 4;
+    y += compact ? 2 : 4;
   }
 
   // Table data
@@ -1011,28 +1040,30 @@ function renderSection(ctx: PdfCtx, section: any, y: number, isBuyerMode: boolea
     return Array.isArray(parsed) && parsed.length > 0 ? parsed as Record<string, unknown>[] : null;
   })();
   if (tableRows) {
-    y = checkY(ctx, y, 50 + Math.min(tableRows.length, 6) * 20);
+    y = checkY(ctx, y, 50 + Math.min(tableRows.length, 6) * 18);
     y = renderTable(ctx, tableRows.slice(0, 20), y);
   }
 
-  // Chart
-  const chartRaw = (() => {
-    const cd = section.chartData;
-    if (!cd) return null;
-    const parsed = typeof cd === "string" ? (() => { try { return JSON.parse(cd); } catch { return null; } })() : cd;
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed as Array<Record<string, unknown>> : null;
-  })();
-  if (chartRaw) {
-    const CHART_H = 120;
-    y = checkY(ctx, y, CHART_H + 16);
-    try {
-      const svgStr = generateChartSvg(section.sectionKey as string, chartRaw, CONTENT_W, CHART_H);
-      SVGtoPDF(doc, svgStr, MARGIN, y, { width: CONTENT_W, height: CHART_H, preserveAspectRatio: "xMinYMin meet" });
-      y += CHART_H + 12;
-    } catch { /* non-fatal */ }
+  // Chart — only full-width (skip in narrow column mode to avoid distortion)
+  if (colW >= CONTENT_W - 10) {
+    const chartRaw = (() => {
+      const cd = section.chartData;
+      if (!cd) return null;
+      const parsed = typeof cd === "string" ? (() => { try { return JSON.parse(cd); } catch { return null; } })() : cd;
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed as Array<Record<string, unknown>> : null;
+    })();
+    if (chartRaw) {
+      const CHART_H = 110;
+      y = checkY(ctx, y, CHART_H + 16);
+      try {
+        const svgStr = generateChartSvg(section.sectionKey as string, chartRaw, colW, CHART_H);
+        SVGtoPDF(doc, svgStr, colX, y, { width: colW, height: CHART_H, preserveAspectRatio: "xMinYMin meet" });
+        y += CHART_H + 10;
+      } catch { /* non-fatal */ }
+    }
   }
 
-  return y + 14; // spacing after section
+  return y + afterSection;
 }
 
 // ── Extra data fed into buildPdf from the DB queries in each handler ───────────
@@ -1091,6 +1122,67 @@ function extractScore(section: any): number | null {
   return null;
 }
 
+// ── Section height estimator (used by two-column layout planning) ─────────────
+// Rough estimate only — avoids a full render pass; used for overflow guard.
+function estimateSectionHeight(section: any, colW: number): number {
+  let h = 48; // heading block (title + separator)
+  if (section.body?.trim()) {
+    const charsPerLine = Math.max(1, Math.floor(colW / 5.5));
+    const lines = Math.ceil(section.body.length / charsPerLine);
+    h += lines * 12 + 8;
+  }
+  const bulletCount = Array.isArray(section.bulletPoints)
+    ? (section.bulletPoints as string[]).filter(Boolean).length : 0;
+  h += bulletCount * 15;
+  if (section.tableData) h += 55;
+  // Cap at just under one full page so we never infinite-loop
+  return Math.min(h, CONTENT_BOTTOM - CONTENT_TOP - 30);
+}
+
+// ── Two-column section pair renderer (growth_opportunities + risks_mitigations) ─
+function renderTwoColumnPair(
+  ctx: PdfCtx,
+  secA: any,
+  secB: any,
+  y: number,
+  isBuyerMode: boolean,
+  compact: boolean,
+): number {
+  const GAP   = 12;
+  const COL_W = Math.floor((CONTENT_W - GAP) / 2);
+  const COL_A = MARGIN;
+  const COL_B = MARGIN + COL_W + GAP;
+
+  const estMax = Math.max(
+    estimateSectionHeight(secA, COL_W),
+    estimateSectionHeight(secB, COL_W),
+  );
+
+  // Move to a new page if the pair won't fit on the current page
+  if (y + estMax > CONTENT_BOTTOM) {
+    y = whitePage(ctx);
+  }
+
+  const startY = y;
+
+  // Left column
+  const yA = renderSection(ctx, secA, startY, isBuyerMode, compact, COL_A, COL_W);
+
+  // Right column — starts at same startY, uses absolute x positioning
+  const yB = renderSection(ctx, secB, startY, isBuyerMode, compact, COL_B, COL_W);
+
+  // Thin vertical divider between the two columns
+  const divBottom = Math.max(yA, yB) - 10;
+  if (divBottom > startY + 20) {
+    ctx.doc.save()
+      .moveTo(COL_B - Math.floor(GAP / 2), startY + 4)
+      .lineTo(COL_B - Math.floor(GAP / 2), divBottom)
+      .lineWidth(0.4).strokeColor(BORDER_C).stroke().restore();
+  }
+
+  return Math.max(yA, yB);
+}
+
 // ── Main PDF body builder ──────────────────────────────────────────────────────
 async function buildPdf(
   ctx: PdfCtx,
@@ -1109,6 +1201,8 @@ async function buildPdf(
 ): Promise<void> {
   // Buyer mode applies when mode=buyer OR buyer_summary style is selected
   const isBuyerMode = mode === "buyer" || style === "buyer_summary";
+  // Compact flag: tighter spacing in compact and buyer_summary styles
+  const isCompact = style === "compact" || style === "buyer_summary";
 
   // ── 1. Cover page ──────────────────────────────────────────────────────────
   const coverMetrics = extractCoverMetrics(sections);
@@ -1122,6 +1216,22 @@ async function buildPdf(
       const sec = sections.find((s) => s.sectionKey === k);
       return sec && sectionHasContent(sec) ? { key: k, title: sec.title, secs: [sec] } : null;
     }).filter(Boolean) as any[];
+
+  } else if (style === "buyer_summary") {
+    // Buyer Summary: keep only the 10 priority sections, in REPORT_GROUPS chapter order.
+    // seller_only sections are already excluded by filterSections upstream.
+    const prioritySet = new Set(BUYER_SUMMARY_PRIORITY_SECTION_KEYS);
+    renderGroups = REPORT_GROUPS
+      .map((g) => ({
+        key:   g.key,
+        title: g.title,
+        secs:  g.sectionKeys
+          .filter((k) => prioritySet.has(k))
+          .map((k) => sections.find((s) => s.sectionKey === k))
+          .filter((s): s is any => s != null && sectionHasContent(s) && s.visibility !== "seller_only"),
+      }))
+      .filter((g) => g.secs.length > 0);
+
   } else {
     renderGroups = REPORT_GROUPS.map((g) => ({
       key:   g.key,
@@ -1140,18 +1250,36 @@ async function buildPdf(
     renderTOC(ctx, renderGroups, pageNums);
   }
 
-  // ── 4. Content pages ───────────────────────────────────────────────────────
+  // ── 4. Content pages ────────────────────────────────────────────────────────
+  // In compact / buyer_summary: chapters share pages when space allows.
+  // In detailed / data_room: every chapter starts a new page (existing behaviour).
+  const CHAPTER_MIN_H = 90; // space needed for chapter strip + first section heading
+  let carryY = CONTENT_TOP; // tracks y across chapters in compact mode
+
   for (let gi = 0; gi < renderGroups.length; gi++) {
     const group = renderGroups[gi];
 
-    let y = whitePage(ctx);
+    let y: number;
+    if (!isCompact || gi === 0) {
+      // Always start first chapter + detailed/data_room on a fresh page
+      y = whitePage(ctx);
+    } else if (carryY + CHAPTER_MIN_H > CONTENT_BOTTOM) {
+      // Not enough room — new page
+      y = whitePage(ctx);
+    } else {
+      // Continue on the current page with a small inter-chapter gap
+      y = carryY + 14;
+    }
 
     if (style !== "data_room") {
       y = renderChapterHeader(ctx, group, gi + 1, y);
-      y = renderChapterMetricCards(ctx, group.key, group.secs, y);
+      // Skip metric cards in buyer_summary — sections are already tightly curated
+      if (style !== "buyer_summary") {
+        y = renderChapterMetricCards(ctx, group.key, group.secs, y);
+      }
     }
 
-    // ── Chapter-level visuals injected before section content ────────────────
+    // ── Chapter-level visuals injected before section content ──────────────
     if (style !== "data_room") {
       switch (group.key) {
         case "business_overview":
@@ -1162,7 +1290,6 @@ async function buildPdf(
           break;
 
         case "financial_performance": {
-          // Revenue by Division — horizontal bars, excluded divisions greyed
           const revDivSec = group.secs.find((s) => s.sectionKey === "division_breakdown")
             ?? sections.find((s: any) => s.sectionKey === "division_breakdown");
           const revDivData = parseChartData(revDivSec);
@@ -1171,13 +1298,10 @@ async function buildPdf(
         }
 
         case "valuation": {
-          // Valuation Bridge from snapshot data
           y = renderValuationBridge(ctx, extra.snapshot, y, extra.isSellerDraft);
-          // Valuation by Division — same division_breakdown source, valuation key
           const valDivSec = sections.find((s: any) => s.sectionKey === "division_breakdown");
           const valDivData = parseChartData(valDivSec);
           y = renderDivisionChart(ctx, valDivData ?? [], "valuation", "Valuation by Division", y, extra.isSellerDraft);
-          // Business Health Score from section data — with seller fallback when absent
           const healthSec = group.secs.find((s) => s.sectionKey === "business_health_score");
           if (healthSec) {
             const score = extractScore(healthSec);
@@ -1188,14 +1312,14 @@ async function buildPdf(
               ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
               ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
                 .text("Business health score: Data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
-              y += 22 + 10;
+              y += 32;
             }
           } else if (extra.isSellerDraft) {
             y = checkY(ctx, y, 28);
             ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
             ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
               .text("Business health score: Data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
-            y += 22 + 10;
+            y += 32;
           }
           break;
         }
@@ -1235,7 +1359,7 @@ async function buildPdf(
             ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
             ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
               .text("Due diligence checklist: Data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
-            y += 22 + 10;
+            y += 32;
           }
           break;
         }
@@ -1250,23 +1374,46 @@ async function buildPdf(
               ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
               ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
                 .text("Buyer engagement: No activity recorded yet.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
-              y += 22 + 10;
+              y += 32;
             }
           }
           break;
       }
     }
 
-    for (const sec of group.secs) {
-      if (style === "detailed") {
-        y = checkY(ctx, y, 80);
-        if (y > CONTENT_TOP + 10) {
-          ctx.doc.save().moveTo(MARGIN, y - 6).lineTo(PAGE_W - MARGIN, y - 6)
-            .lineWidth(0.8).strokeColor(BORDER_C).stroke().restore();
-        }
+    // ── Section content ──────────────────────────────────────────────────────
+    // growth_risk chapter: render growth_opportunities + risks_mitigations in two columns.
+    if (group.key === "growth_risk" && style !== "data_room") {
+      const growthSec  = group.secs.find((s) => s.sectionKey === "growth_opportunities");
+      const riskSec    = group.secs.find((s) => s.sectionKey === "risks_mitigations");
+      const otherSecs  = group.secs.filter(
+        (s) => s.sectionKey !== "growth_opportunities" && s.sectionKey !== "risks_mitigations",
+      );
+
+      if (growthSec && riskSec) {
+        y = renderTwoColumnPair(ctx, growthSec, riskSec, y, isBuyerMode, isCompact);
+      } else {
+        if (growthSec) y = renderSection(ctx, growthSec, y, isBuyerMode, isCompact);
+        if (riskSec)   y = renderSection(ctx, riskSec,   y, isBuyerMode, isCompact);
       }
-      y = renderSection(ctx, sec, y, isBuyerMode);
+      for (const sec of otherSecs) {
+        y = renderSection(ctx, sec, y, isBuyerMode, isCompact);
+      }
+
+    } else {
+      for (const sec of group.secs) {
+        if (style === "detailed") {
+          y = checkY(ctx, y, 80);
+          if (y > CONTENT_TOP + 10) {
+            ctx.doc.save().moveTo(MARGIN, y - 6).lineTo(PAGE_W - MARGIN, y - 6)
+              .lineWidth(0.8).strokeColor(BORDER_C).stroke().restore();
+          }
+        }
+        y = renderSection(ctx, sec, y, isBuyerMode, isCompact);
+      }
     }
+
+    carryY = y;
   }
 }
 

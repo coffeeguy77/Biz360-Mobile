@@ -135,6 +135,21 @@ export const DATA_ROOM_SECTION_KEYS = [
   "division_breakdown",
 ];
 
+// Buyer Summary mode — only these 10 sections in this priority order.
+// Seller-internal guidance and data-room appendix sections are excluded.
+export const BUYER_SUMMARY_PRIORITY_SECTION_KEYS = [
+  "executive_summary",
+  "business_overview",
+  "financial_performance_summary",
+  "app_valuation_summary",
+  "division_breakdown",
+  "plant_equipment_summary",
+  "lease_premises_summary",
+  "360_business_walkthrough",
+  "growth_opportunities",
+  "next_steps",
+];
+
 // Chapters that receive metric card grids on their opener page.
 // Must match REPORT_GROUPS keys — Valuation, Equipment, Lease, Tour (per spec).
 export const METRIC_CARD_CHAPTER_KEYS = new Set([
