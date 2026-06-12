@@ -7,8 +7,8 @@ import { eq, asc, and } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { generateChartSvg } from "../../lib/chart-svg";
 import {
-  REPORT_GROUPS, DATA_ROOM_SECTION_KEYS,
-  sectionHasContent, sectionIsPlaceholder,
+  REPORT_GROUPS, DATA_ROOM_SECTION_KEYS, METRIC_CARD_CHAPTER_KEYS,
+  COVER_METRIC_TARGETS, sectionHasContent, sectionIsPlaceholder,
   type PdfStyle,
 } from "../../lib/report-groups";
 
@@ -70,27 +70,55 @@ function checkY(ctx: PdfCtx, y: number, need: number): number {
 }
 
 // ── Cover metrics extractor ────────────────────────────────────────────────────
+// Uses COVER_METRIC_TARGETS for deterministic extraction of the 6 key cover fields:
+// asking price, valuation range, revenue, EBITDA, equipment value, lease term.
 function extractCoverMetrics(sections: any[]): { label: string; value: string }[] {
-  for (const key of ["app_valuation_summary", "financial_performance_summary"]) {
-    const sec = sections.find((s) => s.sectionKey === key);
+  function parseTable(td: unknown): Record<string, unknown>[] | null {
+    if (typeof td === "string") { try { return JSON.parse(td); } catch { return null; } }
+    return Array.isArray(td) ? (td as Record<string, unknown>[]) : null;
+  }
+
+  const metrics: { label: string; value: string }[] = [];
+
+  for (const target of COVER_METRIC_TARGETS) {
+    const sec = sections.find((s) => s.sectionKey === target.sectionKey);
     if (!sec?.tableData) continue;
-    const td = sec.tableData;
-    const parsed = typeof td === "string"
-      ? (() => { try { return JSON.parse(td); } catch { return null; } })()
-      : td;
-    if (!Array.isArray(parsed) || parsed.length === 0) continue;
-    const metrics: { label: string; value: string }[] = [];
-    for (const row of parsed) {
+    const rows = parseTable(sec.tableData);
+    if (!rows?.length) continue;
+    for (const row of rows) {
       const keys = Object.keys(row);
       if (keys.length < 2) continue;
-      const label = String(row[keys[0]] ?? "").trim();
-      const value = String(row[keys[1]] ?? "").trim();
-      if (label && value) metrics.push({ label, value });
+      const rowLabel = String(row[keys[0]] ?? "").toLowerCase();
+      const rowValue = String(row[keys[1]] ?? "").trim();
+      if (rowValue && target.search.some((term) => rowLabel.includes(term))) {
+        metrics.push({ label: target.label, value: rowValue });
+        break;
+      }
+    }
+    if (metrics.length >= 4) break;
+  }
+
+  // Fallback: fill remaining slots from first available tableData section
+  if (metrics.length < 2) {
+    for (const sec of sections) {
+      if (!sec.tableData) continue;
+      const rows = parseTable(sec.tableData);
+      if (!rows?.length) continue;
+      for (const row of rows) {
+        const keys = Object.keys(row);
+        if (keys.length < 2) continue;
+        const l = String(row[keys[0]] ?? "").trim();
+        const v = String(row[keys[1]] ?? "").trim();
+        if (l && v && !metrics.some((m) => m.label.toLowerCase() === l.toLowerCase())) {
+          metrics.push({ label: l, value: v });
+        }
+        if (metrics.length >= 4) break;
+      }
       if (metrics.length >= 4) break;
     }
-    if (metrics.length > 0) return metrics;
   }
-  return [];
+
+  return metrics.slice(0, 4);
 }
 
 // ── Cover page (dark navy) ─────────────────────────────────────────────────────
@@ -176,11 +204,8 @@ function renderCover(
 }
 
 // ── Chapter metric card grid ───────────────────────────────────────────────────
-// Renders a 2-column metric card grid at the top of a chapter opener page.
-// Applies to chapters that commonly carry tabular summary data.
-const METRIC_CARD_CHAPTERS = new Set([
-  "valuation_financials", "assets_equipment", "lease_premises", "divisions_earnings",
-]);
+// Uses the shared METRIC_CARD_CHAPTER_KEYS set (valuation, assets_equipment,
+// lease_premises, virtual_tour) — spec: Valuation, Equipment, Lease, Tour.
 
 function extractSectionMetrics(secs: any[]): { label: string; value: string }[] {
   for (const sec of secs) {
@@ -205,7 +230,7 @@ function extractSectionMetrics(secs: any[]): { label: string; value: string }[] 
 }
 
 function renderChapterMetricCards(ctx: PdfCtx, chapterKey: string, secs: any[], y: number): number {
-  if (!METRIC_CARD_CHAPTERS.has(chapterKey)) return y;
+  if (!METRIC_CARD_CHAPTER_KEYS.has(chapterKey)) return y;
   const metrics = extractSectionMetrics(secs);
   if (!metrics.length) return y;
   y = checkY(ctx, y, 90);
@@ -531,6 +556,9 @@ async function handlePdf(req: any, res: any): Promise<void> {
   const style     = ((req.query.style as string | undefined) ?? "compact") as PdfStyle;
 
   try {
+    // Business name resolution: the val_cafes schema provides `name` as the
+    // canonical business identifier. Future columns (businessName, tradingName, title)
+    // would be added here in the fallback chain; for now `name` is the sole source.
     const [cafe] = await db
       .select({ id: cafesTable.id, name: cafesTable.name })
       .from(cafesTable)
@@ -541,6 +569,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
       res.status(403).json({ error: "Not authorised to export this listing" });
       return;
     }
+    const biz = cafe.name ?? "Business";
 
     let allSections: any[];
     if (versionId) {
@@ -562,7 +591,6 @@ async function handlePdf(req: any, res: any): Promise<void> {
     }
 
     const sections  = filterSections(allSections, mode, style);
-    const biz       = cafe.name ?? "Business";
     const modeLabel = mode === "seller" ? "Seller Copy" : "Buyer Copy";
     const dateStr   = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
     const filename  = `im-report-${listingId.slice(0, 8)}-${mode}-${style}.pdf`;
@@ -640,7 +668,10 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       .from(cafesTable)
       .where(eq(cafesTable.listingId, listingId))
       .limit(1);
-    const biz = cafeMeta?.name ?? "Confidential Business";
+    // Same name-resolution pattern as authenticated handler — `name` is the sole
+    // column available in val_cafes today; fallback chain extended here when new
+    // columns (businessName, tradingName, title) are added to the schema.
+    const biz = cafeMeta?.name ?? "Business";
 
     const dateStr  = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
     const filename = `im-report-${listingId.slice(0, 8)}-buyer-${style}.pdf`;

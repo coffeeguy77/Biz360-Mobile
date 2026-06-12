@@ -766,6 +766,55 @@ export function ReportPage() {
                 </div>
               </div>
 
+              {/* Chapter metric cards — for valuation, assets, lease, and tour chapters */}
+              {(() => {
+                const METRIC_CHAPTERS = new Set(["valuation", "assets_equipment", "lease_premises", "virtual_tour"]);
+                if (!METRIC_CHAPTERS.has(group.key)) return null;
+                // Extract up to 4 metrics from the first section with tableData
+                const metrics: { label: string; value: string }[] = [];
+                for (const sec of group.sections) {
+                  if (!sec.tableData) continue;
+                  let rows: Record<string, unknown>[] | null = null;
+                  if (typeof sec.tableData === "string") {
+                    try { rows = JSON.parse(sec.tableData); } catch { rows = null; }
+                  } else if (Array.isArray(sec.tableData)) {
+                    rows = sec.tableData as Record<string, unknown>[];
+                  }
+                  if (!rows?.length) continue;
+                  for (const row of rows) {
+                    const keys = Object.keys(row);
+                    if (keys.length < 2) continue;
+                    const l = String(row[keys[0]] ?? "").trim();
+                    const v = String(row[keys[1]] ?? "").trim();
+                    if (l && v) metrics.push({ label: l, value: v });
+                    if (metrics.length >= 4) break;
+                  }
+                  if (metrics.length > 0) break;
+                }
+                if (!metrics.length) return null;
+                return (
+                  <div className="grid grid-cols-2 gap-3 mb-8">
+                    {metrics.map(({ label, value }, mi) => (
+                      <div
+                        key={mi}
+                        className={cn(
+                          "rounded-xl border-l-4 px-5 py-4",
+                          printMode ? "bg-blue-50 border-blue-500" : "bg-blue-500/10 border-blue-500"
+                        )}
+                        style={{ borderLeftColor: chapterAccent }}
+                      >
+                        <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-1 truncate", printMode ? "text-slate-500" : "text-slate-400")}>
+                          {label}
+                        </p>
+                        <p className={cn("text-base font-bold truncate", printMode ? "text-slate-900" : "text-white")}>
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Sections within chapter */}
               <div className="space-y-8">
                 {group.sections.map((section) => {

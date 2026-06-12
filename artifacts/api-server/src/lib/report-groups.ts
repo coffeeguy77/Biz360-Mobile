@@ -4,6 +4,8 @@ export interface ReportGroup {
   sectionKeys: string[];
 }
 
+// 13-chapter map — single source of truth for PDF and HTML chapter grouping.
+// All 40 section keys are assigned to exactly one chapter.
 export const REPORT_GROUPS: ReportGroup[] = [
   {
     key: "executive_summary",
@@ -16,30 +18,33 @@ export const REPORT_GROUPS: ReportGroup[] = [
     sectionKeys: ["business_overview", "buyer_suitability", "training_handover"],
   },
   {
-    key: "valuation_financials",
-    title: "Valuation and Financials",
+    key: "financial_performance",
+    title: "Financial Performance",
+    sectionKeys: [
+      "financial_performance_summary",
+      "verified_revenue_sources",
+      "division_breakdown",
+      "revenue_stream_breakdown",
+    ],
+  },
+  {
+    key: "valuation",
+    title: "Valuation & Pricing",
     sectionKeys: [
       "app_valuation_summary",
       "valuation_methodology",
       "valuation_range_explanation",
       "business_health_score",
-      "verified_revenue_sources",
-      "financial_performance_summary",
     ],
   },
   {
-    key: "divisions_earnings",
-    title: "Divisions and Earnings",
-    sectionKeys: [
-      "division_breakdown",
-      "revenue_stream_breakdown",
-      "cogs_mapping_summary",
-      "addbacks_adjusted_ebitda",
-    ],
+    key: "earnings_adjustments",
+    title: "Earnings & Adjustments",
+    sectionKeys: ["cogs_mapping_summary", "addbacks_adjusted_ebitda"],
   },
   {
     key: "assets_equipment",
-    title: "Assets and Equipment",
+    title: "Assets & Equipment",
     sectionKeys: [
       "plant_equipment_summary",
       "sale_inclusions",
@@ -49,7 +54,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
   },
   {
     key: "lease_premises",
-    title: "Lease and Premises",
+    title: "Lease & Premises",
     sectionKeys: [
       "lease_premises_summary",
       "lease_risk_valuation_impact",
@@ -58,40 +63,38 @@ export const REPORT_GROUPS: ReportGroup[] = [
     ],
   },
   {
-    key: "tour_operations",
-    title: "Tour and Operations",
-    sectionKeys: [
-      "360_business_walkthrough",
-      "key_tour_highlights",
-      "operations_systems",
-      "staff_owner_involvement",
-    ],
+    key: "staff_operations",
+    title: "Staff & Operations",
+    sectionKeys: ["staff_owner_involvement", "operations_systems"],
   },
   {
     key: "brand_customers",
-    title: "Brand, Customers and Suppliers",
-    sectionKeys: [
-      "supplier_summary",
-      "customer_base",
-      "brand_digital_assets",
-      "reviews_reputation",
-    ],
+    title: "Brand, Customers & Suppliers",
+    sectionKeys: ["supplier_summary", "customer_base", "brand_digital_assets", "reviews_reputation"],
   },
   {
     key: "growth_risk",
-    title: "Growth and Risk",
+    title: "Growth & Risk",
     sectionKeys: ["growth_opportunities", "risks_mitigations", "swot_analysis"],
   },
   {
-    key: "buyer_pack",
-    title: "Buyer Pack",
+    key: "virtual_tour",
+    title: "Virtual Tour & Property",
+    sectionKeys: ["360_business_walkthrough", "key_tour_highlights"],
+  },
+  {
+    key: "due_diligence",
+    title: "Due Diligence",
     sectionKeys: [
+      "due_diligence_documents_available",
       "verified_information",
       "buyer_access_confidentiality",
-      "due_diligence_documents_available",
-      "next_steps",
-      "disclaimer",
     ],
+  },
+  {
+    key: "buyer_pack",
+    title: "Buyer Pack & Next Steps",
+    sectionKeys: ["next_steps", "disclaimer"],
   },
 ];
 
@@ -130,6 +133,31 @@ export const DATA_ROOM_SECTION_KEYS = [
   "due_diligence_documents_available",
   "cogs_mapping_summary",
   "division_breakdown",
+];
+
+// Chapters that receive metric card grids on their opener page.
+// Must match REPORT_GROUPS keys — Valuation, Equipment, Lease, Tour (per spec).
+export const METRIC_CARD_CHAPTER_KEYS = new Set([
+  "valuation",
+  "assets_equipment",
+  "lease_premises",
+  "virtual_tour",
+]);
+
+// Deterministic cover-metric targets: the label shown, ordered search terms to match
+// row labels, and which sectionKey to look in first. This ensures the cover always
+// shows estimated value, range, revenue, EBITDA, and equipment value when available.
+export const COVER_METRIC_TARGETS: {
+  label: string;
+  search: string[];
+  sectionKey: string;
+}[] = [
+  { label: "Asking Price",    search: ["asking price", "estimated value", "sale price", "business value"], sectionKey: "app_valuation_summary" },
+  { label: "Valuation Range", search: ["valuation range", "range", "value range"],                        sectionKey: "app_valuation_summary" },
+  { label: "Annual Revenue",  search: ["revenue", "annual revenue", "total revenue", "turnover"],         sectionKey: "financial_performance_summary" },
+  { label: "EBITDA",          search: ["ebitda", "adjusted ebitda", "net profit", "profit"],              sectionKey: "addbacks_adjusted_ebitda" },
+  { label: "Equipment Value", search: ["equipment", "plant", "total value", "equipment value"],           sectionKey: "plant_equipment_summary" },
+  { label: "Lease Term",      search: ["lease term", "term", "lease remaining", "years remaining"],       sectionKey: "lease_premises_summary" },
 ];
 
 export function containsPlaceholder(text: string): boolean {
