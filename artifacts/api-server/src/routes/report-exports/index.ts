@@ -1008,28 +1008,81 @@ function renderSection(
     }
   }
 
-  // Bullets — with orphan-prevention: ensure at least 2 bullets can follow before breaking
-  const bullets = Array.isArray(section.bulletPoints) ? (section.bulletPoints as string[]).filter(Boolean) : [];
+  // Bullets — atomic group pagination + optional compact-table consolidation
+  const bullets = Array.isArray(section.bulletPoints)
+    ? (section.bulletPoints as string[]).filter(Boolean) : [];
   if (bullets.length > 0) {
-    // Move whole first cluster to new page if less than 3 bullets fit
-    const clusterGuard = Math.min(bullets.length, 3) * 18;
-    y = checkY(ctx, y, clusterGuard);
+    // Detect "Key: Value" bullet pattern → render as compact two-column table instead
+    const kvBullets = bullets.filter((b) => /^[^:]{2,40}:\s*.{1,}/.test(b.trim()));
+    const isKvTable = compact && kvBullets.length >= 2 && kvBullets.length >= Math.ceil(bullets.length * 0.6);
 
-    for (let bi = 0; bi < bullets.length; bi++) {
-      const trimmed = bullets[bi].trim();
-      if (!trimmed) continue;
-      let est: number;
-      try { est = doc.heightOfString(trimmed, { width: colW - 14, lineGap: 1.5 }); }
-      catch { est = 18; }
-      // Orphan guard: if there are 2+ more bullets, require room for this one + 1 more
-      const orphanGuard = bi < bullets.length - 2 ? est + afterBullet + 16 : est + afterBullet;
-      y = checkY(ctx, y, orphanGuard);
-      doc.save().circle(colX + 5, y + 4, 2).fill(BLUE_ACC).restore();
-      doc.font("Helvetica").fontSize(bodyFontSize).fillColor(BODY_TEXT)
-        .text(trimmed, colX + 13, y, { width: colW - 13, lineGap: 1.5 });
-      y = doc.y + afterBullet;
+    if (isKvTable) {
+      // Compact label/value table — merges repeated key:value bullets into a grid
+      const LABEL_W = Math.floor(colW * 0.40);
+      const VALUE_W = colW - LABEL_W - 8;
+      const ROW_H   = 15;
+      y = checkY(ctx, y, bullets.length * (ROW_H + 2) + 4);
+      for (const b of bullets) {
+        y = checkY(ctx, y, ROW_H + 2);
+        const m   = b.trim().match(/^([^:]+):\s*(.+)$/);
+        const lbl = (m ? m[1] : b).trim().slice(0, 40);
+        const val = (m ? m[2] : "").trim().slice(0, 60);
+        ctx.doc.save().rect(colX, y, colW, ROW_H).fill("#F8FAFC").restore();
+        ctx.doc.save().rect(colX, y, 3, ROW_H).fill(BLUE_ACC + "44").restore();
+        ctx.doc.font("Helvetica-Bold").fontSize(7.5).fillColor(BODY_TEXT)
+          .text(lbl, colX + 6, y + 4, { width: LABEL_W - 6, lineBreak: false });
+        if (val) {
+          ctx.doc.font("Helvetica").fontSize(7.5).fillColor(BODY_TEXT)
+            .text(val, colX + LABEL_W + 4, y + 4, { width: VALUE_W, lineBreak: false });
+        }
+        y += ROW_H + 2;
+      }
+      y += compact ? 2 : 4;
+    } else {
+      // Standard bullet list — atomic group pagination:
+      // Pre-measure the whole group; if it fits within the max-move cap,
+      // move the entire group to the next page rather than splitting it.
+      const MAX_GROUP_MOVE_H = Math.floor((CONTENT_BOTTOM - CONTENT_TOP) * 0.55);
+
+      const bulletHeights: number[] = bullets.map((b) => {
+        const trimmed = b.trim();
+        if (!trimmed) return 0;
+        let est = 18;
+        try { est = doc.heightOfString(trimmed, { width: colW - 14, lineGap: 1.5 }); } catch {}
+        return est + afterBullet;
+      });
+      const totalGroupH = bulletHeights.reduce((s, h) => s + h, 0);
+
+      if (totalGroupH <= MAX_GROUP_MOVE_H) {
+        // Small group: move atomically — single checkY for the whole group
+        y = checkY(ctx, y, totalGroupH);
+        // Render all bullets; no further page-break checks needed inside group
+        for (let bi = 0; bi < bullets.length; bi++) {
+          const trimmed = bullets[bi].trim();
+          if (!trimmed) continue;
+          doc.save().circle(colX + 5, y + 4, 2).fill(BLUE_ACC).restore();
+          doc.font("Helvetica").fontSize(bodyFontSize).fillColor(BODY_TEXT)
+            .text(trimmed, colX + 13, y, { width: colW - 13, lineGap: 1.5 });
+          y = doc.y + afterBullet;
+        }
+      } else {
+        // Large group: allow page breaks but require the next bullet to also fit
+        y = checkY(ctx, y, Math.min(totalGroupH, 3 * 18));
+        for (let bi = 0; bi < bullets.length; bi++) {
+          const trimmed = bullets[bi].trim();
+          if (!trimmed) continue;
+          const thisH = bulletHeights[bi];
+          const nextH = bi + 1 < bullets.length ? (bulletHeights[bi + 1] || 0) : 0;
+          // Require this bullet + the next one (anti-orphan)
+          y = checkY(ctx, y, thisH + (nextH > 0 ? nextH : 0));
+          doc.save().circle(colX + 5, y + 4, 2).fill(BLUE_ACC).restore();
+          doc.font("Helvetica").fontSize(bodyFontSize).fillColor(BODY_TEXT)
+            .text(trimmed, colX + 13, y, { width: colW - 13, lineGap: 1.5 });
+          y = doc.y + afterBullet;
+        }
+      }
+      y += compact ? 2 : 4;
     }
-    y += compact ? 2 : 4;
   }
 
   // Table data
@@ -1152,11 +1205,20 @@ function renderTwoColumnPair(
   const COL_W = Math.floor((CONTENT_W - GAP) / 2);
   const COL_A = MARGIN;
   const COL_B = MARGIN + COL_W + GAP;
+  const PAGE_H_USABLE = CONTENT_BOTTOM - CONTENT_TOP;
 
-  const estMax = Math.max(
-    estimateSectionHeight(secA, COL_W),
-    estimateSectionHeight(secB, COL_W),
-  );
+  const estA   = estimateSectionHeight(secA, COL_W);
+  const estB   = estimateSectionHeight(secB, COL_W);
+  const estMax = Math.max(estA, estB);
+
+  // Reliability guard: fall back to stacked single-column when either section's
+  // estimated height exceeds 55% of a page — prevents column desync from
+  // internal checkY page-breaks triggering at different points in each column.
+  if (estA > PAGE_H_USABLE * 0.55 || estB > PAGE_H_USABLE * 0.55) {
+    y = renderSection(ctx, secA, y, isBuyerMode, compact);
+    y = renderSection(ctx, secB, y, isBuyerMode, compact);
+    return y;
+  }
 
   // Move to a new page if the pair won't fit on the current page
   if (y + estMax > CONTENT_BOTTOM) {
@@ -1218,19 +1280,40 @@ async function buildPdf(
     }).filter(Boolean) as any[];
 
   } else if (style === "buyer_summary") {
-    // Buyer Summary: keep only the 10 priority sections, in REPORT_GROUPS chapter order.
-    // seller_only sections are already excluded by filterSections upstream.
-    const prioritySet = new Set(BUYER_SUMMARY_PRIORITY_SECTION_KEYS);
-    renderGroups = REPORT_GROUPS
-      .map((g) => ({
-        key:   g.key,
-        title: g.title,
-        secs:  g.sectionKeys
-          .filter((k) => prioritySet.has(k))
-          .map((k) => sections.find((s) => s.sectionKey === k))
-          .filter((s): s is any => s != null && sectionHasContent(s) && s.visibility !== "seller_only"),
-      }))
-      .filter((g) => g.secs.length > 0);
+    // Buyer Summary: strictly follow the BUYER_SUMMARY_PRIORITY_SECTION_KEYS order.
+    // We build flat section list in priority order, then group CONSECUTIVE sections
+    // that share the same chapter — so "division_breakdown" (financial ch.) can appear
+    // AFTER "app_valuation_summary" (valuation ch.) as the priority list requires,
+    // even though both financial sections share a chapter in REPORT_GROUPS.
+    const sectionToChapter = new Map<string, { key: string; title: string }>();
+    for (const g of REPORT_GROUPS) {
+      for (const k of g.sectionKeys) {
+        sectionToChapter.set(k, { key: g.key, title: g.title });
+      }
+    }
+
+    // Build ordered section list — only those that exist and have content
+    const prioritySecs = BUYER_SUMMARY_PRIORITY_SECTION_KEYS
+      .map((k) => sections.find((s) => s.sectionKey === k))
+      .filter((s): s is any =>
+        s != null && sectionHasContent(s) && s.visibility !== "seller_only",
+      );
+
+    // Consecutive-chapter grouping: merge adjacent sections from the same chapter,
+    // but split into a new group when a different chapter is encountered, preserving
+    // the priority order (not the REPORT_GROUPS chapter order).
+    const buyerGroups: { key: string; title: string; secs: any[] }[] = [];
+    for (const sec of prioritySecs) {
+      const chapter = sectionToChapter.get(sec.sectionKey);
+      if (!chapter) continue;
+      const last = buyerGroups[buyerGroups.length - 1];
+      if (last && last.key === chapter.key) {
+        last.secs.push(sec);
+      } else {
+        buyerGroups.push({ key: chapter.key, title: chapter.title, secs: [sec] });
+      }
+    }
+    renderGroups = buyerGroups;
 
   } else {
     renderGroups = REPORT_GROUPS.map((g) => ({
