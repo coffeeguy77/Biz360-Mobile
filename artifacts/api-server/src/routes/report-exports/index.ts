@@ -175,45 +175,82 @@ function renderCover(
     .text("exit360.com.au", MARGIN, PAGE_H - 96, { width: CONTENT_W, align: "center" });
 }
 
-// ── Chapter metric card grid (valuation chapter opener) ───────────────────────
-function renderChapterMetricCards(ctx: PdfCtx, chapterKey: string, sections: any[], y: number): number {
-  if (chapterKey !== "valuation_financials") return y;
-  const valSec = sections.find((s) => s.sectionKey === "app_valuation_summary");
-  if (!valSec?.tableData) return y;
-  const td = valSec.tableData;
-  const parsed = typeof td === "string"
-    ? (() => { try { return JSON.parse(td); } catch { return null; } })()
-    : td;
-  if (!Array.isArray(parsed) || parsed.length === 0) return y;
-  const metrics: { label: string; value: string }[] = [];
-  for (const row of parsed) {
-    const keys = Object.keys(row);
-    if (keys.length < 2) continue;
-    const label = String(row[keys[0]] ?? "").trim();
-    const value = String(row[keys[1]] ?? "").trim();
-    if (label && value) metrics.push({ label, value });
-    if (metrics.length >= 4) break;
+// ── Chapter metric card grid ───────────────────────────────────────────────────
+// Renders a 2-column metric card grid at the top of a chapter opener page.
+// Applies to chapters that commonly carry tabular summary data.
+const METRIC_CARD_CHAPTERS = new Set([
+  "valuation_financials", "assets_equipment", "lease_premises", "divisions_earnings",
+]);
+
+function extractSectionMetrics(secs: any[]): { label: string; value: string }[] {
+  for (const sec of secs) {
+    if (!sec.tableData) continue;
+    const td = sec.tableData;
+    const parsed = typeof td === "string"
+      ? (() => { try { return JSON.parse(td); } catch { return null; } })()
+      : td;
+    if (!Array.isArray(parsed) || !parsed.length) continue;
+    const metrics: { label: string; value: string }[] = [];
+    for (const row of parsed) {
+      const keys = Object.keys(row);
+      if (keys.length < 2) continue;
+      const label = String(row[keys[0]] ?? "").trim();
+      const value = String(row[keys[1]] ?? "").trim();
+      if (label && value) metrics.push({ label, value });
+      if (metrics.length >= 4) break;
+    }
+    if (metrics.length > 0) return metrics;
   }
+  return [];
+}
+
+function renderChapterMetricCards(ctx: PdfCtx, chapterKey: string, secs: any[], y: number): number {
+  if (!METRIC_CARD_CHAPTERS.has(chapterKey)) return y;
+  const metrics = extractSectionMetrics(secs);
   if (!metrics.length) return y;
   y = checkY(ctx, y, 90);
   const colW = CONTENT_W / 2;
   metrics.slice(0, 4).forEach(({ label, value }, i) => {
     const col = i % 2;
     const row = Math.floor(i / 2);
-    const cx = MARGIN + col * colW + 8;
+    const cx = MARGIN + col * colW + 10;
     const cy = y + row * 44;
     ctx.doc.save().rect(MARGIN + col * colW, cy, colW - 6, 38).fill(CHAPTER_BG).restore();
     ctx.doc.save().rect(MARGIN + col * colW, cy, 4, 38).fill(BLUE_ACC).restore();
-    ctx.doc.font("Helvetica").fontSize(7).fillColor(BLUE_ACC).text(label.slice(0, 28).toUpperCase(), cx + 4, cy + 6);
-    ctx.doc.font("Helvetica-Bold").fontSize(13).fillColor(HEADING_C).text(value.slice(0, 22), cx + 4, cy + 17);
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(BLUE_ACC)
+      .text(label.slice(0, 30).toUpperCase(), cx + 4, cy + 6);
+    ctx.doc.font("Helvetica-Bold").fontSize(12).fillColor(HEADING_C)
+      .text(value.slice(0, 22), cx + 4, cy + 17);
   });
   return y + Math.ceil(Math.min(metrics.length, 4) / 2) * 44 + 16;
+}
+
+// ── TOC page-number estimator ──────────────────────────────────────────────────
+function estimateChapterStartPages(groups: { secs: any[] }[], style: string): number[] {
+  const charsPerPage = style === "detailed" ? 650 : 950;
+  let page = 3; // 1=cover, 2=TOC, 3=first chapter
+  return groups.map((group) => {
+    const start = page;
+    page += 1; // chapter header page
+    for (const sec of group.secs) {
+      const bodyLen = (sec.body ?? "").length;
+      const bulletCount = Array.isArray(sec.bulletPoints)
+        ? (sec.bulletPoints as string[]).filter(Boolean).length : 0;
+      const contentEst = (bodyLen + bulletCount * 50) / charsPerPage;
+      const tableEst = sec.tableData ? 0.5 : 0;
+      const chartEst = sec.chartData ? 0.4 : 0;
+      page += Math.max(0.3, contentEst + tableEst + chartEst);
+    }
+    page = Math.ceil(page);
+    return start;
+  });
 }
 
 // ── TOC page ──────────────────────────────────────────────────────────────────
 function renderTOC(
   ctx: PdfCtx,
   groups: { key: string; title: string; secs: any[] }[],
+  pageNums: number[],
 ): void {
   const y0 = whitePage(ctx);
   const { doc } = ctx;
@@ -229,10 +266,14 @@ function renderTOC(
     doc.font("Helvetica-Bold").fontSize(9).fillColor(BLUE_ACC)
       .text(`${String(i + 1).padStart(2, "0")}`, MARGIN + 4, y + 5, { width: 16 });
     doc.font("Helvetica-Bold").fontSize(11).fillColor(HEADING_C)
-      .text(group.title, MARGIN + 26, y + 4, { width: CONTENT_W - 80 });
+      .text(group.title, MARGIN + 26, y + 4, { width: CONTENT_W - 120 });
+    // Page number — right-aligned
+    const pg = pageNums[i];
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BLUE_ACC)
+      .text(`~${pg}`, MARGIN, y + 4, { width: CONTENT_W, align: "right" });
     doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
-      .text(`${group.secs.length} section${group.secs.length !== 1 ? "s" : ""}`, MARGIN + 26, y + 17, { width: 120 });
-    y += 34;
+      .text(`${group.secs.length} section${group.secs.length !== 1 ? "s" : ""}`, MARGIN + 26, y + 18, { width: 120 });
+    y += 36;
     if (i < groups.length - 1) {
       doc.save().moveTo(MARGIN, y - 4).lineTo(PAGE_W - MARGIN, y - 4)
         .lineWidth(0.4).strokeColor(BORDER_C).stroke().restore();
@@ -439,7 +480,8 @@ async function buildPdf(
 
   // ── 3. TOC page (compact / detailed / buyer_summary) ──────────────────────
   if (style !== "data_room") {
-    renderTOC(ctx, renderGroups);
+    const pageNums = estimateChapterStartPages(renderGroups, style);
+    renderTOC(ctx, renderGroups, pageNums);
   }
 
   // ── 4. Content pages ───────────────────────────────────────────────────────
@@ -451,8 +493,8 @@ async function buildPdf(
 
     if (style !== "data_room") {
       y = renderChapterHeader(ctx, group, gi + 1, y);
-      // Render key-metric cards on the valuation chapter opener
-      y = renderChapterMetricCards(ctx, group.key, sections, y);
+      // Render key-metric cards on applicable chapter openers
+      y = renderChapterMetricCards(ctx, group.key, group.secs, y);
     }
 
     for (const sec of group.secs) {
@@ -592,15 +634,24 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       return false;
     });
 
+    // Look up the business name (not the owner — public endpoint, listingId only)
+    const [cafeMeta] = await db
+      .select({ name: cafesTable.name })
+      .from(cafesTable)
+      .where(eq(cafesTable.listingId, listingId))
+      .limit(1);
+    const biz = cafeMeta?.name ?? "Confidential Business";
+
     const dateStr  = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
     const filename = `im-report-${listingId.slice(0, 8)}-buyer-${style}.pdf`;
-    const effectiveStyle: PdfStyle = style === "buyer_summary" ? "buyer_summary" : style === "compact" ? "compact" : "compact";
+    const VALID_STYLES: PdfStyle[] = ["compact", "detailed", "buyer_summary", "data_room"];
+    const effectiveStyle: PdfStyle = VALID_STYLES.includes(style as PdfStyle) ? (style as PdfStyle) : "compact";
     const styleLabel = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[effectiveStyle] ?? "Compact Broker IM";
 
     const doc = new PDFDocument({ size: "A4", margin: 0, info: {
-      Title: "Information Memorandum — Confidential Business",
+      Title: `Information Memorandum — ${biz}`,
       Author: "Exit360",
-      Subject: "Confidential Business Information Memorandum",
+      Subject: `${biz} Information Memorandum`,
     }});
 
     res.setHeader("Content-Type", "application/pdf");
@@ -608,7 +659,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
     res.setHeader("Cache-Control", "no-cache");
     doc.pipe(res);
 
-    const ctx: PdfCtx = { doc, biz: "Confidential Business", pg: 1 };
+    const ctx: PdfCtx = { doc, biz, pg: 1 };
     await buildPdf(ctx, sections, effectiveStyle, "buyer", {
       listingId,
       modeLabel:  "Buyer Copy",
