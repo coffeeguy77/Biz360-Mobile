@@ -1138,7 +1138,13 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       ?? null;
 
     if (primaryCoverImage) {
-      coverMeta = { ...coverMeta, reportHeroImageUrl: primaryCoverImage.url };
+      // Override heroImageUrl so both old web consumers (heroImageUrl) and
+      // new consumers (reportHeroImageUrl) get the report_images priority chain.
+      coverMeta = {
+        ...coverMeta,
+        heroImageUrl: primaryCoverImage.url,
+        reportHeroImageUrl: primaryCoverImage.url,
+      };
     }
 
     res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages } });

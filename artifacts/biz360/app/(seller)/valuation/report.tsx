@@ -146,6 +146,10 @@ export default function ReportHubScreen() {
   const [publishing, setPublishing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [imageStats, setImageStats] = useState<{
+    total: number; coverSet: boolean; heroCount: number;
+    exteriorCount: number; equipCount: number; has360: boolean;
+  } | null>(null);
 
   const snap = latestSnapshot.combined;
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
@@ -156,10 +160,11 @@ export default function ReportHubScreen() {
     if (!token) return;
     setLoading(true);
     try {
-      const [sectRes, verRes, cafeRes] = await Promise.all([
+      const [sectRes, verRes, cafeRes, imgRes] = await Promise.all([
         fetch(`${API_BASE}/api/report-sections/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/report-versions/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/valuation/cafes`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE}/api/report-images/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (sectRes.ok) {
         const data = await sectRes.json();
@@ -168,6 +173,19 @@ export default function ReportHubScreen() {
       if (verRes.ok) {
         const data = await verRes.json();
         setVersions(data.versions ?? []);
+      }
+      if (imgRes.ok) {
+        const data = await imgRes.json();
+        const imgs: any[] = data.images ?? [];
+        const active = imgs.filter((i: any) => !i.deletedAt);
+        setImageStats({
+          total:         active.length,
+          coverSet:      active.some((i: any) => i.isPrimary) || active.some((i: any) => i.imageRole === "listing_hero"),
+          heroCount:     active.filter((i: any) => ["listing_hero", "cover_secondary", "exterior"].includes(i.imageRole)).length,
+          exteriorCount: active.filter((i: any) => i.imageRole === "exterior").length,
+          equipCount:    active.filter((i: any) => i.imageRole === "equipment").length,
+          has360:        active.some((i: any) => i.imageRole === "360_preview"),
+        });
       }
       if (cafeRes.ok) {
         const data = await cafeRes.json();
@@ -610,6 +628,81 @@ export default function ReportHubScreen() {
             </View>
           )}
         </View>
+
+        {/* Image readiness card */}
+        <TouchableOpacity
+          style={[styles.completenessCard, { backgroundColor: colors.card, borderColor: imageStats && !imageStats.coverSet ? "#EF444433" : colors.border }]}
+          onPress={() => listingId && router.push({ pathname: "/(seller)/valuation/report-images" as any, params: { listingId } })}
+          activeOpacity={0.8}
+        >
+          <View style={styles.completenessHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Feather name="image" size={15} color="#F59E0B" />
+              <Text style={[styles.completenessTitle, { color: colors.foreground }]}>Report Images</Text>
+            </View>
+            {imageStats !== null && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: imageStats.coverSet ? "#16A34A" : "#EF4444" }}>
+                  {imageStats.total} photo{imageStats.total !== 1 ? "s" : ""}
+                </Text>
+                <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+              </View>
+            )}
+          </View>
+
+          {imageStats === null ? (
+            <Text style={[styles.completenessHint, { color: colors.mutedForeground }]}>Loading image status…</Text>
+          ) : imageStats.total === 0 ? (
+            <>
+              <Text style={[styles.completenessHint, { color: colors.mutedForeground }]}>No report images added yet.</Text>
+              <View style={[styles.recommendMore, { borderColor: "#EF444433" }]}>
+                <Feather name="alert-circle" size={13} color="#EF4444" />
+                <Text style={[styles.recommendText, { color: "#EF4444" }]}>Add a cover photo — buyers see the hero image first</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                {([
+                  { label: "Cover", ok: imageStats.coverSet, icon: "check-circle" },
+                  { label: `${imageStats.heroCount} Biz photos`, ok: imageStats.heroCount > 0, icon: "image" },
+                  { label: `${imageStats.equipCount} Equipment`, ok: imageStats.equipCount > 0, icon: "tool" },
+                  { label: "360° tour", ok: imageStats.has360, icon: "aperture" },
+                ] as { label: string; ok: boolean; icon: string }[]).map(({ label, ok, icon }) => (
+                  <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: ok ? "#16A34A18" : "#6B728018", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 }}>
+                    <Feather name={icon as any} size={11} color={ok ? "#16A34A" : "#6B7280"} />
+                    <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: ok ? "#16A34A" : "#6B7280" }}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {!imageStats.coverSet && (
+                <View style={[styles.recommendMore, { borderColor: "#EF444433" }]}>
+                  <Feather name="x-circle" size={13} color="#EF4444" />
+                  <Text style={[styles.recommendText, { color: "#EF4444" }]}>No cover set — mark a Listing Hero or set a primary image</Text>
+                </View>
+              )}
+              {imageStats.equipCount === 0 && (
+                <View style={[styles.recommendMore, { borderColor: "#F59E0B33" }]}>
+                  <Feather name="alert-triangle" size={13} color="#F59E0B" />
+                  <Text style={[styles.recommendText, { color: "#F59E0B" }]}>Add equipment photos — helps buyers assess asset quality</Text>
+                </View>
+              )}
+              {!imageStats.has360 && (
+                <View style={[styles.recommendMore, { borderColor: "#6366F133" }]}>
+                  <Feather name="aperture" size={13} color="#6366F1" />
+                  <Text style={[styles.recommendText, { color: "#6366F1" }]}>Add a 360° tour thumbnail to stand out to buyers</Text>
+                </View>
+              )}
+              {imageStats.coverSet && imageStats.equipCount > 0 && imageStats.has360 && (
+                <View style={styles.recommendRow}>
+                  <Feather name="check-circle" size={13} color="#16A34A" />
+                  <Text style={[styles.recommendText, { color: "#16A34A" }]}>All key image slots covered — tap to manage</Text>
+                </View>
+              )}
+            </>
+          )}
+        </TouchableOpacity>
 
         {/* Primary actions */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ACTIONS</Text>

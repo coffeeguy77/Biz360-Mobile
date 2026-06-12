@@ -4,7 +4,7 @@ import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
   cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
 } from "@workspace/db";
-import { eq, asc, and, desc, isNull } from "drizzle-orm";
+import { eq, asc, and, desc, isNull, sql } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { generateChartSvg } from "../../lib/chart-svg";
 import {
@@ -1656,7 +1656,8 @@ async function handlePdf(req: any, res: any): Promise<void> {
         buyerId:   reportAccessLogsTable.buyerId,
       }).from(reportAccessLogsTable)
         .where(eq(reportAccessLogsTable.listingId, listingId)),
-      // Primary cover: isPrimary=true non-panoramic first, else first non-panoramic by sort_order
+      // Primary cover: role-priority chain — isPrimary first, then listing_hero →
+      // cover_secondary → exterior → first non-panoramic.
       db.select({ url: reportImagesTable.cloudinarySecureUrl, publicId: reportImagesTable.cloudinaryPublicId })
         .from(reportImagesTable)
         .where(and(
@@ -1667,6 +1668,12 @@ async function handlePdf(req: any, res: any): Promise<void> {
         ))
         .orderBy(
           desc(reportImagesTable.isPrimary),
+          sql`CASE ${reportImagesTable.imageRole}
+            WHEN 'listing_hero'    THEN 0
+            WHEN 'cover_secondary' THEN 1
+            WHEN 'exterior'        THEN 2
+            ELSE 3
+          END`,
           asc(reportImagesTable.sortOrder),
         )
         .limit(1),
@@ -1877,7 +1884,8 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       isSellerDraft: false,
     };
 
-    // Fetch report_images cover (non-panoramic) for the public PDF
+    // Fetch report_images cover (non-panoramic) for the public PDF.
+    // Role-priority chain: isPrimary → listing_hero → cover_secondary → exterior → others.
     const pubCoverImgRows = await db
       .select({ url: reportImagesTable.cloudinarySecureUrl, publicId: reportImagesTable.cloudinaryPublicId })
       .from(reportImagesTable)
@@ -1885,9 +1893,19 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
         eq(reportImagesTable.listingId, listingId),
         eq(reportImagesTable.isPanoramic, false),
         eq(reportImagesTable.includeInPdf, true),
+        eq(reportImagesTable.includeInBuyerReport, true),
         isNull(reportImagesTable.deletedAt),
       ))
-      .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder))
+      .orderBy(
+        desc(reportImagesTable.isPrimary),
+        sql`CASE ${reportImagesTable.imageRole}
+          WHEN 'listing_hero'    THEN 0
+          WHEN 'cover_secondary' THEN 1
+          WHEN 'exterior'        THEN 2
+          ELSE 3
+        END`,
+        asc(reportImagesTable.sortOrder),
+      )
       .limit(1);
     const pubReportImgRaw = pubCoverImgRows[0];
     const pubReportImgUrl = pubReportImgRaw
@@ -1927,14 +1945,57 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       pubExtra.equipment = pubEquipRows;
     }
 
-    // Image resolution — report_images (non-panoramic) takes priority.
+    // ── report_images section resolver for public PDF ──────────────────────────
+    // Fetch all non-deleted, PDF-included report images visible to buyers so we
+    // can resolve per-chapter section images using the same priority chain as
+    // the seller PDF path (sectionKey match → imageRole match → null).
+    const allPubReportImages = await db
+      .select({
+        publicId:    reportImagesTable.cloudinaryPublicId,
+        imageRole:   reportImagesTable.imageRole,
+        sectionKey:  reportImagesTable.sectionKey,
+        isPanoramic: reportImagesTable.isPanoramic,
+        sortOrder:   reportImagesTable.sortOrder,
+        isPrimary:   reportImagesTable.isPrimary,
+      })
+      .from(reportImagesTable)
+      .where(and(
+        eq(reportImagesTable.listingId, listingId),
+        eq(reportImagesTable.includeInPdf, true),
+        eq(reportImagesTable.includeInBuyerReport, true),
+        isNull(reportImagesTable.deletedAt),
+      ))
+      .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder));
+
+    function resolvePubSectionImageUrl(
+      chapterSectionKeys: string[],
+      roles: string[],
+      allowPanoramic = false,
+    ): string | null {
+      const pool = allowPanoramic ? allPubReportImages : allPubReportImages.filter((i) => !i.isPanoramic);
+      for (const sk of chapterSectionKeys) {
+        const match = pool.find((i) => i.sectionKey === sk);
+        if (match) return cloudinary.url(match.publicId, { width: 1000, quality: "auto", fetch_format: "auto", secure: true });
+      }
+      for (const role of roles) {
+        const match = pool.find((i) => i.imageRole === role);
+        if (match) return cloudinary.url(match.publicId, { width: 1000, quality: "auto", fetch_format: "auto", secure: true });
+      }
+      return null;
+    }
+
+    // Image resolution — report_images (non-panoramic) takes priority for public PDF.
     // visibility-filtered `sections` only; allSections NOT used to avoid leaking seller content.
     const pubHeroUrl = resolveHeroImageUrl(sections, pubReportImgUrl);
     const pubBodyUrls: Array<[string, string | null]> = [
-      ["business_overview", resolveImageUrl(sections, "business_overview")],
-      ["assets_equipment",  resolveImageUrl(sections, "plant_equipment_summary")],
-      ["lease_premises",    resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
-      ["virtual_tour",      resolveImageUrl(sections, "360_business_walkthrough")],
+      ["business_overview", resolvePubSectionImageUrl(["business_overview"], ["interior", "exterior"])
+        ?? resolveImageUrl(sections, "business_overview")],
+      ["assets_equipment",  resolvePubSectionImageUrl(["plant_equipment_summary"], ["equipment"])
+        ?? resolveImageUrl(sections, "plant_equipment_summary")],
+      ["lease_premises",    resolvePubSectionImageUrl(["business_location_market_context", "lease_premises_summary"], ["exterior"])
+        ?? resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
+      ["virtual_tour",      resolvePubSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)
+        ?? resolveImageUrl(sections, "360_business_walkthrough")],
     ];
     const [pubHeroBuf, ...pubBodyBufs] = await Promise.all([
       pubHeroUrl ? fetchImageBuffer(pubHeroUrl) : Promise.resolve(null),
