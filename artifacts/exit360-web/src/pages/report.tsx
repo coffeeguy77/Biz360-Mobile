@@ -1,15 +1,14 @@
 import { useParams } from "wouter";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   Lock, Download, ExternalLink, Phone, Calendar, Shield,
   CheckCircle2, FileText, MapPin, Printer, ChevronRight, Eye,
+  ChevronDown, ChevronUp, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  ValuationBridgeChart, RevenueDivisionChart, ValuationDivisionChart,
-  EquipmentCategoryChart, BuyerEngagementChart, LeaseRiskChart,
-  RevenueSourceChart, HealthScoreChart, SECTION_CHART_MAP,
+  SECTION_CHART_MAP, sectionHasChartData,
 } from "@/components/report/ChartComponents";
 
 interface ReportSection {
@@ -169,29 +168,86 @@ function SectionTable({ data }: { data: unknown }) {
   if (!rows.length) return null;
   const headers = Object.keys(rows[0] as Record<string, unknown>);
   return (
-    <div className="mt-4 overflow-x-auto rounded-xl border border-[#1E3A5C]">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-[#0F2040]">
+    <>
+      {/* Mobile stacked cards — shown below sm breakpoint */}
+      <div className="sm:hidden mt-4 space-y-3">
+        {rows.map((row, i) => (
+          <div key={i} className="rounded-xl border border-[#1E3A5C] bg-[#0F2040]/40 px-4 py-3 space-y-2">
             {headers.map((h) => (
-              <th key={h} className="px-4 py-2.5 text-left text-slate-400 font-semibold text-xs uppercase tracking-wider">
-                {h.replace(/_/g, " ")}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className={cn("border-t border-[#1E3A5C]", i % 2 === 0 ? "bg-transparent" : "bg-[#0F2040]/40")}>
-              {headers.map((h) => (
-                <td key={h} className="px-4 py-2.5 text-slate-300">
+              <div key={h} className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="text-slate-500 font-semibold text-[11px] uppercase tracking-wide flex-shrink-0">
+                  {h.replace(/_/g, " ")}
+                </span>
+                <span className="text-slate-200 text-right break-words max-w-[60%]">
                   {String((row as Record<string, unknown>)[h] ?? "")}
-                </td>
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table — shown at sm and above */}
+      <div className="hidden sm:block mt-4 overflow-x-auto rounded-xl border border-[#1E3A5C]">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-[#0F2040]">
+              {headers.map((h) => (
+                <th key={h} className="px-4 py-2.5 text-left text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">
+                  {h.replace(/_/g, " ")}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className={cn("border-t border-[#1E3A5C]", i % 2 === 0 ? "bg-transparent" : "bg-[#0F2040]/40")}>
+                {headers.map((h) => (
+                  <td key={h} className="px-4 py-2.5 text-slate-300 whitespace-nowrap">
+                    {String((row as Record<string, unknown>)[h] ?? "")}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ── Collapsible seller-only notes badge ───────────────────────────────────────
+function SellerNotesBlock({ notes, printMode }: { notes: string; printMode: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className={cn(
+      "mt-5 rounded-xl border-l-2 border-amber-500/40",
+      printMode ? "bg-amber-50" : "bg-amber-500/5"
+    )}>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-left"
+      >
+        <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">Seller Notes</span>
+        <span className={cn(
+          "text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1",
+          printMode ? "bg-amber-100 text-amber-600" : "bg-amber-500/20 text-amber-400"
+        )}>
+          Needs Review
+        </span>
+        <span className="ml-auto text-amber-400/60">
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </span>
+      </button>
+      {expanded && (
+        <p className={cn(
+          "px-4 pb-3 text-sm leading-relaxed",
+          printMode ? "text-amber-800" : "text-amber-300"
+        )}>
+          {notes}
+        </p>
+      )}
     </div>
   );
 }
@@ -224,9 +280,13 @@ function SectionContent({
     }
   }
 
+  // Only render chart wrapper when there is real data to show
+  const chartWillRender = ChartComponent && sectionHasChartData(section.sectionKey, chartData);
+  const hasAnything = hasContent || chartWillRender || is360;
+
   return (
     <div className="space-y-4">
-      {!hasContent && !ChartComponent && !is360 && (
+      {!hasAnything && (
         <p className="text-slate-500 italic text-sm">This section has not yet been completed.</p>
       )}
       {section.body && <SectionBodyText body={section.body} />}
@@ -234,7 +294,7 @@ function SectionContent({
         <SectionBullets bullets={section.bulletPoints} />
       )}
       {!!section.tableData && <SectionTable data={section.tableData} />}
-      {ChartComponent && (
+      {chartWillRender && (
         <div className="mt-6 p-4 rounded-xl bg-[#070F1C]/60 border border-[#1E3A5C]/60">
           <ChartComponent data={chartData} />
         </div>
@@ -434,6 +494,30 @@ export function ReportPage() {
   const ungroupedSections = sections.filter((s) => !allGroupedKeys.has(s.sectionKey));
 
   const [activeChapter, setActiveChapter] = useState<string | null>(null);
+
+  // Data Integrity Panel — computed for seller view only.
+  // Tells the seller which charts rendered from real data vs which were hidden.
+  const dataIntegrity = useMemo(() => {
+    const rendered: { key: string; title: string }[] = [];
+    const missing: { key: string; title: string }[] = [];
+    const chartKeys = Object.keys(SECTION_CHART_MAP);
+    for (const key of chartKeys) {
+      const sec = sections.find((s) => s.sectionKey === key);
+      if (!sec) continue;
+      const title = sec.title || key.replace(/_/g, " ");
+      if (sectionHasChartData(key, sec.chartData)) rendered.push({ key, title });
+      else missing.push({ key, title });
+    }
+    const placeholderSections = sections.filter(
+      (s) =>
+        !s.isLocked &&
+        !s.body?.trim() &&
+        !(s.bulletPoints?.length) &&
+        !s.tableData &&
+        !sectionHasChartData(s.sectionKey, s.chartData),
+    );
+    return { rendered, missing, placeholderCount: placeholderSections.length };
+  }, [sections]);
 
   // IntersectionObserver — highlights the chapter link in sidebar + tab strip
   // as the user scrolls, using a top-biased rootMargin so the active chapter
@@ -677,6 +761,58 @@ export function ReportPage() {
         </div>
       </section>
 
+      {/* ── Data Integrity Panel (seller-only) ──────────────────────────────── */}
+      {data?.accessLevel === "seller" && (dataIntegrity.rendered.length > 0 || dataIntegrity.missing.length > 0 || dataIntegrity.placeholderCount > 0) && (
+        <div className={cn(
+          "rounded-2xl border p-6 print:hidden",
+          printMode ? "bg-amber-50 border-amber-200" : "bg-amber-500/5 border-amber-500/20"
+        )}>
+          <div className="flex items-center gap-2.5 mb-4">
+            <AlertTriangle size={15} className="text-amber-400 flex-shrink-0" />
+            <h3 className={cn("text-sm font-bold uppercase tracking-wider", printMode ? "text-amber-700" : "text-amber-400")}>
+              Data Integrity Summary — Seller View Only
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            {/* Charts rendered from real data */}
+            {dataIntegrity.rendered.length > 0 && (
+              <div>
+                <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-2", printMode ? "text-green-700" : "text-green-400")}>
+                  ✅ Charts showing real data ({dataIntegrity.rendered.length})
+                </p>
+                <ul className="space-y-1">
+                  {dataIntegrity.rendered.map(({ key, title }) => (
+                    <li key={key} className={cn("text-xs", printMode ? "text-slate-600" : "text-slate-400")}>
+                      • {title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {/* Charts hidden due to missing data */}
+            {dataIntegrity.missing.length > 0 && (
+              <div>
+                <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-2", printMode ? "text-amber-700" : "text-amber-400")}>
+                  ⚠️ Charts hidden — no data uploaded ({dataIntegrity.missing.length})
+                </p>
+                <ul className="space-y-1">
+                  {dataIntegrity.missing.map(({ key, title }) => (
+                    <li key={key} className={cn("text-xs", printMode ? "text-slate-600" : "text-slate-400")}>
+                      • {title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          {dataIntegrity.placeholderCount > 0 && (
+            <p className={cn("text-xs border-t pt-3", printMode ? "border-amber-200 text-amber-700" : "border-amber-500/20 text-amber-400/80")}>
+              ⚠️ {dataIntegrity.placeholderCount} section{dataIntegrity.placeholderCount !== 1 ? "s" : ""} have no content yet — add body text, bullet points, table data, or chart data in the Biz360 app to complete them.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Chapter Nav (sticky horizontal tab strip) ───────────────────────── */}
       {groupedSections.length > 0 && (
         <div className={cn(
@@ -919,13 +1055,7 @@ export function ReportPage() {
                       }
 
                       {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
-                        <div className={cn(
-                          "mt-5 p-4 rounded-xl border-l-2 border-amber-500/40 text-sm",
-                          printMode ? "bg-amber-50 text-amber-800" : "bg-amber-500/5 text-amber-300"
-                        )}>
-                          <span className="font-semibold text-xs uppercase tracking-wider block mb-1">Seller Notes</span>
-                          {section.sellerNotes}
-                        </div>
+                        <SellerNotesBlock notes={section.sellerNotes} printMode={printMode} />
                       )}
                     </section>
                   );

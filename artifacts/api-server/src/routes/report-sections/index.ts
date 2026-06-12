@@ -982,15 +982,29 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       .where(eq(cafesTable.listingId, listingId))
       .limit(1);
 
-    let coverMeta: Record<string, unknown> = {
-      businessName: cafeRow?.name ?? "Confidential Business",
-      listingId,
-    };
-
     // Supplement with richer listing data from the KV store
     const kvRows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2")).limit(1);
     const allListings = Array.isArray(kvRows[0]?.value) ? (kvRows[0].value as any[]) : [];
     const listing = allListings.find((l: any) => l.listingId === listingId);
+
+    // Business name priority: cafes table (if real) → KV listing aliases → fallback
+    // Placeholder names like "My Business" are treated as absent.
+    const PLACEHOLDER_NAMES = new Set([
+      "my business", "my business name", "business name", "business",
+      "test", "test business", "n/a", "na", "",
+    ]);
+    const isCafeNameReal = cafeRow?.name && !PLACEHOLDER_NAMES.has(cafeRow.name.toLowerCase().trim());
+    const kvName = listing
+      ? (listing.businessName ?? listing.business_name ?? listing.name ??
+         listing.tradingName ?? listing.trading_name ?? listing.title ?? null)
+      : null;
+    const isKvNameReal = kvName && !PLACEHOLDER_NAMES.has(String(kvName).toLowerCase().trim());
+
+    let coverMeta: Record<string, unknown> = {
+      businessName: (isCafeNameReal ? cafeRow!.name : null) ?? (isKvNameReal ? kvName : null) ?? "Confidential Business",
+      listingId,
+    };
+
     if (listing) {
       coverMeta = {
         ...coverMeta,

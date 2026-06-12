@@ -1,3 +1,8 @@
+// ChartComponents.tsx — HTML report chart suite.
+// POLICY: Every component returns null if its data prop is absent, empty, or
+// structurally invalid. No demo/placeholder data is ever rendered.
+// Charts only appear when real seller-entered or app-generated data exists.
+
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
   PieChart, Pie, Legend,
@@ -18,39 +23,42 @@ function fmtK(v: number) {
   return `$${v.toLocaleString()}`;
 }
 
+function isNonEmpty(data: unknown): data is unknown[] {
+  return Array.isArray(data) && data.length > 0;
+}
+
 // ── 1. Valuation Bridge ───────────────────────────────────────────────────────
+// Requires: adjusted EBITDA, valuation multiple, and equipment value.
+// Expected shape: [{ name, value, type: "start"|"add"|"total" }]
 interface BridgeEntry { name: string; value: number; type: "start" | "add" | "total" }
-const DEMO_BRIDGE: BridgeEntry[] = [
-  { name: "EBITDA × 2.5x", value: 450000, type: "start" },
-  { name: "Equipment Add-on", value: 85000, type: "add" },
-  { name: "Goodwill Premium", value: 65000, type: "add" },
-  { name: "Total Valuation", value: 600000, type: "total" },
-];
-export function ValuationBridgeChart({ data }: { data?: BridgeEntry[] }) {
-  const d = data ?? DEMO_BRIDGE;
+export function ValuationBridgeChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = data as BridgeEntry[];
+  const valid = d.filter(e => e && typeof e.name === "string" && typeof e.value === "number");
+  if (!valid.length) return null;
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={d} margin={{ top: 10, right: 10, bottom: 5, left: 50 }}>
+      <BarChart data={valid} margin={{ top: 10, right: 10, bottom: 5, left: 50 }}>
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis tickFormatter={fmtK} tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} />
         <Tooltip formatter={(v: number) => fmtK(v)} contentStyle={TIP} />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-          {d.map((e, i) => <Cell key={i} fill={e.type === "total" ? "#10B981" : e.type === "add" ? "#8B5CF6" : "#3B82F6"} />)}
+          {valid.map((e, i) => <Cell key={i} fill={e.type === "total" ? "#10B981" : e.type === "add" ? "#8B5CF6" : "#3B82F6"} />)}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
-// ── 2. Revenue by Division ────────────────────────────────────────────────────
+// ── 2. Revenue by Division (donut) ────────────────────────────────────────────
+// Requires: real division names + revenue/percentage values.
+// Expected shape: [{ name, value }]
 interface DivEntry { name: string; value: number }
-const DEMO_REV_DIV: DivEntry[] = [
-  { name: "Dine-In", value: 45 }, { name: "Takeaway", value: 30 },
-  { name: "Delivery", value: 15 }, { name: "Catering", value: 10 },
-];
-export function RevenueDivisionChart({ data }: { data?: DivEntry[] }) {
-  const d = data ?? DEMO_REV_DIV;
+export function RevenueDivisionChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = (data as DivEntry[]).filter(e => e && typeof e.name === "string" && Number(e.value) > 0);
+  if (!d.length) return null;
   return (
     <ResponsiveContainer width="100%" height={220}>
       <PieChart>
@@ -67,13 +75,13 @@ export function RevenueDivisionChart({ data }: { data?: DivEntry[] }) {
 }
 
 // ── 3. Valuation by Division ──────────────────────────────────────────────────
-const DEMO_VAL_DIV = [
-  { name: "Main Café", valuation: 350000 },
-  { name: "Catering", valuation: 150000 },
-  { name: "Retail", valuation: 100000 },
-];
-export function ValuationDivisionChart({ data }: { data?: typeof DEMO_VAL_DIV }) {
-  const d = data ?? DEMO_VAL_DIV;
+// Requires: real division names + valuation figures.
+// Expected shape: [{ name, valuation }]
+interface ValDivEntry { name: string; valuation: number }
+export function ValuationDivisionChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = (data as ValDivEntry[]).filter(e => e && typeof e.name === "string" && Number(e.valuation) > 0);
+  if (!d.length) return null;
   return (
     <ResponsiveContainer width="100%" height={180}>
       <BarChart data={d} layout="vertical" margin={{ left: 20, right: 30, top: 5, bottom: 5 }}>
@@ -90,14 +98,13 @@ export function ValuationDivisionChart({ data }: { data?: typeof DEMO_VAL_DIV })
 }
 
 // ── 4. Equipment by Category ──────────────────────────────────────────────────
-const DEMO_EQUIP = [
-  { name: "Kitchen Equipment", value: 45000 },
-  { name: "Coffee Equipment", value: 28000 },
-  { name: "Front-of-House", value: 12000 },
-  { name: "Technology", value: 5000 },
-];
-export function EquipmentCategoryChart({ data }: { data?: typeof DEMO_EQUIP }) {
-  const d = data ?? DEMO_EQUIP;
+// Requires: real equipment categories from the asset ledger with real values.
+// Expected shape: [{ name, value }]
+interface EquipEntry { name: string; value: number }
+export function EquipmentCategoryChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = (data as EquipEntry[]).filter(e => e && typeof e.name === "string" && Number(e.value) > 0);
+  if (!d.length) return null;
   return (
     <ResponsiveContainer width="100%" height={220}>
       <PieChart>
@@ -113,18 +120,19 @@ export function EquipmentCategoryChart({ data }: { data?: typeof DEMO_EQUIP }) {
 }
 
 // ── 5. Buyer Engagement Funnel ────────────────────────────────────────────────
-const DEMO_FUNNEL = [
-  { stage: "Listing Views", count: 234 }, { stage: "Enquiries", count: 45 },
-  { stage: "Inspections", count: 12 }, { stage: "Offers", count: 3 },
-];
-export function BuyerEngagementChart({ data }: { data?: typeof DEMO_FUNNEL }) {
-  const d = data ?? DEMO_FUNNEL;
+// Requires: real engagement stats from report_access_logs.
+// Expected shape: [{ stage, count }] — stages from actual tracked events only.
+interface FunnelEntry { stage: string; count: number }
+export function BuyerEngagementChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = (data as FunnelEntry[]).filter(e => e && typeof e.stage === "string" && Number(e.count) > 0);
+  if (!d.length) return null;
   return (
     <ResponsiveContainer width="100%" height={180}>
       <BarChart data={d} layout="vertical" margin={{ left: 20, right: 40, top: 5, bottom: 5 }}>
         <CartesianGrid horizontal={false} stroke={GRID} />
         <XAxis type="number" tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} />
-        <YAxis type="category" dataKey="stage" tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
+        <YAxis type="category" dataKey="stage" tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
         <Tooltip contentStyle={TIP} />
         <Bar dataKey="count" radius={[0, 4, 4, 0]}>
           {d.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
@@ -135,13 +143,13 @@ export function BuyerEngagementChart({ data }: { data?: typeof DEMO_FUNNEL }) {
 }
 
 // ── 6. Lease Risk Distribution ────────────────────────────────────────────────
-const DEMO_LEASE = [
-  { subject: "Term Security", score: 80 }, { subject: "Rent Review", score: 65 },
-  { subject: "Assignment", score: 75 }, { subject: "Make-Good", score: 45 },
-  { subject: "Outgoings", score: 70 }, { subject: "Exclusivity", score: 85 },
-];
-export function LeaseRiskChart({ data }: { data?: typeof DEMO_LEASE }) {
-  const d = data ?? DEMO_LEASE;
+// Requires: real lease clause analysis results (from seller_lease_clauses).
+// Expected shape: [{ subject, score }] — real clause categories only.
+interface LeaseEntry { subject: string; score: number }
+export function LeaseRiskChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = (data as LeaseEntry[]).filter(e => e && typeof e.subject === "string" && typeof e.score === "number");
+  if (!d.length) return null;
   return (
     <ResponsiveContainer width="100%" height={240}>
       <RadarChart data={d} cx="50%" cy="50%" outerRadius={90}>
@@ -156,13 +164,13 @@ export function LeaseRiskChart({ data }: { data?: typeof DEMO_LEASE }) {
 }
 
 // ── 7. Revenue Source Verification ───────────────────────────────────────────
-const DEMO_REV_SRC = [
-  { source: "Square POS", amount: 380000, verified: true },
-  { source: "Xero Accounting", amount: 350000, verified: true },
-  { source: "Cash / Other", amount: 45000, verified: false },
-];
-export function RevenueSourceChart({ data }: { data?: typeof DEMO_REV_SRC }) {
-  const d = data ?? DEMO_REV_SRC;
+// Requires: real connected data source revenue figures (Square, Xero, etc.).
+// Expected shape: [{ source, amount, verified }]
+interface RevSrcEntry { source: string; amount: number; verified?: boolean }
+export function RevenueSourceChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = (data as RevSrcEntry[]).filter(e => e && typeof e.source === "string" && Number(e.amount) > 0);
+  if (!d.length) return null;
   return (
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={d} margin={{ left: 40, right: 20, top: 5, bottom: 35 }}>
@@ -172,7 +180,7 @@ export function RevenueSourceChart({ data }: { data?: typeof DEMO_REV_SRC }) {
         <YAxis tickFormatter={fmtK} tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} />
         <Tooltip formatter={(v: number) => fmtK(v)} contentStyle={TIP} />
         <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
-          {d.map((e, i) => <Cell key={i} fill={e.verified ? "#10B981" : "#F59E0B"} />)}
+          {d.map((e, i) => <Cell key={i} fill={e.verified === false ? "#F59E0B" : "#10B981"} />)}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -180,13 +188,13 @@ export function RevenueSourceChart({ data }: { data?: typeof DEMO_REV_SRC }) {
 }
 
 // ── 8. Health Score Breakdown ─────────────────────────────────────────────────
-const DEMO_HEALTH = [
-  { subject: "Financials", score: 85 }, { subject: "Operations", score: 70 },
-  { subject: "Lease", score: 65 }, { subject: "Staff", score: 80 },
-  { subject: "Equipment", score: 75 }, { subject: "Brand", score: 60 },
-];
-export function HealthScoreChart({ data }: { data?: typeof DEMO_HEALTH }) {
-  const d = data ?? DEMO_HEALTH;
+// Requires: category-level scores from the app (not just a single total score).
+// Expected shape: [{ subject, score }] — at least 3 scored categories.
+interface HealthEntry { subject: string; score: number }
+export function HealthScoreChart({ data }: { data?: unknown }) {
+  if (!isNonEmpty(data)) return null;
+  const d = (data as HealthEntry[]).filter(e => e && typeof e.subject === "string" && typeof e.score === "number");
+  if (d.length < 3) return null; // radar needs ≥3 axes to be meaningful
   return (
     <ResponsiveContainer width="100%" height={240}>
       <RadarChart data={d} cx="50%" cy="50%" outerRadius={90}>
@@ -201,16 +209,28 @@ export function HealthScoreChart({ data }: { data?: typeof DEMO_HEALTH }) {
 }
 
 // ── Section-key → chart component mapping ────────────────────────────────────
-// All 8 chart components mapped to the section keys that auto-fill populates
-// with chartData. Charts only render when chartData is present on a section;
-// they fall back to demo data if chartData is absent (for previewing).
+// Charts only render when chartData is present and contains real values.
+// Each component silently returns null when its data is missing or empty.
 export const SECTION_CHART_MAP: Record<string, React.ComponentType<{ data?: unknown }>> = {
-  app_valuation_summary:        ValuationBridgeChart    as React.ComponentType<{ data?: unknown }>,
-  revenue_stream_breakdown:     RevenueDivisionChart    as React.ComponentType<{ data?: unknown }>,
-  division_breakdown:           ValuationDivisionChart  as React.ComponentType<{ data?: unknown }>,
-  plant_equipment_summary:      EquipmentCategoryChart  as React.ComponentType<{ data?: unknown }>,
-  buyer_access_confidentiality: BuyerEngagementChart   as React.ComponentType<{ data?: unknown }>,
-  lease_premises_summary:       LeaseRiskChart          as React.ComponentType<{ data?: unknown }>,
-  verified_revenue_sources:     RevenueSourceChart      as React.ComponentType<{ data?: unknown }>,
-  business_health_score:        HealthScoreChart        as React.ComponentType<{ data?: unknown }>,
+  app_valuation_summary:        ValuationBridgeChart,
+  revenue_stream_breakdown:     RevenueDivisionChart,
+  division_breakdown:           ValuationDivisionChart,
+  plant_equipment_summary:      EquipmentCategoryChart,
+  buyer_access_confidentiality: BuyerEngagementChart,
+  lease_premises_summary:       LeaseRiskChart,
+  verified_revenue_sources:     RevenueSourceChart,
+  business_health_score:        HealthScoreChart,
 };
+
+// ── Chart data validator ──────────────────────────────────────────────────────
+// Returns true only when the section has non-empty chartData that would cause
+// its mapped chart component to actually render (used by Data Integrity Panel).
+export function sectionHasChartData(sectionKey: string, chartData: unknown): boolean {
+  if (!SECTION_CHART_MAP[sectionKey]) return false;
+  if (!isNonEmpty(chartData)) return false;
+  const data = chartData as Record<string, unknown>[];
+  if (sectionKey === "business_health_score") {
+    return data.filter(e => typeof e.score === "number").length >= 3;
+  }
+  return data.length > 0;
+}

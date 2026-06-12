@@ -1,0 +1,223 @@
+The HTML report design is improving, but it is still rendering fake/demo charts and some fake/generic table data. This must be fixed immediately.
+
+CRITICAL:
+No chart, table, graph, badge, metric or visual block may render unless it uses real app data or seller-entered report data.
+
+Current examples of fake data visible in the HTML:
+- Revenue chart shows Square POS / Xero Accounting / Cash Other with made-up values.
+- Division chart shows Main Café / Catering / Retail instead of real divisions.
+- Revenue mix donut shows generic categories like Dine in / Delivery / Catering.
+- Equipment pie chart shows generic categories unless derived from the real equipment ledger.
+- Business health radar shows category scores that appear invented.
+- Buyer funnel shows generic Listing Views / Enquiries / Inspections / Offers instead of actual app engagement stats.
+
+Remove all demo chart data from the HTML and PDF report renderers.
+
+Every chart must use the shared report data assembler only.
+
+REAL DATA SOURCES
+
+Use only these real sources:
+
+Listing:
+- listing.business_name
+- listing.title
+- listing.suburb
+- listing.state
+- listing.category
+- listing.description
+- listing.asking_price
+- listing.staff_count
+- listing.owner_hours
+- listing.training_period
+- listing.hero_image_url
+- listing.cover_image_url
+
+Valuation:
+- estimated_value
+- valuation_range_low
+- valuation_range_high
+- revenue
+- COGS
+- gross_profit
+- EBITDA
+- adjusted_EBITDA
+- equipment_value
+- business_health_score
+- valuation_multiple
+- valuation_formula
+
+Divisions:
+- division.name
+- division.included_in_sale
+- division.revenue
+- division.COGS
+- division.gross_profit
+- division.valuation
+- division.equipment_value
+
+Equipment:
+- item_count
+- total_second_hand_value
+- total_replacement_value
+- real item categories only
+- top assets only if real asset rows exist
+
+Leases:
+- uploaded lease count
+- clause count
+- real risk distribution
+- actual high-risk categories
+- actual lease analysis results
+
+360 Tour:
+- spaces count
+- pins count
+- audio count
+- start scene
+- real scene names
+- real scene thumbnails
+
+Engagement:
+- listing views
+- tour starts
+- unique buyers
+- messages
+- calls clicked
+- saved count
+- document requests
+- financial access requests
+
+Report Sections:
+- seller-entered section body
+- bullets
+- table_json
+- chart_json only if seller supplied or app-generated from real data
+
+CHART RULES
+
+Valuation Bridge:
+Only render if adjusted EBITDA, multiple and equipment value exist.
+
+Revenue by Division:
+Only render real division names and real division revenue.
+Do not show Main Café / Catering / Retail unless those are actual divisions in the database.
+
+Division Valuation:
+Only render real division valuations.
+
+Revenue Mix Donut:
+Only render if there is a real revenue stream breakdown.
+Do not invent Dine In / Delivery / Catering.
+
+Equipment Category Chart:
+Only render if equipment items have real category fields and real values.
+If not, show the total equipment value and item count only.
+
+Business Health Radar:
+Only render if category-level scores exist in the database.
+If only 85/100 exists, show only the total score.
+
+Lease Risk Chart:
+Only render from real lease analysis data.
+
+Buyer Funnel:
+Only render from real engagement stats:
+Listing views -> Tour starts -> Unique buyers -> Messages -> Calls clicked -> Saved count / Document requests.
+Do not invent inspections or offers unless those are real tracked fields.
+
+MOBILE HTML FIXES
+
+The current HTML report is too wide on mobile.
+
+Fix mobile responsiveness:
+- Tables must not overflow off-screen.
+- On mobile, convert wide tables into stacked cards.
+- Keep charts within screen width.
+- Do not crop labels.
+- Use responsive chart containers.
+- Horizontal nav should scroll smoothly and keep active chapter visible.
+- Header should show actual business name, not My Business.
+
+TABLE MOBILE RULE
+
+On desktop:
+Use normal tables.
+
+On mobile:
+Convert tables into cards.
+
+Example:
+Instead of a 4-column division table cut off on mobile, show:
+
+Division: Espresso Bar
+Status: Included
+Revenue: $582K
+Value: $593K
+
+Division: Coffee Roastery
+Status: Included
+Revenue: $535K
+Value: $1.18M
+
+Do this for all wide tables.
+
+SELLER NOTES
+
+Seller Notes are currently repeated too heavily in the HTML report.
+
+Change behaviour:
+- Seller notes should only show in Seller Preview mode.
+- Buyer mode must never show Seller Notes.
+- In Seller Preview mode, show seller notes collapsed by default.
+- Use a small amber “Needs Review” badge instead of a large repeated box on every section.
+- Only expand notes when the seller taps “View notes”.
+
+BUSINESS NAME FIX
+
+The HTML report header still says “My Business”.
+
+Replace with actual listing/business name using:
+
+1. listing.business_name
+2. listing.title
+3. business.name
+4. business.trading_name
+5. fallback “My Business”
+
+For this listing it should show:
+Bean Culture Espresso Bar
+
+DATA INTEGRITY PANEL
+
+Add a seller-only “Data Integrity” panel.
+
+Show:
+- Charts rendered using real data
+- Charts hidden due to missing data
+- Tables rendered using real data
+- Tables hidden due to missing data
+- Metrics from Xero / Square / app calculated / seller supplied
+- Placeholder sections needing review
+
+Example:
+✅ Revenue table: Xero/Square connected
+✅ Division table: real division data
+⚠️ Equipment category chart hidden: no equipment categories supplied
+⚠️ Business health radar hidden: no category scores supplied
+⚠️ Revenue mix donut hidden: no real stream split supplied
+⚠️ Buyer funnel hidden: no engagement data yet
+
+SUCCESS CRITERIA
+
+This is complete when:
+1. No fake/demo charts appear in HTML.
+2. No fake/demo charts appear in PDF.
+3. “My Business” is replaced by real listing name.
+4. Mobile tables no longer overflow or cut off.
+5. Generic fake chart labels are gone.
+6. Charts only render from real app/seller data.
+7. Missing chart data shows a clean unavailable state or hides the chart.
+8. Seller Notes are collapsed and seller-only.
+9. Buyer report never shows seller notes or fake values.
+10. HTML and PDF use the same shared report data assembler.
