@@ -54,7 +54,7 @@ const REQUIRED_LABELS: Record<string, string> = {
 const PLACEHOLDER_PHRASES = [
   "seller should", "to be confirmed", "insert", "placeholder",
   "example only", "not yet provided", "replace this", "add details",
-  "update this", "enter details", "lorem ipsum",
+  "update this", "enter details", "pending", "tbc", "lorem ipsum",
 ];
 
 interface ReportSection {
@@ -138,6 +138,7 @@ export default function ReportHubScreen() {
   const { latestSnapshot, selectedCafe } = useValuation();
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [versions, setVersions] = useState<ReportVersion[]>([]);
+  const [businessName, setBusinessName] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -152,9 +153,10 @@ export default function ReportHubScreen() {
     if (!token) return;
     setLoading(true);
     try {
-      const [sectRes, verRes] = await Promise.all([
+      const [sectRes, verRes, cafeRes] = await Promise.all([
         fetch(`${API_BASE}/api/report-sections/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/report-versions/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE}/api/valuation/cafes`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (sectRes.ok) {
         const data = await sectRes.json();
@@ -164,9 +166,24 @@ export default function ReportHubScreen() {
         const data = await verRes.json();
         setVersions(data.versions ?? []);
       }
+      if (cafeRes.ok) {
+        const data = await cafeRes.json();
+        const cafes: any[] = data.cafes ?? [];
+        const cafe = cafes.find((c) => c.id === selectedCafe?.id) ?? cafes[0];
+        // Fallback chain: businessName → title → name → context name → default
+        const sc = selectedCafe as any;
+        setBusinessName(
+          cafe?.businessName ?? cafe?.title ?? cafe?.name ??
+          sc?.businessName ?? sc?.title ?? sc?.name ??
+          "My Business"
+        );
+      } else {
+        const sc = selectedCafe as any;
+        setBusinessName(sc?.businessName ?? sc?.title ?? sc?.name ?? "My Business");
+      }
     } catch { /* non-fatal */ }
     finally { setLoading(false); }
-  }, [listingId]);
+  }, [listingId, selectedCafe?.id]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -396,6 +413,10 @@ export default function ReportHubScreen() {
     if (!listingId || !snap) return;
     const token = await getAuthToken();
     if (!token) return;
+    if (!sections.some(hasContent)) {
+      Alert.alert("Report empty", "Add content to at least some sections before publishing. Tap 'Edit Report' to get started.");
+      return;
+    }
     if (pct < 40) {
       Alert.alert("Report incomplete", "Please complete at least 40% of required sections before publishing. Tap 'Report Checks' to see what's missing.");
       return;
@@ -496,7 +517,7 @@ export default function ReportHubScreen() {
         {/* Financial summary card */}
         {snap ? (
           <View style={[styles.summaryCard, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
-            <Text style={styles.bizName}>{selectedCafe?.name ?? "Business"}</Text>
+            <Text style={styles.bizName}>{businessName || selectedCafe?.name || "My Business"}</Text>
             <View style={styles.summaryRow}>
               <View style={styles.summaryLeft}>
                 <Text style={styles.summaryLabel}>Estimated Business Value</Text>

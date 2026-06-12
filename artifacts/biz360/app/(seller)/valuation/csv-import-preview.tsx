@@ -13,6 +13,12 @@ import { useColors } from "@/hooks/useColors";
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
 const API_BASE = domain ? `https://${domain}` : "";
 
+const PLACEHOLDER_PHRASES = [
+  "seller should", "to be confirmed", "insert", "placeholder",
+  "example only", "not yet provided", "replace this", "add details",
+  "update this", "enter details", "pending", "tbc", "lorem ipsum",
+];
+
 async function getAuthToken(): Promise<string | null> {
   return AsyncStorage.getItem("biz360_auth_token");
 }
@@ -96,9 +102,16 @@ export default function CsvImportPreviewScreen() {
         return;
       }
       const data = await res.json();
+      const hasPlaceholders = previewData?.previewRows?.some((row) => {
+        const text = ((row.main_body ?? "") + " " + (row.bullets ?? "")).toLowerCase();
+        return PLACEHOLDER_PHRASES.some((p) => text.includes(p));
+      }) ?? false;
+      const placeholderNote = hasPlaceholders
+        ? "\n\nSome sections contain placeholder text — open Report Checks to review them."
+        : "";
       Alert.alert(
         "CSV imported successfully",
-        `${previewData?.matchedCount ?? data.matched ?? 0} sections matched and ${previewData?.changedFields ?? data.updated ?? 0} fields updated.`,
+        `${previewData?.matchedCount ?? data.matched ?? 0} sections matched and ${previewData?.changedFields ?? data.updated ?? 0} fields were updated.${placeholderNote}`,
         [{ text: "Done", onPress: () => router.back() }],
       );
     } catch {

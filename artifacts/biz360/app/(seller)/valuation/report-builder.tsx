@@ -31,7 +31,7 @@ type Visibility = "public" | "verified_buyer" | "nda_signed" | "hidden";
 const PLACEHOLDER_PHRASES = [
   "seller should", "to be confirmed", "insert", "placeholder",
   "example only", "not yet provided", "replace this", "add details",
-  "update this", "enter details", "lorem ipsum",
+  "update this", "enter details", "pending", "tbc", "lorem ipsum",
 ];
 
 interface ReportSection {
@@ -85,11 +85,13 @@ function visibilityConfig(v: Visibility): { icon: string; color: string; label: 
 }
 
 function statusConfig(s: ReportSection): { label: string; color: string } {
-  if (s.status === "complete")           return { label: "Complete",     color: "#16A34A" };
-  if (s.status === "needs_review")       return { label: "Needs Review", color: "#F87171" };
-  if (hasContent(s) && needsReview(s))   return { label: "Needs Review", color: "#F59E0B" };
-  if (hasContent(s))                     return { label: "Draft",        color: "#F59E0B" };
-  return { label: "Empty", color: "#6B7280" };
+  if (s.status === "complete")           return { label: "Complete",        color: "#16A34A" };
+  if (s.status === "needs_review")       return { label: "Needs Review",    color: "#F87171" };
+  if (hasContent(s) && needsReview(s))   return { label: "Needs Review",    color: "#F59E0B" };
+  if (hasContent(s))                     return { label: "Draft",           color: "#F59E0B" };
+  if (s.visibility === "hidden")         return { label: "Hidden",          color: "#6B7280" };
+  if (s.isRequired)                      return { label: "Missing Content", color: "#EF4444" };
+  return { label: "Empty",               color: "#9CA3AF" };
 }
 
 type FilterTab = "all" | "incomplete" | "complete";

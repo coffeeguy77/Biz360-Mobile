@@ -45,7 +45,7 @@ const REQUIRED_LABELS: Record<string, string> = {
 const PLACEHOLDER_PHRASES = [
   "seller should", "to be confirmed", "insert", "placeholder",
   "example only", "not yet provided", "replace this", "add details",
-  "update this", "enter details", "lorem ipsum",
+  "update this", "enter details", "pending", "tbc", "lorem ipsum",
 ];
 
 interface ReportSection {
@@ -181,16 +181,25 @@ export default function ReportChecksScreen() {
     });
   }
 
-  for (const sectionKey of placeholderSections
-    .filter((s) => !REQUIRED_KEYS.includes(s.sectionKey))
-    .slice(0, 5)
-  ) {
+  for (const sec of placeholderSections.filter((s) => !REQUIRED_KEYS.includes(s.sectionKey)).slice(0, 5)) {
     checks.push({
       status: "warn",
-      label: `${sectionKey.title} — placeholder text detected`,
+      label: `${sec.title} — placeholder text detected`,
       detail: "Review and replace with your own content.",
       actionLabel: "Edit Section",
-      onAction: () => router.push({ pathname: "/(seller)/valuation/report-section-editor" as any, params: { sectionId: sectionKey.id } }),
+      onAction: () => router.push({ pathname: "/(seller)/valuation/report-section-editor" as any, params: { sectionId: sec.id } }),
+    });
+  }
+
+  // Visibility / access warnings
+  const publicSectionCount = sections.filter((s) => hasContent(s) && s.visibility === "public").length;
+  if (filledSections.length > 0 && publicSectionCount === 0) {
+    checks.push({
+      status: "warn",
+      label: "No publicly visible sections",
+      detail: "Buyers with basic access can only see public sections. Set at least one section to Public visibility.",
+      actionLabel: "Configure Visibility",
+      onAction: () => router.push("/(seller)/valuation/report-builder" as any),
     });
   }
 
@@ -214,12 +223,15 @@ export default function ReportChecksScreen() {
 
   // ── ERRORS ──────────────────────────────────────────────────────────────
   for (const sectionKey of missingRequired) {
+    const existingSection = sections.find((sec) => sec.sectionKey === sectionKey);
     checks.push({
       status: "error",
       label: `${REQUIRED_LABELS[sectionKey] ?? sectionKey} — missing content`,
       detail: "This required section has no content. Add text before publishing.",
-      actionLabel: "Edit Section",
-      onAction: () => router.push("/(seller)/valuation/report-builder" as any),
+      actionLabel: existingSection ? "Edit Section" : "Go to Report Builder",
+      onAction: existingSection
+        ? () => router.push({ pathname: "/(seller)/valuation/report-section-editor" as any, params: { sectionId: existingSection.id } })
+        : () => router.push("/(seller)/valuation/report-builder" as any),
     });
   }
 
