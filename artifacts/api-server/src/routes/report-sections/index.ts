@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, desc, eq, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, max, sql } from "drizzle-orm";
 import { jwtVerify } from "jose";
 import {
   db,
@@ -1093,18 +1093,25 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
     // ── Fetch report images (non-panoramic, included in HTML) ──────────────────
     // Provides the cover hero priority chain: isPrimaryCover=true first → cover_primary role.
     // These are never panoramic — the API blocks panoramic images from cover/listing roles.
+    // Fetch non-deleted, non-panoramic, HTML-visible report images.
+    // Ordered: isPrimary=true first (DESC bool), then by sortOrder ASC.
     const reportImages = await db
       .select({
-        id:             reportImagesTable.id,
-        url:            reportImagesTable.url,
-        thumbnailUrl:   reportImagesTable.thumbnailUrl,
-        role:           reportImagesTable.role,
-        caption:        reportImagesTable.caption,
-        altText:        reportImagesTable.altText,
-        isPrimaryCover: reportImagesTable.isPrimaryCover,
-        includeInPdf:   reportImagesTable.includeInPdf,
-        sortOrder:      reportImagesTable.sortOrder,
-        isPanoramic:    reportImagesTable.isPanoramic,
+        id:              reportImagesTable.id,
+        url:             reportImagesTable.cloudinarySecureUrl,
+        thumbnailUrl:    reportImagesTable.cloudinarySecureUrl, // client uses buildThumbnailUrl on public_id
+        cloudinaryPublicId: reportImagesTable.cloudinaryPublicId,
+        imageRole:       reportImagesTable.imageRole,
+        displayName:     reportImagesTable.displayName,
+        caption:         reportImagesTable.caption,
+        altText:         reportImagesTable.altText,
+        isPrimary:       reportImagesTable.isPrimary,
+        includeInPdf:    reportImagesTable.includeInPdf,
+        includeInBuyerReport: reportImagesTable.includeInBuyerReport,
+        sectionKey:      reportImagesTable.sectionKey,
+        sortOrder:       reportImagesTable.sortOrder,
+        isPanoramic:     reportImagesTable.isPanoramic,
+        sourceType:      reportImagesTable.sourceType,
       })
       .from(reportImagesTable)
       .where(
@@ -1112,24 +1119,26 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
           eq(reportImagesTable.listingId, listingId),
           eq(reportImagesTable.isPanoramic, false),
           eq(reportImagesTable.includeInHtml, true),
+          isNull(reportImagesTable.deletedAt),
         ),
       )
       .orderBy(
-        // isPrimaryCover=true rows first (desc = true > false)
-        // then by sortOrder ascending
-        asc(reportImagesTable.isPrimaryCover),
+        desc(reportImagesTable.isPrimary),
         asc(reportImagesTable.sortOrder),
       );
 
-    // Determine the best cover image URL for the HTML report cover banner.
-    // Priority: isPrimaryCover=true → role=cover_primary → any non-panoramic
-    const reportImagesSorted = [...reportImages].reverse(); // flip to get isPrimary first
-    const primaryCoverImage = reportImagesSorted[0] ?? null;
+    // Best cover image for the HTML report cover banner.
+    // Priority: isPrimary=true → imageRole=listing_hero → first non-panoramic
+    const primaryCoverImage = reportImages.find((i) => i.isPrimary)
+      ?? reportImages.find((i) => i.imageRole === "listing_hero")
+      ?? reportImages[0]
+      ?? null;
+
     if (primaryCoverImage) {
       coverMeta = { ...coverMeta, reportHeroImageUrl: primaryCoverImage.url };
     }
 
-    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages: reportImagesSorted } });
+    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages } });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });

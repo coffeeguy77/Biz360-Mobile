@@ -1,30 +1,62 @@
 import { Router } from "express";
 import { v2 as cloudinary } from "cloudinary";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc, isNull } from "drizzle-orm";
 import { db, reportImagesTable, cafesTable } from "@workspace/db";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
 
 cloudinary.config({
-  cloud_name:  process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:     process.env.CLOUDINARY_API_KEY,
-  api_secret:  process.env.CLOUDINARY_API_SECRET,
-  secure:      true,
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure:     true,
 });
 
 const router = Router();
 
-// Valid roles a report image can have.
-const VALID_ROLES = [
-  "cover_primary", "cover_secondary", "exterior", "interior",
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+// Roles that non-panoramic images may hold
+const NON_PANORAMIC_ROLES = [
+  "listing_hero", "cover_secondary", "exterior", "interior",
   "equipment", "team", "product", "other",
 ] as const;
-type ImageRole = typeof VALID_ROLES[number];
 
-// Panoramic images (aspect_ratio > 2.2) may not hold cover/listing roles.
-const COVER_BLOCKED_ROLES: ImageRole[] = ["cover_primary", "cover_secondary", "exterior", "interior"];
+// Roles that panoramic images (aspect_ratio > 2.2) may NOT hold
+const PANORAMIC_BLOCKED_ROLES = [
+  "listing_hero", "cover_secondary", "exterior", "interior", "equipment",
+] as const;
 
-async function assertListingOwner(listingId: string, userId: string) {
+const ALL_ROLES = [...NON_PANORAMIC_ROLES, "360_preview"] as const;
+type ImageRole = typeof ALL_ROLES[number];
+
+const PANORAMIC_THRESHOLD = 2.2;
+
+/** Returns true if userId is an admin (comma-separated ADMIN_USER_IDS env var). */
+function isAdminUser(userId: string): boolean {
+  const list = process.env.ADMIN_USER_IDS ?? "";
+  if (!list.trim()) return false;
+  return list.split(",").map((s) => s.trim()).includes(userId);
+}
+
+/**
+ * Verify the requesting user owns the listing, OR is an admin.
+ * Returns the cafe row on success; throws 403 on failure.
+ */
+async function assertListingAccess(listingId: string, userId: string) {
+  if (isAdminUser(userId)) {
+    // Admin: still fetch the cafe row so callers get name / id etc.
+    const [cafe] = await db
+      .select()
+      .from(cafesTable)
+      .where(eq(cafesTable.listingId, listingId));
+    if (!cafe) {
+      const err: Error & { status?: number } = new Error("Listing not found");
+      err.status = 404;
+      throw err;
+    }
+    return cafe;
+  }
   const [cafe] = await db
     .select()
     .from(cafesTable)
@@ -37,17 +69,55 @@ async function assertListingOwner(listingId: string, userId: string) {
   return cafe;
 }
 
-// ── GET /api/report-images/:listingId ─────────────────────────────────────────
+/** Returns image usage summary (which surfaces it appears on). */
+function buildUsageSummary(img: typeof reportImagesTable.$inferSelect) {
+  const surfaces: string[] = [];
+  if (img.isPrimary)           surfaces.push("primary cover image");
+  if (img.imageRole !== "other") surfaces.push(`role: ${img.imageRole}`);
+  if (img.sectionKey)          surfaces.push(`section: ${img.sectionKey}`);
+  if (img.includeInPdf)        surfaces.push("PDF export");
+  if (img.includeInHtml)       surfaces.push("HTML report");
+  if (!img.includeInBuyerReport) surfaces.push("hidden from buyer");
+  return surfaces;
+}
+
+/** Build a Cloudinary cover-size URL (1600w, crop/fill, q_auto, f_auto). */
+function buildCoverUrl(publicId: string): string {
+  return cloudinary.url(publicId, {
+    width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true,
+  });
+}
+
+/** Build a Cloudinary section-image URL (1000w, q_auto, f_auto). */
+function buildSectionUrl(publicId: string): string {
+  return cloudinary.url(publicId, {
+    width: 1000, quality: "auto", fetch_format: "auto", secure: true,
+  });
+}
+
+/** Build a Cloudinary thumbnail URL (400w, crop/fill, q_auto, f_auto). */
+function buildThumbnailUrl(publicId: string): string {
+  return cloudinary.url(publicId, {
+    width: 400, crop: "fill", quality: "auto", fetch_format: "auto", secure: true,
+  });
+}
+
+// ─── GET /api/report-images/:listingId ────────────────────────────────────────
 router.get("/report-images/:listingId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId } = req.params as { listingId: string };
   try {
-    await assertListingOwner(listingId, userId);
+    await assertListingAccess(listingId, userId);
     const images = await db
       .select()
       .from(reportImagesTable)
-      .where(eq(reportImagesTable.listingId, listingId))
-      .orderBy(asc(reportImagesTable.sortOrder), asc(reportImagesTable.createdAt));
+      .where(
+        and(
+          eq(reportImagesTable.listingId, listingId),
+          isNull(reportImagesTable.deletedAt),
+        ),
+      )
+      .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder), asc(reportImagesTable.createdAt));
     res.json({ images });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
@@ -55,27 +125,28 @@ router.get("/report-images/:listingId", requireAuth, async (req, res): Promise<v
   }
 });
 
-// ── POST /api/report-images/:listingId/upload ──────────────────────────────────
-// Body: { base64: string; mimeType?: string; originalFilename?: string; role?: ImageRole; caption?: string; }
+// ─── POST /api/report-images/:listingId/upload ────────────────────────────────
+// Body (JSON): { base64, mimeType?, originalFilename?, imageRole?, caption?, displayName?, sectionKey?, altText? }
 router.post("/report-images/:listingId/upload", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId } = req.params as { listingId: string };
   const {
     base64, mimeType = "image/jpeg", originalFilename,
-    role = "other", caption,
+    imageRole = "other", caption, displayName, sectionKey, altText,
   } = req.body as {
     base64?: string; mimeType?: string; originalFilename?: string;
-    role?: string; caption?: string;
+    imageRole?: string; caption?: string; displayName?: string;
+    sectionKey?: string; altText?: string;
   };
 
   if (!base64) { res.status(400).json({ error: "base64 image data required" }); return; }
-  if (!VALID_ROLES.includes(role as ImageRole)) {
-    res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` });
+  if (!ALL_ROLES.includes(imageRole as ImageRole)) {
+    res.status(400).json({ error: `Invalid imageRole. Must be one of: ${ALL_ROLES.join(", ")}` });
     return;
   }
 
   try {
-    await assertListingOwner(listingId, userId);
+    await assertListingAccess(listingId, userId);
 
     const safeUser = userId.replace(/[^a-zA-Z0-9_-]/g, "_");
     const safeLid  = listingId.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -89,55 +160,75 @@ router.post("/report-images/:listingId/upload", requireAuth, async (req, res): P
     });
 
     const aspectRatio = result.height > 0 ? result.width / result.height : 1;
-    const isPanoramic = aspectRatio > 2.2;
+    const isPanoramic = aspectRatio > PANORAMIC_THRESHOLD;
 
-    // Block panoramic images from cover roles
-    if (isPanoramic && COVER_BLOCKED_ROLES.includes(role as ImageRole)) {
+    // Block panoramic images from non-360 roles
+    if (isPanoramic && PANORAMIC_BLOCKED_ROLES.includes(imageRole as typeof PANORAMIC_BLOCKED_ROLES[number])) {
       await cloudinary.uploader.destroy(result.public_id).catch(() => {});
       res.status(400).json({
-        error: "Panoramic images (aspect ratio > 2.2) cannot be used as cover or listing-view images. Please use a standard photo for this role.",
+        error: "360° panoramic images can look distorted in reports. Please upload a normal photo or choose a cropped thumbnail.",
+        isPanoramic: true,
       });
       return;
     }
+    // Force panoramic images to 360_preview role
+    const effectiveRole: ImageRole = isPanoramic ? "360_preview" : (imageRole as ImageRole);
 
-    // Generate thumbnail URL (300px wide)
-    const thumbnailUrl = cloudinary.url(result.public_id, {
-      width: 300, crop: "fill", quality: "auto", fetch_format: "auto",
-    });
+    const coverUrl     = buildCoverUrl(result.public_id);
+    const sectionUrl   = buildSectionUrl(result.public_id);
+    const thumbnailUrl = buildThumbnailUrl(result.public_id);
 
-    // Count existing images for sort_order
+    // Count existing non-deleted images for sort_order
     const existing = await db
       .select({ id: reportImagesTable.id })
       .from(reportImagesTable)
-      .where(eq(reportImagesTable.listingId, listingId));
+      .where(and(
+        eq(reportImagesTable.listingId, listingId),
+        isNull(reportImagesTable.deletedAt),
+      ));
     const sortOrder = existing.length;
 
     const [image] = await db
       .insert(reportImagesTable)
       .values({
         listingId,
-        ownerId:           userId,
-        cloudinaryPublicId: result.public_id,
-        url:               result.secure_url,
-        thumbnailUrl,
-        originalFilename:  originalFilename ?? null,
-        role:              role as ImageRole,
-        caption:           caption ?? null,
-        isPrimaryCover:    false,
-        includeInPdf:      true,
-        includeInHtml:     true,
+        userId,
+        cloudinaryPublicId:  result.public_id,
+        cloudinaryUrl:       result.url ?? result.secure_url,
+        cloudinarySecureUrl: result.secure_url,
+        originalFilename:    originalFilename ?? null,
+        displayName:         displayName ?? originalFilename ?? null,
+        imageRole:           effectiveRole,
+        caption:             caption ?? null,
+        altText:             altText ?? null,
+        sectionKey:          sectionKey ?? null,
+        isPrimary:           false,
+        includeInPdf:        true,
+        includeInHtml:       true,
+        includeInBuyerReport:  true,
+        includeInSellerReport: true,
         sortOrder,
-        width:             result.width ?? null,
-        height:            result.height ?? null,
-        aspectRatio:       String(aspectRatio.toFixed(4)),
-        fileSizeBytes:     result.bytes ?? null,
-        format:            result.format ?? null,
+        width:               result.width ?? null,
+        height:              result.height ?? null,
+        aspectRatio:         String(aspectRatio.toFixed(4)),
+        fileSize:            result.bytes ?? null,
+        mimeType:            mimeType,
+        sourceType:          "uploaded",
+        sourceRefId:         null,
         isPanoramic,
       })
       .returning();
 
-    logger.info({ imageId: image.id, listingId, role }, "Report image uploaded");
-    res.status(201).json({ image });
+    // Attach computed transformation URLs for the client
+    const imageWithUrls = {
+      ...image,
+      coverUrl,
+      sectionUrl,
+      thumbnailUrl,
+    };
+
+    logger.info({ imageId: image.id, listingId, imageRole: effectiveRole }, "Report image uploaded");
+    res.status(201).json({ image: imageWithUrls });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     logger.error({ err: e, listingId }, "Report image upload failed");
@@ -145,61 +236,223 @@ router.post("/report-images/:listingId/upload", requireAuth, async (req, res): P
   }
 });
 
-// ── PATCH /api/report-images/:listingId/:imageId ───────────────────────────────
-// Update role, caption, isPrimaryCover, sortOrder, includeInPdf, includeInHtml.
+// ─── POST /api/report-images/:listingId/from-listing-photo ────────────────────
+// Creates a report_image row that references an existing Cloudinary listing asset.
+// Body: { cloudinaryPublicId, cloudinarySecureUrl, imageRole?, caption?, displayName?, sectionKey? }
+router.post("/report-images/:listingId/from-listing-photo", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  const {
+    cloudinaryPublicId, cloudinarySecureUrl, cloudinaryUrl,
+    imageRole = "listing_hero", caption, displayName, sectionKey, altText,
+  } = req.body as {
+    cloudinaryPublicId?: string; cloudinarySecureUrl?: string; cloudinaryUrl?: string;
+    imageRole?: string; caption?: string; displayName?: string; sectionKey?: string; altText?: string;
+  };
+
+  if (!cloudinaryPublicId || !cloudinarySecureUrl) {
+    res.status(400).json({ error: "cloudinaryPublicId and cloudinarySecureUrl are required" });
+    return;
+  }
+  if (!ALL_ROLES.includes(imageRole as ImageRole)) {
+    res.status(400).json({ error: `Invalid imageRole. Must be one of: ${ALL_ROLES.join(", ")}` });
+    return;
+  }
+
+  try {
+    await assertListingAccess(listingId, userId);
+
+    const existing = await db
+      .select({ id: reportImagesTable.id })
+      .from(reportImagesTable)
+      .where(and(eq(reportImagesTable.listingId, listingId), isNull(reportImagesTable.deletedAt)));
+
+    const thumbnailUrl = buildThumbnailUrl(cloudinaryPublicId);
+    const coverUrl     = buildCoverUrl(cloudinaryPublicId);
+
+    const [image] = await db
+      .insert(reportImagesTable)
+      .values({
+        listingId,
+        userId,
+        cloudinaryPublicId,
+        cloudinaryUrl:       cloudinaryUrl ?? cloudinarySecureUrl,
+        cloudinarySecureUrl,
+        displayName:         displayName ?? null,
+        imageRole:           imageRole as ImageRole,
+        caption:             caption ?? null,
+        altText:             altText ?? null,
+        sectionKey:          sectionKey ?? null,
+        isPrimary:           false,
+        includeInPdf:        true,
+        includeInHtml:       true,
+        includeInBuyerReport:  true,
+        includeInSellerReport: true,
+        sortOrder:           existing.length,
+        sourceType:          "listing_photo",
+        sourceRefId:         cloudinaryPublicId,
+        isPanoramic:         false,
+      })
+      .returning();
+
+    res.status(201).json({ image: { ...image, thumbnailUrl, coverUrl } });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to add listing photo" });
+  }
+});
+
+// ─── POST /api/report-images/:listingId/from-tour-thumbnail ───────────────────
+// Creates a report_image row referencing a tour scene thumbnail (Cloudinary asset).
+// Body: { cloudinaryPublicId, cloudinarySecureUrl, sceneLabel?, aspectRatio?, width?, height? }
+router.post("/report-images/:listingId/from-tour-thumbnail", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  const {
+    cloudinaryPublicId, cloudinarySecureUrl, cloudinaryUrl,
+    sceneLabel, aspectRatio: arStr, width, height,
+  } = req.body as {
+    cloudinaryPublicId?: string; cloudinarySecureUrl?: string; cloudinaryUrl?: string;
+    sceneLabel?: string; aspectRatio?: string | number; width?: number; height?: number;
+  };
+
+  if (!cloudinaryPublicId || !cloudinarySecureUrl) {
+    res.status(400).json({ error: "cloudinaryPublicId and cloudinarySecureUrl are required" });
+    return;
+  }
+
+  try {
+    await assertListingAccess(listingId, userId);
+
+    const aspectRatio = arStr ? parseFloat(String(arStr)) : (width && height ? width / height : 1);
+    const isPanoramic = aspectRatio > PANORAMIC_THRESHOLD;
+    const effectiveRole: ImageRole = isPanoramic ? "360_preview" : "other";
+
+    const existing = await db
+      .select({ id: reportImagesTable.id })
+      .from(reportImagesTable)
+      .where(and(eq(reportImagesTable.listingId, listingId), isNull(reportImagesTable.deletedAt)));
+
+    const thumbnailUrl = buildThumbnailUrl(cloudinaryPublicId);
+
+    const [image] = await db
+      .insert(reportImagesTable)
+      .values({
+        listingId,
+        userId,
+        cloudinaryPublicId,
+        cloudinaryUrl:       cloudinaryUrl ?? cloudinarySecureUrl,
+        cloudinarySecureUrl,
+        displayName:         sceneLabel ?? "Tour Thumbnail",
+        imageRole:           effectiveRole,
+        isPrimary:           false,
+        includeInPdf:        !isPanoramic,
+        includeInHtml:       true,
+        includeInBuyerReport:  !isPanoramic,
+        includeInSellerReport: true,
+        sortOrder:           existing.length,
+        width:               width ?? null,
+        height:              height ?? null,
+        aspectRatio:         String(aspectRatio.toFixed(4)),
+        sourceType:          "tour_thumbnail",
+        sourceRefId:         cloudinaryPublicId,
+        isPanoramic,
+      })
+      .returning();
+
+    logger.info({ imageId: image.id, listingId, isPanoramic }, "Tour thumbnail added to report images");
+    res.status(201).json({ image: { ...image, thumbnailUrl }, isPanoramic });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to add tour thumbnail" });
+  }
+});
+
+// ─── PATCH /api/report-images/:listingId/:imageId ─────────────────────────────
 router.patch("/report-images/:listingId/:imageId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId, imageId } = req.params as { listingId: string; imageId: string };
   const {
-    role, caption, isPrimaryCover, sortOrder, includeInPdf, includeInHtml,
+    imageRole, caption, displayName, altText, sectionKey,
+    isPrimary, sortOrder,
+    includeInPdf, includeInHtml, includeInBuyerReport, includeInSellerReport,
   } = req.body as {
-    role?: string; caption?: string; isPrimaryCover?: boolean;
-    sortOrder?: number; includeInPdf?: boolean; includeInHtml?: boolean;
+    imageRole?: string; caption?: string; displayName?: string; altText?: string;
+    sectionKey?: string; isPrimary?: boolean; sortOrder?: number;
+    includeInPdf?: boolean; includeInHtml?: boolean;
+    includeInBuyerReport?: boolean; includeInSellerReport?: boolean;
   };
 
   try {
-    await assertListingOwner(listingId, userId);
+    await assertListingAccess(listingId, userId);
 
     const [existing] = await db
       .select()
       .from(reportImagesTable)
-      .where(and(eq(reportImagesTable.id, imageId), eq(reportImagesTable.listingId, listingId)));
+      .where(and(
+        eq(reportImagesTable.id, imageId),
+        eq(reportImagesTable.listingId, listingId),
+        isNull(reportImagesTable.deletedAt),
+      ));
     if (!existing) { res.status(404).json({ error: "Image not found" }); return; }
 
-    // Role validation
-    if (role !== undefined) {
-      if (!VALID_ROLES.includes(role as ImageRole)) {
-        res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` });
+    // Validate role change
+    if (imageRole !== undefined) {
+      if (!ALL_ROLES.includes(imageRole as ImageRole)) {
+        res.status(400).json({ error: `Invalid imageRole. Must be one of: ${ALL_ROLES.join(", ")}` });
         return;
       }
-      if (existing.isPanoramic && COVER_BLOCKED_ROLES.includes(role as ImageRole)) {
-        res.status(400).json({ error: "Panoramic images cannot be assigned cover or listing-view roles." });
+      if (existing.isPanoramic && PANORAMIC_BLOCKED_ROLES.includes(imageRole as typeof PANORAMIC_BLOCKED_ROLES[number])) {
+        res.status(400).json({
+          error: "360° panoramic images can look distorted in reports. Please upload a normal photo or choose a cropped thumbnail.",
+          isPanoramic: true,
+        });
         return;
       }
     }
 
-    // If setting isPrimaryCover = true, clear it on all other images first
-    if (isPrimaryCover === true) {
+    // Setting isPrimary = true clears all other non-panoramic rows for this listing
+    if (isPrimary === true) {
+      if (existing.isPanoramic) {
+        res.status(400).json({
+          error: "360° panoramic images can look distorted in reports. Please upload a normal photo or choose a cropped thumbnail.",
+          isPanoramic: true,
+        });
+        return;
+      }
       await db
         .update(reportImagesTable)
-        .set({ isPrimaryCover: false })
-        .where(and(eq(reportImagesTable.listingId, listingId), eq(reportImagesTable.isPanoramic, false)));
+        .set({ isPrimary: false, updatedAt: new Date() })
+        .where(and(
+          eq(reportImagesTable.listingId, listingId),
+          eq(reportImagesTable.isPanoramic, false),
+          isNull(reportImagesTable.deletedAt),
+        ));
     }
 
     const updates: Partial<typeof reportImagesTable.$inferInsert> = {
-      ...(role !== undefined && { role: role as ImageRole }),
-      ...(caption !== undefined && { caption }),
-      ...(isPrimaryCover !== undefined && { isPrimaryCover }),
-      ...(sortOrder !== undefined && { sortOrder }),
-      ...(includeInPdf !== undefined && { includeInPdf }),
-      ...(includeInHtml !== undefined && { includeInHtml }),
+      ...(imageRole !== undefined        && { imageRole: imageRole as ImageRole }),
+      ...(caption !== undefined          && { caption }),
+      ...(displayName !== undefined      && { displayName }),
+      ...(altText !== undefined          && { altText }),
+      ...(sectionKey !== undefined       && { sectionKey }),
+      ...(isPrimary !== undefined        && { isPrimary }),
+      ...(sortOrder !== undefined        && { sortOrder }),
+      ...(includeInPdf !== undefined     && { includeInPdf }),
+      ...(includeInHtml !== undefined    && { includeInHtml }),
+      ...(includeInBuyerReport !== undefined  && { includeInBuyerReport }),
+      ...(includeInSellerReport !== undefined && { includeInSellerReport }),
       updatedAt: new Date(),
     };
 
     const [updated] = await db
       .update(reportImagesTable)
       .set(updates)
-      .where(and(eq(reportImagesTable.id, imageId), eq(reportImagesTable.listingId, listingId)))
+      .where(and(
+        eq(reportImagesTable.id, imageId),
+        eq(reportImagesTable.listingId, listingId),
+        isNull(reportImagesTable.deletedAt),
+      ))
       .returning();
 
     res.json({ image: updated });
@@ -209,81 +462,84 @@ router.patch("/report-images/:listingId/:imageId", requireAuth, async (req, res)
   }
 });
 
-// ── DELETE /api/report-images/:listingId/:imageId ─────────────────────────────
+// ─── DELETE /api/report-images/:listingId/:imageId ────────────────────────────
+// Returns usage summary first (for client warnings), then soft-deletes the row.
+// Cloudinary asset is only purged when source_type = 'uploaded'.
 router.delete("/report-images/:listingId/:imageId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId, imageId } = req.params as { listingId: string; imageId: string };
   try {
-    await assertListingOwner(listingId, userId);
+    await assertListingAccess(listingId, userId);
 
     const [existing] = await db
       .select()
       .from(reportImagesTable)
-      .where(and(eq(reportImagesTable.id, imageId), eq(reportImagesTable.listingId, listingId)));
+      .where(and(
+        eq(reportImagesTable.id, imageId),
+        eq(reportImagesTable.listingId, listingId),
+        isNull(reportImagesTable.deletedAt),
+      ));
     if (!existing) { res.status(404).json({ error: "Image not found" }); return; }
 
-    // Delete from Cloudinary
-    await cloudinary.uploader.destroy(existing.cloudinaryPublicId).catch((e) => {
-      logger.warn({ err: e, publicId: existing.cloudinaryPublicId }, "Cloudinary delete failed");
-    });
+    const usageSummary = buildUsageSummary(existing);
+    const wasPrimary = existing.isPrimary;
 
+    // Soft-delete
     await db
-      .delete(reportImagesTable)
-      .where(and(eq(reportImagesTable.id, imageId), eq(reportImagesTable.listingId, listingId)));
+      .update(reportImagesTable)
+      .set({ deletedAt: new Date(), isPrimary: false, updatedAt: new Date() })
+      .where(and(
+        eq(reportImagesTable.id, imageId),
+        eq(reportImagesTable.listingId, listingId),
+      ));
 
-    logger.info({ imageId, listingId }, "Report image deleted");
-    res.json({ ok: true });
+    // Purge Cloudinary only for seller-uploaded assets (not listing_photo or tour_thumbnail
+    // which are shared assets owned by the listing — those are not in the report-images folder)
+    if (existing.sourceType === "uploaded") {
+      cloudinary.uploader.destroy(existing.cloudinaryPublicId).catch((e) => {
+        logger.warn({ err: e, publicId: existing.cloudinaryPublicId }, "Cloudinary soft-delete purge failed");
+      });
+    }
+
+    logger.info({ imageId, listingId, wasPrimary }, "Report image soft-deleted");
+    res.json({ ok: true, usageSummary, wasPrimary });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Delete failed" });
   }
 });
 
-// ── GET /api/report-images/:listingId/primary-cover ───────────────────────────
-// Public endpoint — returns the primary cover image URL for a listing.
-// Used by the HTML report and PDF to resolve the cover hero.
+// ─── GET /api/report-images/:listingId/primary-cover (public) ─────────────────
+// Returns the best available cover image URL (non-panoramic, not soft-deleted).
+// Priority: isPrimary=true → imageRole=listing_hero → first non-panoramic.
 router.get("/report-images/:listingId/primary-cover", async (req, res): Promise<void> => {
   const { listingId } = req.params as { listingId: string };
   try {
-    const [primary] = await db
+    const candidates = await db
       .select()
       .from(reportImagesTable)
-      .where(
-        and(
-          eq(reportImagesTable.listingId, listingId),
-          eq(reportImagesTable.isPrimaryCover, true),
-          eq(reportImagesTable.isPanoramic, false),
-          eq(reportImagesTable.includeInHtml, true),
-        ),
-      )
-      .limit(1);
+      .where(and(
+        eq(reportImagesTable.listingId, listingId),
+        eq(reportImagesTable.isPanoramic, false),
+        eq(reportImagesTable.includeInHtml, true),
+        isNull(reportImagesTable.deletedAt),
+      ))
+      .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder))
+      .limit(3);
 
-    if (primary) {
-      res.json({ url: primary.url, thumbnailUrl: primary.thumbnailUrl, imageId: primary.id });
-      return;
-    }
+    if (!candidates.length) { res.json({ url: null }); return; }
 
-    // Fallback: first non-panoramic cover_primary role image
-    const [fallback] = await db
-      .select()
-      .from(reportImagesTable)
-      .where(
-        and(
-          eq(reportImagesTable.listingId, listingId),
-          eq(reportImagesTable.role, "cover_primary"),
-          eq(reportImagesTable.isPanoramic, false),
-          eq(reportImagesTable.includeInHtml, true),
-        ),
-      )
-      .orderBy(asc(reportImagesTable.sortOrder))
-      .limit(1);
+    const primary = candidates.find((c) => c.isPrimary) ?? candidates[0];
+    const coverUrl = buildCoverUrl(primary.cloudinaryPublicId);
+    const thumbnailUrl = buildThumbnailUrl(primary.cloudinaryPublicId);
 
-    if (fallback) {
-      res.json({ url: fallback.url, thumbnailUrl: fallback.thumbnailUrl, imageId: fallback.id });
-      return;
-    }
-
-    res.json({ url: null });
+    res.json({
+      url: primary.cloudinarySecureUrl,
+      coverUrl,
+      thumbnailUrl,
+      imageId: primary.id,
+      imageRole: primary.imageRole,
+    });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to resolve cover image" });

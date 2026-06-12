@@ -4,7 +4,7 @@ import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
   cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
 } from "@workspace/db";
-import { eq, asc, and, desc } from "drizzle-orm";
+import { eq, asc, and, desc, isNull } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { generateChartSvg } from "../../lib/chart-svg";
 import {
@@ -202,13 +202,15 @@ async function fetchImageBuffer(url: string, timeoutMs = 4000): Promise<Buffer |
  */
 function resolveHeroImageUrl(
   filteredSections: any[],
-  cafeHeroUrl?: string | null,
-  cafeCoverUrl?: string | null,
+  reportImageUrl?: string | null,
+  _cafeCoverUrl?: string | null,
 ): string | null {
-  if (cafeHeroUrl?.startsWith("https://")) return cafeHeroUrl;
-  if (cafeCoverUrl?.startsWith("https://")) return cafeCoverUrl;
-  const url3 = resolveImageUrl(filteredSections, "360_business_walkthrough");
-  if (url3) return url3;
+  // report_images takes absolute priority — never fall through to panoramic sections.
+  // The 360_business_walkthrough section is intentionally excluded from the cover chain:
+  // equirectangular panoramas look distorted in print/PDF cover pages.
+  if (reportImageUrl?.startsWith("https://")) return reportImageUrl;
+  // Only non-panoramic section images are used as fallback cover.
+  // Explicitly skip 360_business_walkthrough here.
   const url4 = resolveImageUrl(filteredSections, "business_overview", "business_location_market_context");
   return url4;
 }
@@ -258,7 +260,7 @@ function renderBodyImage(
     y = checkY(ctx, y, 32);
     ctx.doc.save().rect(MARGIN, y, CONTENT_W, 24).fill("#FEF3C7").restore();
     ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor("#92400E")
-      .text(`${caption}: Image not supplied by seller.`, MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+      .text(`${caption}: Image missing — add one in Report Images.`, MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
     return y + 24 + 10;
   }
   y = checkY(ctx, y, IMG_H + 20);
@@ -1654,16 +1656,17 @@ async function handlePdf(req: any, res: any): Promise<void> {
         buyerId:   reportAccessLogsTable.buyerId,
       }).from(reportAccessLogsTable)
         .where(eq(reportAccessLogsTable.listingId, listingId)),
-      // Primary cover: isPrimaryCover=true non-panoramic first, else first non-panoramic by sort_order
-      db.select({ url: reportImagesTable.url })
+      // Primary cover: isPrimary=true non-panoramic first, else first non-panoramic by sort_order
+      db.select({ url: reportImagesTable.cloudinarySecureUrl, publicId: reportImagesTable.cloudinaryPublicId })
         .from(reportImagesTable)
         .where(and(
           eq(reportImagesTable.listingId, listingId),
           eq(reportImagesTable.isPanoramic, false),
           eq(reportImagesTable.includeInPdf, true),
+          isNull(reportImagesTable.deletedAt),
         ))
         .orderBy(
-          desc(reportImagesTable.isPrimaryCover),
+          desc(reportImagesTable.isPrimary),
           asc(reportImagesTable.sortOrder),
         )
         .limit(1),
@@ -1683,7 +1686,16 @@ async function handlePdf(req: any, res: any): Promise<void> {
     ];
 
     // report_images cover takes priority over any section-embedded or panoramic image.
-    const reportImgUrl = reportImageRows[0]?.url ?? null;
+    // Use Cloudinary 1600w crop/fill transformation for PDF cover quality.
+    const reportImgRaw = reportImageRows[0];
+    const reportImgUrl = reportImgRaw
+      ? (() => {
+          try {
+            const { v2: cld } = require("cloudinary");
+            return cld.url(reportImgRaw.publicId, { width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true });
+          } catch { return reportImgRaw.url; }
+        })()
+      : null;
     // Resolve image URLs — use visibility-filtered `sections` only; allSections is NOT
     // used here to prevent seller-only section content leaking into buyer/public exports.
     const heroUrl = resolveHeroImageUrl(sections, reportImgUrl);
@@ -1809,18 +1821,26 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
     };
 
     // Fetch report_images cover (non-panoramic) for the public PDF
-    const [pubCoverImgRows] = await Promise.all([
-      db.select({ url: reportImagesTable.url })
-        .from(reportImagesTable)
-        .where(and(
-          eq(reportImagesTable.listingId, listingId),
-          eq(reportImagesTable.isPanoramic, false),
-          eq(reportImagesTable.includeInPdf, true),
-        ))
-        .orderBy(desc(reportImagesTable.isPrimaryCover), asc(reportImagesTable.sortOrder))
-        .limit(1),
-    ]);
-    const pubReportImgUrl = pubCoverImgRows[0]?.url ?? null;
+    const pubCoverImgRows = await db
+      .select({ url: reportImagesTable.cloudinarySecureUrl, publicId: reportImagesTable.cloudinaryPublicId })
+      .from(reportImagesTable)
+      .where(and(
+        eq(reportImagesTable.listingId, listingId),
+        eq(reportImagesTable.isPanoramic, false),
+        eq(reportImagesTable.includeInPdf, true),
+        isNull(reportImagesTable.deletedAt),
+      ))
+      .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder))
+      .limit(1);
+    const pubReportImgRaw = pubCoverImgRows[0];
+    const pubReportImgUrl = pubReportImgRaw
+      ? (() => {
+          try {
+            const { v2: cld } = require("cloudinary");
+            return cld.url(pubReportImgRaw.publicId, { width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true });
+          } catch { return pubReportImgRaw.url; }
+        })()
+      : null;
 
     if (cafeMeta?.id) {
       const [pubSnapshotRows, pubEquipRows] = await Promise.all([

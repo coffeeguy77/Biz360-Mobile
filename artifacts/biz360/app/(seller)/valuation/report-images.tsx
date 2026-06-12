@@ -1,14 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
-  ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system/legacy";
 import { useColors } from "@/hooks/useColors";
 import { useValuation } from "@/context/ValuationContext";
 
@@ -19,47 +18,282 @@ async function getAuthToken(): Promise<string | null> {
   return AsyncStorage.getItem("biz360_auth_token");
 }
 
-const VALID_ROLES = [
-  { key: "cover_primary",   label: "Cover Photo",      icon: "image",      color: "#3B82F6", desc: "Main cover image for the IM report" },
-  { key: "cover_secondary", label: "Secondary Cover",  icon: "layers",     color: "#8B5CF6", desc: "Backup cover / header image" },
-  { key: "exterior",        label: "Exterior",         icon: "home",       color: "#10B981", desc: "Outside / shopfront photo" },
-  { key: "interior",        label: "Interior",         icon: "grid",       color: "#F59E0B", desc: "Inside the business" },
-  { key: "equipment",       label: "Equipment",        icon: "tool",       color: "#EC4899", desc: "Key machinery or assets" },
-  { key: "team",            label: "Team",             icon: "users",      color: "#14B8A6", desc: "Staff or team photo" },
-  { key: "product",         label: "Product",          icon: "package",    color: "#F97316", desc: "Product or menu items" },
-  { key: "other",           label: "Other",            icon: "more-horizontal", color: "#6B7280", desc: "Any other image" },
+// ─── Role catalogue ────────────────────────────────────────────────────────────
+const ROLES = [
+  { key: "listing_hero",    label: "Listing Hero",    icon: "star" as const,           color: "#3B82F6", desc: "Primary cover for the IM report", suggestedSection: null },
+  { key: "cover_secondary", label: "Secondary Cover", icon: "layers" as const,         color: "#8B5CF6", desc: "Backup cover / header image", suggestedSection: null },
+  { key: "exterior",        label: "Exterior",        icon: "home" as const,           color: "#10B981", desc: "Shopfront or building exterior", suggestedSection: "business_location_market_context" },
+  { key: "interior",        label: "Interior",        icon: "grid" as const,           color: "#F59E0B", desc: "Inside the business", suggestedSection: "business_overview" },
+  { key: "equipment",       label: "Equipment",       icon: "tool" as const,           color: "#EC4899", desc: "Key machinery or assets", suggestedSection: "plant_equipment_summary" },
+  { key: "team",            label: "Team",            icon: "users" as const,          color: "#14B8A6", desc: "Staff or team photo", suggestedSection: "staff_owner_involvement" },
+  { key: "product",         label: "Product",         icon: "package" as const,        color: "#F97316", desc: "Product or menu items", suggestedSection: "key_selling_points" },
+  { key: "360_preview",     label: "360° Preview",    icon: "aperture" as const,       color: "#6366F1", desc: "Tour scene thumbnail (panoramic OK)", suggestedSection: "360_business_walkthrough" },
+  { key: "other",           label: "Other",           icon: "more-horizontal" as const, color: "#6B7280", desc: "Any other image", suggestedSection: null },
 ] as const;
-type RoleKey = typeof VALID_ROLES[number]["key"];
+type RoleKey = typeof ROLES[number]["key"];
 
-interface ReportImage {
-  id: string;
-  url: string;
-  thumbnailUrl: string | null;
-  role: RoleKey;
-  caption: string | null;
-  isPrimaryCover: boolean;
-  includeInPdf: boolean;
-  includeInHtml: boolean;
-  isPanoramic: boolean;
-  sortOrder: number;
-  originalFilename: string | null;
-  width: number | null;
-  height: number | null;
-  fileSizeBytes: number | null;
-  format: string | null;
-  createdAt: string;
-}
+const PANORAMIC_BLOCKED: RoleKey[] = ["listing_hero", "cover_secondary", "exterior", "interior", "equipment"];
 
 function roleMeta(role: RoleKey) {
-  return VALID_ROLES.find((r) => r.key === role) ?? VALID_ROLES[VALID_ROLES.length - 1];
+  return ROLES.find((r) => r.key === role) ?? ROLES[ROLES.length - 1];
 }
 
-function fmtBytes(bytes: number | null): string {
+function fmtBytes(bytes: number | null | undefined): string {
   if (!bytes) return "";
   if (bytes > 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
   return `${Math.round(bytes / 1024)} KB`;
 }
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
+interface ReportImage {
+  id: string;
+  url: string;
+  thumbnailUrl: string | null;
+  cloudinaryPublicId: string;
+  imageRole: RoleKey;
+  displayName: string | null;
+  caption: string | null;
+  altText: string | null;
+  sectionKey: string | null;
+  isPrimary: boolean;
+  includeInPdf: boolean;
+  includeInHtml: boolean;
+  includeInBuyerReport: boolean;
+  includeInSellerReport: boolean;
+  isPanoramic: boolean;
+  sourceType: string;
+  sortOrder: number;
+  width: number | null;
+  height: number | null;
+  fileSize: number | null;
+  mimeType: string | null;
+  createdAt: string;
+}
+
+interface UsageItem {
+  label: string;
+  color: string;
+}
+
+// ─── Image Editor Modal ────────────────────────────────────────────────────────
+function ImageEditorModal({
+  image, colors, onClose, onSave,
+}: {
+  image: ReportImage;
+  colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
+  onClose: () => void;
+  onSave: (patch: Partial<ReportImage>) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [imageRole, setImageRole] = useState<RoleKey>(image.imageRole);
+  const [displayName, setDisplayName] = useState(image.displayName ?? "");
+  const [caption, setCaption] = useState(image.caption ?? "");
+  const [altText, setAltText] = useState(image.altText ?? "");
+  const [sectionKey, setSectionKey] = useState(image.sectionKey ?? "");
+  const [includeInPdf, setIncludeInPdf] = useState(image.includeInPdf);
+  const [includeInBuyerReport, setIncludeInBuyerReport] = useState(image.includeInBuyerReport);
+  const [saving, setSaving] = useState(false);
+  const [rolePickerOpen, setRolePickerOpen] = useState(false);
+
+  const suggestedSection = roleMeta(imageRole).suggestedSection;
+  const availableRoles = image.isPanoramic ? ROLES.filter((r) => !PANORAMIC_BLOCKED.includes(r.key)) : ROLES;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      onSave({
+        imageRole, displayName: displayName.trim() || null,
+        caption: caption.trim() || null, altText: altText.trim() || null,
+        sectionKey: sectionKey.trim() || (suggestedSection ?? null) || null,
+        includeInPdf, includeInBuyerReport,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <View style={editorStyles.overlay}>
+        <View style={[editorStyles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+          {/* Header */}
+          <View style={editorStyles.sheetHeader}>
+            <Text style={[editorStyles.sheetTitle, { color: colors.foreground }]}>Edit Image</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+            {/* Thumbnail preview */}
+            <Image
+              source={{ uri: image.thumbnailUrl ?? image.url }}
+              style={editorStyles.thumbPreview}
+              resizeMode="cover"
+            />
+
+            {image.isPanoramic && (
+              <View style={[editorStyles.warnBanner, { borderColor: "#F59E0B44" }]}>
+                <Feather name="alert-triangle" size={13} color="#F59E0B" />
+                <Text style={editorStyles.warnText}>
+                  This is a 360° panoramic image. Cover and listing roles are not available — only 360° Preview is allowed.
+                </Text>
+              </View>
+            )}
+
+            {/* Role picker */}
+            <View style={editorStyles.fieldGroup}>
+              <Text style={[editorStyles.label, { color: colors.mutedForeground }]}>ROLE</Text>
+              <TouchableOpacity
+                style={[editorStyles.roleDropdown, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => setRolePickerOpen((p) => !p)}
+              >
+                <Feather name={roleMeta(imageRole).icon} size={14} color={roleMeta(imageRole).color} />
+                <Text style={[editorStyles.roleDropdownText, { color: colors.foreground }]}>
+                  {roleMeta(imageRole).label}
+                </Text>
+                <Feather name={rolePickerOpen ? "chevron-up" : "chevron-down"} size={14} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              {rolePickerOpen && (
+                <View style={[editorStyles.roleMenu, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  {availableRoles.map((r) => (
+                    <TouchableOpacity
+                      key={r.key}
+                      style={[editorStyles.roleMenuItem, imageRole === r.key && { backgroundColor: r.color + "18" }]}
+                      onPress={() => { setImageRole(r.key); setRolePickerOpen(false); }}
+                    >
+                      <Feather name={r.icon} size={13} color={r.color} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[editorStyles.roleMenuItemLabel, { color: colors.foreground }]}>{r.label}</Text>
+                        <Text style={[editorStyles.roleMenuItemDesc, { color: colors.mutedForeground }]}>{r.desc}</Text>
+                        {r.suggestedSection && (
+                          <Text style={editorStyles.roleMenuItemSection}>section: {r.suggestedSection}</Text>
+                        )}
+                      </View>
+                      {imageRole === r.key && <Feather name="check" size={14} color={r.color} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              {suggestedSection && (
+                <Text style={[editorStyles.hint, { color: colors.mutedForeground }]}>
+                  Suggested section: <Text style={{ color: "#60A5FA" }}>{suggestedSection}</Text>
+                </Text>
+              )}
+            </View>
+
+            {/* Display name */}
+            <View style={editorStyles.fieldGroup}>
+              <Text style={[editorStyles.label, { color: colors.mutedForeground }]}>DISPLAY NAME</Text>
+              <TextInput
+                style={[editorStyles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="e.g. Shopfront, Interior — Main Area"
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </View>
+
+            {/* Caption */}
+            <View style={editorStyles.fieldGroup}>
+              <Text style={[editorStyles.label, { color: colors.mutedForeground }]}>CAPTION</Text>
+              <TextInput
+                style={[editorStyles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={caption}
+                onChangeText={setCaption}
+                placeholder="Appears below the image in the report"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+              />
+            </View>
+
+            {/* Alt text */}
+            <View style={editorStyles.fieldGroup}>
+              <Text style={[editorStyles.label, { color: colors.mutedForeground }]}>ALT TEXT</Text>
+              <TextInput
+                style={[editorStyles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={altText}
+                onChangeText={setAltText}
+                placeholder="Describe the image for accessibility"
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </View>
+
+            {/* Section key override */}
+            <View style={editorStyles.fieldGroup}>
+              <Text style={[editorStyles.label, { color: colors.mutedForeground }]}>SECTION (OPTIONAL OVERRIDE)</Text>
+              <TextInput
+                style={[editorStyles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                value={sectionKey}
+                onChangeText={setSectionKey}
+                placeholder={suggestedSection ?? "e.g. business_overview"}
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </View>
+
+            {/* Toggles */}
+            <View style={editorStyles.toggleRow}>
+              <Toggle label="Include in PDF" value={includeInPdf} onToggle={() => setIncludeInPdf((v) => !v)} colors={colors} />
+              <Toggle label="Visible to Buyer" value={includeInBuyerReport} onToggle={() => setIncludeInBuyerReport((v) => !v)} colors={colors} />
+            </View>
+
+            <TouchableOpacity
+              style={[editorStyles.saveBtn, { opacity: saving ? 0.6 : 1 }]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="check" size={16} color="#fff" />}
+              <Text style={editorStyles.saveBtnText}>{saving ? "Saving…" : "Save Changes"}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function Toggle({ label, value, onToggle, colors }: {
+  label: string; value: boolean; onToggle: () => void;
+  colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
+}) {
+  return (
+    <TouchableOpacity style={editorStyles.toggle} onPress={onToggle}>
+      <View style={[editorStyles.toggleDot, { backgroundColor: value ? "#16A34A" : colors.border }]}>
+        <Feather name={value ? "check" : "x"} size={10} color="#fff" />
+      </View>
+      <Text style={[editorStyles.toggleLabel, { color: colors.foreground }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const editorStyles = StyleSheet.create({
+  overlay:           { flex: 1, backgroundColor: "#00000088", justifyContent: "flex-end" },
+  sheet:             { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "90%", gap: 4 },
+  sheetHeader:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sheetTitle:        { fontSize: 18, fontFamily: "Inter_700Bold" },
+  thumbPreview:      { width: "100%", height: 160, borderRadius: 12 },
+  warnBanner:        { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, backgroundColor: "#7c2d1208" },
+  warnText:          { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", color: "#D97706", lineHeight: 17 },
+  fieldGroup:        { gap: 6 },
+  label:             { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" },
+  input:             { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 13, fontFamily: "Inter_400Regular" },
+  roleDropdown:      { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, padding: 12 },
+  roleDropdownText:  { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  roleMenu:          { borderWidth: 1, borderRadius: 10, overflow: "hidden" },
+  roleMenuItem:      { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#1E3A5C" },
+  roleMenuItemLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  roleMenuItemDesc:  { fontSize: 11, fontFamily: "Inter_400Regular" },
+  roleMenuItemSection: { fontSize: 10, fontFamily: "Inter_400Regular", color: "#60A5FA", marginTop: 2 },
+  hint:              { fontSize: 11, fontFamily: "Inter_400Regular" },
+  toggleRow:         { flexDirection: "row", gap: 10 },
+  toggle:            { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#1E3A5C" },
+  toggleDot:         { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  toggleLabel:       { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
+  saveBtn:           { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#3B82F6", borderRadius: 14, paddingVertical: 14 },
+  saveBtnText:       { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+});
+
+// ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ReportImagesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -67,8 +301,8 @@ export default function ReportImagesScreen() {
   const [images, setImages] = useState<ReportImage[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<RoleKey>("cover_primary");
-  const [pendingCaption, setPendingCaption] = useState("");
+  const [selectedRole, setSelectedRole] = useState<RoleKey>("listing_hero");
+  const [editingImage, setEditingImage] = useState<ReportImage | null>(null);
 
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
 
@@ -100,15 +334,12 @@ export default function ReportImagesScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.85,
-      allowsEditing: true,
+      allowsEditing: false,
       base64: true,
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
-    if (!asset.base64) {
-      Alert.alert("Error", "Could not read image data. Please try again.");
-      return;
-    }
+    if (!asset.base64) { Alert.alert("Error", "Could not read image data. Please try again."); return; }
 
     const token = await getAuthToken();
     if (!token) return;
@@ -119,16 +350,15 @@ export default function ReportImagesScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          base64: asset.base64,
-          mimeType,
+          base64: asset.base64, mimeType,
           originalFilename: asset.fileName ?? `image_${Date.now()}.jpg`,
-          role: selectedRole,
-          caption: pendingCaption.trim() || null,
+          imageRole: selectedRole,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        Alert.alert("Upload failed", data.error ?? "Please try again.");
+        Alert.alert(data.isPanoramic ? "Panoramic Image" : "Upload failed",
+          data.error ?? "Please try again.");
         return;
       }
       setImages((prev) => [...prev, data.image]);
@@ -140,9 +370,24 @@ export default function ReportImagesScreen() {
     }
   }
 
+  async function handleAddTourThumbnail() {
+    Alert.alert(
+      "Use Tour Thumbnail",
+      "To use a tour scene thumbnail, paste the Cloudinary public ID of the scene image below.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Open Report Builder Instead",
+          onPress: () => router.push("/(seller)/valuation/report-builder" as any),
+        },
+      ],
+    );
+  }
+
   async function handleSetPrimary(image: ReportImage) {
     if (image.isPanoramic) {
-      Alert.alert("Panoramic image", "Panoramic images cannot be set as the cover photo. Please use a standard photo.");
+      Alert.alert("Panoramic Image",
+        "360° panoramic images can look distorted in reports. Please upload a normal photo or choose a cropped thumbnail.");
       return;
     }
     const token = await getAuthToken();
@@ -151,73 +396,63 @@ export default function ReportImagesScreen() {
       const res = await fetch(`${API_BASE}/api/report-images/${listingId}/${image.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ isPrimaryCover: true }),
+        body: JSON.stringify({ isPrimary: true }),
       });
       if (res.ok) {
-        setImages((prev) => prev.map((img) => ({
-          ...img,
-          isPrimaryCover: img.id === image.id,
-        })));
+        setImages((prev) => prev.map((img) => ({ ...img, isPrimary: img.id === image.id })));
       }
     } catch { /* non-fatal */ }
   }
 
-  async function handleTogglePdf(image: ReportImage) {
+  async function handleSaveEdit(image: ReportImage, patch: Partial<ReportImage>) {
     const token = await getAuthToken();
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/api/report-images/${listingId}/${image.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ includeInPdf: !image.includeInPdf }),
+        body: JSON.stringify(patch),
       });
       if (res.ok) {
-        setImages((prev) => prev.map((img) =>
-          img.id === image.id ? { ...img, includeInPdf: !image.includeInPdf } : img,
-        ));
+        const { image: updated } = await res.json();
+        setImages((prev) => prev.map((img) => img.id === image.id ? { ...img, ...updated } : img));
+        setEditingImage(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert("Panoramic Image", err.error ?? "Update failed.");
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      Alert.alert("Error", "Could not save changes.");
+    }
   }
 
-  async function handleChangeRole(image: ReportImage) {
-    const roleOptions = VALID_ROLES.filter((r) => !image.isPanoramic || !["cover_primary", "cover_secondary", "exterior", "interior"].includes(r.key));
-    Alert.alert(
-      "Change Role",
-      "What does this image show?",
-      [
-        ...roleOptions.map((r) => ({
-          text: r.label,
-          onPress: async () => {
-            const token = await getAuthToken();
-            if (!token) return;
-            const res = await fetch(`${API_BASE}/api/report-images/${listingId}/${image.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ role: r.key }),
-            });
-            if (res.ok) {
-              setImages((prev) => prev.map((img) =>
-                img.id === image.id ? { ...img, role: r.key as RoleKey } : img,
-              ));
-            }
-          },
-        })),
-        { text: "Cancel", style: "cancel" },
-      ],
-    );
-  }
+  async function handleDeleteWithWarning(image: ReportImage) {
+    const token = await getAuthToken();
+    if (!token) return;
 
-  async function handleDelete(image: ReportImage) {
+    // Build usage summary for the warning dialog
+    const usages: string[] = [];
+    if (image.isPrimary)           usages.push("primary cover image");
+    if (image.imageRole !== "other") usages.push(`role: ${roleMeta(image.imageRole).label}`);
+    if (image.sectionKey)          usages.push(`section: ${image.sectionKey}`);
+    if (image.includeInPdf)        usages.push("PDF export");
+    if (!image.includeInBuyerReport) usages.push("hidden from buyer");
+
+    const usageText = usages.length
+      ? `\n\nThis image is currently used as:\n• ${usages.join("\n• ")}`
+      : "";
+    const coverWarning = image.isPrimary
+      ? "\n\n⚠️ This is the active cover photo. Deleting it will remove the cover from your report until you set a new one."
+      : "";
+
     Alert.alert(
       "Delete Image?",
-      "This will permanently remove the image from Cloudinary and the report.",
+      `This will permanently remove the image from Cloudinary and the report.${usageText}${coverWarning}`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete", style: "destructive",
           onPress: async () => {
-            const token = await getAuthToken();
-            if (!token) return;
             try {
               const res = await fetch(`${API_BASE}/api/report-images/${listingId}/${image.id}`, {
                 method: "DELETE",
@@ -238,9 +473,14 @@ export default function ReportImagesScreen() {
     );
   }
 
-  const primaryCover = images.find((img) => img.isPrimaryCover && !img.isPanoramic);
-  const coverImages  = images.filter((img) => img.role === "cover_primary" && !img.isPanoramic);
-  const otherImages  = images.filter((img) => img.role !== "cover_primary" || img.isPanoramic);
+  const primaryCover = images.find((img) => img.isPrimary && !img.isPanoramic);
+  const coverImages  = images.filter((img) => ["listing_hero", "cover_secondary"].includes(img.imageRole) && !img.isPanoramic);
+  const regularImages = images.filter((img) => !["listing_hero", "cover_secondary"].includes(img.imageRole) || img.isPanoramic);
+
+  // Summary counts for Report Hub card
+  const businessPhotoCount = images.filter((i) => ["exterior", "interior"].includes(i.imageRole)).length;
+  const equipmentCount = images.filter((i) => i.imageRole === "equipment").length;
+  const has360Preview = images.some((i) => i.imageRole === "360_preview");
 
   if (!listingId) {
     return (
@@ -282,16 +522,29 @@ export default function ReportImagesScreen() {
           {loading && <ActivityIndicator size="small" color={colors.primary} />}
         </View>
 
-        {/* Explainer */}
+        {/* Info banner */}
         <View style={[styles.infoBox, { backgroundColor: "#0F2040", borderColor: "#1E3A5C" }]}>
           <Feather name="info" size={14} color="#60A5FA" style={{ marginTop: 1 }} />
           <Text style={styles.infoText}>
-            These images appear in your IM report cover page and PDF export. Panoramic tour images are never used here — upload standard photos only.
+            Upload standard photos for your report cover and sections. 360° panoramic images are blocked from cover roles — they look distorted in print.
           </Text>
         </View>
 
+        {/* Summary counts */}
+        {images.length > 0 && (
+          <View style={[styles.summaryRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <SummaryChip icon="star" color="#3B82F6" label="Cover" value={primaryCover ? "Set ✓" : "Missing"} ok={!!primaryCover} />
+            <SummaryChip icon="camera" color="#10B981" label="Business" value={`${businessPhotoCount}`} ok={businessPhotoCount > 0} />
+            <SummaryChip icon="tool" color="#EC4899" label="Equipment" value={`${equipmentCount}`} ok={equipmentCount > 0} />
+            <SummaryChip icon="aperture" color="#6366F1" label="360°" value={has360Preview ? "Set ✓" : "None"} ok={has360Preview} />
+          </View>
+        )}
+
         {/* Primary cover status */}
-        <View style={[styles.coverCard, { backgroundColor: primaryCover ? "#052e16" : "#1c1300", borderColor: primaryCover ? "#16A34A33" : "#F59E0B33" }]}>
+        <View style={[styles.coverCard, {
+          backgroundColor: primaryCover ? "#052e16" : "#1c1300",
+          borderColor: primaryCover ? "#16A34A33" : "#F59E0B33",
+        }]}>
           <View style={styles.coverCardRow}>
             <Feather name={primaryCover ? "check-circle" : "alert-triangle"} size={18} color={primaryCover ? "#16A34A" : "#F59E0B"} />
             <Text style={[styles.coverCardTitle, { color: primaryCover ? "#16A34A" : "#F59E0B" }]}>
@@ -301,34 +554,31 @@ export default function ReportImagesScreen() {
           {primaryCover ? (
             <View style={styles.coverThumbRow}>
               <Image source={{ uri: primaryCover.thumbnailUrl ?? primaryCover.url }} style={styles.coverThumb} resizeMode="cover" />
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.coverThumbLabel}>{roleMeta(primaryCover.role).label}</Text>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={styles.coverThumbLabel}>{primaryCover.displayName ?? roleMeta(primaryCover.imageRole).label}</Text>
                 {primaryCover.caption ? <Text style={styles.coverThumbCaption}>{primaryCover.caption}</Text> : null}
-                <Text style={styles.coverThumbMeta}>
-                  {primaryCover.width && primaryCover.height ? `${primaryCover.width}×${primaryCover.height}  ` : ""}
-                  {fmtBytes(primaryCover.fileSizeBytes)}
-                </Text>
+                <Text style={styles.coverThumbMeta}>Source: {primaryCover.sourceType}</Text>
               </View>
             </View>
           ) : (
-            <Text style={[styles.coverCardHint, { color: "#D97706" }]}>
-              Upload a photo below and tap "Set as Cover" to use it as the IM report cover image.
+            <Text style={styles.coverCardHint}>
+              Upload a photo and tap "Set as Cover". Panoramic images cannot be set as the cover.
             </Text>
           )}
         </View>
 
-        {/* Upload section */}
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>UPLOAD NEW IMAGE</Text>
+        {/* Upload buttons */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>UPLOAD</Text>
 
         {/* Role picker */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rolePicker}>
-          {VALID_ROLES.map((r) => (
+          {ROLES.filter((r) => r.key !== "360_preview").map((r) => (
             <TouchableOpacity
               key={r.key}
               style={[styles.roleChip, selectedRole === r.key && { backgroundColor: r.color + "33", borderColor: r.color }]}
               onPress={() => setSelectedRole(r.key)}
             >
-              <Feather name={r.icon as any} size={12} color={selectedRole === r.key ? r.color : colors.mutedForeground} />
+              <Feather name={r.icon} size={12} color={selectedRole === r.key ? r.color : colors.mutedForeground} />
               <Text style={[styles.roleChipText, { color: selectedRole === r.key ? r.color : colors.mutedForeground }]}>
                 {r.label}
               </Text>
@@ -336,32 +586,36 @@ export default function ReportImagesScreen() {
           ))}
         </ScrollView>
 
-        <Text style={[styles.roleDesc, { color: colors.mutedForeground }]}>
-          {VALID_ROLES.find((r) => r.key === selectedRole)?.desc ?? ""}
-        </Text>
-
-        <TouchableOpacity
-          style={[styles.uploadBtn, { opacity: uploading ? 0.6 : 1 }]}
-          onPress={handlePickAndUpload}
-          disabled={uploading}
-        >
-          {uploading
-            ? <ActivityIndicator size="small" color="#fff" />
-            : <Feather name="upload" size={18} color="#fff" />}
-          <Text style={styles.uploadBtnText}>
-            {uploading ? "Uploading…" : `Upload ${VALID_ROLES.find((r) => r.key === selectedRole)?.label ?? "Image"}`}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Panoramic warning */}
-        {["cover_primary", "cover_secondary", "exterior", "interior"].includes(selectedRole) && (
+        {PANORAMIC_BLOCKED.includes(selectedRole) && (
           <View style={[styles.warnBox, { borderColor: "#F59E0B33" }]}>
             <Feather name="alert-triangle" size={12} color="#F59E0B" />
             <Text style={[styles.warnText, { color: "#D97706" }]}>
-              Panoramic images (wider than 2.2× their height) will be rejected for this role. Use a standard landscape photo.
+              Panoramic images will be rejected for this role. Upload a standard landscape photo.
             </Text>
           </View>
         )}
+
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <TouchableOpacity
+            style={[styles.uploadBtn, { flex: 3, opacity: uploading ? 0.6 : 1 }]}
+            onPress={handlePickAndUpload}
+            disabled={uploading}
+          >
+            {uploading
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Feather name="upload" size={16} color="#fff" />}
+            <Text style={styles.uploadBtnText}>
+              {uploading ? "Uploading…" : `Upload ${roleMeta(selectedRole).label}`}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.uploadBtnSecondary, { flex: 2, borderColor: "#6366F133" }]}
+            onPress={handleAddTourThumbnail}
+          >
+            <Feather name="aperture" size={14} color="#6366F1" />
+            <Text style={[styles.uploadBtnSecondaryText, { color: "#6366F1" }]}>Tour Thumbnail</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Cover photos */}
         {coverImages.length > 0 && (
@@ -373,27 +627,25 @@ export default function ReportImagesScreen() {
                 image={img}
                 colors={colors}
                 onSetPrimary={() => handleSetPrimary(img)}
-                onTogglePdf={() => handleTogglePdf(img)}
-                onChangeRole={() => handleChangeRole(img)}
-                onDelete={() => handleDelete(img)}
+                onEdit={() => setEditingImage(img)}
+                onDelete={() => handleDeleteWithWarning(img)}
               />
             ))}
           </>
         )}
 
         {/* Other images */}
-        {otherImages.length > 0 && (
+        {regularImages.length > 0 && (
           <>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>OTHER IMAGES</Text>
-            {otherImages.map((img) => (
+            {regularImages.map((img) => (
               <ImageCard
                 key={img.id}
                 image={img}
                 colors={colors}
                 onSetPrimary={() => handleSetPrimary(img)}
-                onTogglePdf={() => handleTogglePdf(img)}
-                onChangeRole={() => handleChangeRole(img)}
-                onDelete={() => handleDelete(img)}
+                onEdit={() => setEditingImage(img)}
+                onDelete={() => handleDeleteWithWarning(img)}
               />
             ))}
           </>
@@ -409,33 +661,55 @@ export default function ReportImagesScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Editor bottom-sheet */}
+      {editingImage && (
+        <ImageEditorModal
+          image={editingImage}
+          colors={colors}
+          onClose={() => setEditingImage(null)}
+          onSave={(patch) => handleSaveEdit(editingImage, patch)}
+        />
+      )}
     </View>
   );
 }
 
+// ─── Summary chip ──────────────────────────────────────────────────────────────
+function SummaryChip({ icon, color, label, value, ok }: {
+  icon: string; color: string; label: string; value: string; ok: boolean;
+}) {
+  return (
+    <View style={{ alignItems: "center", gap: 4, flex: 1 }}>
+      <Feather name={icon as any} size={16} color={ok ? color : "#6B7280"} />
+      <Text style={{ fontSize: 9, fontFamily: "Inter_400Regular", color: "#6B7280" }}>{label}</Text>
+      <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: ok ? color : "#F59E0B" }}>{value}</Text>
+    </View>
+  );
+}
+
+// ─── ImageCard ─────────────────────────────────────────────────────────────────
 function ImageCard({
-  image, colors,
-  onSetPrimary, onTogglePdf, onChangeRole, onDelete,
+  image, colors, onSetPrimary, onEdit, onDelete,
 }: {
   image: ReportImage;
   colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
   onSetPrimary: () => void;
-  onTogglePdf: () => void;
-  onChangeRole: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
-  const rm = roleMeta(image.role);
+  const rm = roleMeta(image.imageRole);
   return (
-    <View style={[styles.imageCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[styles.imageCard, { backgroundColor: colors.card, borderColor: image.isPrimary ? "#16A34A44" : colors.border }]}>
       <View style={styles.imageCardTop}>
         <Image
           source={{ uri: image.thumbnailUrl ?? image.url }}
           style={styles.imageThumb}
           resizeMode="cover"
         />
-        <View style={{ flex: 1, gap: 4 }}>
+        <View style={{ flex: 1, gap: 5 }}>
           <View style={styles.imageBadgeRow}>
-            {image.isPrimaryCover && (
+            {image.isPrimary && (
               <View style={[styles.badge, { backgroundColor: "#16A34A22" }]}>
                 <Feather name="star" size={10} color="#16A34A" />
                 <Text style={[styles.badgeText, { color: "#16A34A" }]}>Cover</Text>
@@ -447,7 +721,7 @@ function ImageCard({
               </View>
             )}
             <View style={[styles.badge, { backgroundColor: rm.color + "22" }]}>
-              <Feather name={rm.icon as any} size={10} color={rm.color} />
+              <Feather name={rm.icon} size={10} color={rm.color} />
               <Text style={[styles.badgeText, { color: rm.color }]}>{rm.label}</Text>
             </View>
             {image.includeInPdf && (
@@ -456,16 +730,29 @@ function ImageCard({
                 <Text style={[styles.badgeText, { color: "#A78BFA" }]}>PDF</Text>
               </View>
             )}
+            {!image.includeInBuyerReport && (
+              <View style={[styles.badge, { backgroundColor: "#EF444422" }]}>
+                <Feather name="eye-off" size={10} color="#EF4444" />
+                <Text style={[styles.badgeText, { color: "#EF4444" }]}>Hidden</Text>
+              </View>
+            )}
           </View>
-          {image.caption && (
-            <Text style={[styles.imageCaption, { color: colors.foreground }]} numberOfLines={2}>
+          {image.displayName ? (
+            <Text style={[styles.imageCaption, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]} numberOfLines={1}>
+              {image.displayName}
+            </Text>
+          ) : null}
+          {image.caption ? (
+            <Text style={[styles.imageCaption, { color: colors.mutedForeground }]} numberOfLines={2}>
               {image.caption}
             </Text>
-          )}
+          ) : null}
+          {image.sectionKey ? (
+            <Text style={styles.sectionKeyTag}>§ {image.sectionKey}</Text>
+          ) : null}
           <Text style={[styles.imageMeta, { color: colors.mutedForeground }]}>
-            {image.width && image.height ? `${image.width}×${image.height}  ` : ""}
-            {fmtBytes(image.fileSizeBytes)}
-            {image.format ? `  ${image.format.toUpperCase()}` : ""}
+            {image.sourceType !== "uploaded" ? `Source: ${image.sourceType}  ` : ""}
+            {fmtBytes(image.fileSize)}
           </Text>
         </View>
       </View>
@@ -473,30 +760,18 @@ function ImageCard({
       <View style={[styles.imageCardActions, { borderTopColor: colors.border }]}>
         {!image.isPanoramic && (
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: image.isPrimaryCover ? "#052e16" : colors.primary }]}
+            style={[styles.actionBtn, { backgroundColor: image.isPrimary ? "#052e16" : colors.primary }]}
             onPress={onSetPrimary}
           >
-            <Feather name="star" size={12} color={image.isPrimaryCover ? "#16A34A" : "#fff"} />
-            <Text style={[styles.actionBtnText, { color: image.isPrimaryCover ? "#16A34A" : "#fff" }]}>
-              {image.isPrimaryCover ? "Cover ✓" : "Set Cover"}
+            <Feather name="star" size={12} color={image.isPrimary ? "#16A34A" : "#fff"} />
+            <Text style={[styles.actionBtnText, { color: image.isPrimary ? "#16A34A" : "#fff" }]}>
+              {image.isPrimary ? "Cover ✓" : "Set Cover"}
             </Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          style={[styles.actionBtnOutline, { borderColor: colors.border }]}
-          onPress={onTogglePdf}
-        >
-          <Feather name={image.includeInPdf ? "file-minus" : "file-plus"} size={12} color={colors.mutedForeground} />
-          <Text style={[styles.actionBtnOutlineText, { color: colors.mutedForeground }]}>
-            {image.includeInPdf ? "Hide PDF" : "Add PDF"}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtnOutline, { borderColor: colors.border }]}
-          onPress={onChangeRole}
-        >
-          <Feather name="tag" size={12} color={colors.mutedForeground} />
-          <Text style={[styles.actionBtnOutlineText, { color: colors.mutedForeground }]}>Role</Text>
+        <TouchableOpacity style={[styles.actionBtnOutline, { borderColor: colors.border }]} onPress={onEdit}>
+          <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+          <Text style={[styles.actionBtnOutlineText, { color: colors.mutedForeground }]}>Edit</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.deleteBtn} onPress={onDelete}>
           <Feather name="trash-2" size={14} color="#EF4444" />
@@ -506,6 +781,7 @@ function ImageCard({
   );
 }
 
+// ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container:          { flex: 1 },
   scroll:             { paddingHorizontal: 16, gap: 14 },
@@ -514,10 +790,11 @@ const styles = StyleSheet.create({
   title:              { fontSize: 22, fontFamily: "Inter_700Bold", flex: 1 },
   infoBox:            { flexDirection: "row", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
   infoText:           { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", color: "#93C5FD", lineHeight: 17 },
+  summaryRow:         { flexDirection: "row", padding: 14, borderRadius: 14, borderWidth: 1, gap: 6 },
   coverCard:          { borderRadius: 14, padding: 14, borderWidth: 1, gap: 10 },
   coverCardRow:       { flexDirection: "row", alignItems: "center", gap: 8 },
   coverCardTitle:     { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  coverCardHint:      { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  coverCardHint:      { fontSize: 12, fontFamily: "Inter_400Regular", color: "#D97706", lineHeight: 17 },
   coverThumbRow:      { flexDirection: "row", gap: 12, alignItems: "flex-start" },
   coverThumb:         { width: 72, height: 52, borderRadius: 8 },
   coverThumbLabel:    { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
@@ -527,17 +804,19 @@ const styles = StyleSheet.create({
   rolePicker:         { gap: 8, paddingBottom: 2 },
   roleChip:           { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: "#1E3A5C", borderWidth: 1, borderColor: "transparent" },
   roleChipText:       { fontSize: 12, fontFamily: "Inter_500Medium" },
-  roleDesc:           { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
-  uploadBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#3B82F6", borderRadius: 14, paddingVertical: 14 },
-  uploadBtnText:      { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
   warnBox:            { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, backgroundColor: "#7c2d1208" },
   warnText:           { flex: 1, fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16 },
+  uploadBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#3B82F6", borderRadius: 14, paddingVertical: 14 },
+  uploadBtnText:      { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  uploadBtnSecondary: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 14, paddingVertical: 14, borderWidth: 1 },
+  uploadBtnSecondaryText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   imageCard:          { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   imageCardTop:       { flexDirection: "row", gap: 12, padding: 12 },
-  imageThumb:         { width: 80, height: 60, borderRadius: 8 },
+  imageThumb:         { width: 80, height: 64, borderRadius: 8 },
   imageBadgeRow:      { flexDirection: "row", flexWrap: "wrap", gap: 4 },
   badge:              { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
   badgeText:          { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  sectionKeyTag:      { fontSize: 10, fontFamily: "Inter_400Regular", color: "#60A5FA" },
   imageCaption:       { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 16 },
   imageMeta:          { fontSize: 10, fontFamily: "Inter_400Regular" },
   imageCardActions:   { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1 },

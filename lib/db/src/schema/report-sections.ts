@@ -132,38 +132,58 @@ export const reportAccessLogsTable = pgTable("report_access_logs", {
 export type ReportAccessLog = typeof reportAccessLogsTable.$inferSelect;
 
 // ─── report_images ────────────────────────────────────────────────────────────
-// Seller-uploaded images for the IM report. Distinct from panorama tour images.
-// Priority chain for cover: isPrimaryCover=true → role=cover_primary (non-panoramic)
-// → section-embedded image URL → branded gradient fallback.
-// Panoramic images (aspectRatio > 2.2) are blocked from cover/listing roles.
+// Seller-uploaded static images for the IM report and PDF export.
+// Distinct from panorama tour images — panoramics may never be set as cover.
+//
+// Priority chain for cover hero:
+//   is_primary=true (non-panoramic) → image_role=listing_hero → exterior →
+//   KV/listing hero_image_url fallback (non-panoramic only) → gradient
+//
+// source_type tracks origin: uploaded | listing_photo | tour_thumbnail
+// deleted_at implements soft-delete; rows with deleted_at set are excluded from
+// all reads. Cloudinary assets are only purged when source_type='uploaded'.
 
 export const reportImagesTable = pgTable("report_images", {
-  id:                  uuid("id").primaryKey().defaultRandom(),
-  listingId:           text("listing_id").notNull(),
-  ownerId:             text("owner_id").notNull(),
-  cloudinaryPublicId:  text("cloudinary_public_id").notNull(),
-  url:                 text("url").notNull(),
-  thumbnailUrl:        text("thumbnail_url"),
-  originalFilename:    text("original_filename"),
-  // role: cover_primary | cover_secondary | exterior | interior | equipment | team | product | other
-  role:                text("role").notNull().default("other"),
-  caption:             text("caption"),
-  altText:             text("alt_text"),
-  // Only one image per listing may have isPrimaryCover = true (enforced at API layer)
-  isPrimaryCover:      boolean("is_primary_cover").notNull().default(false),
-  includeInPdf:        boolean("include_in_pdf").notNull().default(true),
-  includeInHtml:       boolean("include_in_html").notNull().default(true),
-  sortOrder:           integer("sort_order").notNull().default(0),
-  width:               integer("width"),
-  height:              integer("height"),
-  // Stored as text to avoid floating-point precision issues; parse with parseFloat()
-  aspectRatio:         numeric("aspect_ratio"),
-  fileSizeBytes:       integer("file_size_bytes"),
-  format:              text("format"),
-  // Panoramic = aspect_ratio > 2.2; these are never used as cover/listing images
-  isPanoramic:         boolean("is_panoramic").notNull().default(false),
-  createdAt:           timestamp("created_at").defaultNow(),
-  updatedAt:           timestamp("updated_at").defaultNow(),
+  id:                     uuid("id").primaryKey().defaultRandom(),
+  listingId:              text("listing_id").notNull(),
+  userId:                 text("user_id").notNull(),
+  cloudinaryPublicId:     text("cloudinary_public_id").notNull(),
+  cloudinaryUrl:          text("cloudinary_url").notNull(),
+  cloudinarySecureUrl:    text("cloudinary_secure_url").notNull(),
+  originalFilename:       text("original_filename"),
+  displayName:            text("display_name"),
+  // image_role: listing_hero | cover_secondary | exterior | interior | equipment
+  //             | team | product | 360_preview | other
+  // Panoramic images (aspect_ratio > 2.2) may only have role = 360_preview
+  imageRole:              text("image_role").notNull().default("other"),
+  caption:                text("caption"),
+  altText:                text("alt_text"),
+  // Only one non-panoramic image per listing may have is_primary = true
+  // Enforced at the API layer: setting to true clears all others first
+  isPrimary:              boolean("is_primary").notNull().default(false),
+  includeInPdf:           boolean("include_in_pdf").notNull().default(true),
+  includeInHtml:          boolean("include_in_html").notNull().default(true),
+  includeInBuyerReport:   boolean("include_in_buyer_report").notNull().default(true),
+  includeInSellerReport:  boolean("include_in_seller_report").notNull().default(true),
+  // section_key links this image to a specific report section (e.g. 'business_overview')
+  sectionKey:             text("section_key"),
+  sortOrder:              integer("sort_order").notNull().default(0),
+  width:                  integer("width"),
+  height:                 integer("height"),
+  // Stored as numeric string to avoid floating-point issues; parse with parseFloat()
+  aspectRatio:            numeric("aspect_ratio"),
+  fileSize:               integer("file_size"),
+  mimeType:               text("mime_type"),
+  // source_type: uploaded | listing_photo | tour_thumbnail
+  sourceType:             text("source_type").notNull().default("uploaded"),
+  // source_ref_id: Cloudinary public_id of the original asset (for non-upload sources)
+  sourceRefId:            text("source_ref_id"),
+  // Panoramic = aspect_ratio > 2.2; enforced at API layer; only role=360_preview allowed
+  isPanoramic:            boolean("is_panoramic").notNull().default(false),
+  createdAt:              timestamp("created_at").defaultNow(),
+  updatedAt:              timestamp("updated_at").defaultNow(),
+  // Soft delete — set by DELETE endpoint; rows with deletedAt are excluded from all reads
+  deletedAt:              timestamp("deleted_at"),
 });
 
 export type ReportImage = typeof reportImagesTable.$inferSelect;
