@@ -1696,14 +1696,71 @@ async function handlePdf(req: any, res: any): Promise<void> {
           } catch { return reportImgRaw.url; }
         })()
       : null;
+    // ── report_images section resolver ────────────────────────────────────────
+    // Fetch all non-deleted, PDF-included report_images for the listing so we can
+    // resolve per-chapter section images. Panoramic allowed for virtual_tour only.
+    const allReportImages = await db
+      .select({
+        publicId:   reportImagesTable.cloudinaryPublicId,
+        imageRole:  reportImagesTable.imageRole,
+        sectionKey: reportImagesTable.sectionKey,
+        isPanoramic: reportImagesTable.isPanoramic,
+        sortOrder:  reportImagesTable.sortOrder,
+        isPrimary:  reportImagesTable.isPrimary,
+      })
+      .from(reportImagesTable)
+      .where(and(
+        eq(reportImagesTable.listingId, listingId),
+        eq(reportImagesTable.includeInPdf, true),
+        isNull(reportImagesTable.deletedAt),
+      ))
+      .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder));
+
+    /**
+     * Pick the best report_image public_id for a PDF chapter.
+     * Priority: matching sectionKey → matching imageRole(s) → null.
+     * Falls back to cloudinary 1000w section transform if found.
+     */
+    function resolveReportSectionImageUrl(
+      chapterSectionKeys: string[],
+      roles: string[],
+      allowPanoramic = false,
+    ): string | null {
+      const pool = allowPanoramic ? allReportImages : allReportImages.filter((i) => !i.isPanoramic);
+      // 1. Exact sectionKey match
+      for (const sk of chapterSectionKeys) {
+        const match = pool.find((i) => i.sectionKey === sk);
+        if (match) {
+          return cloudinary.url(match.publicId, {
+            width: 1000, quality: "auto", fetch_format: "auto", secure: true,
+          });
+        }
+      }
+      // 2. imageRole match
+      for (const role of roles) {
+        const match = pool.find((i) => i.imageRole === role);
+        if (match) {
+          return cloudinary.url(match.publicId, {
+            width: 1000, quality: "auto", fetch_format: "auto", secure: true,
+          });
+        }
+      }
+      return null;
+    }
+
     // Resolve image URLs — use visibility-filtered `sections` only; allSections is NOT
     // used here to prevent seller-only section content leaking into buyer/public exports.
     const heroUrl = resolveHeroImageUrl(sections, reportImgUrl);
     const bodyUrls: Array<[string, string | null]> = [
-      ["business_overview",  resolveImageUrl(sections, "business_overview")],
-      ["assets_equipment",   resolveImageUrl(sections, "plant_equipment_summary")],
-      ["lease_premises",     resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
-      ["virtual_tour",       resolveImageUrl(sections, "360_business_walkthrough")],
+      ["business_overview", resolveReportSectionImageUrl(["business_overview"], ["interior", "exterior"])
+        ?? resolveImageUrl(sections, "business_overview")],
+      ["assets_equipment",  resolveReportSectionImageUrl(["plant_equipment_summary"], ["equipment"])
+        ?? resolveImageUrl(sections, "plant_equipment_summary")],
+      ["lease_premises",    resolveReportSectionImageUrl(["business_location_market_context", "lease_premises_summary"], ["exterior"])
+        ?? resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
+      // virtual_tour allows panoramic images — they render as a static preview thumbnail
+      ["virtual_tour",      resolveReportSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)
+        ?? resolveImageUrl(sections, "360_business_walkthrough")],
     ];
     const [heroImageBuffer, ...bodyBuffers] = await Promise.all([
       heroUrl ? fetchImageBuffer(heroUrl) : Promise.resolve(null),

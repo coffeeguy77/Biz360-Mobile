@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
@@ -293,6 +293,185 @@ const editorStyles = StyleSheet.create({
   saveBtnText:       { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
 
+// ─── Listing Photo Picker Modal ────────────────────────────────────────────────
+interface ListingAsset {
+  url: string; cloudinaryPublicId: string; thumbnailUrl: string; label: string; sourceScene: string;
+}
+function ListingPhotoPickerModal({
+  colors, listingId, onClose, onPicked,
+}: {
+  colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
+  listingId: string;
+  onClose: () => void;
+  onPicked: (asset: ListingAsset) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [assets, setAssets] = useState<ListingAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const res = await fetch(`${API_BASE}/api/report-images/${listingId}/listing-assets`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) { const d = await res.json(); setAssets(d.assets ?? []); }
+      } catch { /* non-fatal */ }
+      finally { setLoading(false); }
+    })();
+  }, [listingId]);
+
+  return (
+    <Modal animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <View style={editorStyles.overlay}>
+        <View style={[editorStyles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={editorStyles.sheetHeader}>
+            <Text style={[editorStyles.sheetTitle, { color: colors.foreground }]}>Use Listing Photo</Text>
+            <TouchableOpacity onPress={onClose}><Feather name="x" size={20} color={colors.mutedForeground} /></TouchableOpacity>
+          </View>
+          <Text style={[pickerStyles.hint, { color: colors.mutedForeground }]}>
+            These photos are already in your tour — tap one to add it to Report Images without re-uploading.
+          </Text>
+          {loading ? (
+            <View style={pickerStyles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
+          ) : assets.length === 0 ? (
+            <View style={pickerStyles.center}>
+              <Feather name="image" size={32} color={colors.mutedForeground} />
+              <Text style={[pickerStyles.emptyText, { color: colors.mutedForeground }]}>
+                No listing photos found. Add tour scenes in the Tours section of the app first.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={pickerStyles.grid}>
+                {assets.map((asset, i) => (
+                  <TouchableOpacity
+                    key={`${asset.cloudinaryPublicId}-${i}`}
+                    style={[pickerStyles.gridItem, { borderColor: colors.border }]}
+                    onPress={() => { setAdding(asset.cloudinaryPublicId); onPicked(asset); }}
+                    disabled={!!adding}
+                  >
+                    <Image source={{ uri: asset.thumbnailUrl }} style={pickerStyles.gridThumb} resizeMode="cover" />
+                    {adding === asset.cloudinaryPublicId && (
+                      <View style={pickerStyles.gridOverlay}><ActivityIndicator size="small" color="#fff" /></View>
+                    )}
+                    <Text style={[pickerStyles.gridLabel, { color: colors.foreground }]} numberOfLines={1}>{asset.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Tour Scene Picker Modal ───────────────────────────────────────────────────
+interface TourScene {
+  index: number; name: string; panoramaUrl: string | null; thumbnailUrl: string | null;
+  cloudinaryPublicId: string; cloudinarySecureUrl: string | null; photoCount: number; hasPanorama: boolean;
+}
+function TourScenePickerModal({
+  colors, listingId, onClose, onPicked,
+}: {
+  colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
+  listingId: string;
+  onClose: () => void;
+  onPicked: (scene: TourScene) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [scenes, setScenes] = useState<TourScene[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState<number | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const res = await fetch(`${API_BASE}/api/report-images/${listingId}/tour-scenes`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) { const d = await res.json(); setScenes(d.scenes ?? []); }
+      } catch { /* non-fatal */ }
+      finally { setLoading(false); }
+    })();
+  }, [listingId]);
+
+  return (
+    <Modal animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <View style={editorStyles.overlay}>
+        <View style={[editorStyles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={editorStyles.sheetHeader}>
+            <Text style={[editorStyles.sheetTitle, { color: colors.foreground }]}>Use Tour Thumbnail</Text>
+            <TouchableOpacity onPress={onClose}><Feather name="x" size={20} color={colors.mutedForeground} /></TouchableOpacity>
+          </View>
+          <Text style={[pickerStyles.hint, { color: colors.mutedForeground }]}>
+            Pick a tour scene to add its thumbnail to Report Images. Panoramic scenes are assigned the 360° Preview role.
+          </Text>
+          {loading ? (
+            <View style={pickerStyles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
+          ) : scenes.length === 0 ? (
+            <View style={pickerStyles.center}>
+              <Feather name="aperture" size={32} color={colors.mutedForeground} />
+              <Text style={[pickerStyles.emptyText, { color: colors.mutedForeground }]}>
+                No tour scenes found. Add spaces in the Tours section of the app first.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={pickerStyles.grid}>
+                {scenes.map((scene) => (
+                  <TouchableOpacity
+                    key={scene.index}
+                    style={[pickerStyles.gridItem, { borderColor: colors.border }]}
+                    onPress={() => { setAdding(scene.index); onPicked(scene); }}
+                    disabled={!!adding}
+                  >
+                    {scene.thumbnailUrl ? (
+                      <Image source={{ uri: scene.thumbnailUrl }} style={pickerStyles.gridThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={[pickerStyles.gridThumb, { backgroundColor: "#1E3A5C", alignItems: "center", justifyContent: "center" }]}>
+                        <Feather name="aperture" size={28} color="#6366F1" />
+                      </View>
+                    )}
+                    {adding === scene.index && (
+                      <View style={pickerStyles.gridOverlay}><ActivityIndicator size="small" color="#fff" /></View>
+                    )}
+                    {scene.hasPanorama && (
+                      <View style={pickerStyles.sceneBadge}><Text style={pickerStyles.sceneBadgeText}>360°</Text></View>
+                    )}
+                    <Text style={[pickerStyles.gridLabel, { color: colors.foreground }]} numberOfLines={1}>{scene.name}</Text>
+                    <Text style={[pickerStyles.gridSub, { color: colors.mutedForeground }]}>
+                      {scene.photoCount > 0 ? `${scene.photoCount} photo${scene.photoCount !== 1 ? "s" : ""}` : "Panorama only"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const pickerStyles = StyleSheet.create({
+  hint:       { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17, marginBottom: 12 },
+  center:     { alignItems: "center", justifyContent: "center", paddingVertical: 40, gap: 12 },
+  emptyText:  { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", maxWidth: 260, lineHeight: 18 },
+  grid:       { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  gridItem:   { width: "47%", borderRadius: 12, borderWidth: 1, overflow: "hidden" },
+  gridThumb:  { width: "100%", height: 100 },
+  gridOverlay:{ ...StyleSheet.absoluteFillObject, backgroundColor: "#00000066", alignItems: "center", justifyContent: "center" },
+  gridLabel:  { fontSize: 12, fontFamily: "Inter_600SemiBold", padding: 8, paddingBottom: 4 },
+  gridSub:    { fontSize: 10, fontFamily: "Inter_400Regular", paddingHorizontal: 8, paddingBottom: 8 },
+  sceneBadge: { position: "absolute", top: 6, right: 6, backgroundColor: "#6366F1CC", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
+  sceneBadgeText: { fontSize: 9, fontFamily: "Inter_600SemiBold", color: "#fff" },
+});
+
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ReportImagesScreen() {
   const colors = useColors();
@@ -303,6 +482,8 @@ export default function ReportImagesScreen() {
   const [uploading, setUploading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<RoleKey>("listing_hero");
   const [editingImage, setEditingImage] = useState<ReportImage | null>(null);
+  const [showListingPhotoPicker, setShowListingPhotoPicker] = useState(false);
+  const [showTourScenePicker, setShowTourScenePicker] = useState(false);
 
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
 
@@ -370,18 +551,77 @@ export default function ReportImagesScreen() {
     }
   }
 
-  async function handleAddTourThumbnail() {
-    Alert.alert(
-      "Use Tour Thumbnail",
-      "To use a tour scene thumbnail, paste the Cloudinary public ID of the scene image below.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Open Report Builder Instead",
-          onPress: () => router.push("/(seller)/valuation/report-builder" as any),
-        },
-      ],
-    );
+  async function handleUseListingPhoto(asset: ListingAsset) {
+    const token = await getAuthToken();
+    if (!token) return;
+    setShowListingPhotoPicker(false);
+    setUploading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/report-images/${listingId}/from-listing-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          cloudinaryPublicId: asset.cloudinaryPublicId,
+          cloudinarySecureUrl: asset.url,
+          imageRole: selectedRole === "360_preview" ? "exterior" : selectedRole,
+          displayName: asset.label,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        Alert.alert(data.isPanoramic ? "Panoramic Image" : "Error", data.error ?? "Could not add photo.");
+        return;
+      }
+      if (data.isPanoramic) {
+        Alert.alert("Assigned 360° Preview", "This image was detected as panoramic and assigned the 360° Preview role.");
+      }
+      setImages((prev) => [...prev, data.image]);
+    } catch {
+      Alert.alert("Error", "Network error. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleUseTourScene(scene: TourScene) {
+    const token = await getAuthToken();
+    if (!token) { setShowTourScenePicker(false); return; }
+    if (!scene.cloudinaryPublicId || !scene.cloudinarySecureUrl) {
+      Alert.alert("No thumbnail", "This scene has no photo or thumbnail to add.");
+      setShowTourScenePicker(false);
+      return;
+    }
+    setShowTourScenePicker(false);
+    setUploading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/report-images/${listingId}/from-tour-thumbnail`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          cloudinaryPublicId: scene.cloudinaryPublicId,
+          cloudinarySecureUrl: scene.cloudinarySecureUrl,
+          sceneLabel: scene.name,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        Alert.alert("Error", data.error ?? "Could not add tour thumbnail.");
+        return;
+      }
+      setImages((prev) => [...prev, data.image]);
+      if (data.isPanoramic) {
+        Alert.alert(
+          "360° Tour Scene Added",
+          data.warning ?? "This scene is panoramic and has been assigned the 360° Preview role. It won't appear as a PDF cover.",
+        );
+      } else {
+        Alert.alert("Added", `"${scene.name}" thumbnail added to Report Images.`);
+      }
+    } catch {
+      Alert.alert("Error", "Network error. Please try again.");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleSetPrimary(image: ReportImage) {
@@ -595,22 +835,31 @@ export default function ReportImagesScreen() {
           </View>
         )}
 
+        <TouchableOpacity
+          style={[styles.uploadBtn, { opacity: uploading ? 0.6 : 1 }]}
+          onPress={handlePickAndUpload}
+          disabled={uploading}
+        >
+          {uploading
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <Feather name="upload" size={16} color="#fff" />}
+          <Text style={styles.uploadBtnText}>
+            {uploading ? "Uploading…" : `Upload ${roleMeta(selectedRole).label}`}
+          </Text>
+        </TouchableOpacity>
         <View style={{ flexDirection: "row", gap: 10 }}>
           <TouchableOpacity
-            style={[styles.uploadBtn, { flex: 3, opacity: uploading ? 0.6 : 1 }]}
-            onPress={handlePickAndUpload}
+            style={[styles.uploadBtnSecondary, { flex: 1, borderColor: "#10B98133" }]}
+            onPress={() => setShowListingPhotoPicker(true)}
             disabled={uploading}
           >
-            {uploading
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Feather name="upload" size={16} color="#fff" />}
-            <Text style={styles.uploadBtnText}>
-              {uploading ? "Uploading…" : `Upload ${roleMeta(selectedRole).label}`}
-            </Text>
+            <Feather name="image" size={14} color="#10B981" />
+            <Text style={[styles.uploadBtnSecondaryText, { color: "#10B981" }]}>Listing Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.uploadBtnSecondary, { flex: 2, borderColor: "#6366F133" }]}
-            onPress={handleAddTourThumbnail}
+            style={[styles.uploadBtnSecondary, { flex: 1, borderColor: "#6366F133" }]}
+            onPress={() => setShowTourScenePicker(true)}
+            disabled={uploading}
           >
             <Feather name="aperture" size={14} color="#6366F1" />
             <Text style={[styles.uploadBtnSecondaryText, { color: "#6366F1" }]}>Tour Thumbnail</Text>
@@ -669,6 +918,26 @@ export default function ReportImagesScreen() {
           colors={colors}
           onClose={() => setEditingImage(null)}
           onSave={(patch) => handleSaveEdit(editingImage, patch)}
+        />
+      )}
+
+      {/* Listing photo picker */}
+      {showListingPhotoPicker && listingId && (
+        <ListingPhotoPickerModal
+          colors={colors}
+          listingId={listingId}
+          onClose={() => setShowListingPhotoPicker(false)}
+          onPicked={handleUseListingPhoto}
+        />
+      )}
+
+      {/* Tour scene picker */}
+      {showTourScenePicker && listingId && (
+        <TourScenePickerModal
+          colors={colors}
+          listingId={listingId}
+          onClose={() => setShowTourScenePicker(false)}
+          onPicked={handleUseTourScene}
         />
       )}
     </View>

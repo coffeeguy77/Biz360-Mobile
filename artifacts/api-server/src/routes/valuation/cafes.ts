@@ -1,7 +1,15 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
-import { db, cafesTable, cafeIntegrationsTable, cafeEquipmentTable, ownerAdjustmentsTable, valuationSnapshotsTable, squareOrdersCacheTable, xeroPLMappingsTable, xeroSupplierMappingsTable, businessUnitsTable } from "@workspace/db";
+import { eq, and, isNull } from "drizzle-orm";
+import { v2 as cloudinary } from "cloudinary";
+import { db, cafesTable, cafeIntegrationsTable, cafeEquipmentTable, ownerAdjustmentsTable, valuationSnapshotsTable, squareOrdersCacheTable, xeroPLMappingsTable, xeroSupplierMappingsTable, businessUnitsTable, reportImagesTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure:     true,
+});
 
 const router: IRouter = Router();
 
@@ -59,6 +67,45 @@ router.delete("/:cafeId", async (req, res) => {
   const cafe = await assertCafeOwner(req.params.cafeId!, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
   if (!cafe) return;
   const cafeId = cafe.id;
+
+  // ── report_images cascade ─────────────────────────────────────────────────
+  // Soft-delete all report images for this listing. Purge Cloudinary only for
+  // source_type='uploaded' assets (listing_photo / tour_thumbnail are shared
+  // assets not in the report-images folder).
+  if (cafe.listingId) {
+    const imageRows = await db
+      .select({
+        id:         reportImagesTable.id,
+        publicId:   reportImagesTable.cloudinaryPublicId,
+        sourceType: reportImagesTable.sourceType,
+      })
+      .from(reportImagesTable)
+      .where(and(
+        eq(reportImagesTable.listingId, cafe.listingId),
+        isNull(reportImagesTable.deletedAt),
+      ));
+
+    if (imageRows.length > 0) {
+      await db
+        .update(reportImagesTable)
+        .set({ deletedAt: new Date() })
+        .where(and(
+          eq(reportImagesTable.listingId, cafe.listingId),
+          isNull(reportImagesTable.deletedAt),
+        ));
+
+      const uploadedPublicIds = imageRows
+        .filter((r) => r.sourceType === "uploaded")
+        .map((r) => r.publicId);
+      if (uploadedPublicIds.length > 0) {
+        cloudinary.api.delete_resources(uploadedPublicIds).catch((e) => {
+          logger.warn({ err: e, listingId: cafe.listingId }, "Cloudinary bulk purge on listing delete failed");
+        });
+      }
+      logger.info({ cafeId, listingId: cafe.listingId, count: imageRows.length }, "Report images cascade soft-deleted");
+    }
+  }
+
   await Promise.all([
     db.delete(cafeIntegrationsTable).where(eq(cafeIntegrationsTable.cafeId, cafeId)),
     db.delete(cafeEquipmentTable).where(eq(cafeEquipmentTable.cafeId, cafeId)),

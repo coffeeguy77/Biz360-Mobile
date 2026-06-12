@@ -140,6 +140,25 @@ router.post("/report-images/:listingId/upload", requireAuth, async (req, res): P
   };
 
   if (!base64) { res.status(400).json({ error: "base64 image data required" }); return; }
+
+  // ── Mime-type whitelist ────────────────────────────────────────────────────
+  const ALLOWED_MIMES = ["image/jpeg", "image/png", "image/webp"];
+  if (!ALLOWED_MIMES.includes(mimeType)) {
+    res.status(400).json({ error: `Unsupported file type. Please upload a JPG, PNG, or WebP image. Got: ${mimeType}` });
+    return;
+  }
+
+  // ── Size cap: 10 MB decoded ────────────────────────────────────────────────
+  // base64 encodes 3 bytes as 4 chars → raw byte estimate = base64.length * 0.75
+  const estimatedBytes = Math.ceil(base64.length * 0.75);
+  const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+  if (estimatedBytes > MAX_BYTES) {
+    res.status(400).json({
+      error: `Image is too large (${(estimatedBytes / 1_048_576).toFixed(1)} MB). Please resize the image to under 10 MB before uploading.`,
+    });
+    return;
+  }
+
   if (!ALL_ROLES.includes(imageRole as ImageRole)) {
     res.status(400).json({ error: `Invalid imageRole. Must be one of: ${ALL_ROLES.join(", ")}` });
     return;
@@ -595,5 +614,103 @@ router.get("/report-images/:listingId/primary-cover", async (req, res): Promise<
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to resolve cover image" });
   }
 });
+
+// ─── GET /api/report-images/:listingId/tour-scenes ───────────────────────────
+// Returns tour spaces from KV with Cloudinary URLs extracted, ready for the
+// "Use Tour Thumbnail" mobile picker. Each scene includes name, panoramaUrl,
+// and a photos array. The mobile uses these to call /from-tour-thumbnail.
+router.get("/report-images/:listingId/tour-scenes", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  try {
+    await assertListingAccess(listingId, userId);
+
+    const { db: dbKv, kvStore } = await import("@workspace/db");
+    const { eq: eqKv } = await import("drizzle-orm");
+    const [tourRow] = await dbKv
+      .select({ value: kvStore.value })
+      .from(kvStore)
+      .where(eqKv(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+      .limit(1);
+
+    const rawSpaces: Record<string, unknown>[] = Array.isArray(tourRow?.value) ? tourRow.value as Record<string, unknown>[] : [];
+
+    const scenes = rawSpaces.map((space, idx) => {
+      const panoramaUrl = space.panoramaUrl as string | null ?? null;
+      const photos = Array.isArray(space.photos) ? (space.photos as string[]) : [];
+      // Use the first non-panoramic photo as thumbnail, fallback to panoramaUrl
+      const thumbnailUrl = photos[0] ?? panoramaUrl ?? null;
+      const publicId = thumbnailUrl ? extractCloudinaryPublicId(thumbnailUrl) : null;
+      return {
+        index:        idx,
+        name:         (space.name as string | null) ?? `Scene ${idx + 1}`,
+        panoramaUrl,
+        thumbnailUrl,
+        cloudinaryPublicId: publicId,
+        cloudinarySecureUrl: thumbnailUrl,
+        photoCount:   photos.length,
+        hasPanorama:  !!panoramaUrl,
+      };
+    }).filter((s) => s.cloudinaryPublicId);
+
+    res.json({ scenes });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load tour scenes" });
+  }
+});
+
+// ─── GET /api/report-images/:listingId/listing-assets ────────────────────────
+// Returns existing Cloudinary photos from tour spaces (non-panoramic) that can
+// be used as listing photos via the "Use Listing Photo" picker. These are already
+// in Cloudinary — they do not need to be re-uploaded.
+router.get("/report-images/:listingId/listing-assets", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const { listingId } = req.params as { listingId: string };
+  try {
+    await assertListingAccess(listingId, userId);
+
+    const { db: dbKv, kvStore } = await import("@workspace/db");
+    const { eq: eqKv } = await import("drizzle-orm");
+    const [tourRow] = await dbKv
+      .select({ value: kvStore.value })
+      .from(kvStore)
+      .where(eqKv(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+      .limit(1);
+
+    const rawSpaces: Record<string, unknown>[] = Array.isArray(tourRow?.value) ? tourRow.value as Record<string, unknown>[] : [];
+
+    const assets: Array<{
+      url: string; cloudinaryPublicId: string; thumbnailUrl: string;
+      label: string; sourceScene: string;
+    }> = [];
+
+    for (const space of rawSpaces) {
+      const photos = Array.isArray(space.photos) ? (space.photos as string[]) : [];
+      const spaceName = (space.name as string | null) ?? "Unnamed Scene";
+      for (const photoUrl of photos) {
+        const publicId = extractCloudinaryPublicId(photoUrl);
+        if (!publicId) continue;
+        const thumbnailUrl = buildThumbnailUrl(publicId);
+        assets.push({ url: photoUrl, cloudinaryPublicId: publicId, thumbnailUrl, label: spaceName, sourceScene: spaceName });
+      }
+    }
+
+    res.json({ assets });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number };
+    res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load listing assets" });
+  }
+});
+
+/** Parse a Cloudinary secure URL to extract the public_id (including folder path). */
+function extractCloudinaryPublicId(url: string): string | null {
+  try {
+    // Handles: https://res.cloudinary.com/{cloud}/image/upload/v{n}/{public_id}.ext
+    //          https://res.cloudinary.com/{cloud}/image/upload/{public_id}.ext
+    const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^./]+)?$/);
+    return match ? match[1] : null;
+  } catch { return null; }
+}
 
 export default router;
