@@ -1,0 +1,148 @@
+Additional implementation clarifications for #96 — Report Images System
+
+1. Report images are the source of truth for static IM/PDF imagery
+
+For PDF and HTML reports, do not directly pull panoramic tour images or random listing images unless they have been selected into report_images.
+
+The report_images table becomes the controlled image library for reports.
+
+Listing photos and tour thumbnails are source options only:
+- “Use Listing Photo” creates a report_images record that references the selected Cloudinary asset.
+- “Use Tour Thumbnail” creates a report_images record that references the selected tour thumbnail.
+- Upload creates a new Cloudinary asset inside the listing’s report-images folder.
+
+2. Do not duplicate Cloudinary files unless necessary
+
+For “Use Listing Photo” and “Use Tour Thumbnail”, prefer referencing the existing Cloudinary public_id/url in report_images rather than uploading/copying a duplicate.
+
+Only physically copy the asset if:
+- permissions require it,
+- the source asset is not in Cloudinary,
+- the source asset may be deleted independently,
+- or we need a permanent report-owned copy.
+
+Add a field if useful:
+source_type: uploaded | listing_photo | tour_thumbnail
+source_ref_id: optional original listing image / tour scene id
+
+3. Add panoramic detection and protection
+
+Any image with aspect_ratio > 2.2 should be treated as panoramic/wide.
+
+Rules:
+- panoramic images cannot be selected as report cover
+- panoramic images cannot be used as listing_hero, exterior, interior or equipment hero
+- panoramic images can only be used as 360_preview, or as a cropped thumbnail if seller explicitly confirms
+- if a seller tries to set a panoramic image as cover, block it and show:
+  “360° panoramic images can look distorted in reports. Please upload a normal photo or choose a cropped thumbnail.”
+
+4. Report cover priority should only use report_images first
+
+PDF/HTML cover priority:
+1. report_images image_role = cover AND is_primary = true
+2. report_images image_role = listing_hero
+3. report_images image_role = exterior
+4. non-panoramic listing.hero_image_url / listing.cover_image_url only as emergency fallback
+5. branded gradient fallback
+
+Do not fall back to raw tour panoramas.
+
+5. Buyer PDF missing image behaviour
+
+Buyer-facing PDF:
+- never show “Image not supplied by seller”
+- omit the image block
+- use clean layout without empty image placeholders
+
+Seller draft PDF:
+- small amber note only:
+  “Image missing — add one in Report Images”
+- do not use large warning boxes that dominate the page
+
+6. Add report image status to report readiness, but do not hard block publishing
+
+Images should be soft recommendations:
+- Cover image missing
+- Exterior/frontage image missing
+- Equipment/roastery image missing
+- Location/map image missing
+- 360 preview missing
+
+Do not reduce the core valuation/report completeness too heavily because a report may still be valid without every image.
+
+7. Add image usage guardrails
+
+Before deleting a report image:
+- show where it is used: cover, PDF, HTML, buyer report, seller report, section key
+- warn if deleting the active cover image
+- if deleted image is_primary cover, automatically unset cover and force resolver to choose next available image
+
+8. Add server-side permission checks
+
+All upload/edit/delete/report-image API actions must verify:
+- authenticated seller owns the listing, OR
+- user is admin
+
+Do not rely only on frontend checks.
+
+9. Add section role suggestions
+
+When seller assigns image_role, suggest matching section_key automatically:
+
+cover -> cover
+exterior/listing_hero/interior -> business_overview
+equipment/roastery/kitchen -> plant_equipment_summary
+location/map -> business_location_market_context or canberra_location_explainer
+brand/product/menu -> brand_digital_assets
+360_preview -> 360_business_walkthrough
+
+10. PDF image loading
+
+PDF exporter must wait for Cloudinary images to load before rendering.
+
+Use absolute HTTPS secure_url.
+Disable lazy loading for PDF images.
+Apply fixed aspect ratios.
+Use Cloudinary transformations:
+- cover: 1600px wide, crop/fill, q_auto, f_auto
+- section: 1000px wide, q_auto, f_auto
+- thumbnail: 400px wide, crop/fill, q_auto, f_auto
+
+11. Data integrity panel
+
+Add seller/admin diagnostics:
+
+Cover image: Set / Missing
+Cover source: Uploaded / Listing Photo / Tour Thumbnail / Fallback
+Panorama used as cover: No
+Business images: count
+Equipment images: count
+Location/map image: Set / Missing
+360 preview image: Set / Missing
+Images hidden from buyer report: count
+
+12. Report Hub card wording
+
+Report Images card:
+Title: Report Images
+Subtitle: Control the photos used in your buyer report and PDF.
+
+Status lines:
+- Cover image: Set / Missing
+- Business photos: X
+- Equipment/location photos: X
+- 360 preview: Set / Missing
+
+CTA:
+Manage Images
+
+13. Out-of-scope confirmation
+
+Do not build:
+- AI image tagging
+- HEIC conversion
+- drag-and-drop sorting
+- changes to panorama viewer
+- complex image editing/cropping tools
+
+Basic upload, assign role, set cover, edit metadata and delete is enough for v1.
