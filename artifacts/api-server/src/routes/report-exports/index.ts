@@ -69,6 +69,46 @@ function checkY(ctx: PdfCtx, y: number, need: number): number {
   return y + need > CONTENT_BOTTOM ? whitePage(ctx) : y;
 }
 
+// ── Text sanitizer ────────────────────────────────────────────────────────────
+// Strip emoji and supplementary-plane characters that PDFKit's built-in fonts
+// (Helvetica, Times-Roman, etc.) cannot encode — they produce broken byte
+// sequences like "Ø<ß÷" in the rendered PDF.
+function sanitizePdfText(text: string): string {
+  return text
+    .replace(/[\u{1F000}-\u{1FAFF}]/gu, "")  // emoji block + supplementary symbols
+    .replace(/[\u{2600}-\u{27BF}]/gu, "")     // Misc Symbols, Dingbats
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, "")     // Variation Selectors
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ── Business name extractor from section data ─────────────────────────────────
+// Scans section tableData for a "Business Name" or "Trading Name" row — used as
+// a fallback when val_cafes.name is empty or generic.
+function extractBusinessNameFromSections(sections: any[]): string | null {
+  function parseTable(td: unknown): Record<string, unknown>[] | null {
+    if (typeof td === "string") { try { return JSON.parse(td); } catch { return null; } }
+    return Array.isArray(td) ? (td as Record<string, unknown>[]) : null;
+  }
+  for (const key of ["executive_summary", "business_overview", "app_valuation_summary"]) {
+    const sec = sections.find((s) => s.sectionKey === key);
+    if (!sec?.tableData) continue;
+    const rows = parseTable(sec.tableData);
+    if (!rows?.length) continue;
+    for (const row of rows) {
+      const ks = Object.keys(row);
+      if (ks.length < 2) continue;
+      const label = String(row[ks[0]] ?? "").toLowerCase();
+      const value = String(row[ks[1]] ?? "").trim();
+      if (!value) continue;
+      if (label.includes("business name") || label.includes("trading name") || label.includes("company name")) {
+        return sanitizePdfText(value);
+      }
+    }
+  }
+  return null;
+}
+
 // ── Cover metrics extractor ────────────────────────────────────────────────────
 // Uses COVER_METRIC_TARGETS for deterministic extraction of the 6 key cover fields:
 // asking price, valuation range, revenue, EBITDA, equipment value, lease term.
@@ -146,10 +186,16 @@ function renderCover(
   doc.font("Helvetica-Bold").fontSize(18).fillColor("#60A5FA")
     .text(biz, MARGIN, 104, { width: CONTENT_W, align: "center" });
 
-  // Location · Category metadata line
+  // Location · Category metadata line — emoji stripped to avoid broken PDF encoding
   const locationParts: string[] = [];
-  if (meta.location) locationParts.push(`📍 ${meta.location}`);
-  if (meta.category) locationParts.push(`🏷 ${meta.category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`);
+  if (meta.location) {
+    const loc = sanitizePdfText(meta.location);
+    if (loc) locationParts.push(loc);
+  }
+  if (meta.category) {
+    const cat = sanitizePdfText(meta.category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
+    if (cat) locationParts.push(cat);
+  }
   const locationLine = locationParts.join("  ·  ") || "Prepared by Exit360 · Verified Business Profile";
 
   doc.font("Helvetica").fontSize(9).fillColor(SUBTITLE_C)
@@ -311,11 +357,9 @@ function renderTOC(
     doc.font("Helvetica-Bold").fontSize(9).fillColor(BLUE_ACC)
       .text(`${String(i + 1).padStart(2, "0")}`, MARGIN + 4, y + 5, { width: 16 });
     doc.font("Helvetica-Bold").fontSize(11).fillColor(HEADING_C)
-      .text(group.title, MARGIN + 26, y + 4, { width: CONTENT_W - 120 });
-    // Page number — right-aligned
-    const pg = pageNums[i];
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(BLUE_ACC)
-      .text(`~${pg}`, MARGIN, y + 4, { width: CONTENT_W, align: "right" });
+      .text(group.title, MARGIN + 26, y + 4, { width: CONTENT_W - 40 });
+    // Page numbers are omitted — estimated values were inaccurate; actual page
+    // counts can only be known after full render. Chapter order is shown instead.
     doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
       .text(`${group.secs.length} section${group.secs.length !== 1 ? "s" : ""}`, MARGIN + 26, y + 18, { width: 120 });
     y += 36;
@@ -409,7 +453,7 @@ function renderSection(ctx: PdfCtx, section: any, y: number, isBuyerMode: boolea
   if (!isBuyerMode && isPlaceholder) {
     doc.save().rect(MARGIN + 10, y, 90, 14).fill("#FEF3C7").restore();
     doc.font("Helvetica-Bold").fontSize(7).fillColor("#92400E")
-      .text("⚠ NEEDS REVIEW", MARGIN + 14, y + 3, { width: 84 });
+      .text("! NEEDS REVIEW", MARGIN + 14, y + 3, { width: 84 });
     y += 18;
   }
 
@@ -593,16 +637,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
       res.status(403).json({ error: "Not authorised to export this listing" });
       return;
     }
-    // Business-name fallback chain (spec order): businessName → name → title → tradingName → "Business".
-    // val_cafes currently only exposes `name`; the cast below handles additional columns
-    // transparently when they are added to the schema without further code changes.
-    const cafeAny = cafe as Record<string, unknown>;
-    const biz = (cafeAny.businessName as string | undefined)
-      ?? cafe.name
-      ?? (cafeAny.title as string | undefined)
-      ?? (cafeAny.tradingName as string | undefined)
-      ?? "Business";
-
+    // Load sections first so extractBusinessNameFromSections can be used as a fallback
     let allSections: any[];
     if (versionId) {
       const [version] = await db
@@ -621,6 +656,20 @@ async function handlePdf(req: any, res: any): Promise<void> {
         .where(eq(reportSectionsTable.listingId, listingId))
         .orderBy(asc(reportSectionsTable.sortOrder));
     }
+
+    // Business-name fallback chain:
+    //   DB columns (businessName/name/title/tradingName via cast, whichever are populated)
+    //   → section tableData "Business Name" / "Trading Name" row
+    //   → "My Business"
+    // Emoji and supplementary-plane characters are stripped before PDF embedding.
+    const cafeAny = cafe as Record<string, unknown>;
+    const cafeNameRaw = (cafeAny.businessName as string | undefined)
+      ?? cafe.name
+      ?? (cafeAny.title as string | undefined)
+      ?? (cafeAny.tradingName as string | undefined);
+    const biz = sanitizePdfText(
+      cafeNameRaw ?? extractBusinessNameFromSections(allSections) ?? "My Business",
+    );
 
     const sections  = filterSections(allSections, mode, style);
     const modeLabel = mode === "seller" ? "Seller Copy" : "Buyer Copy";
@@ -704,13 +753,17 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       .from(cafesTable)
       .where(eq(cafesTable.listingId, listingId))
       .limit(1);
-    // Business-name fallback chain (spec order): businessName → name → title → tradingName → "Business".
+    // Business-name fallback chain (public endpoint — no owner auth check):
+    //   DB columns → section tableData "Business Name" row → "My Business"
+    // allSections is already loaded above; emoji stripped before PDF embedding.
     const cafeAnyPub = cafeMeta as Record<string, unknown> | undefined;
-    const biz = (cafeAnyPub?.businessName as string | undefined)
+    const cafeNameRawPub = (cafeAnyPub?.businessName as string | undefined)
       ?? cafeMeta?.name
       ?? (cafeAnyPub?.title as string | undefined)
-      ?? (cafeAnyPub?.tradingName as string | undefined)
-      ?? "Business";
+      ?? (cafeAnyPub?.tradingName as string | undefined);
+    const biz = sanitizePdfText(
+      cafeNameRawPub ?? extractBusinessNameFromSections(allSections) ?? "My Business",
+    );
 
     const dateStr  = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
     const filename = `im-report-${listingId.slice(0, 8)}-buyer-${style}.pdf`;
