@@ -1,0 +1,376 @@
+We need to finish the IM Report PDF/HTML visual upgrade. The compact report is now grouped, but it still lacks images, charts and proper visual flow.
+
+Current issues found in latest exports:
+1. Cover still says “My Business” instead of the actual listing/business name.
+2. Cover shows broken encoded text under the name: “Ø<ß÷ Cafe”. This appears to be an emoji/category encoding issue.
+3. Compact Broker IM is still 23 pages, but has empty/poorly filled pages.
+4. Page breaks are still bad. Example: one page can contain only a single leftover bullet.
+5. Table of Contents page numbers are wrong. Buyer Summary has 18 pages but TOC references pages up to ~53.
+6. Report still has no proper images or graphics.
+7. Charts are mostly missing.
+8. Metric cards exist but are basic.
+9. Buyer Summary still shows placeholder “Information to be confirmed by seller” blocks. That is acceptable only if styled cleanly, but it should not dominate the report.
+10. The report still feels like a text export, not a premium broker IM.
+
+Do not break CSV import, report sections, valuation, equipment, leases, tours, listings, buyer access or PDF export modes.
+
+TASK 1 — Fix business name and encoding
+
+Replace all “My Business” report headings with the actual listing/business name.
+
+Use:
+1. listing.business_name
+2. listing.title
+3. business.name
+4. business.trading_name
+5. fallback: “My Business”
+
+For this listing it should show:
+Bean Culture Espresso Bar
+
+Fix broken category/icon text on the cover.
+Do not render emoji/category icons directly into the PDF if the PDF renderer cannot support them.
+If category icon is an emoji, either:
+- remove it from PDF,
+- replace it with plain text category,
+- or render it as a safe SVG/icon.
+
+The cover should show:
+Food & Beverage / Hospitality
+not broken characters.
+
+TASK 2 — Fix table of contents page numbers
+
+The TOC currently uses estimated/old page numbers like ~53 even when the PDF is only 18 or 23 pages.
+
+Update TOC generation so it uses actual rendered page numbers.
+
+If actual page numbers are not available before render:
+- remove page numbers from the TOC, or
+- show chapter order only.
+
+Do not show wrong page numbers.
+
+Preferred TOC:
+01 Executive Summary
+02 Business Overview
+03 Financial Performance
+04 Valuation & Pricing
+etc.
+
+Only include actual page numbers if accurate.
+
+TASK 3 — Add real images to PDF
+
+The PDF must support images from listing and tour data.
+
+Use available image sources in this priority:
+1. listing.hero_image_url
+2. listing.cover_image_url
+3. first 360 tour scene thumbnail
+4. first uploaded listing photo
+5. first business image
+6. fallback branded gradient only if no image exists
+
+Cover page:
+- Add full-width or large hero image.
+- Add dark overlay if needed for readability.
+- Show business name, location, category and key metrics over/under hero.
+
+Inside report:
+Add image blocks where data exists:
+- Business/location hero photo in Business Overview
+- 360 tour preview screenshot in 360 Business Walkthrough
+- Equipment/tour thumbnails in Plant and Equipment Summary
+- Location/map image in Location and Canberra Context if available
+- Brand/social screenshot if available
+
+If image unavailable, do not leave blank space. Use a small “Image not provided” placeholder only in seller draft mode. Hide placeholders in buyer PDF.
+
+TASK 4 — Add proper charts and visual blocks
+
+The report needs actual graphics, not just text.
+
+Add these PDF-safe chart/table visuals:
+
+1. Valuation Bridge
+Show:
+Adjusted EBITDA × multiple + equipment value = estimated value
+
+Example visual:
+Adjusted EBITDA $575K
+× Multiple 2.5
++ Equipment $696K
+= Estimated Value $2.08M
+
+2. Revenue by Division
+Use horizontal bar chart or clean table:
+- Espresso Bar $582K
+- Coffee Roastery $535K
+- Coffee Carts $124K
+- excluded divisions greyed out
+
+3. Valuation by Division
+Show:
+- Espresso Bar $593K
+- Coffee Roastery $1.18M
+- Coffee Carts $307K
+- excluded divisions greyed out
+
+4. Equipment Summary
+Show:
+- Total equipment value
+- Asset count
+- Category breakdown if available
+- Top 5 high-value assets if available
+
+5. Lease Risk Distribution
+Render a donut, stacked bar or horizontal bar:
+- Critical 17%
+- High 40%
+- Medium 30%
+- Low 14%
+
+6. Business Health Score
+Render score as:
+- 85/100 large score
+- Strong badge
+- category bars if available
+If category data unavailable, show the overall score only.
+
+7. Buyer Engagement Funnel
+If data exists, show:
+Views → Tour Starts → Unique Buyers → Messages → Calls → Saves
+
+8. Due Diligence Checklist
+Render as checklist badges/table, not a paragraph.
+
+If charting is difficult in PDF, render simple SVG or HTML/CSS bars. Do not rely on interactive charts for PDF.
+
+TASK 5 — Fix bad page breaks and orphan lines
+
+Current PDF still creates orphan pages with only one bullet line.
+
+Implement proper print CSS / pagination rules:
+- Do not break a bullet list across pages if avoidable.
+- Do not leave a page with only one line or one bullet.
+- Keep section heading with at least 3 lines of content.
+- If a section has only 1–2 lines left at bottom, move the whole section to next page.
+- If a page starts with a leftover bullet from previous section, rebalance content.
+- Use page-break-inside: avoid for small section cards, tables and bullet groups.
+- Use orphans/widows rules where supported.
+- Do not force page breaks between grouped sections unless needed.
+
+TASK 6 — Reduce wasted space further
+
+Compact Broker IM target should be 14–18 pages, not 23, unless images/charts require more.
+
+Buyer Summary target should be 8–12 pages.
+
+Rules:
+- Combine short text-only sections into two-column layouts.
+- Use side-by-side cards for short sections.
+- Use compact tables instead of repeated bullet lists.
+- Reduce giant top/bottom margins.
+- Reduce repeated chapter title space.
+- Do not create a chapter page if the chapter content starts immediately after.
+- Avoid using a huge “Chapter X” header block that wastes vertical space.
+
+TASK 7 — Make chapters look designed, not just stacked text
+
+For each chapter, use a layout appropriate to the data.
+
+Executive Summary:
+- Left: summary paragraph
+- Right: key highlight cards
+- Bottom: key selling points
+
+Financial Performance:
+- Top: metric cards
+- Middle: revenue/COGS/profit table
+- Bottom: verified source badges
+
+Valuation & Pricing:
+- Top: valuation metric cards
+- Middle: valuation bridge graphic
+- Bottom: methodology + range explanation
+
+Divisions:
+- Use visual table or bar cards
+- Included divisions in blue/green
+- Excluded divisions greyed out
+
+Lease:
+- Top: lease stats
+- Middle: risk distribution graphic
+- Bottom: key lease notes
+
+Tour:
+- Add 360 hero/thumbnail image
+- Add spaces/pins/audio cards
+- Add key tour highlights in compact grid
+
+Location:
+- Add map/image if available
+- Add Canberra region explanation in callout card
+- Add nearby region/travel context table if available
+
+Growth & Risk:
+- Two-column layout:
+  left growth opportunities
+  right risks/mitigations
+
+Buyer Pack:
+- Verification badges
+- Due diligence checklist
+- Access/confidentiality
+- Next steps CTA
+
+TASK 8 — Add report image and chart fallbacks
+
+If no image exists:
+- Seller Draft PDF: show small amber “Image not supplied” note.
+- Buyer PDF: omit the image block entirely.
+
+If no chart data exists:
+- Use the available numeric values to render basic chart/table.
+- If no values exist, omit chart block in buyer PDF.
+- Do not leave blank chart areas.
+
+TASK 9 — Improve cover design
+
+Cover should look like a premium broker report.
+
+Cover layout:
+- Hero image at top or full-page background if available
+- Dark navy overlay
+- Confidential badge
+- Information Memorandum title
+- Business name
+- Location and category
+- Key metrics grid:
+  - Estimated Value
+  - Valuation Range
+  - Revenue
+  - Adjusted EBITDA
+  - Equipment Value
+  - Business Health
+- Report mode:
+  Seller Copy / Buyer Copy
+- Date prepared
+- Listing reference
+- Exit360 branding
+
+Do not show broken emoji text.
+Do not show My Business unless no business name exists.
+
+TASK 10 — Improve buyer summary rules
+
+Buyer Summary should:
+- Be shorter than seller compact
+- Remove internal seller guidance
+- Replace placeholder review sections with short yellow “Information to be confirmed by seller” notes only where necessary
+- Prioritise buyer-facing sections:
+  - Executive Summary
+  - Business Overview
+  - Key Metrics
+  - Valuation Snapshot
+  - Revenue/Division Summary
+  - Equipment Summary
+  - Lease Snapshot
+  - 360 Tour
+  - Growth Opportunities
+  - Buyer Access / Next Steps
+
+Buyer Summary should target 8–12 pages.
+If it is 18 pages, it is too long unless there are many images/charts.
+
+TASK 11 — Seller Detailed Report rules
+
+Detailed Full Report may be longer, but should still include:
+- Images
+- Tables
+- Charts
+- No broken page numbers
+- No orphan single-line pages
+- Actual business name
+- No broken category/emoji encoding
+
+TASK 12 — HTML report must share visual system
+
+Use the same grouped chapter structure and visuals in the HTML report.
+
+HTML should include:
+- Hero image
+- Sticky chapter nav
+- Metric cards
+- Charts
+- Tables
+- Embedded 360 tour preview
+- Locked buyer sections
+- Request Access CTA
+- Download PDF button
+- Contact Seller / Book Inspection / Request Docs buttons
+
+Do not build separate duplicated logic for HTML/PDF.
+Use shared reportGroups config and shared report data preparation.
+
+TASK 13 — Use app data to drive graphics
+
+Pull images/graphics data from:
+- listing hero/cover image
+- 360 tour scenes and thumbnails
+- tour pins count
+- equipment ledger
+- lease risk analysis
+- valuation data
+- division data
+- buyer engagement stats
+- verified badges
+- due diligence checklist
+
+Do not hardcode Bean Culture.
+Do not hardcode file paths.
+
+TASK 14 — Fix completion checklist mismatch if needed
+
+The IM Report dashboard still says:
+40 of 40 sections have content
+but also says:
+4 required sections missing content
+
+If sections are genuinely new required sections such as:
+- Products & Services
+- Staffing & Workforce
+- Operations Overview
+- Asking Price & Terms
+
+Then add them to the CSV template and report section seed data.
+
+Otherwise, map them to existing equivalent sections:
+- Products & Services -> business_overview or revenue_stream_breakdown
+- Staffing & Workforce -> staff_owner_involvement
+- Operations Overview -> operations_systems
+- Asking Price & Terms -> app_valuation_summary / sale_inclusions / stock_working_capital
+
+Do not require hidden/nonexistent sections that are not in the 40-section CSV template.
+
+Report dashboard should not say 40/40 sections have content if there are separate required sections outside that count. Either:
+- include those sections in the count, or
+- call them “publishing checks”, not missing sections.
+
+SUCCESS CRITERIA
+
+This task is complete when:
+1. Cover shows the actual business name.
+2. Broken “Ø<ß÷ Cafe” text is gone.
+3. Cover includes a real listing/tour image where available.
+4. Compact Broker IM includes charts/tables/images.
+5. Buyer Summary includes charts/tables/images where allowed.
+6. TOC page numbers are accurate or removed.
+7. No page contains only one leftover bullet line.
+8. Compact Broker IM is closer to 14–18 pages unless content/images justify more.
+9. Buyer Summary is closer to 8–12 pages unless content/images justify more.
+10. Report feels like a premium broker IM, not a text export.
+11. HTML report uses the same grouped visual structure.
+12. No existing app modules break.
