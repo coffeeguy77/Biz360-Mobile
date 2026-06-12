@@ -95,7 +95,7 @@ function extractCoverMetrics(sections: any[]): { label: string; value: string }[
         break;
       }
     }
-    if (metrics.length >= 4) break;
+    // No early exit — iterate all 6 targets to collect all required cover fields
   }
 
   // Fallback: fill remaining slots from first available tableData section
@@ -112,9 +112,9 @@ function extractCoverMetrics(sections: any[]): { label: string; value: string }[
         if (l && v && !metrics.some((m) => m.label.toLowerCase() === l.toLowerCase())) {
           metrics.push({ label: l, value: v });
         }
-        if (metrics.length >= 4) break;
+        if (metrics.length >= 6) break;
       }
-      if (metrics.length >= 4) break;
+      if (metrics.length >= 6) break;
     }
   }
 
@@ -125,7 +125,14 @@ function extractCoverMetrics(sections: any[]): { label: string; value: string }[
 // ── Cover page (dark navy) ─────────────────────────────────────────────────────
 function renderCover(
   ctx: PdfCtx,
-  meta: { listingId: string; modeLabel: string; styleLabel: string; dateStr: string },
+  meta: {
+    listingId: string;
+    modeLabel: string;
+    styleLabel: string;
+    dateStr: string;
+    location?: string | null;
+    category?: string | null;
+  },
   metrics: { label: string; value: string }[],
 ): void {
   const { doc, biz } = ctx;
@@ -138,12 +145,22 @@ function renderCover(
     .text("Information Memorandum", MARGIN, 68, { width: CONTENT_W, align: "center" });
   doc.font("Helvetica-Bold").fontSize(18).fillColor("#60A5FA")
     .text(biz, MARGIN, 104, { width: CONTENT_W, align: "center" });
+
+  // Location · Category metadata line
+  const locationParts: string[] = [];
+  if (meta.location) locationParts.push(`📍 ${meta.location}`);
+  if (meta.category) locationParts.push(`🏷 ${meta.category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`);
+  const locationLine = locationParts.join("  ·  ") || "Prepared by Exit360 · Verified Business Profile";
+
   doc.font("Helvetica").fontSize(9).fillColor(SUBTITLE_C)
-    .text("Prepared by Exit360 · Verified Business Profile", MARGIN, 134, { width: CONTENT_W, align: "center" });
+    .text(locationLine, MARGIN, 130, { width: CONTENT_W, align: "center" });
 
-  doc.save().moveTo(MARGIN, 160).lineTo(PAGE_W - MARGIN, 160).lineWidth(1).strokeColor("#1E3A5C").stroke().restore();
+  // Hero image placeholder area — currently no hero image stored in schema;
+  // when `heroImageUrl` is added to val_cafes or listings, render it here.
 
-  let yPos = 172;
+  doc.save().moveTo(MARGIN, 154).lineTo(PAGE_W - MARGIN, 154).lineWidth(1).strokeColor("#1E3A5C").stroke().restore();
+
+  let yPos = 166;
 
   if (metrics.length > 0) {
     // Key metrics header
@@ -475,7 +492,14 @@ async function buildPdf(
   sections: any[],
   style: PdfStyle,
   mode: string,
-  meta: { listingId: string; modeLabel: string; styleLabel: string; dateStr: string },
+  meta: {
+    listingId: string;
+    modeLabel: string;
+    styleLabel: string;
+    dateStr: string;
+    location?: string | null;
+    category?: string | null;
+  },
 ): Promise<void> {
   // Buyer mode applies when mode=buyer OR buyer_summary style is selected
   const isBuyerMode = mode === "buyer" || style === "buyer_summary";
@@ -560,7 +584,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
   try {
     const [cafe] = await db
-      .select({ id: cafesTable.id, name: cafesTable.name })
+      .select({ id: cafesTable.id, name: cafesTable.name, city: cafesTable.city, businessType: cafesTable.businessType })
       .from(cafesTable)
       .where(and(eq(cafesTable.listingId, listingId), eq(cafesTable.ownerId, userId)))
       .limit(1);
@@ -617,7 +641,11 @@ async function handlePdf(req: any, res: any): Promise<void> {
     doc.pipe(res);
 
     const ctx: PdfCtx = { doc, biz, pg: 1 };
-    await buildPdf(ctx, sections, style, mode, { listingId, modeLabel, styleLabel, dateStr });
+    await buildPdf(ctx, sections, style, mode, {
+      listingId, modeLabel, styleLabel, dateStr,
+      location: cafe.city ?? null,
+      category: cafe.businessType ?? null,
+    });
 
     db.insert(reportExportsTable).values({
       listingId,
@@ -670,9 +698,9 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       return false;
     });
 
-    // Look up the business name (not the owner — public endpoint, listingId only)
+    // Look up the business name, location, and category (no owner check — public endpoint)
     const [cafeMeta] = await db
-      .select({ name: cafesTable.name })
+      .select({ name: cafesTable.name, city: cafesTable.city, businessType: cafesTable.businessType })
       .from(cafesTable)
       .where(eq(cafesTable.listingId, listingId))
       .limit(1);
@@ -707,6 +735,8 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       modeLabel:  "Buyer Copy",
       styleLabel,
       dateStr,
+      location: cafeMeta?.city ?? null,
+      category: cafeMeta?.businessType ?? null,
     });
 
     db.insert(reportExportsTable).values({
