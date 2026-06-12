@@ -209,6 +209,22 @@ function SectionContent({
   );
 }
 
+// ── Chapter grouping ──────────────────────────────────────────────────────────
+interface ReportGroup { key: string; title: string; sectionKeys: string[]; }
+
+const REPORT_GROUPS: ReportGroup[] = [
+  { key: "executive_summary",  title: "Executive Summary",               sectionKeys: ["executive_summary","key_selling_points","reason_for_sale"] },
+  { key: "business_overview",  title: "Business Overview",               sectionKeys: ["business_overview","buyer_suitability","training_handover"] },
+  { key: "valuation_financials", title: "Valuation and Financials",      sectionKeys: ["app_valuation_summary","valuation_methodology","valuation_range_explanation","business_health_score","verified_revenue_sources","financial_performance_summary"] },
+  { key: "divisions_earnings", title: "Divisions and Earnings",          sectionKeys: ["division_breakdown","revenue_stream_breakdown","cogs_mapping_summary","addbacks_adjusted_ebitda"] },
+  { key: "assets_equipment",   title: "Assets and Equipment",            sectionKeys: ["plant_equipment_summary","sale_inclusions","sale_exclusions","stock_working_capital"] },
+  { key: "lease_premises",     title: "Lease and Premises",              sectionKeys: ["lease_premises_summary","lease_risk_valuation_impact","business_location_market_context","canberra_location_explainer"] },
+  { key: "tour_operations",    title: "Tour and Operations",             sectionKeys: ["360_business_walkthrough","key_tour_highlights","operations_systems","staff_owner_involvement"] },
+  { key: "brand_customers",    title: "Brand, Customers and Suppliers",  sectionKeys: ["supplier_summary","customer_base","brand_digital_assets","reviews_reputation"] },
+  { key: "growth_risk",        title: "Growth and Risk",                 sectionKeys: ["growth_opportunities","risks_mitigations","swot_analysis"] },
+  { key: "buyer_pack",         title: "Buyer Pack",                      sectionKeys: ["verified_information","buyer_access_confidentiality","due_diligence_documents_available","next_steps","disclaimer"] },
+];
+
 // ── Section number → visual style ─────────────────────────────────────────────
 const ACCENT_COLORS = [
   "#3B82F6", "#10B981", "#8B5CF6", "#F59E0B",
@@ -345,9 +361,19 @@ export function ReportPage() {
   const sections = (data?.sections ?? []).filter((s) => s.includeInHtml);
   const businessName = data?.meta?.businessName ?? "Confidential Business";
 
-  const tocSections = sections.filter((s) =>
-    !["disclaimer"].includes(s.sectionKey)
-  );
+  // Build chapter groups — only include groups that have ≥1 visible section
+  const groupedSections = REPORT_GROUPS.map((g) => ({
+    ...g,
+    sections: g.sectionKeys
+      .map((k) => sections.find((s) => s.sectionKey === k))
+      .filter(Boolean) as ReportSection[],
+  })).filter((g) => g.sections.length > 0);
+
+  // Flat list for backward-compat (ungrouped sections not in any chapter)
+  const allGroupedKeys = new Set(REPORT_GROUPS.flatMap((g) => g.sectionKeys));
+  const ungroupedSections = sections.filter((s) => !allGroupedKeys.has(s.sectionKey));
+
+  const [activeChapter, setActiveChapter] = useState<string | null>(null);
 
   // ── LOADING ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -558,94 +584,203 @@ export function ReportPage() {
         </div>
       </section>
 
+      {/* ── Chapter Nav (sticky horizontal tab strip) ───────────────────────── */}
+      {groupedSections.length > 0 && (
+        <div className={cn(
+          "sticky top-12 z-40 border-b overflow-x-auto print:hidden",
+          printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/95 backdrop-blur border-[#1E3A5C]"
+        )}>
+          <div className="max-w-5xl mx-auto px-4 flex items-center gap-1 py-1.5 min-w-max">
+            {groupedSections.map((g, i) => (
+              <a
+                key={g.key}
+                href={`#chapter-${g.key}`}
+                onClick={() => setActiveChapter(g.key)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors",
+                  activeChapter === g.key
+                    ? "bg-blue-600 text-white"
+                    : printMode
+                    ? "text-slate-600 hover:bg-slate-100"
+                    : "text-slate-400 hover:text-white hover:bg-[#1E3A5C]/60"
+                )}
+              >
+                <span className={cn(
+                  "text-[9px] font-bold",
+                  activeChapter === g.key ? "text-blue-200" : "text-blue-500"
+                )}>{String(i + 1).padStart(2, "0")}</span>
+                {g.title}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Table of Contents ───────────────────────────────────────────────── */}
-      {tocSections.length > 0 && (
+      {groupedSections.length > 0 && (
         <nav className={cn(
-          "border-y py-8 print:hidden",
+          "border-b py-8 print:hidden",
           printMode ? "bg-slate-50 border-slate-200" : "bg-[#0F2040]/60 border-[#1E3A5C]"
         )}>
           <div className="max-w-5xl mx-auto px-6">
-            <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-4", printMode ? "text-slate-400" : "text-slate-500")}>
+            <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-5", printMode ? "text-slate-400" : "text-slate-500")}>
               Contents
             </p>
-            <div className="columns-1 sm:columns-2 md:columns-3 gap-x-6 space-y-0">
-              {tocSections.map((s, i) => (
-                <a
-                  key={s.id}
-                  href={`#${s.sectionKey}`}
-                  className={cn(
-                    "flex items-center gap-2 py-1.5 text-sm transition-colors block",
-                    printMode ? "text-slate-600 hover:text-slate-900" : "text-slate-400 hover:text-blue-400"
-                  )}
-                >
-                  <span className={cn("text-[10px] font-bold w-5 flex-shrink-0", printMode ? "text-slate-400" : "text-slate-600")}>
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  {s.title}
-                  {s.isLocked && <Lock size={10} className="text-amber-400 flex-shrink-0" />}
-                </a>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-0">
+              {groupedSections.map((g, i) => (
+                <div key={g.key} className="mb-4">
+                  <a
+                    href={`#chapter-${g.key}`}
+                    className={cn(
+                      "flex items-center gap-2 py-1 text-sm font-semibold transition-colors",
+                      printMode ? "text-slate-700 hover:text-slate-900" : "text-white hover:text-blue-400"
+                    )}
+                  >
+                    <span className={cn(
+                      "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                      printMode ? "bg-blue-50 text-blue-600" : "bg-blue-500/20 text-blue-400"
+                    )}>
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    {g.title}
+                  </a>
+                  <div className="pl-7 space-y-0.5 mt-0.5">
+                    {g.sections.slice(0, 4).map((s) => (
+                      <a
+                        key={s.id}
+                        href={`#${s.sectionKey}`}
+                        className={cn(
+                          "flex items-center gap-1.5 py-0.5 text-xs transition-colors",
+                          printMode ? "text-slate-500 hover:text-slate-700" : "text-slate-500 hover:text-slate-300"
+                        )}
+                      >
+                        <ChevronRight size={10} className="flex-shrink-0" />
+                        {s.title}
+                        {s.isLocked && <Lock size={9} className="text-amber-400 flex-shrink-0" />}
+                      </a>
+                    ))}
+                    {g.sections.length > 4 && (
+                      <p className={cn("text-[10px] pl-4", printMode ? "text-slate-400" : "text-slate-600")}>
+                        +{g.sections.length - 4} more
+                      </p>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
         </nav>
       )}
 
-      {/* ── Section Cards ────────────────────────────────────────────────────── */}
-      <main className="max-w-5xl mx-auto px-6 py-10 space-y-10">
-        {sections.map((section, idx) => {
+      {/* ── Chapter Groups ────────────────────────────────────────────────────── */}
+      <main className="max-w-5xl mx-auto px-6 py-10 space-y-14">
+        {groupedSections.map((group, gIdx) => {
+          const chapterAccent = ACCENT_COLORS[gIdx % ACCENT_COLORS.length];
+          let sectionCounter = 0;
+          return (
+            <div key={group.key} id={`chapter-${group.key}`} className="scroll-mt-24">
+              {/* Chapter header */}
+              <div className={cn(
+                "flex items-center gap-4 mb-6 pb-4 border-b",
+                printMode ? "border-slate-200" : "border-[#1E3A5C]"
+              )}>
+                <div
+                  className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm"
+                  style={{ backgroundColor: chapterAccent + "22", color: chapterAccent }}
+                >
+                  {String(gIdx + 1).padStart(2, "0")}
+                </div>
+                <div>
+                  <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-0.5", printMode ? "text-slate-400" : "text-slate-500")}>
+                    Chapter {gIdx + 1}
+                  </p>
+                  <h2 className={cn("text-xl font-bold", printMode ? "text-slate-900" : "text-white")}>
+                    {group.title}
+                  </h2>
+                </div>
+              </div>
+
+              {/* Sections within chapter */}
+              <div className="space-y-8">
+                {group.sections.map((section) => {
+                  sectionCounter++;
+                  const accent = chapterAccent;
+                  return (
+                    <section
+                      key={section.id}
+                      id={section.sectionKey}
+                      className={cn(
+                        "rounded-2xl border p-8 scroll-mt-28 transition-colors",
+                        printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/50 border-[#1E3A5C]/60"
+                      )}
+                    >
+                      <div className="flex items-start gap-4 mb-5">
+                        <div
+                          className="w-1 self-stretch rounded-full flex-shrink-0"
+                          style={{ backgroundColor: accent, minHeight: 40 }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2.5 mb-1">
+                            <h3 className={cn("text-lg font-bold", printMode ? "text-slate-900" : "text-white")}>
+                              {section.title}
+                            </h3>
+                            {section.isLocked && (
+                              <Lock size={14} className="text-amber-400 flex-shrink-0" />
+                            )}
+                          </div>
+                          {section.subtitle && (
+                            <p className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-500")}>
+                              {section.subtitle}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {section.isLocked
+                        ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
+                        : <SectionContent section={section} listingId={listingId} />
+                      }
+
+                      {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
+                        <div className={cn(
+                          "mt-5 p-4 rounded-xl border-l-2 border-amber-500/40 text-sm",
+                          printMode ? "bg-amber-50 text-amber-800" : "bg-amber-500/5 text-amber-300"
+                        )}>
+                          <span className="font-semibold text-xs uppercase tracking-wider block mb-1">Seller Notes</span>
+                          {section.sellerNotes}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Ungrouped sections (fallback — shouldn't normally appear) */}
+        {ungroupedSections.map((section, idx) => {
           const accent = ACCENT_COLORS[idx % ACCENT_COLORS.length];
           return (
             <section
               key={section.id}
               id={section.sectionKey}
               className={cn(
-                "rounded-2xl border p-8 scroll-mt-16 transition-colors",
+                "rounded-2xl border p-8 scroll-mt-28",
                 printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/50 border-[#1E3A5C]/60"
               )}
             >
               <div className="flex items-start gap-4 mb-5">
-                <div
-                  className="w-1 self-stretch rounded-full flex-shrink-0"
-                  style={{ backgroundColor: accent, minHeight: 40 }}
-                />
+                <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: accent, minHeight: 40 }} />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2.5 mb-1">
-                    <span
-                      className="text-[10px] font-bold px-2 py-0.5 rounded"
-                      style={{ backgroundColor: accent + "22", color: accent }}
-                    >
-                      {String(idx + 1).padStart(2, "0")}
-                    </span>
-                    <h2 className={cn("text-xl font-bold", printMode ? "text-slate-900" : "text-white")}>
-                      {section.title}
-                    </h2>
-                    {section.isLocked && (
-                      <Lock size={14} className="text-amber-400 flex-shrink-0" />
-                    )}
-                  </div>
-                  {section.subtitle && (
-                    <p className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-500")}>
-                      {section.subtitle}
-                    </p>
-                  )}
+                  <h3 className={cn("text-lg font-bold mb-1", printMode ? "text-slate-900" : "text-white")}>{section.title}</h3>
+                  {section.subtitle && <p className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-500")}>{section.subtitle}</p>}
                 </div>
               </div>
-
               {section.isLocked
                 ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
                 : <SectionContent section={section} listingId={listingId} />
               }
-
-              {/* Seller notes (only shown when caller is the verified seller) */}
-              {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
-                <div className={cn(
-                  "mt-5 p-4 rounded-xl border-l-2 border-amber-500/40 text-sm",
-                  printMode ? "bg-amber-50 text-amber-800" : "bg-amber-500/5 text-amber-300"
-                )}>
-                  <span className="font-semibold text-xs uppercase tracking-wider block mb-1">Seller Notes</span>
-                  {section.sellerNotes}
-                </div>
-              )}
             </section>
           );
         })}

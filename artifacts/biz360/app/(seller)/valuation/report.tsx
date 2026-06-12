@@ -339,36 +339,31 @@ export default function ReportHubScreen() {
     }
   }
 
-  async function downloadPdf(mode: "seller" | "buyer") {
+  type PdfStyle = "compact" | "detailed" | "buyer_summary" | "data_room";
+
+  const PDF_STYLES: { style: PdfStyle; label: string; pages: string; desc: string }[] = [
+    { style: "compact",       label: "Compact Broker IM",    pages: "14–22 pp",  desc: "Grouped chapters — polished broker layout" },
+    { style: "detailed",      label: "Detailed Full Report", pages: "25–40 pp",  desc: "Full content, each section clearly separated" },
+    { style: "buyer_summary", label: "Buyer Summary",        pages: "8–12 pp",   desc: "Public sections only, buyer-facing" },
+    { style: "data_room",     label: "Data Room Appendix",   pages: "6–10 pp",   desc: "Equipment, financials, lease tables" },
+  ];
+
+  async function downloadPdf(mode: "seller" | "buyer", style: PdfStyle = "compact") {
     if (!listingId) return;
     setDownloading(true);
     try {
-      let res: Response;
-      const filename = `im-report-${listingId.slice(0, 8)}-${mode}.pdf`;
-
-      if (mode === "buyer") {
-        // Buyer mode PDF — uses authenticated endpoint with mode=buyer,
-        // which includes approved_buyers sections (seller-initiated share).
-        // The unauthenticated pdf-public endpoint is a teaser-only download.
-        const token = await getAuthToken();
-        if (!token) { Alert.alert("Not signed in", "Please sign in to export the buyer PDF."); return; }
-        res = await fetch(`${API_BASE}/api/report-exports/pdf/${listingId}?mode=buyer`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } else {
-        const token = await getAuthToken();
-        if (!token) { Alert.alert("Not signed in", "Please sign in to export the seller PDF."); return; }
-        res = await fetch(`${API_BASE}/api/report-exports/pdf/${listingId}?mode=seller`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-
+      const token = await getAuthToken();
+      if (!token) { Alert.alert("Not signed in", "Please sign in to export the PDF."); return; }
+      const filename = `im-report-${listingId.slice(0, 8)}-${mode}-${style}.pdf`;
+      const res = await fetch(
+        `${API_BASE}/api/report-exports/pdf/${listingId}?mode=${mode}&style=${style}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         Alert.alert("Error", (err as { error?: string }).error ?? "Could not generate PDF. Please try again.");
         return;
       }
-
       if (Platform.OS === "web") {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -394,17 +389,28 @@ export default function ReportHubScreen() {
   function handleExportPdf() {
     Alert.alert(
       "Export PDF",
-      "Choose the PDF version to export.",
+      "Choose a report style:",
       [
+        ...PDF_STYLES.map(({ style, label, pages, desc }) => ({
+          text: `${label} (${pages})`,
+          onPress: () => {
+            // buyer_summary is always exported as buyer mode; others ask
+            if (style === "buyer_summary") {
+              downloadPdf("buyer", style);
+            } else {
+              Alert.alert(
+                label,
+                desc,
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Seller Copy",       onPress: () => downloadPdf("seller", style) },
+                  { text: "Buyer Copy",         onPress: () => downloadPdf("buyer",  style) },
+                ],
+              );
+            }
+          },
+        })),
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Seller Copy (full)",
-          onPress: () => downloadPdf("seller"),
-        },
-        {
-          text: "Buyer Copy (public sections)",
-          onPress: () => downloadPdf("buyer"),
-        },
       ],
     );
   }
