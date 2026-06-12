@@ -1138,10 +1138,12 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       );
 
     // Best cover image for the HTML report cover banner.
-    // Priority: isPrimary=true → imageRole=listing_hero → first non-panoramic
-    const primaryCoverImage = reportImages.find((i) => i.isPrimary)
-      ?? reportImages.find((i) => i.imageRole === "listing_hero")
-      ?? reportImages[0]
+    // Panoramic images are NEVER used as cover — they look distorted on flat surfaces.
+    // Priority: isPrimary && !isPanoramic → listing_hero && !isPanoramic → first !isPanoramic
+    const nonPanoCover = reportImages.filter((i) => !i.isPanoramic);
+    const primaryCoverImage = nonPanoCover.find((i) => i.isPrimary)
+      ?? nonPanoCover.find((i) => i.imageRole === "listing_hero")
+      ?? nonPanoCover[0]
       ?? null;
 
     if (primaryCoverImage) {

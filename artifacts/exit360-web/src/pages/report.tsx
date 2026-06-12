@@ -289,9 +289,9 @@ function SectionImageStrip({
         images.length === 1 ? "justify-center" : "",
       )}>
         {images.map((img) => {
-          // Build 800w Cloudinary thumbnail URL
+          // Build 400w crop/fill Cloudinary thumbnail (spec: section card thumbnails)
           const thumbUrl = img.cloudinaryPublicId
-            ? `https://res.cloudinary.com/${(img.url.match(/cloudinary\.com\/([^/]+)/) ?? [])[1] ?? "biz360"}/image/upload/w_800,q_auto,f_auto/${img.cloudinaryPublicId}`
+            ? `https://res.cloudinary.com/${(img.url.match(/cloudinary\.com\/([^/]+)/) ?? [])[1] ?? "biz360"}/image/upload/w_400,c_fill,q_auto,f_auto/${img.cloudinaryPublicId}`
             : img.url;
           return (
             <div key={img.id} className="flex-shrink-0" style={{ maxWidth: images.length === 1 ? "100%" : "48%" }}>

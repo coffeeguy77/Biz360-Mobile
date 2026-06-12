@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { v2 as cloudinary } from "cloudinary";
-import { eq, and, asc, desc, isNull } from "drizzle-orm";
+import { eq, and, asc, desc, isNull, sql } from "drizzle-orm";
 import { db, reportImagesTable, cafesTable } from "@workspace/db";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
@@ -598,7 +598,16 @@ router.get("/report-images/:listingId/primary-cover", async (req, res): Promise<
         eq(reportImagesTable.includeInBuyerReport, true),
         isNull(reportImagesTable.deletedAt),
       ))
-      .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder))
+      .orderBy(
+        desc(reportImagesTable.isPrimary),
+        sql`CASE ${reportImagesTable.imageRole}
+          WHEN 'listing_hero'    THEN 0
+          WHEN 'cover_secondary' THEN 1
+          WHEN 'exterior'        THEN 2
+          ELSE 3
+        END`,
+        asc(reportImagesTable.sortOrder),
+      )
       .limit(3);
 
     if (!candidates.length) { res.json({ url: null }); return; }
