@@ -2,8 +2,9 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
+  cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable,
 } from "@workspace/db";
-import { eq, asc, and } from "drizzle-orm";
+import { eq, asc, and, desc } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { generateChartSvg } from "../../lib/chart-svg";
 import {
@@ -131,6 +132,352 @@ function resolveBusinessName(
   return sanitizePdfText(raw);
 }
 
+// ── Currency formatter ─────────────────────────────────────────────────────────
+function fmtCurrency(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+// ── Image pipeline ─────────────────────────────────────────────────────────────
+async function fetchImageBuffer(url: string, timeoutMs = 4000): Promise<Buffer | null> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(tid);
+    if (!resp.ok) return null;
+    const arr = await resp.arrayBuffer();
+    return Buffer.from(arr);
+  } catch {
+    return null;
+  }
+}
+
+function resolveImageUrl(sections: any[], ...sectionKeys: string[]): string | null {
+  for (const key of sectionKeys) {
+    const sec = sections.find((s) => s.sectionKey === key);
+    if (!sec) continue;
+    const cd = (() => {
+      const raw = sec.chartData;
+      if (!raw) return null;
+      return typeof raw === "string"
+        ? (() => { try { return JSON.parse(raw); } catch { return null; } })()
+        : raw;
+    })();
+    if (cd && typeof cd === "object" && !Array.isArray(cd)) {
+      const urlKey = Object.keys(cd).find((k) => /url|image|thumbnail|photo/i.test(k));
+      if (urlKey && typeof (cd as any)[urlKey] === "string" && (cd as any)[urlKey].startsWith("http")) {
+        return (cd as any)[urlKey] as string;
+      }
+    }
+    if (Array.isArray(cd)) {
+      for (const item of cd) {
+        if (item && typeof item === "object") {
+          const urlKey = Object.keys(item).find((k) => /url|image|thumbnail|photo/i.test(k));
+          if (urlKey && typeof item[urlKey] === "string" && item[urlKey].startsWith("http")) {
+            return item[urlKey] as string;
+          }
+        }
+      }
+    }
+    if (sec.body) {
+      const m = (sec.body as string).match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?/i);
+      if (m) return m[0];
+    }
+  }
+  return null;
+}
+
+// ── Body image block renderer ──────────────────────────────────────────────────
+function renderBodyImage(
+  ctx: PdfCtx, imageBuffer: Buffer | null, caption: string, y: number, isSellerDraft: boolean,
+): number {
+  const IMG_H = 150;
+  if (!imageBuffer) {
+    if (!isSellerDraft) return y;
+    y = checkY(ctx, y, 32);
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 24).fill("#FEF3C7").restore();
+    ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor("#92400E")
+      .text(`${caption}: Image not supplied by seller.`, MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+    return y + 24 + 10;
+  }
+  y = checkY(ctx, y, IMG_H + 20);
+  try {
+    ctx.doc.image(imageBuffer, MARGIN, y, { fit: [CONTENT_W, IMG_H], align: "center", valign: "center" });
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C)
+      .text(caption, MARGIN, y + IMG_H + 3, { width: CONTENT_W });
+    return y + IMG_H + 18;
+  } catch {
+    if (!isSellerDraft) return y;
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 24).fill("#FEF3C7").restore();
+    ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor("#92400E")
+      .text(`${caption}: Image could not be loaded.`, MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+    return y + 24 + 10;
+  }
+}
+
+// ── Valuation Bridge visual ────────────────────────────────────────────────────
+function renderValuationBridge(
+  ctx: PdfCtx,
+  snapshot: { adjustedEbitda: string | null; valuationMidpoint: string | null; totalEquipmentValue: string | null } | null,
+  y: number, isSellerDraft: boolean,
+): number {
+  const adjEbitda = parseFloat(snapshot?.adjustedEbitda ?? "0") || 0;
+  const midpoint  = parseFloat(snapshot?.valuationMidpoint ?? "0") || 0;
+  const equip     = parseFloat(snapshot?.totalEquipmentValue ?? "0") || 0;
+  if (!adjEbitda && !midpoint) {
+    if (!isSellerDraft) return y;
+    y = checkY(ctx, y, 28);
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+    ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+      .text("Valuation bridge data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+    return y + 22 + 10;
+  }
+  const operatingVal = Math.max(0, midpoint - equip);
+  const multiple = adjEbitda > 0 ? operatingVal / adjEbitda : 0;
+
+  y = checkY(ctx, y, 100);
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text("VALUATION BRIDGE", MARGIN, y, { width: CONTENT_W });
+  y += 14;
+
+  const BOX_W = Math.floor(CONTENT_W / 4) - 8;
+  const BOX_H = 58;
+  const items: Array<{ label: string; value: string; color: string; connector: string }> = [
+    { label: "Adj. EBITDA",    value: fmtCurrency(adjEbitda),     color: BLUE_ACC,   connector: `×${multiple.toFixed(1)}x` },
+    { label: "Oper. Value",    value: fmtCurrency(operatingVal),  color: "#10B981",  connector: "+" },
+    { label: "Equipment",      value: fmtCurrency(equip),         color: "#F59E0B",  connector: "=" },
+    { label: "Est. Value",     value: fmtCurrency(midpoint),      color: NAVY,       connector: "" },
+  ];
+  items.forEach(({ label, value, color, connector }, i) => {
+    const bx = MARGIN + i * (BOX_W + 10);
+    ctx.doc.save().rect(bx, y, BOX_W, BOX_H).fill(color).restore();
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(WHITE)
+      .text(label.toUpperCase(), bx + 6, y + 7, { width: BOX_W - 12 });
+    ctx.doc.font("Helvetica-Bold").fontSize(12).fillColor(WHITE)
+      .text(value, bx + 6, y + 20, { width: BOX_W - 12 });
+    if (connector) {
+      ctx.doc.font("Helvetica-Bold").fontSize(10).fillColor(SUBTITLE_C)
+        .text(connector, bx + BOX_W + 2, y + BOX_H / 2 - 7, { width: 12, align: "center" });
+    }
+  });
+  return y + BOX_H + 16;
+}
+
+// ── Equipment Summary block ────────────────────────────────────────────────────
+function renderEquipmentSummary(
+  ctx: PdfCtx,
+  equipment: Array<{ name: string; category: string | null; currentValue: string | null }>,
+  y: number, isSellerDraft: boolean,
+): number {
+  const active = equipment.filter((e) => parseFloat(e.currentValue ?? "0") > 0);
+  if (!active.length) {
+    if (!isSellerDraft) return y;
+    y = checkY(ctx, y, 28);
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+    ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+      .text("Equipment ledger not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+    return y + 22 + 10;
+  }
+  const totalValue = active.reduce((s, e) => s + parseFloat(e.currentValue ?? "0"), 0);
+  const top5 = [...active].sort((a, b) => parseFloat(b.currentValue!) - parseFloat(a.currentValue!)).slice(0, 5);
+  const catCount = new Set(active.map((e) => e.category).filter(Boolean)).size;
+
+  y = checkY(ctx, y, 60 + top5.length * 17 + 36);
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text("EQUIPMENT SUMMARY", MARGIN, y, { width: CONTENT_W });
+  y += 14;
+
+  const stats = [
+    { label: "Total Value", value: fmtCurrency(totalValue) },
+    { label: "Asset Count", value: String(active.length) },
+    { label: "Categories", value: String(catCount) },
+  ];
+  const statW = CONTENT_W / stats.length;
+  stats.forEach(({ label, value }, i) => {
+    const bx = MARGIN + i * statW;
+    ctx.doc.save().rect(bx, y, statW - 6, 36).fill(CHAPTER_BG).restore();
+    ctx.doc.save().rect(bx, y, 4, 36).fill(BLUE_ACC).restore();
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C)
+      .text(label.toUpperCase(), bx + 10, y + 6, { width: statW - 16 });
+    ctx.doc.font("Helvetica-Bold").fontSize(12).fillColor(HEADING_C)
+      .text(value, bx + 10, y + 18, { width: statW - 16 });
+  });
+  y += 44;
+
+  ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(HEADING_C)
+    .text("Top Assets by Value", MARGIN, y, { width: CONTENT_W });
+  y += 12;
+  ctx.doc.save().rect(MARGIN, y, CONTENT_W, 17).fill(DARK_MID).restore();
+  const C1 = CONTENT_W * 0.44, C2 = CONTENT_W * 0.28, C3 = CONTENT_W * 0.28;
+  ctx.doc.font("Helvetica-Bold").fontSize(7).fillColor(WHITE)
+    .text("ASSET", MARGIN + 4, y + 5, { width: C1 });
+  ctx.doc.text("CATEGORY", MARGIN + C1 + 4, y + 5, { width: C2 });
+  ctx.doc.text("VALUE", MARGIN + C1 + C2 + 4, y + 5, { width: C3 });
+  y += 17;
+  top5.forEach((eq, i) => {
+    const bg = i % 2 === 0 ? WHITE : "#F8FAFC";
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 16).fill(bg).restore();
+    ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
+      .text(eq.name.slice(0, 40), MARGIN + 4, y + 4, { width: C1 - 8 });
+    ctx.doc.text((eq.category ?? "—").slice(0, 28), MARGIN + C1 + 4, y + 4, { width: C2 - 8 });
+    ctx.doc.text(fmtCurrency(parseFloat(eq.currentValue!)), MARGIN + C1 + C2 + 4, y + 4, { width: C3 - 8 });
+    y += 16;
+  });
+  return y + 14;
+}
+
+// ── Lease Risk Distribution chart ──────────────────────────────────────────────
+function renderLeaseRisk(
+  ctx: PdfCtx, leaseChartData: Array<Record<string, unknown>> | null, y: number, isSellerDraft: boolean,
+): number {
+  if (!leaseChartData?.length) {
+    if (!isSellerDraft) return y;
+    y = checkY(ctx, y, 28);
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 22).fill(CHAPTER_BG).restore();
+    ctx.doc.font("Helvetica-Oblique").fontSize(8).fillColor(SUBTITLE_C)
+      .text("Lease risk data not available.", MARGIN + 8, y + 7, { width: CONTENT_W - 16 });
+    return y + 22 + 10;
+  }
+  const RISK_COLORS: Record<string, string> = { critical: "#EF4444", high: "#F97316", medium: "#F59E0B", low: "#10B981" };
+  const total = leaseChartData.reduce((s, r) => s + Number(r.value ?? r.count ?? 0), 0) || 1;
+
+  y = checkY(ctx, y, 70);
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text("LEASE RISK DISTRIBUTION", MARGIN, y, { width: CONTENT_W });
+  y += 14;
+
+  const BAR_H = 18;
+  let bx = MARGIN;
+  leaseChartData.forEach((r) => {
+    const val = Number(r.value ?? r.count ?? 0);
+    const w = Math.max(2, Math.floor(CONTENT_W * val / total));
+    const key = String(r.name ?? r.risk ?? "").toLowerCase();
+    const color = RISK_COLORS[key] ?? BLUE_ACC;
+    ctx.doc.save().rect(bx, y, w, BAR_H).fill(color).restore();
+    bx += w;
+  });
+  y += BAR_H + 6;
+
+  let lx = MARGIN;
+  leaseChartData.forEach((r) => {
+    const val = Number(r.value ?? r.count ?? 0);
+    const pct = Math.round(val / total * 100);
+    const key = String(r.name ?? r.risk ?? "").toLowerCase();
+    const color = RISK_COLORS[key] ?? BLUE_ACC;
+    const label = `${String(r.name ?? r.risk ?? "").slice(0, 10)}: ${pct}%`;
+    ctx.doc.save().rect(lx, y + 2, 8, 8).fill(color).restore();
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(BODY_TEXT)
+      .text(label, lx + 12, y + 3, { width: 80 });
+    lx += 96;
+    if (lx + 90 > MARGIN + CONTENT_W) { lx = MARGIN; y += 14; }
+  });
+  return y + 18;
+}
+
+// ── Business Health Score visual ───────────────────────────────────────────────
+function renderHealthScore(
+  ctx: PdfCtx, score: number, y: number,
+): number {
+  const normalized = score <= 10 ? score * 10 : score;
+  const { badge, color } = normalized >= 80 ? { badge: "Strong",     color: "#10B981" }
+    : normalized >= 60                       ? { badge: "Good",       color: BLUE_ACC  }
+    : normalized >= 40                       ? { badge: "Fair",       color: "#F59E0B" }
+    :                                          { badge: "Needs Work", color: "#EF4444" };
+
+  y = checkY(ctx, y, 80);
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text("BUSINESS HEALTH SCORE", MARGIN, y, { width: CONTENT_W });
+  y += 14;
+
+  ctx.doc.save().rect(MARGIN, y, 64, 62).fill(CHAPTER_BG).restore();
+  ctx.doc.save().rect(MARGIN, y, 6, 62).fill(color).restore();
+  ctx.doc.font("Helvetica-Bold").fontSize(26).fillColor(color)
+    .text(String(Math.round(normalized)), MARGIN + 10, y + 8, { width: 54, align: "center" });
+  ctx.doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C)
+    .text("/ 100", MARGIN + 10, y + 44, { width: 54, align: "center" });
+
+  ctx.doc.save().rect(MARGIN + 72, y + 6, 72, 22).fill(color).restore();
+  ctx.doc.font("Helvetica-Bold").fontSize(11).fillColor(WHITE)
+    .text(badge.toUpperCase(), MARGIN + 72, y + 12, { width: 72, align: "center" });
+  ctx.doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
+    .text("Business Health Score", MARGIN + 72, y + 36, { width: 150 });
+
+  return y + 70;
+}
+
+// ── Buyer Engagement Funnel ────────────────────────────────────────────────────
+function renderBuyerFunnel(
+  ctx: PdfCtx, funnel: Array<{ eventType: string; count: number }>, y: number,
+): number {
+  const EVENT_ORDER = [
+    { key: "section_viewed",    label: "Report Views" },
+    { key: "tour_clicked",      label: "Tour Starts" },
+    { key: "pdf_downloaded",    label: "PDF Downloads" },
+    { key: "access_requested",  label: "Access Requested" },
+    { key: "contact_clicked",   label: "Contact Clicks" },
+    { key: "inspection_booked", label: "Inspections" },
+  ];
+  const mapped = EVENT_ORDER
+    .map(({ key, label }) => ({ label, count: funnel.find((f) => f.eventType === key)?.count ?? 0 }))
+    .filter((r) => r.count > 0);
+  if (!mapped.length) return y;
+
+  y = checkY(ctx, y, 30 + mapped.length * 18);
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text("BUYER ENGAGEMENT", MARGIN, y, { width: CONTENT_W });
+  y += 14;
+  const maxCount = Math.max(...mapped.map((r) => r.count));
+  const LABEL_W = CONTENT_W * 0.36;
+  const BAR_AREA_W = CONTENT_W * 0.52;
+  mapped.forEach(({ label, count }) => {
+    const barW = Math.max(4, Math.floor(BAR_AREA_W * count / maxCount));
+    ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
+      .text(label, MARGIN, y + 2, { width: LABEL_W });
+    ctx.doc.save().rect(MARGIN + LABEL_W, y, BAR_AREA_W, 12).fill(CHAPTER_BG).restore();
+    ctx.doc.save().rect(MARGIN + LABEL_W, y, barW, 12).fill(BLUE_ACC).restore();
+    ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(HEADING_C)
+      .text(String(count), MARGIN + LABEL_W + BAR_AREA_W + 6, y + 2, { width: 36 });
+    y += 17;
+  });
+  return y + 8;
+}
+
+// ── Due Diligence Checklist badge grid ─────────────────────────────────────────
+function renderDueDiligenceChecklist(
+  ctx: PdfCtx, bulletPoints: string[], y: number,
+): number {
+  const items = bulletPoints.filter(Boolean).slice(0, 24);
+  if (!items.length) return y;
+
+  y = checkY(ctx, y, 40 + Math.ceil(items.length / 3) * 22);
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text("DOCUMENTS & DILIGENCE CHECKLIST", MARGIN, y, { width: CONTENT_W });
+  y += 14;
+
+  const COLS = 3;
+  const BADGE_W = Math.floor(CONTENT_W / COLS) - 4;
+  const BADGE_H = 18;
+  const BADGE_GAP = 4;
+  const rowsNeeded = Math.ceil(items.length / COLS);
+
+  for (let row = 0; row < rowsNeeded; row++) {
+    y = checkY(ctx, y, BADGE_H + BADGE_GAP);
+    for (let col = 0; col < COLS; col++) {
+      const idx = row * COLS + col;
+      if (idx >= items.length) break;
+      const bx = MARGIN + col * (BADGE_W + 4);
+      ctx.doc.save().rect(bx, y, BADGE_W, BADGE_H).fill("#DCFCE7").restore();
+      ctx.doc.save().rect(bx, y, 4, BADGE_H).fill("#10B981").restore();
+      ctx.doc.font("Helvetica").fontSize(7.5).fillColor("#14532D")
+        .text(items[idx].trim().slice(0, 40), bx + 8, y + 5, { width: BADGE_W - 12 });
+    }
+    y += BADGE_H + BADGE_GAP;
+  }
+  return y + 8;
+}
+
 // ── Cover metrics extractor ────────────────────────────────────────────────────
 // Uses COVER_METRIC_TARGETS for deterministic extraction of the 6 key cover fields:
 // asking price, valuation range, revenue, EBITDA, equipment value, lease term.
@@ -196,6 +543,7 @@ function renderCover(
     category?: string | null;
   },
   metrics: { label: string; value: string }[],
+  heroImageBuffer?: Buffer | null,
 ): void {
   const { doc, biz } = ctx;
   doc.rect(0, 0, PAGE_W, PAGE_H).fill(DARK);
@@ -223,12 +571,25 @@ function renderCover(
   doc.font("Helvetica").fontSize(9).fillColor(SUBTITLE_C)
     .text(locationLine, MARGIN, 130, { width: CONTENT_W, align: "center" });
 
-  // Hero image placeholder area — currently no hero image stored in schema;
-  // when `heroImageUrl` is added to val_cafes or listings, render it here.
-
+  // Hero image — rendered as a strip between the title block and metrics.
+  // The image is sourced at request time (no DB column needed); falls back to
+  // the existing gradient if unavailable or if PDFKit cannot decode the buffer.
   doc.save().moveTo(MARGIN, 154).lineTo(PAGE_W - MARGIN, 154).lineWidth(1).strokeColor("#1E3A5C").stroke().restore();
 
-  let yPos = 166;
+  const HERO_H = 128;
+  let yPos: number;
+  if (heroImageBuffer) {
+    try {
+      doc.image(heroImageBuffer, 0, 158, { width: PAGE_W, height: HERO_H });
+      // Dark overlay so white text remains legible
+      doc.save().fillOpacity(0.62).rect(0, 158, PAGE_W, HERO_H).fill(DARK).restore();
+      yPos = 158 + HERO_H + 10;
+    } catch {
+      yPos = 166;
+    }
+  } else {
+    yPos = 166;
+  }
 
   if (metrics.length > 0) {
     // Key metrics header
@@ -552,6 +913,62 @@ function renderSection(ctx: PdfCtx, section: any, y: number, isBuyerMode: boolea
   return y + 14; // spacing after section
 }
 
+// ── Extra data fed into buildPdf from the DB queries in each handler ───────────
+interface PdfExtraData {
+  heroImageBuffer: Buffer | null;
+  bodyImageBuffers: Map<string, Buffer | null>;   // chapterKey → buffer (null = not found)
+  snapshot: {
+    adjustedEbitda: string | null;
+    valuationMidpoint: string | null;
+    totalEquipmentValue: string | null;
+    grossRevenue: string | null;
+  } | null;
+  equipment: Array<{ name: string; category: string | null; currentValue: string | null }>;
+  buyerFunnel: Array<{ eventType: string; count: number }>;
+  isSellerDraft: boolean;
+}
+
+// ── Helper: parse chartData from a section into an array (or null) ─────────────
+function parseChartData(section: any): Array<Record<string, unknown>> | null {
+  const cd = section?.chartData;
+  if (!cd) return null;
+  const parsed = typeof cd === "string"
+    ? (() => { try { return JSON.parse(cd); } catch { return null; } })()
+    : cd;
+  return Array.isArray(parsed) && parsed.length > 0 ? parsed as Array<Record<string, unknown>> : null;
+}
+
+// ── Helper: extract a numeric score from section tableData / chartData ─────────
+function extractScore(section: any): number | null {
+  if (section?.tableData) {
+    const td = typeof section.tableData === "string"
+      ? (() => { try { return JSON.parse(section.tableData); } catch { return null; } })()
+      : section.tableData;
+    if (Array.isArray(td)) {
+      for (const row of td) {
+        const keys = Object.keys(row);
+        if (keys.length < 2) continue;
+        const lbl = String(row[keys[0]] ?? "").toLowerCase();
+        const val = String(row[keys[1]] ?? "").replace(/[^0-9.]/g, "");
+        if ((lbl.includes("score") || lbl.includes("health")) && val) {
+          const n = parseFloat(val);
+          if (!isNaN(n)) return n;
+        }
+      }
+    }
+  }
+  const cd = parseChartData(section);
+  if (cd?.length) {
+    const first = cd[0];
+    const scoreKey = Object.keys(first).find((k) => /score|value|total/i.test(k));
+    if (scoreKey) {
+      const n = parseFloat(String(first[scoreKey] ?? ""));
+      if (!isNaN(n)) return Math.min(100, Math.max(0, n));
+    }
+  }
+  return null;
+}
+
 // ── Main PDF body builder ──────────────────────────────────────────────────────
 async function buildPdf(
   ctx: PdfCtx,
@@ -566,25 +983,24 @@ async function buildPdf(
     location?: string | null;
     category?: string | null;
   },
+  extra: PdfExtraData,
 ): Promise<void> {
   // Buyer mode applies when mode=buyer OR buyer_summary style is selected
   const isBuyerMode = mode === "buyer" || style === "buyer_summary";
 
   // ── 1. Cover page ──────────────────────────────────────────────────────────
   const coverMetrics = extractCoverMetrics(sections);
-  renderCover(ctx, meta, coverMetrics);
+  renderCover(ctx, meta, coverMetrics, extra.heroImageBuffer);
 
   // ── 2. Group sections ──────────────────────────────────────────────────────
   let renderGroups: { key: string; title: string; secs: any[] }[];
 
   if (style === "data_room") {
-    // Data-room: each section on its own page
     renderGroups = DATA_ROOM_SECTION_KEYS.map((k) => {
       const sec = sections.find((s) => s.sectionKey === k);
       return sec && sectionHasContent(sec) ? { key: k, title: sec.title, secs: [sec] } : null;
     }).filter(Boolean) as any[];
   } else {
-    // Compact, detailed, buyer_summary: use REPORT_GROUPS
     renderGroups = REPORT_GROUPS.map((g) => ({
       key:   g.key,
       title: g.title,
@@ -606,17 +1022,77 @@ async function buildPdf(
   for (let gi = 0; gi < renderGroups.length; gi++) {
     const group = renderGroups[gi];
 
-    // Each chapter starts on a new white page with chapter banner
     let y = whitePage(ctx);
 
     if (style !== "data_room") {
       y = renderChapterHeader(ctx, group, gi + 1, y);
-      // Render key-metric cards on applicable chapter openers
       y = renderChapterMetricCards(ctx, group.key, group.secs, y);
     }
 
+    // ── Chapter-level visuals injected before section content ────────────────
+    if (style !== "data_room") {
+      switch (group.key) {
+        case "business_overview":
+          y = renderBodyImage(
+            ctx, extra.bodyImageBuffers.get("business_overview") ?? null,
+            "Business Location", y, extra.isSellerDraft,
+          );
+          break;
+
+        case "valuation": {
+          // Valuation Bridge from snapshot data
+          y = renderValuationBridge(ctx, extra.snapshot, y, extra.isSellerDraft);
+          // Business Health Score from section data
+          const healthSec = group.secs.find((s) => s.sectionKey === "business_health_score");
+          if (healthSec) {
+            const score = extractScore(healthSec);
+            if (score !== null) y = renderHealthScore(ctx, score, y);
+          }
+          break;
+        }
+
+        case "assets_equipment":
+          y = renderEquipmentSummary(ctx, extra.equipment, y, extra.isSellerDraft);
+          y = renderBodyImage(
+            ctx, extra.bodyImageBuffers.get("assets_equipment") ?? null,
+            "Plant & Equipment", y, extra.isSellerDraft,
+          );
+          break;
+
+        case "lease_premises": {
+          const leaseRiskSec = group.secs.find((s) => s.sectionKey === "lease_risk_valuation_impact");
+          y = renderLeaseRisk(ctx, parseChartData(leaseRiskSec), y, extra.isSellerDraft);
+          y = renderBodyImage(
+            ctx, extra.bodyImageBuffers.get("lease_premises") ?? null,
+            "Business Location & Premises", y, extra.isSellerDraft,
+          );
+          break;
+        }
+
+        case "virtual_tour":
+          y = renderBodyImage(
+            ctx, extra.bodyImageBuffers.get("virtual_tour") ?? null,
+            "360 Business Walkthrough", y, extra.isSellerDraft,
+          );
+          break;
+
+        case "due_diligence": {
+          const ddSec = group.secs.find((s) => s.sectionKey === "due_diligence_documents_available");
+          const ddBullets = Array.isArray(ddSec?.bulletPoints) ? (ddSec.bulletPoints as string[]) : [];
+          if (ddBullets.length > 0) y = renderDueDiligenceChecklist(ctx, ddBullets, y);
+          break;
+        }
+
+        case "executive_summary":
+          // Buyer engagement funnel — seller draft only
+          if (extra.isSellerDraft && extra.buyerFunnel.length > 0) {
+            y = renderBuyerFunnel(ctx, extra.buyerFunnel, y);
+          }
+          break;
+      }
+    }
+
     for (const sec of group.secs) {
-      // In detailed mode, give each section a bit more breathing room
       if (style === "detailed") {
         y = checkY(ctx, y, 80);
         if (y > CONTENT_TOP + 10) {
@@ -691,11 +1167,66 @@ async function handlePdf(req: any, res: any): Promise<void> {
     // → section tableData → "My Business"); emoji stripped before PDF embedding.
     const biz = resolveBusinessName(cafe, allSections);
 
-    const sections  = filterSections(allSections, mode, style);
-    const modeLabel = mode === "seller" ? "Seller Copy" : "Buyer Copy";
-    const dateStr   = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
-    const filename  = `im-report-${listingId.slice(0, 8)}-${mode}-${style}.pdf`;
-    const styleLabel = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[style] ?? "Compact Broker IM";
+    const sections     = filterSections(allSections, mode, style);
+    const isSellerDraft = mode === "seller";
+    const modeLabel    = isSellerDraft ? "Seller Copy" : "Buyer Copy";
+    const dateStr      = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+    const filename     = `im-report-${listingId.slice(0, 8)}-${mode}-${style}.pdf`;
+    const styleLabel   = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[style] ?? "Compact Broker IM";
+
+    // ── Parallel data fetch: snapshot, equipment, buyer funnel, images ─────────
+    const [snapshotRows, equipmentRows, funnelLogs] = await Promise.all([
+      db.select({
+        adjustedEbitda: valuationSnapshotsTable.adjustedEbitda,
+        valuationMidpoint: valuationSnapshotsTable.valuationMidpoint,
+        totalEquipmentValue: valuationSnapshotsTable.totalEquipmentValue,
+        grossRevenue: valuationSnapshotsTable.grossRevenue,
+      }).from(valuationSnapshotsTable)
+        .where(eq(valuationSnapshotsTable.cafeId, cafe.id))
+        .orderBy(desc(valuationSnapshotsTable.createdAt))
+        .limit(1),
+      db.select({
+        name: cafeEquipmentTable.name,
+        category: cafeEquipmentTable.category,
+        currentValue: cafeEquipmentTable.currentValue,
+      }).from(cafeEquipmentTable)
+        .where(and(
+          eq(cafeEquipmentTable.cafeId, cafe.id),
+          eq(cafeEquipmentTable.suspended, false),
+        )),
+      db.select({ eventType: reportAccessLogsTable.eventType })
+        .from(reportAccessLogsTable)
+        .where(eq(reportAccessLogsTable.listingId, listingId)),
+    ]);
+
+    const snapshot = snapshotRows[0] ?? null;
+    const equipment = equipmentRows;
+    const funnelMap = new Map<string, number>();
+    for (const { eventType } of funnelLogs) {
+      funnelMap.set(eventType, (funnelMap.get(eventType) ?? 0) + 1);
+    }
+    const buyerFunnel = Array.from(funnelMap.entries()).map(([eventType, count]) => ({ eventType, count }));
+
+    // Resolve image URLs from section data (no DB column needed)
+    const heroUrl = resolveImageUrl(allSections,
+      "360_business_walkthrough", "business_overview", "business_location_market_context");
+    const bodyUrls: Array<[string, string | null]> = [
+      ["business_overview",  resolveImageUrl(allSections, "business_overview")],
+      ["assets_equipment",   resolveImageUrl(allSections, "plant_equipment_summary")],
+      ["lease_premises",     resolveImageUrl(allSections, "business_location_market_context", "lease_premises_summary")],
+      ["virtual_tour",       resolveImageUrl(allSections, "360_business_walkthrough")],
+    ];
+    const [heroImageBuffer, ...bodyBuffers] = await Promise.all([
+      heroUrl ? fetchImageBuffer(heroUrl) : Promise.resolve(null),
+      ...bodyUrls.map(([, url]) => url ? fetchImageBuffer(url) : Promise.resolve(null)),
+    ]);
+    const bodyImageBuffers = new Map<string, Buffer | null>(
+      bodyUrls.map(([key], i) => [key, bodyBuffers[i]]),
+    );
+
+    const extra: PdfExtraData = {
+      heroImageBuffer, bodyImageBuffers, snapshot, equipment, buyerFunnel, isSellerDraft,
+    };
 
     const doc = new PDFDocument({ size: "A4", margin: 0, info: {
       Title: `Information Memorandum — ${biz}`,
@@ -714,7 +1245,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
       listingId, modeLabel, styleLabel, dateStr,
       location: cafe.city ?? null,
       category: cafe.businessType ?? null,
-    });
+    }, extra);
 
     db.insert(reportExportsTable).values({
       listingId,
@@ -770,6 +1301,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
     // Look up business name, location, and category (no owner check — public endpoint)
     const [cafeMeta] = await db
       .select({
+        id: cafesTable.id,
         name: cafesTable.name,
         businessName: cafesTable.businessName,
         title: cafesTable.title,
@@ -788,6 +1320,62 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
     const VALID_STYLES: PdfStyle[] = ["compact", "detailed", "buyer_summary", "data_room"];
     const effectiveStyle: PdfStyle = VALID_STYLES.includes(style as PdfStyle) ? (style as PdfStyle) : "compact";
     const styleLabel = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[effectiveStyle] ?? "Compact Broker IM";
+
+    // ── Parallel data fetch: snapshot, equipment, images (public — no funnel) ──
+    const pubExtra: PdfExtraData = {
+      heroImageBuffer: null,
+      bodyImageBuffers: new Map(),
+      snapshot: null,
+      equipment: [],
+      buyerFunnel: [],
+      isSellerDraft: false,
+    };
+
+    if (cafeMeta?.id) {
+      const [pubSnapshotRows, pubEquipRows] = await Promise.all([
+        db.select({
+          adjustedEbitda: valuationSnapshotsTable.adjustedEbitda,
+          valuationMidpoint: valuationSnapshotsTable.valuationMidpoint,
+          totalEquipmentValue: valuationSnapshotsTable.totalEquipmentValue,
+          grossRevenue: valuationSnapshotsTable.grossRevenue,
+        }).from(valuationSnapshotsTable)
+          .where(and(
+            eq(valuationSnapshotsTable.cafeId, cafeMeta.id),
+            eq(valuationSnapshotsTable.isPublished, true),
+          ))
+          .orderBy(desc(valuationSnapshotsTable.createdAt))
+          .limit(1),
+        db.select({
+          name: cafeEquipmentTable.name,
+          category: cafeEquipmentTable.category,
+          currentValue: cafeEquipmentTable.currentValue,
+        }).from(cafeEquipmentTable)
+          .where(and(
+            eq(cafeEquipmentTable.cafeId, cafeMeta.id),
+            eq(cafeEquipmentTable.suspended, false),
+          )),
+      ]);
+      pubExtra.snapshot = pubSnapshotRows[0] ?? null;
+      pubExtra.equipment = pubEquipRows;
+    }
+
+    // Image resolution — same priority order as authenticated handler
+    const pubHeroUrl = resolveImageUrl(allSections,
+      "360_business_walkthrough", "business_overview", "business_location_market_context");
+    const pubBodyUrls: Array<[string, string | null]> = [
+      ["business_overview", resolveImageUrl(allSections, "business_overview")],
+      ["assets_equipment",  resolveImageUrl(allSections, "plant_equipment_summary")],
+      ["lease_premises",    resolveImageUrl(allSections, "business_location_market_context", "lease_premises_summary")],
+      ["virtual_tour",      resolveImageUrl(allSections, "360_business_walkthrough")],
+    ];
+    const [pubHeroBuf, ...pubBodyBufs] = await Promise.all([
+      pubHeroUrl ? fetchImageBuffer(pubHeroUrl) : Promise.resolve(null),
+      ...pubBodyUrls.map(([, url]) => url ? fetchImageBuffer(url) : Promise.resolve(null)),
+    ]);
+    pubExtra.heroImageBuffer = pubHeroBuf;
+    pubExtra.bodyImageBuffers = new Map<string, Buffer | null>(
+      pubBodyUrls.map(([key], i) => [key, pubBodyBufs[i]]),
+    );
 
     const doc = new PDFDocument({ size: "A4", margin: 0, info: {
       Title: `Information Memorandum — ${biz}`,
@@ -808,7 +1396,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       dateStr,
       location: cafeMeta?.city ?? null,
       category: cafeMeta?.businessType ?? null,
-    });
+    }, pubExtra);
 
     db.insert(reportExportsTable).values({
       listingId, ownerId: "public", exportType: "pdf_buyer_public",
