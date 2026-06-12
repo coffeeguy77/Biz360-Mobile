@@ -97,9 +97,9 @@ export default function CsvImportPreviewScreen() {
       }
       const data = await res.json();
       Alert.alert(
-        "Report content imported successfully",
-        `${data.updated ?? 0} section${(data.updated ?? 0) !== 1 ? "s" : ""} updated.`,
-        [{ text: "OK", onPress: () => router.back() }],
+        "CSV imported successfully",
+        `${previewData?.matchedCount ?? data.matched ?? 0} sections matched and ${previewData?.changedFields ?? data.updated ?? 0} fields updated.`,
+        [{ text: "Done", onPress: () => router.back() }],
       );
     } catch {
       Alert.alert("Error", "Network error. Please try again.");

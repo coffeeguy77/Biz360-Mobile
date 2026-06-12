@@ -51,14 +51,41 @@ const REQUIRED_LABELS: Record<string, string> = {
   asking_price_terms: "Asking Price & Terms",
 };
 
+const PLACEHOLDER_PHRASES = [
+  "seller should", "to be confirmed", "insert", "placeholder",
+  "example only", "not yet provided", "replace this", "add details",
+  "update this", "enter details", "lorem ipsum",
+];
+
 interface ReportSection {
   id: string;
   sectionKey: string;
   title: string;
   body: string | null;
+  bulletPoints?: string[] | null;
+  tableData?: unknown;
+  chartData?: unknown;
   status: string;
   visibility: string;
   isRequired: boolean;
+}
+
+function hasContent(s: ReportSection): boolean {
+  if (s.status === "complete") return true;
+  if (s.body && s.body.trim().length > 10) return true;
+  if (Array.isArray(s.bulletPoints) && s.bulletPoints.length > 0) return true;
+  if (s.tableData) return true;
+  if (s.chartData) return true;
+  return false;
+}
+
+function needsReview(s: ReportSection): boolean {
+  if (!hasContent(s)) return false;
+  const text = [
+    s.body ?? "",
+    ...(Array.isArray(s.bulletPoints) ? s.bulletPoints : []),
+  ].join(" ").toLowerCase();
+  return PLACEHOLDER_PHRASES.some((p) => text.includes(p));
 }
 
 interface ReportVersion {
@@ -82,10 +109,9 @@ function computeStatus(sections: ReportSection[], pct: number, versions: ReportV
 }
 
 function healthScore(pct: number, sections: ReportSection[]): number {
-  const filled = sections.filter((s) => s.status === "complete" || (s.body?.trim().length ?? 0) > 10).length;
+  const filled = sections.filter(hasContent).length;
   const total = sections.length;
   const coverageScore = total > 0 ? Math.round((filled / total) * 100) : 0;
-  // Blend completeness (50%) with required-key coverage (50%)
   return Math.round((pct * 0.5) + (coverageScore * 0.5));
 }
 
@@ -101,7 +127,7 @@ function completenessScore(sections: ReportSection[]): number {
   if (!sections.length) return 0;
   const filled = REQUIRED_KEYS.filter((k) => {
     const s = sections.find((sec) => sec.sectionKey === k);
-    return s && (s.status === "complete" || (s.body && s.body.trim().length > 10));
+    return s && hasContent(s);
   }).length;
   return Math.round((filled / REQUIRED_KEYS.length) * 100);
 }
@@ -155,8 +181,9 @@ export default function ReportHubScreen() {
 
   const missingRequired = REQUIRED_KEYS.filter((k) => {
     const s = sections.find((sec) => sec.sectionKey === k);
-    return !s || (!s.body?.trim() && s.status !== "complete");
+    return !s || !hasContent(s);
   });
+  const needsReviewSections = sections.filter(needsReview);
 
   async function handleDownloadCsv() {
     if (!listingId) return;
@@ -370,13 +397,20 @@ export default function ReportHubScreen() {
     const token = await getAuthToken();
     if (!token) return;
     if (pct < 40) {
-      Alert.alert("Report incomplete", "Please complete at least 40% of required sections before publishing.");
+      Alert.alert("Report incomplete", "Please complete at least 40% of required sections before publishing. Tap 'Report Checks' to see what's missing.");
       return;
     }
     const versionNum = (versions[0]?.versionNumber ?? 0) + 1;
+    const softWarnings: string[] = [];
+    if (missingRequired.length > 0) softWarnings.push(`${missingRequired.length} required section${missingRequired.length !== 1 ? "s" : ""} still missing content`);
+    if (needsReviewSections.length > 0) softWarnings.push(`${needsReviewSections.length} section${needsReviewSections.length !== 1 ? "s" : ""} contain placeholder text`);
+    const publishTitle = softWarnings.length > 0 ? "Publish with warnings?" : "Publish IM Report?";
+    const publishMsg = softWarnings.length > 0
+      ? `Warnings:\n${softWarnings.map((w) => `• ${w}`).join("\n")}\n\nYou can still publish, but buyers may see incomplete or placeholder content.`
+      : `This will snapshot your current ${sections.length} sections as Version ${versionNum} and make it visible to approved buyers.`;
     Alert.alert(
-      "Publish IM Report?",
-      `This will snapshot your current ${sections.length} sections as Version ${versionNum} and make it visible to approved buyers.`,
+      publishTitle,
+      publishMsg,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -465,15 +499,15 @@ export default function ReportHubScreen() {
             <Text style={styles.bizName}>{selectedCafe?.name ?? "Business"}</Text>
             <View style={styles.summaryRow}>
               <View style={styles.summaryLeft}>
-                <Text style={styles.summaryLabel}>Estimated Value</Text>
+                <Text style={styles.summaryLabel}>Estimated Business Value</Text>
                 <Text style={styles.summaryVal}>{fmt(snap.valuationMidpoint)}</Text>
                 <Text style={styles.summaryRange}>{fmt(blendedLow)} — {fmt(blendedHigh)}</Text>
               </View>
               <View style={styles.summaryRight}>
                 {([
                   ["Revenue", snap.grossRevenue],
-                  ["Adj. EBITDA", snap.adjustedEbitda],
-                  ["Equipment", snap.totalEquipmentValue],
+                  ["Adjusted EBITDA", snap.adjustedEbitda],
+                  ["Equipment Value", snap.totalEquipmentValue],
                 ] as [string, string | null | undefined][]).map(([label, val]) => (
                   <View key={label} style={styles.metaRow}>
                     <Text style={styles.metaLabel}>{label}</Text>
@@ -513,26 +547,37 @@ export default function ReportHubScreen() {
           <Text style={[styles.completenessHint, { color: colors.mutedForeground }]}>
             {sections.length === 0
               ? 'Tap "Edit Report" to build your Information Memorandum with 40 guided sections.'
-              : `${sections.filter((s) => s.status === "complete" || (s.body?.trim().length ?? 0) > 10).length} of ${sections.length} sections have content`}
+              : `${sections.filter(hasContent).length} of ${sections.length} sections have content`}
           </Text>
-          {missingRequired.length > 0 && missingRequired.length <= 3 && (
-            <View style={styles.recommendRow}>
-              <Feather name="alert-triangle" size={13} color="#F59E0B" />
-              <Text style={[styles.recommendText, { color: "#F59E0B" }]}>
-                Missing: {missingRequired.slice(0, 3).map((k) => REQUIRED_LABELS[k]).join(", ")}
+          {!loading && missingRequired.length > 0 && (
+            <TouchableOpacity
+              style={[styles.recommendMore, { borderColor: "#EF444433" }]}
+              onPress={() => router.push({ pathname: "/(seller)/valuation/report-checks" as any, params: { listingId } })}
+            >
+              <Feather name="x-circle" size={13} color="#EF4444" />
+              <Text style={[styles.recommendText, { color: "#EF4444" }]}>
+                {missingRequired.length} required section{missingRequired.length !== 1 ? "s" : ""} missing content — tap to review
               </Text>
-            </View>
+              <Feather name="chevron-right" size={13} color="#EF4444" />
+            </TouchableOpacity>
           )}
-          {missingRequired.length > 3 && (
+          {!loading && missingRequired.length === 0 && needsReviewSections.length > 0 && (
             <TouchableOpacity
               style={[styles.recommendMore, { borderColor: "#F59E0B33" }]}
-              onPress={() => router.push({ pathname: "/(seller)/valuation/report-builder" as any, params: { filter: "incomplete" } })}
+              onPress={() => router.push({ pathname: "/(seller)/valuation/report-checks" as any, params: { listingId } })}
             >
-              <Feather name="list" size={13} color="#F59E0B" />
+              <Feather name="alert-triangle" size={13} color="#F59E0B" />
               <Text style={[styles.recommendText, { color: "#F59E0B" }]}>
-                {missingRequired.length} required sections need content — tap to complete
+                {needsReviewSections.length} section{needsReviewSections.length !== 1 ? "s" : ""} contain placeholder text — tap to review
               </Text>
+              <Feather name="chevron-right" size={13} color="#F59E0B" />
             </TouchableOpacity>
+          )}
+          {!loading && missingRequired.length === 0 && needsReviewSections.length === 0 && sections.length > 0 && (
+            <View style={styles.recommendRow}>
+              <Feather name="check-circle" size={13} color="#16A34A" />
+              <Text style={[styles.recommendText, { color: "#16A34A" }]}>All required sections have content</Text>
+            </View>
           )}
         </View>
 
@@ -618,7 +663,7 @@ export default function ReportHubScreen() {
             { label: "Report Sections", icon: "list", color: "#3B82F6", route: "/(seller)/valuation/report-builder" },
             { label: "Access Settings", icon: "lock", color: "#8B5CF6", route: "/(seller)/valuation/report-access" },
             { label: "Version History", icon: "clock", color: "#6B7280", route: "/(seller)/valuation/report-versions", badge: versions.length > 0 ? `${versions.length}` : null },
-            { label: "AI Draft Helper", icon: "zap", color: "#FBBF24", route: null },
+            { label: "Report Checks", icon: "check-square", color: "#16A34A", route: "/(seller)/valuation/report-checks", badge: (missingRequired.length + needsReviewSections.length) > 0 ? `${missingRequired.length + needsReviewSections.length}` : null },
             { label: "Charts & Stats", icon: "bar-chart-2", color: "#34D399", route: null },
             { label: "Due Diligence Pack", icon: "check-square", color: "#F87171", route: "/(seller)/valuation/due-diligence" },
           ].map(({ label, icon, color, route, badge }) => (

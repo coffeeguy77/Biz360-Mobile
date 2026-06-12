@@ -28,12 +28,21 @@ const REQUIRED_KEYS = [
 const VISIBILITY_CYCLE: Visibility[] = ["public", "verified_buyer", "nda_signed", "hidden"];
 type Visibility = "public" | "verified_buyer" | "nda_signed" | "hidden";
 
+const PLACEHOLDER_PHRASES = [
+  "seller should", "to be confirmed", "insert", "placeholder",
+  "example only", "not yet provided", "replace this", "add details",
+  "update this", "enter details", "lorem ipsum",
+];
+
 interface ReportSection {
   id: string;
   sectionKey: string;
   title: string;
   subtitle: string | null;
   body: string | null;
+  bulletPoints?: string[] | null;
+  tableData?: unknown;
+  chartData?: unknown;
   status: string;
   visibility: Visibility;
   sortOrder: number;
@@ -43,7 +52,21 @@ interface ReportSection {
 }
 
 function hasContent(s: ReportSection): boolean {
-  return s.status === "complete" || (!!s.body && s.body.trim().length > 10);
+  if (s.status === "complete") return true;
+  if (s.body && s.body.trim().length > 10) return true;
+  if (Array.isArray(s.bulletPoints) && s.bulletPoints.length > 0) return true;
+  if (s.tableData) return true;
+  if (s.chartData) return true;
+  return false;
+}
+
+function needsReview(s: ReportSection): boolean {
+  if (!hasContent(s)) return false;
+  const text = [
+    s.body ?? "",
+    ...(Array.isArray(s.bulletPoints) ? s.bulletPoints : []),
+  ].join(" ").toLowerCase();
+  return PLACEHOLDER_PHRASES.some((p) => text.includes(p));
 }
 
 function deriveSource(s: ReportSection): { label: string; color: string } | null {
@@ -62,9 +85,10 @@ function visibilityConfig(v: Visibility): { icon: string; color: string; label: 
 }
 
 function statusConfig(s: ReportSection): { label: string; color: string } {
-  if (s.status === "complete")     return { label: "Complete",     color: "#16A34A" };
-  if (s.status === "needs_review") return { label: "Needs Review", color: "#F87171" };
-  if (hasContent(s))               return { label: "Draft",        color: "#F59E0B" };
+  if (s.status === "complete")           return { label: "Complete",     color: "#16A34A" };
+  if (s.status === "needs_review")       return { label: "Needs Review", color: "#F87171" };
+  if (hasContent(s) && needsReview(s))   return { label: "Needs Review", color: "#F59E0B" };
+  if (hasContent(s))                     return { label: "Draft",        color: "#F59E0B" };
   return { label: "Empty", color: "#6B7280" };
 }
 
