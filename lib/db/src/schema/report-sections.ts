@@ -4,6 +4,7 @@ import {
   text,
   boolean,
   integer,
+  numeric,
   timestamp,
   jsonb,
   uniqueIndex,
@@ -129,3 +130,41 @@ export const reportAccessLogsTable = pgTable("report_access_logs", {
 });
 
 export type ReportAccessLog = typeof reportAccessLogsTable.$inferSelect;
+
+// ─── report_images ────────────────────────────────────────────────────────────
+// Seller-uploaded images for the IM report. Distinct from panorama tour images.
+// Priority chain for cover: isPrimaryCover=true → role=cover_primary (non-panoramic)
+// → section-embedded image URL → branded gradient fallback.
+// Panoramic images (aspectRatio > 2.2) are blocked from cover/listing roles.
+
+export const reportImagesTable = pgTable("report_images", {
+  id:                  uuid("id").primaryKey().defaultRandom(),
+  listingId:           text("listing_id").notNull(),
+  ownerId:             text("owner_id").notNull(),
+  cloudinaryPublicId:  text("cloudinary_public_id").notNull(),
+  url:                 text("url").notNull(),
+  thumbnailUrl:        text("thumbnail_url"),
+  originalFilename:    text("original_filename"),
+  // role: cover_primary | cover_secondary | exterior | interior | equipment | team | product | other
+  role:                text("role").notNull().default("other"),
+  caption:             text("caption"),
+  altText:             text("alt_text"),
+  // Only one image per listing may have isPrimaryCover = true (enforced at API layer)
+  isPrimaryCover:      boolean("is_primary_cover").notNull().default(false),
+  includeInPdf:        boolean("include_in_pdf").notNull().default(true),
+  includeInHtml:       boolean("include_in_html").notNull().default(true),
+  sortOrder:           integer("sort_order").notNull().default(0),
+  width:               integer("width"),
+  height:              integer("height"),
+  // Stored as text to avoid floating-point precision issues; parse with parseFloat()
+  aspectRatio:         numeric("aspect_ratio"),
+  fileSizeBytes:       integer("file_size_bytes"),
+  format:              text("format"),
+  // Panoramic = aspect_ratio > 2.2; these are never used as cover/listing images
+  isPanoramic:         boolean("is_panoramic").notNull().default(false),
+  createdAt:           timestamp("created_at").defaultNow(),
+  updatedAt:           timestamp("updated_at").defaultNow(),
+});
+
+export type ReportImage = typeof reportImagesTable.$inferSelect;
+export type InsertReportImage = typeof reportImagesTable.$inferInsert;

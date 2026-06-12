@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
-  cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable,
+  cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
 } from "@workspace/db";
 import { eq, asc, and, desc } from "drizzle-orm";
 import { logger } from "../../lib/logger";
@@ -1629,8 +1629,8 @@ async function handlePdf(req: any, res: any): Promise<void> {
     const filename     = `im-report-${listingId.slice(0, 8)}-${mode}-${style}.pdf`;
     const styleLabel   = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[style] ?? "Compact Broker IM";
 
-    // ── Parallel data fetch: snapshot, equipment, buyer funnel, images ─────────
-    const [snapshotRows, equipmentRows, funnelLogs] = await Promise.all([
+    // ── Parallel data fetch: snapshot, equipment, buyer funnel, report images ──
+    const [snapshotRows, equipmentRows, funnelLogs, reportImageRows] = await Promise.all([
       db.select({
         adjustedEbitda: valuationSnapshotsTable.adjustedEbitda,
         valuationMidpoint: valuationSnapshotsTable.valuationMidpoint,
@@ -1654,6 +1654,19 @@ async function handlePdf(req: any, res: any): Promise<void> {
         buyerId:   reportAccessLogsTable.buyerId,
       }).from(reportAccessLogsTable)
         .where(eq(reportAccessLogsTable.listingId, listingId)),
+      // Primary cover: isPrimaryCover=true non-panoramic first, else first non-panoramic by sort_order
+      db.select({ url: reportImagesTable.url })
+        .from(reportImagesTable)
+        .where(and(
+          eq(reportImagesTable.listingId, listingId),
+          eq(reportImagesTable.isPanoramic, false),
+          eq(reportImagesTable.includeInPdf, true),
+        ))
+        .orderBy(
+          desc(reportImagesTable.isPrimaryCover),
+          asc(reportImagesTable.sortOrder),
+        )
+        .limit(1),
     ]);
 
     const snapshot = snapshotRows[0] ?? null;
@@ -1669,9 +1682,11 @@ async function handlePdf(req: any, res: any): Promise<void> {
       ...(uniqueBuyerIds.size > 0 ? [{ eventType: "unique_buyers", count: uniqueBuyerIds.size }] : []),
     ];
 
+    // report_images cover takes priority over any section-embedded or panoramic image.
+    const reportImgUrl = reportImageRows[0]?.url ?? null;
     // Resolve image URLs — use visibility-filtered `sections` only; allSections is NOT
     // used here to prevent seller-only section content leaking into buyer/public exports.
-    const heroUrl = resolveHeroImageUrl(sections /* cafeHeroUrl: none yet, cafeCoverUrl: none yet */);
+    const heroUrl = resolveHeroImageUrl(sections, reportImgUrl);
     const bodyUrls: Array<[string, string | null]> = [
       ["business_overview",  resolveImageUrl(sections, "business_overview")],
       ["assets_equipment",   resolveImageUrl(sections, "plant_equipment_summary")],
@@ -1783,7 +1798,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
     const effectiveStyle: PdfStyle = VALID_STYLES.includes(style as PdfStyle) ? (style as PdfStyle) : "compact";
     const styleLabel = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[effectiveStyle] ?? "Compact Broker IM";
 
-    // ── Parallel data fetch: snapshot, equipment, images (public — no funnel) ──
+    // ── Parallel data fetch: snapshot, equipment, report images (public — no funnel) ──
     const pubExtra: PdfExtraData = {
       heroImageBuffer: null,
       bodyImageBuffers: new Map(),
@@ -1792,6 +1807,20 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       buyerFunnel: [],
       isSellerDraft: false,
     };
+
+    // Fetch report_images cover (non-panoramic) for the public PDF
+    const [pubCoverImgRows] = await Promise.all([
+      db.select({ url: reportImagesTable.url })
+        .from(reportImagesTable)
+        .where(and(
+          eq(reportImagesTable.listingId, listingId),
+          eq(reportImagesTable.isPanoramic, false),
+          eq(reportImagesTable.includeInPdf, true),
+        ))
+        .orderBy(desc(reportImagesTable.isPrimaryCover), asc(reportImagesTable.sortOrder))
+        .limit(1),
+    ]);
+    const pubReportImgUrl = pubCoverImgRows[0]?.url ?? null;
 
     if (cafeMeta?.id) {
       const [pubSnapshotRows, pubEquipRows] = await Promise.all([
@@ -1821,9 +1850,9 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       pubExtra.equipment = pubEquipRows;
     }
 
-    // Image resolution — visibility-filtered `sections` only; allSections is NOT used
-    // here to avoid leaking seller-only section content into public buyer exports.
-    const pubHeroUrl = resolveHeroImageUrl(sections /* cafeHeroUrl: none yet, cafeCoverUrl: none yet */);
+    // Image resolution — report_images (non-panoramic) takes priority.
+    // visibility-filtered `sections` only; allSections NOT used to avoid leaking seller content.
+    const pubHeroUrl = resolveHeroImageUrl(sections, pubReportImgUrl);
     const pubBodyUrls: Array<[string, string | null]> = [
       ["business_overview", resolveImageUrl(sections, "business_overview")],
       ["assets_equipment",  resolveImageUrl(sections, "plant_equipment_summary")],

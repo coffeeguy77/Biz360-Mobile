@@ -16,6 +16,7 @@ import {
   reportExportsTable,
   reportAccessLogsTable,
   reportAccessGrantsTable,
+  reportImagesTable,
   kvStore,
 } from "@workspace/db";
 import multer from "multer";
@@ -1089,7 +1090,46 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         return accessLevel === "seller" ? withLock : sanitiseForNonSeller(withLock);
       });
 
-    res.json({ sections: filtered, accessLevel, buyerGranted, meta: coverMeta });
+    // ── Fetch report images (non-panoramic, included in HTML) ──────────────────
+    // Provides the cover hero priority chain: isPrimaryCover=true first → cover_primary role.
+    // These are never panoramic — the API blocks panoramic images from cover/listing roles.
+    const reportImages = await db
+      .select({
+        id:             reportImagesTable.id,
+        url:            reportImagesTable.url,
+        thumbnailUrl:   reportImagesTable.thumbnailUrl,
+        role:           reportImagesTable.role,
+        caption:        reportImagesTable.caption,
+        altText:        reportImagesTable.altText,
+        isPrimaryCover: reportImagesTable.isPrimaryCover,
+        includeInPdf:   reportImagesTable.includeInPdf,
+        sortOrder:      reportImagesTable.sortOrder,
+        isPanoramic:    reportImagesTable.isPanoramic,
+      })
+      .from(reportImagesTable)
+      .where(
+        and(
+          eq(reportImagesTable.listingId, listingId),
+          eq(reportImagesTable.isPanoramic, false),
+          eq(reportImagesTable.includeInHtml, true),
+        ),
+      )
+      .orderBy(
+        // isPrimaryCover=true rows first (desc = true > false)
+        // then by sortOrder ascending
+        asc(reportImagesTable.isPrimaryCover),
+        asc(reportImagesTable.sortOrder),
+      );
+
+    // Determine the best cover image URL for the HTML report cover banner.
+    // Priority: isPrimaryCover=true → role=cover_primary → any non-panoramic
+    const reportImagesSorted = [...reportImages].reverse(); // flip to get isPrimary first
+    const primaryCoverImage = reportImagesSorted[0] ?? null;
+    if (primaryCoverImage) {
+      coverMeta = { ...coverMeta, reportHeroImageUrl: primaryCoverImage.url };
+    }
+
+    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages: reportImagesSorted } });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });

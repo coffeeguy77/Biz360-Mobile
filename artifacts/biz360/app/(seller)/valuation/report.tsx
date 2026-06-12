@@ -691,6 +691,7 @@ export default function ReportHubScreen() {
         <View style={styles.secondaryGrid}>
           {[
             { label: "Report Sections", icon: "list", color: "#3B82F6", route: "/(seller)/valuation/report-builder" },
+            { label: "Report Images", icon: "image", color: "#F59E0B", route: "/(seller)/valuation/report-images" },
             { label: "Access Settings", icon: "lock", color: "#8B5CF6", route: "/(seller)/valuation/report-access" },
             { label: "Version History", icon: "clock", color: "#6B7280", route: "/(seller)/valuation/report-versions", badge: versions.length > 0 ? `${versions.length}` : null },
             { label: "Report Checks", icon: "check-square", color: "#16A34A", route: "/(seller)/valuation/report-checks", badge: (missingRequired.length + needsReviewSections.length) > 0 ? `${missingRequired.length + needsReviewSections.length}` : null },
