@@ -1339,21 +1339,32 @@ async function buildPdf(
   let carryY = CONTENT_TOP; // tracks y across chapters in compact mode
 
   // Chapter-aware minimum space required before placing a chapter inline.
-  // Accounts for: header strip (34px) + metric cards when applicable (88px) +
-  // first-section heading guard (80px).  Prevents the header from being placed
-  // so close to the page bottom that the very next checkY triggers a page-break,
-  // leaving the chapter header alone (orphaned) on the previous page.
+  // Header strip (34px) + metric cards when applicable (88px) + first-section
+  // heading guard (80px) + chart/visual estimate for heavy chapters (compact only).
+  // Prevents the chapter header from landing too close to the page bottom, where
+  // the very next visual or section checkY would page-break and orphan it.
   const METRIC_CHAPTER_KEYS = new Set([
     "valuation", "assets_equipment", "lease_premises", "virtual_tour",
   ]);
+  // Track which chapter keys have already had their visuals rendered; prevents
+  // duplicates when buyer_summary consecutive-chapter grouping repeats a key.
+  const renderedVisualChapters = new Set<string>();
+
   function chapterMinSpace(groupKey: string): number {
     let h = 34; // chapter header strip height
     if (
       style !== "buyer_summary" && style !== "data_room" &&
       METRIC_CHAPTER_KEYS.has(groupKey)
     ) h += 88; // metric-card row estimate
-    h += 80;   // first section heading guard
-    return h;
+    // For compact mode, add estimates for the heaviest chart-level visuals so the
+    // chapter (header + chart + first section) fits together on one page.
+    if (isCompact && style !== "buyer_summary" && style !== "data_room") {
+      if (groupKey === "financial_performance") h += 100; // division chart
+      else if (groupKey === "valuation") h += 150; // valuation bridge + div chart
+    }
+    h += 80; // first section heading guard
+    // Cap at 60% of usable page height to avoid over-aggressive new-page placement
+    return Math.min(h, Math.floor((CONTENT_BOTTOM - CONTENT_TOP) * 0.60));
   }
 
   for (let gi = 0; gi < renderGroups.length; gi++) {
@@ -1384,18 +1395,30 @@ async function buildPdf(
     }
 
     // ── Chapter-level visuals injected before section content ──────────────
-    if (style !== "data_room") {
+    // buyer_summary: ALL chapter visuals suppressed — keeps the 8–12pp budget and
+    // prevents duplicate renders when consecutive-chapter grouping repeats a key.
+    // compact: body images suppressed (decorative only); charts/data visuals kept.
+    // All styles: gate by renderedVisualChapters so each chapter visual renders once.
+    if (
+      style !== "data_room" &&
+      style !== "buyer_summary" &&
+      !renderedVisualChapters.has(group.key)
+    ) {
+      renderedVisualChapters.add(group.key);
       switch (group.key) {
         case "business_overview":
-          y = renderBodyImage(
-            ctx, extra.bodyImageBuffers.get("business_overview") ?? null,
-            "Business Location", y, extra.isSellerDraft,
-          );
+          if (!isCompact) {
+            y = renderBodyImage(
+              ctx, extra.bodyImageBuffers.get("business_overview") ?? null,
+              "Business Location", y, extra.isSellerDraft,
+            );
+          }
           break;
 
         case "financial_performance": {
-          const revDivSec = group.secs.find((s) => s.sectionKey === "division_breakdown")
-            ?? sections.find((s: any) => s.sectionKey === "division_breakdown");
+          // Only group-local division data — no global fallback that would render
+          // the chart even when division_breakdown is absent from this group.
+          const revDivSec = group.secs.find((s) => s.sectionKey === "division_breakdown");
           const revDivData = parseChartData(revDivSec);
           y = renderDivisionChart(ctx, revDivData ?? [], "revenue", "Revenue by Division", y, extra.isSellerDraft);
           break;
@@ -1403,7 +1426,8 @@ async function buildPdf(
 
         case "valuation": {
           y = renderValuationBridge(ctx, extra.snapshot, y, extra.isSellerDraft);
-          const valDivSec = sections.find((s: any) => s.sectionKey === "division_breakdown");
+          // Group-local division data only
+          const valDivSec = group.secs.find((s) => s.sectionKey === "division_breakdown");
           const valDivData = parseChartData(valDivSec);
           y = renderDivisionChart(ctx, valDivData ?? [], "valuation", "Valuation by Division", y, extra.isSellerDraft);
           const healthSec = group.secs.find((s) => s.sectionKey === "business_health_score");
@@ -1430,27 +1454,33 @@ async function buildPdf(
 
         case "assets_equipment":
           y = renderEquipmentSummary(ctx, extra.equipment, y, extra.isSellerDraft);
-          y = renderBodyImage(
-            ctx, extra.bodyImageBuffers.get("assets_equipment") ?? null,
-            "Plant & Equipment", y, extra.isSellerDraft,
-          );
+          if (!isCompact) {
+            y = renderBodyImage(
+              ctx, extra.bodyImageBuffers.get("assets_equipment") ?? null,
+              "Plant & Equipment", y, extra.isSellerDraft,
+            );
+          }
           break;
 
         case "lease_premises": {
           const leaseRiskSec = group.secs.find((s) => s.sectionKey === "lease_risk_valuation_impact");
           y = renderLeaseRisk(ctx, parseChartData(leaseRiskSec), y, extra.isSellerDraft);
-          y = renderBodyImage(
-            ctx, extra.bodyImageBuffers.get("lease_premises") ?? null,
-            "Business Location & Premises", y, extra.isSellerDraft,
-          );
+          if (!isCompact) {
+            y = renderBodyImage(
+              ctx, extra.bodyImageBuffers.get("lease_premises") ?? null,
+              "Business Location & Premises", y, extra.isSellerDraft,
+            );
+          }
           break;
         }
 
         case "virtual_tour":
-          y = renderBodyImage(
-            ctx, extra.bodyImageBuffers.get("virtual_tour") ?? null,
-            "360 Business Walkthrough", y, extra.isSellerDraft,
-          );
+          if (!isCompact) {
+            y = renderBodyImage(
+              ctx, extra.bodyImageBuffers.get("virtual_tour") ?? null,
+              "360 Business Walkthrough", y, extra.isSellerDraft,
+            );
+          }
           break;
 
         case "due_diligence": {
@@ -1469,7 +1499,6 @@ async function buildPdf(
         }
 
         case "executive_summary":
-          // Buyer engagement funnel — seller draft only
           if (extra.isSellerDraft) {
             if (extra.buyerFunnel.length > 0) {
               y = renderBuyerFunnel(ctx, extra.buyerFunnel, y);
@@ -1486,10 +1515,11 @@ async function buildPdf(
     }
 
     // ── Post-visual orphan guard ────────────────────────────────────────────
-    // If any chapter visual (metric cards, body image, chart, etc.) caused a
-    // page-break, the chapter header is now alone on the previous page.
-    // Re-render the header at the top of the current (content) page so every
-    // content page always begins with its chapter label.
+    // If any visual (metric cards, chart, equipment summary, etc.) triggered a
+    // checkY page-break, the chapter header rendered on the previous page is now
+    // orphaned — content starts on a different page with no chapter label.
+    // Re-render the header at current y (immediately above section content) so
+    // every content block begins with its chapter label.
     if (style !== "data_room" && ctx.pg > pgAtHeader) {
       y = renderChapterHeader(ctx, group, gi + 1, y);
     }
