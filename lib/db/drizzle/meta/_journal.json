@@ -29,6 +29,13 @@
       "when": 1781200000000,
       "tag": "0003_report_sections",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781241114817,
+      "tag": "0004_illegal_jazinda",
+      "breakpoints": true
     }
   ]
 }

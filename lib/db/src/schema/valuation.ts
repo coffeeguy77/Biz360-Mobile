@@ -19,6 +19,7 @@ export const cafesTable = pgTable("val_cafes", {
   ownerId: text("owner_id").notNull(),
   name: text("name").notNull(),
   businessName: text("business_name"),
+  title: text("title"),
   tradingName: text("trading_name"),
   city: text("city"),
   businessType: text("business_type").default("cafe"),

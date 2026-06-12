@@ -110,16 +110,17 @@ function extractBusinessNameFromSections(sections: any[]): string | null {
 }
 
 // ── Business name resolver — shared by both PDF handlers ──────────────────────
-// Required fallback chain (task spec):
-//   listing.business_name → listing.name → listing.trading_name
+// Required fallback chain (task spec order):
+//   listing.business_name → listing.title → listing.name → listing.trading_name
 //   → section tableData "Business Name" / "Trading Name" row
 //   → "My Business"
-// Both businessName and tradingName are now real DB columns in val_cafes.
+// businessName, title, and tradingName are real DB columns in val_cafes.
 function resolveBusinessName(
-  cafe: { name: string; businessName?: string | null; tradingName?: string | null } | undefined | null,
+  cafe: { name: string; businessName?: string | null; title?: string | null; tradingName?: string | null } | undefined | null,
   sections: any[],
 ): string {
   const raw = cafe?.businessName
+    ?? cafe?.title
     ?? cafe?.name
     ?? cafe?.tradingName
     ?? extractBusinessNameFromSections(sections)
@@ -650,6 +651,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
         id: cafesTable.id,
         name: cafesTable.name,
         businessName: cafesTable.businessName,
+        title: cafesTable.title,
         tradingName: cafesTable.tradingName,
         city: cafesTable.city,
         businessType: cafesTable.businessType,
@@ -767,6 +769,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       .select({
         name: cafesTable.name,
         businessName: cafesTable.businessName,
+        title: cafesTable.title,
         tradingName: cafesTable.tradingName,
         city: cafesTable.city,
         businessType: cafesTable.businessType,
