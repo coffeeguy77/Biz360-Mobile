@@ -193,26 +193,34 @@ async function fetchImageBuffer(url: string, timeoutMs = 4000): Promise<Buffer |
  * Resolves the cover hero image URL using a formal priority chain.
  * Only visibility-filtered sections are passed in — safe for all export modes.
  *
- * Priority:
- *   1. cafe.heroImageUrl  — not yet a DB column; wire in here when added to cafesTable
- *   2. cafe.coverImageUrl — not yet a DB column; wire in here when added to cafesTable
- *   3. First image URL from the 360_business_walkthrough section (panorama thumbnail)
- *   4. First image URL from business_overview or location_market_context sections
- *   5. null → caller renders branded gradient fallback
+ * Priority chain:
+ *   1. reportImageUrl  — curated cover from report_images (isPrimary → listing_hero →
+ *                        cover_secondary → exterior role order, non-panoramic, PDF-visible).
+ *   2. listingHeroUrl  — listing-level hero image derived from the business_overview or
+ *                        business_location_market_context section chartData; present when the
+ *                        seller uploaded a cover photo before the report_images system.
+ *                        Wire in cafe.heroImageUrl here once it becomes a DB column.
+ *   3. First non-panoramic image URL from any remaining section chartData.
+ *   4. null → caller renders branded gradient fallback.
+ *
+ * Note: 360_business_walkthrough is intentionally excluded — equirectangular panoramas
+ * look severely distorted on a PDF cover page.
  */
 function resolveHeroImageUrl(
   filteredSections: any[],
   reportImageUrl?: string | null,
-  _cafeCoverUrl?: string | null,
+  listingHeroUrl?: string | null,
 ): string | null {
-  // report_images takes absolute priority — never fall through to panoramic sections.
-  // The 360_business_walkthrough section is intentionally excluded from the cover chain:
-  // equirectangular panoramas look distorted in print/PDF cover pages.
+  // Step 1 — curated report_images cover (absolute priority).
   if (reportImageUrl?.startsWith("https://")) return reportImageUrl;
-  // Only non-panoramic section images are used as fallback cover.
-  // Explicitly skip 360_business_walkthrough here.
-  const url4 = resolveImageUrl(filteredSections, "business_overview", "business_location_market_context");
-  return url4;
+  // Step 2 — listing-level hero: section-embedded image from the primary business sections.
+  if (listingHeroUrl?.startsWith("https://")) return listingHeroUrl;
+  // Step 3 — broad non-panoramic section fallback (skips 360_business_walkthrough).
+  return resolveImageUrl(
+    filteredSections.filter((s: any) => s.sectionKey !== "360_business_walkthrough"),
+    "plant_equipment_summary",
+    "lease_premises_summary",
+  );
 }
 
 function resolveImageUrl(sections: any[], ...sectionKeys: string[]): string | null {
@@ -1765,7 +1773,9 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
     // Resolve image URLs — use visibility-filtered `sections` only; allSections is NOT
     // used here to prevent seller-only section content leaking into buyer/public exports.
-    const heroUrl = resolveHeroImageUrl(sections, reportImgUrl);
+    // listingHeroUrl = step-2 fallback: section-embedded cover from the primary business sections.
+    const listingHeroUrl = resolveImageUrl(sections, "business_overview", "business_location_market_context");
+    const heroUrl = resolveHeroImageUrl(sections, reportImgUrl, listingHeroUrl);
     const bodyUrls: Array<[string, string | null]> = [
       ["business_overview", resolveReportSectionImageUrl(["business_overview"], ["interior", "exterior"])
         ?? resolveImageUrl(sections, "business_overview")],
@@ -1994,7 +2004,9 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
 
     // Image resolution — report_images (non-panoramic) takes priority for public PDF.
     // visibility-filtered `sections` only; allSections NOT used to avoid leaking seller content.
-    const pubHeroUrl = resolveHeroImageUrl(sections, pubReportImgUrl);
+    // listingHeroUrl = step-2 fallback: section-embedded cover from the primary business sections.
+    const pubListingHeroUrl = resolveImageUrl(sections, "business_overview", "business_location_market_context");
+    const pubHeroUrl = resolveHeroImageUrl(sections, pubReportImgUrl, pubListingHeroUrl);
     const pubBodyUrls: Array<[string, string | null]> = [
       ["business_overview", resolvePubSectionImageUrl(["business_overview"], ["interior", "exterior"])
         ?? resolveImageUrl(sections, "business_overview")],
@@ -2002,8 +2014,9 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
         ?? resolveImageUrl(sections, "plant_equipment_summary")],
       ["lease_premises",    resolvePubSectionImageUrl(["business_location_market_context", "lease_premises_summary"], ["exterior"])
         ?? resolveImageUrl(sections, "business_location_market_context", "lease_premises_summary")],
-      ["virtual_tour",      resolvePubSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)
-        ?? resolveImageUrl(sections, "360_business_walkthrough")],
+      // virtual_tour: only explicitly-curated report_images with 360_preview role.
+      // Raw section fallback intentionally omitted — panoramics look distorted in PDF.
+      ["virtual_tour",      resolvePubSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)],
     ];
     const [pubHeroBuf, ...pubBodyBufs] = await Promise.all([
       pubHeroUrl ? fetchImageBuffer(pubHeroUrl) : Promise.resolve(null),
