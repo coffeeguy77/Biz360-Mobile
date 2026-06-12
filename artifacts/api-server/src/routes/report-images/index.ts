@@ -236,8 +236,31 @@ router.post("/report-images/:listingId/upload", requireAuth, async (req, res): P
   }
 });
 
+/**
+ * Fetch authoritative dimensions from Cloudinary for a given public_id.
+ * NEVER trust client-supplied dimensions for panorama classification.
+ * Falls back to aspect_ratio=1 (non-panoramic) only on API error, with a warning log.
+ */
+async function fetchCloudinaryDimensions(publicId: string): Promise<{
+  width: number | null; height: number | null;
+  aspectRatio: number; isPanoramic: boolean;
+}> {
+  try {
+    const resource = await cloudinary.api.resource(publicId, { resource_type: "image" });
+    const width:  number | null = resource.width  ?? null;
+    const height: number | null = resource.height ?? null;
+    const ratio = width && height && height > 0 ? width / height : 1;
+    return { width, height, aspectRatio: ratio, isPanoramic: ratio > PANORAMIC_THRESHOLD };
+  } catch (err) {
+    logger.warn({ err, publicId }, "Cloudinary resource fetch failed — defaulting to aspect_ratio=1 (non-panoramic)");
+    return { width: null, height: null, aspectRatio: 1, isPanoramic: false };
+  }
+}
+
 // ─── POST /api/report-images/:listingId/from-listing-photo ────────────────────
-// Creates a report_image row that references an existing Cloudinary listing asset.
+// Creates a report_image row referencing an existing Cloudinary listing asset.
+// Panorama classification is derived server-side from Cloudinary metadata —
+// client-supplied dimensions are NEVER used for role/cover enforcement.
 // Body: { cloudinaryPublicId, cloudinarySecureUrl, imageRole?, caption?, displayName?, sectionKey? }
 router.post("/report-images/:listingId/from-listing-photo", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
@@ -262,6 +285,20 @@ router.post("/report-images/:listingId/from-listing-photo", requireAuth, async (
   try {
     await assertListingAccess(listingId, userId);
 
+    // Server-side panorama detection — Cloudinary is the source of truth
+    const { width, height, aspectRatio, isPanoramic } = await fetchCloudinaryDimensions(cloudinaryPublicId);
+
+    // Block panoramic images from protected cover/listing roles
+    if (isPanoramic && PANORAMIC_BLOCKED_ROLES.includes(imageRole as typeof PANORAMIC_BLOCKED_ROLES[number])) {
+      res.status(400).json({
+        error: "360° panoramic images can look distorted in reports. Please upload a normal photo or choose a cropped thumbnail.",
+        isPanoramic: true,
+      });
+      return;
+    }
+    // Force role to 360_preview for any panoramic image regardless of client request
+    const effectiveRole: ImageRole = isPanoramic ? "360_preview" : (imageRole as ImageRole);
+
     const existing = await db
       .select({ id: reportImagesTable.id })
       .from(reportImagesTable)
@@ -279,23 +316,26 @@ router.post("/report-images/:listingId/from-listing-photo", requireAuth, async (
         cloudinaryUrl:       cloudinaryUrl ?? cloudinarySecureUrl,
         cloudinarySecureUrl,
         displayName:         displayName ?? null,
-        imageRole:           imageRole as ImageRole,
+        imageRole:           effectiveRole,
         caption:             caption ?? null,
         altText:             altText ?? null,
         sectionKey:          sectionKey ?? null,
         isPrimary:           false,
-        includeInPdf:        true,
+        includeInPdf:        !isPanoramic,
         includeInHtml:       true,
-        includeInBuyerReport:  true,
+        includeInBuyerReport:  !isPanoramic,
         includeInSellerReport: true,
         sortOrder:           existing.length,
+        width,
+        height,
+        aspectRatio:         String(aspectRatio.toFixed(4)),
         sourceType:          "listing_photo",
         sourceRefId:         cloudinaryPublicId,
-        isPanoramic:         false,
+        isPanoramic,
       })
       .returning();
 
-    res.status(201).json({ image: { ...image, thumbnailUrl, coverUrl } });
+    res.status(201).json({ image: { ...image, thumbnailUrl, coverUrl }, isPanoramic });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to add listing photo" });
@@ -304,16 +344,17 @@ router.post("/report-images/:listingId/from-listing-photo", requireAuth, async (
 
 // ─── POST /api/report-images/:listingId/from-tour-thumbnail ───────────────────
 // Creates a report_image row referencing a tour scene thumbnail (Cloudinary asset).
-// Body: { cloudinaryPublicId, cloudinarySecureUrl, sceneLabel?, aspectRatio?, width?, height? }
+// Panorama classification is derived server-side from Cloudinary metadata —
+// client-supplied aspectRatio / width / height are NEVER trusted for enforcement.
+// Body: { cloudinaryPublicId, cloudinarySecureUrl, sceneLabel? }
 router.post("/report-images/:listingId/from-tour-thumbnail", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId } = req.params as { listingId: string };
   const {
-    cloudinaryPublicId, cloudinarySecureUrl, cloudinaryUrl,
-    sceneLabel, aspectRatio: arStr, width, height,
+    cloudinaryPublicId, cloudinarySecureUrl, cloudinaryUrl, sceneLabel,
   } = req.body as {
     cloudinaryPublicId?: string; cloudinarySecureUrl?: string; cloudinaryUrl?: string;
-    sceneLabel?: string; aspectRatio?: string | number; width?: number; height?: number;
+    sceneLabel?: string;
   };
 
   if (!cloudinaryPublicId || !cloudinarySecureUrl) {
@@ -324,8 +365,8 @@ router.post("/report-images/:listingId/from-tour-thumbnail", requireAuth, async 
   try {
     await assertListingAccess(listingId, userId);
 
-    const aspectRatio = arStr ? parseFloat(String(arStr)) : (width && height ? width / height : 1);
-    const isPanoramic = aspectRatio > PANORAMIC_THRESHOLD;
+    // Server-side panorama detection — never trust client-supplied dimensions
+    const { width, height, aspectRatio, isPanoramic } = await fetchCloudinaryDimensions(cloudinaryPublicId);
     const effectiveRole: ImageRole = isPanoramic ? "360_preview" : "other";
 
     const existing = await db
@@ -346,13 +387,14 @@ router.post("/report-images/:listingId/from-tour-thumbnail", requireAuth, async 
         displayName:         sceneLabel ?? "Tour Thumbnail",
         imageRole:           effectiveRole,
         isPrimary:           false,
+        // Panoramic tour thumbnails are excluded from PDF and buyer report by default
         includeInPdf:        !isPanoramic,
         includeInHtml:       true,
         includeInBuyerReport:  !isPanoramic,
         includeInSellerReport: true,
         sortOrder:           existing.length,
-        width:               width ?? null,
-        height:              height ?? null,
+        width,
+        height,
         aspectRatio:         String(aspectRatio.toFixed(4)),
         sourceType:          "tour_thumbnail",
         sourceRefId:         cloudinaryPublicId,
@@ -361,6 +403,14 @@ router.post("/report-images/:listingId/from-tour-thumbnail", requireAuth, async 
       .returning();
 
     logger.info({ imageId: image.id, listingId, isPanoramic }, "Tour thumbnail added to report images");
+
+    if (isPanoramic) {
+      return void res.status(201).json({
+        image: { ...image, thumbnailUrl }, isPanoramic,
+        warning: "360° panoramic images can look distorted in reports. This thumbnail has been assigned the 360° Preview role and excluded from the PDF cover.",
+      });
+    }
+
     res.status(201).json({ image: { ...image, thumbnailUrl }, isPanoramic });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };

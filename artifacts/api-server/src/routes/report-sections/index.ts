@@ -1120,6 +1120,9 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
           eq(reportImagesTable.isPanoramic, false),
           eq(reportImagesTable.includeInHtml, true),
           isNull(reportImagesTable.deletedAt),
+          // Non-seller viewers (public / buyer) must not see seller-hidden images.
+          // Sellers see all images regardless of includeInBuyerReport.
+          ...(accessLevel === "seller" ? [] : [eq(reportImagesTable.includeInBuyerReport, true)]),
         ),
       )
       .orderBy(
