@@ -1233,17 +1233,24 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
     }
 
     // ── Build 360 tour srcdoc for embedding in the HTML report ─────────────────
-    // Fetch tour spaces from KV and generate the Pannellum iframe HTML so the
-    // report viewer can embed the tour via srcDoc without needing a separate URL.
+    // Only include tourSrcDoc when the 360_business_walkthrough section is
+    // present and UNLOCKED for the current caller — mirrors section visibility.
+    // Omitting it for locked/absent 360 sections prevents data leaks to
+    // callers who cannot see the section content.
     let tourSrcDoc: string | null = null;
-    const [tourKvRow] = await db
-      .select({ value: kvStore.value })
-      .from(kvStore)
-      .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
-      .limit(1);
-    const tourSpaces = Array.isArray(tourKvRow?.value) ? (tourKvRow.value as Array<Record<string, unknown>>) : [];
-    if (tourSpaces.length > 0) {
-      tourSrcDoc = buildTourSrcDoc(tourSpaces);
+    const tour360Unlocked = filtered.some(
+      (s) => s.sectionKey === "360_business_walkthrough" && !s.isLocked,
+    );
+    if (tour360Unlocked) {
+      const [tourKvRow] = await db
+        .select({ value: kvStore.value })
+        .from(kvStore)
+        .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+        .limit(1);
+      const tourSpaces = Array.isArray(tourKvRow?.value) ? (tourKvRow.value as Array<Record<string, unknown>>) : [];
+      if (tourSpaces.length > 0) {
+        tourSrcDoc = buildTourSrcDoc(tourSpaces);
+      }
     }
 
     res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages, tourSrcDoc } });
