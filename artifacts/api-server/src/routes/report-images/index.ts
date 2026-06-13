@@ -680,13 +680,22 @@ router.get("/report-images/:listingId/tour-scenes", requireAuth, async (req, res
 
     const { db: dbKv, kvStore } = await import("@workspace/db");
     const { eq: eqKv } = await import("drizzle-orm");
-    const [tourRow] = await dbKv
+
+    // Tour spaces migrated from v1 → v2. Read v2 first; fall back to v1 for older listings.
+    const [tourRowV2] = await dbKv
       .select({ value: kvStore.value })
       .from(kvStore)
-      .where(eqKv(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+      .where(eqKv(kvStore.key, `biz360_tour_spaces_v2_${listingId}`))
       .limit(1);
-
-    const rawSpaces: Record<string, unknown>[] = Array.isArray(tourRow?.value) ? tourRow.value as Record<string, unknown>[] : [];
+    let rawSpaces: Record<string, unknown>[] = Array.isArray(tourRowV2?.value) ? tourRowV2.value as Record<string, unknown>[] : [];
+    if (rawSpaces.length === 0) {
+      const [tourRowV1] = await dbKv
+        .select({ value: kvStore.value })
+        .from(kvStore)
+        .where(eqKv(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+        .limit(1);
+      rawSpaces = Array.isArray(tourRowV1?.value) ? tourRowV1.value as Record<string, unknown>[] : [];
+    }
 
     const scenes = rawSpaces.map((space, idx) => {
       const panoramaUrl = space.panoramaUrl as string | null ?? null;
@@ -725,13 +734,22 @@ router.get("/report-images/:listingId/listing-assets", requireAuth, async (req, 
 
     const { db: dbKv, kvStore } = await import("@workspace/db");
     const { eq: eqKv } = await import("drizzle-orm");
-    const [tourRow] = await dbKv
+
+    // Tour spaces migrated from v1 → v2. Read v2 first; fall back to v1 for older listings.
+    const [laRowV2] = await dbKv
       .select({ value: kvStore.value })
       .from(kvStore)
-      .where(eqKv(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+      .where(eqKv(kvStore.key, `biz360_tour_spaces_v2_${listingId}`))
       .limit(1);
-
-    const rawSpaces: Record<string, unknown>[] = Array.isArray(tourRow?.value) ? tourRow.value as Record<string, unknown>[] : [];
+    let rawSpaces: Record<string, unknown>[] = Array.isArray(laRowV2?.value) ? laRowV2.value as Record<string, unknown>[] : [];
+    if (rawSpaces.length === 0) {
+      const [laRowV1] = await dbKv
+        .select({ value: kvStore.value })
+        .from(kvStore)
+        .where(eqKv(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+        .limit(1);
+      rawSpaces = Array.isArray(laRowV1?.value) ? laRowV1.value as Record<string, unknown>[] : [];
+    }
 
     const assets: Array<{
       url: string; cloudinaryPublicId: string; thumbnailUrl: string;
