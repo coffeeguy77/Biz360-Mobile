@@ -105,7 +105,11 @@ function createNavPin(container,args){
   container.appendChild(label);
   container.addEventListener('click',function(e){
     e.stopPropagation();
-    try{var resolvedYaw=typeof args.targetYaw==='number'?args.targetYaw:null;viewer.loadScene(args.sceneId,null,resolvedYaw,null);}catch(err){}
+    try{
+      var resolvedYaw=typeof args.targetYaw==='number'?args.targetYaw:null;
+      var hfov=DEFAULT_HFOV;try{hfov=viewer.getHfov()}catch(e2){}
+      viewer.loadScene(args.sceneId,null,resolvedYaw,hfov);
+    }catch(err){}
   });
 }
 var validIds=new Set(SPACES.filter(function(s){return s.panoramaUrl&&String(s.panoramaUrl).indexOf('file://')!==0}).map(function(s){return s.id}));
@@ -124,9 +128,15 @@ SPACES.forEach(function(s){
   if(typeof s.groundPitch==='number')sc.groundPitch=s.groundPitch;
   scenesConfig[s.id]=sc;
 });
-var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:150},scenes:scenesConfig});
+var DEFAULT_HFOV=120;
+var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:DEFAULT_HFOV,pitch:0,yaw:0,minHfov:60,maxHfov:150},scenes:scenesConfig});
 function doResize(){try{viewer.resize()}catch(e){}}
-window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
+// Aggressive early resize so WebGL canvas fills the iframe before user touches it
+// (prevents the brownish/blank frame that shows until the first drag event).
+if(typeof requestAnimationFrame!=='undefined'){
+  requestAnimationFrame(function(){doResize();requestAnimationFrame(doResize);});
+}
+window.addEventListener('load',function(){doResize();setTimeout(doResize,100);setTimeout(doResize,400)});
 window.addEventListener('resize',doResize);
 viewer.on('scenechange',function(id){
   try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}
@@ -135,7 +145,8 @@ window.addEventListener('message',function(e){
   if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{
     var gotoSp=SPACES.find(function(s){return s.id===e.data.sceneId});
     var gotoYaw=typeof e.data.yaw==='number'?e.data.yaw:(gotoSp&&typeof gotoSp.defaultYaw==='number'?gotoSp.defaultYaw:(gotoSp&&typeof gotoSp.panoramaStartYaw==='number'?gotoSp.panoramaStartYaw:0));
-    viewer.loadScene(e.data.sceneId,0,gotoYaw,100);
+    var currentHfov=DEFAULT_HFOV;try{currentHfov=viewer.getHfov()}catch(e3){}
+    viewer.loadScene(e.data.sceneId,0,gotoYaw,currentHfov);
   }catch(e2){}
 });
 </script>
