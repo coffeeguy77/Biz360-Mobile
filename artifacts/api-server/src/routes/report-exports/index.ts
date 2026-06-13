@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
+import { v2 as cloudinary } from "cloudinary";
 import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
   cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
@@ -13,6 +14,13 @@ import {
   COVER_METRIC_TARGETS, sectionHasContent, sectionIsPlaceholder,
   type PdfStyle,
 } from "../../lib/report-groups";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure:     true,
+});
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const SVGtoPDF = require("svg-to-pdfkit");
@@ -1708,12 +1716,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
     // Use Cloudinary 1600w crop/fill transformation for PDF cover quality.
     const reportImgRaw = reportImageRows[0];
     const reportImgUrl = reportImgRaw
-      ? (() => {
-          try {
-            const { v2: cld } = require("cloudinary");
-            return cld.url(reportImgRaw.publicId, { width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true });
-          } catch { return reportImgRaw.url; }
-        })()
+      ? cloudinary.url(reportImgRaw.publicId, { width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true })
       : null;
     // ── report_images section resolver ────────────────────────────────────────
     // Fetch all non-deleted, PDF-included report_images for the listing so we can
@@ -1927,12 +1930,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       .limit(1);
     const pubReportImgRaw = pubCoverImgRows[0];
     const pubReportImgUrl = pubReportImgRaw
-      ? (() => {
-          try {
-            const { v2: cld } = require("cloudinary");
-            return cld.url(pubReportImgRaw.publicId, { width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true });
-          } catch { return pubReportImgRaw.url; }
-        })()
+      ? cloudinary.url(pubReportImgRaw.publicId, { width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true })
       : null;
 
     if (cafeMeta?.id) {

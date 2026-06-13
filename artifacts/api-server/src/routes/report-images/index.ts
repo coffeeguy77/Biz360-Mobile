@@ -108,7 +108,7 @@ router.get("/report-images/:listingId", requireAuth, async (req, res): Promise<v
   const { listingId } = req.params as { listingId: string };
   try {
     await assertListingAccess(listingId, userId);
-    const images = await db
+    const rows = await db
       .select()
       .from(reportImagesTable)
       .where(
@@ -118,6 +118,12 @@ router.get("/report-images/:listingId", requireAuth, async (req, res): Promise<v
         ),
       )
       .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder), asc(reportImagesTable.createdAt));
+    // Compute Cloudinary transform URLs — these are not DB columns.
+    const images = rows.map((img) => ({
+      ...img,
+      thumbnailUrl: buildThumbnailUrl(img.cloudinaryPublicId),
+      coverUrl:     buildCoverUrl(img.cloudinaryPublicId),
+    }));
     res.json({ images });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
@@ -318,7 +324,24 @@ router.post("/report-images/:listingId/from-listing-photo", requireAuth, async (
     // Force role to 360_preview for any panoramic image regardless of client request
     const effectiveRole: ImageRole = isPanoramic ? "360_preview" : (imageRole as ImageRole);
 
-    const existing = await db
+    // Idempotency: if this publicId is already in the list, return existing record without creating a duplicate.
+    const [duplicate] = await db
+      .select()
+      .from(reportImagesTable)
+      .where(and(
+        eq(reportImagesTable.listingId, listingId),
+        eq(reportImagesTable.cloudinaryPublicId, cloudinaryPublicId),
+        isNull(reportImagesTable.deletedAt),
+      ))
+      .limit(1);
+
+    if (duplicate) {
+      const thumbnailUrl = buildThumbnailUrl(duplicate.cloudinaryPublicId);
+      const coverUrl     = buildCoverUrl(duplicate.cloudinaryPublicId);
+      return void res.status(200).json({ image: { ...duplicate, thumbnailUrl, coverUrl }, isPanoramic, alreadyExists: true });
+    }
+
+    const allExisting = await db
       .select({ id: reportImagesTable.id })
       .from(reportImagesTable)
       .where(and(eq(reportImagesTable.listingId, listingId), isNull(reportImagesTable.deletedAt)));
@@ -344,7 +367,7 @@ router.post("/report-images/:listingId/from-listing-photo", requireAuth, async (
         includeInHtml:       true,
         includeInBuyerReport:  !isPanoramic,
         includeInSellerReport: true,
-        sortOrder:           existing.length,
+        sortOrder:           allExisting.length,
         width,
         height,
         aspectRatio:         String(aspectRatio.toFixed(4)),
@@ -388,7 +411,23 @@ router.post("/report-images/:listingId/from-tour-thumbnail", requireAuth, async 
     const { width, height, aspectRatio, isPanoramic } = await fetchCloudinaryDimensions(cloudinaryPublicId);
     const effectiveRole: ImageRole = isPanoramic ? "360_preview" : "other";
 
-    const existing = await db
+    // Idempotency: if this publicId is already in the list, return existing record without creating a duplicate.
+    const [duplicate] = await db
+      .select()
+      .from(reportImagesTable)
+      .where(and(
+        eq(reportImagesTable.listingId, listingId),
+        eq(reportImagesTable.cloudinaryPublicId, cloudinaryPublicId),
+        isNull(reportImagesTable.deletedAt),
+      ))
+      .limit(1);
+
+    if (duplicate) {
+      const thumbnailUrl = buildThumbnailUrl(duplicate.cloudinaryPublicId);
+      return void res.status(200).json({ image: { ...duplicate, thumbnailUrl }, isPanoramic, alreadyExists: true });
+    }
+
+    const allExisting = await db
       .select({ id: reportImagesTable.id })
       .from(reportImagesTable)
       .where(and(eq(reportImagesTable.listingId, listingId), isNull(reportImagesTable.deletedAt)));
@@ -411,7 +450,7 @@ router.post("/report-images/:listingId/from-tour-thumbnail", requireAuth, async 
         includeInHtml:       true,
         includeInBuyerReport:  !isPanoramic,
         includeInSellerReport: true,
-        sortOrder:           existing.length,
+        sortOrder:           allExisting.length,
         width,
         height,
         aspectRatio:         String(aspectRatio.toFixed(4)),
