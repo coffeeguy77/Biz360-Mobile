@@ -110,7 +110,7 @@ router.get("/report-images/:listingId", requireAuth, async (req, res): Promise<v
   const { listingId } = req.params as { listingId: string };
   try {
     await assertListingAccess(listingId, userId);
-    const rows = await db
+    let rows = await db
       .select()
       .from(reportImagesTable)
       .where(
@@ -120,6 +120,35 @@ router.get("/report-images/:listingId", requireAuth, async (req, res): Promise<v
         ),
       )
       .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder), asc(reportImagesTable.createdAt));
+
+    // ── Auto-correct misclassified panoramas ────────────────────────────────
+    // Images added while PANORAMIC_THRESHOLD was 2.2 may have isPanoramic=false
+    // even though their stored aspect_ratio is > 1.8 (e.g. 2:1 equirectangular).
+    // Silently fix them on read so callers always see the correct classification.
+    const toFix = rows.filter(
+      (r) => !r.isPanoramic && r.imageRole === "other" && Number(r.aspectRatio ?? 0) > 1.8,
+    );
+    if (toFix.length > 0) {
+      const fixIds = toFix.map((r) => r.id);
+      await db
+        .update(reportImagesTable)
+        .set({
+          isPanoramic:          true,
+          imageRole:            "360_preview",
+          includeInPdf:         false,
+          includeInBuyerReport: false,
+          updatedAt:            new Date(),
+        })
+        .where(sql`${reportImagesTable.id} = ANY(ARRAY[${sql.join(fixIds.map((id) => sql`${id}`), sql`, `)}]::uuid[])`);
+      // Patch the in-memory rows so we don't need a second DB round-trip
+      rows = rows.map((r) =>
+        fixIds.includes(r.id)
+          ? { ...r, isPanoramic: true, imageRole: "360_preview" as const, includeInPdf: false, includeInBuyerReport: false }
+          : r,
+      );
+      logger.info({ count: toFix.length, listingId }, "Auto-corrected panoramic images misclassified under old threshold");
+    }
+
     // Compute Cloudinary transform URLs — these are not DB columns.
     const images = rows.map((img) => ({
       ...img,
