@@ -239,7 +239,8 @@ function VisualPreview({ visual }: { visual: ReportVisual | null }) {
       let ang = -90;
       const svgPaths = visible.map((s, i) => {
         const pct = numerics[i] / total;
-        const sweep = pct * 360;
+        // Cap at 359.99° — a 360° arc degenerates in SVG (start === end point)
+        const sweep = Math.min(pct * 360, 359.99);
         const end = ang + sweep;
         const large = sweep > 180 ? 1 : 0;
         const x1 = CX + RO * Math.cos(toR(ang)),  y1 = CY + RO * Math.sin(toR(ang));

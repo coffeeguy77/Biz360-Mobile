@@ -139,10 +139,10 @@ async function resolveChartData(
         if (s.unitId && !snapByUnit.has(s.unitId)) snapByUnit.set(s.unitId, s);
       }
 
-      // No per-unit snapshots published + no manually-set percentages → needs_data
+      // No published per-unit snapshots → always needs_data
+      // Manual revenueSharePct may be used at row level only when at least one snapshot exists
       const hasSnapshots = units.some((u) => snapByUnit.has(u.id));
-      const hasManualPcts = units.some((u) => Number(u.revenueSharePct ?? 0) > 0);
-      if (!hasSnapshots && !hasManualPcts) return absent("Division Data");
+      if (!hasSnapshots) return absent("Division Data");
 
       // Compute total revenue for share-percentage derivation
       const totalRevenue = units.reduce((sum, u) => {
