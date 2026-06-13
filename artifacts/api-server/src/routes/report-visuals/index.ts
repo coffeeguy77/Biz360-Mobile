@@ -324,14 +324,40 @@ function buildChartData(
   if (resolved.status !== "ready" && !manualData?.length) return null;
   const raw = resolved.data ?? {};
 
-  // Manual data override
+  // Manual data override — shape rows to match each renderer's expected contract
   if (manualData?.length) {
-    return {
-      rows:             manualData,
-      sourceLabel:      "Seller Supplied",
-      sourceConfidence: "manual",
-      isManual:         true,
-    };
+    const label = "Seller Supplied";
+    const conf  = "manual";
+    // Normalise: accept { label, value } or { name, value }
+    const rows = manualData.map((r) => ({
+      label: String(r.label ?? r.name ?? ""),
+      value: r.value,
+    }));
+    switch (visualType) {
+      case "stat_card":
+      case "metric_grid":
+        return { metrics: rows, sourceLabel: label, sourceConfidence: conf, isManual: true };
+      case "table":
+        return { rows, sourceLabel: label, sourceConfidence: conf, isManual: true };
+      case "bar_chart":
+      case "horizontal_bar_chart":
+        return { bars: rows, sourceLabel: label, sourceConfidence: conf, isManual: true };
+      case "donut_chart":
+        return { slices: rows, sourceLabel: label, sourceConfidence: conf, isManual: true };
+      case "funnel":
+        return { funnel: rows, sourceLabel: label, sourceConfidence: conf, isManual: true };
+      case "checklist":
+        return { items: rows, sourceLabel: label, sourceConfidence: conf, isManual: true };
+      case "score_card": {
+        // score_card from manual: first row value used as the numeric score
+        const score = rows[0] ? Number(rows[0].value) : null;
+        if (score == null || isNaN(score)) return null; // can't render
+        return { score, label: rows[0]?.label ?? "Score", sourceLabel: label, sourceConfidence: conf, isManual: true };
+      }
+      default:
+        // valuation_bridge and unknown types: manual input not meaningful — return null (needs_data)
+        return null;
+    }
   }
 
   switch (visualType) {
@@ -503,9 +529,9 @@ router.post("/report-visuals/:listingId", requireAuth, async (req, res): Promise
       .from(reportVisualsTable)
       .where(and(eq(reportVisualsTable.listingId, listingId), isNull(reportVisualsTable.deletedAt)));
 
-    const status = (body.dataSourceType === "manual" && manualData?.length)
-      ? "ready"
-      : (chartData ? "ready" : "needs_data");
+    // Only mark ready when chartData was actually produced — buildChartData returns
+    // null for unsupported type+source combinations (e.g. valuation_bridge + manual)
+    const status = chartData ? "ready" : "needs_data";
 
     const [visual] = await db.insert(reportVisualsTable).values({
       userId,
@@ -572,8 +598,7 @@ router.patch("/report-visuals/:listingId/:id", requireAuth, async (req, res): Pr
       chartData = buildChartData(newVisualType, resolved, newConfig, newManualData ?? undefined);
       sourceLabel = resolved.sourceLabel;
       sourceConfidence = resolved.sourceConfidence;
-      status = (newDataSourceType === "manual" && (newManualData?.length ?? 0) > 0)
-        ? "ready" : (chartData ? "ready" : "needs_data");
+      status = chartData ? "ready" : "needs_data";
     }
 
     const patch: Partial<typeof reportVisualsTable.$inferInsert> & { updatedAt: Date } = {
