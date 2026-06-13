@@ -72,7 +72,8 @@ async function assertListingOwner(listingId: string, ownerId: string) {
  * Ported from listing-detail.tsx buildMultiSceneSrcdoc — no external dependencies.
  */
 function buildTourSrcDoc(spaces: Array<Record<string, unknown>>): string {
-  const spacesJson = JSON.stringify(spaces);
+  // Escape </script> sequences so they cannot break out of the script block.
+  const spacesJson = JSON.stringify(spaces).replace(/<\/script/gi, "<\\/script");
   return `<!DOCTYPE html>
 <html>
 <head>

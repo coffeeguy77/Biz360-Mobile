@@ -338,18 +338,28 @@ function SectionContent({
   const hasContent = section.body || (section.bulletPoints?.length ?? 0) > 0 || section.tableData;
   const is360 = section.sectionKey === "360_business_walkthrough";
 
-  // Resolve 360 tour URL from chartData (supports plain string URL or object
-  // with common key names: url | tourUrl | src | iframe | link | pannellumUrl)
+  // Resolve 360 tour display from chartData.
+  // Priority: explicit URL → raw HTML srcdoc → KV-built tourSrcDoc (from meta prop).
   let tourUrl: string | null = null;
+  let chartSrcDoc: string | null = null;
   if (is360 && chartData != null) {
     if (typeof chartData === "string" && /^https?:\/\//.test(chartData)) {
       tourUrl = chartData;
+    } else if (typeof chartData === "string" && chartData.trimStart().startsWith("<")) {
+      // Raw Pannellum HTML stored directly in chartData — embed as srcDoc.
+      chartSrcDoc = chartData;
     } else if (typeof chartData === "object" && !Array.isArray(chartData)) {
       const cd = chartData as Record<string, unknown>;
       const raw = cd.url ?? cd.tourUrl ?? cd.src ?? cd.iframe ?? cd.link ?? cd.pannellumUrl ?? "";
       if (raw && /^https?:\/\//.test(String(raw))) tourUrl = String(raw);
+      // Also check if chartData itself contains an embedded srcdoc string.
+      if (!tourUrl && typeof cd.srcDoc === "string" && cd.srcDoc.trimStart().startsWith("<")) {
+        chartSrcDoc = cd.srcDoc;
+      }
     }
   }
+  // Resolved srcDoc: prefer chartData-derived HTML over server-built KV HTML.
+  const resolvedSrcDoc = chartSrcDoc ?? tourSrcDoc ?? null;
 
   // Only render chart wrapper when there is real data to show
   const chartWillRender = ChartComponent && sectionHasChartData(section.sectionKey, chartData);
@@ -411,10 +421,11 @@ function SectionContent({
               onLoad={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
             />
           </div>
-        ) : tourSrcDoc ? (
+        ) : resolvedSrcDoc ? (
           <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ aspectRatio: "16/9" }}>
             <iframe
-              srcDoc={tourSrcDoc}
+              srcDoc={resolvedSrcDoc}
+              sandbox="allow-scripts"
               className="w-full h-full"
               allow="fullscreen; xr-spatial-tracking"
               title="360° Business Walkthrough"
