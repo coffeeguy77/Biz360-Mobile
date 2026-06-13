@@ -1501,6 +1501,24 @@ async function buildPdf(
           }
           break;
 
+        case "staff_operations":
+          if (!isCompact) {
+            y = renderBodyImage(
+              ctx, extra.bodyImageBuffers.get("staff_operations") ?? null,
+              "Staff & Operations", y, extra.isSellerDraft,
+            );
+          }
+          break;
+
+        case "brand_customers":
+          if (!isCompact) {
+            y = renderBodyImage(
+              ctx, extra.bodyImageBuffers.get("brand_customers") ?? null,
+              "Brand, Customers & Suppliers", y, extra.isSellerDraft,
+            );
+          }
+          break;
+
         case "due_diligence": {
           const ddSec = group.secs.find((s) => s.sectionKey === "due_diligence_documents_available");
           const ddBullets = Array.isArray(ddSec?.bulletPoints) ? (ddSec.bulletPoints as string[]) : [];
@@ -1789,6 +1807,8 @@ async function handlePdf(req: any, res: any): Promise<void> {
       // virtual_tour: only use an explicitly-confirmed report_image (360_preview role).
       // Never fall back to raw section/tour imagery — raw panoramics look distorted in PDF.
       ["virtual_tour",      resolveReportSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)],
+      ["staff_operations",  resolveReportSectionImageUrl(["staff_owner_involvement"], ["team"])],
+      ["brand_customers",   resolveReportSectionImageUrl(["brand_digital_assets"], ["product"])],
     ];
     const [heroImageBuffer, ...bodyBuffers] = await Promise.all([
       heroUrl ? fetchImageBuffer(heroUrl) : Promise.resolve(null),
@@ -2015,6 +2035,8 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       // virtual_tour: only explicitly-curated report_images with 360_preview role.
       // Raw section fallback intentionally omitted — panoramics look distorted in PDF.
       ["virtual_tour",      resolvePubSectionImageUrl(["360_business_walkthrough"], ["360_preview"], true)],
+      ["staff_operations",  resolvePubSectionImageUrl(["staff_owner_involvement"], ["team"])],
+      ["brand_customers",   resolvePubSectionImageUrl(["brand_digital_assets"], ["product"])],
     ];
     const [pubHeroBuf, ...pubBodyBufs] = await Promise.all([
       pubHeroUrl ? fetchImageBuffer(pubHeroUrl) : Promise.resolve(null),

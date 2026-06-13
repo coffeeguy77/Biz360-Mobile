@@ -372,9 +372,7 @@ function SectionContent({
     plant_equipment_summary:    ["equipment"],
     lease_premises_summary:     ["exterior"],
     staff_owner_involvement:    ["team"],
-    operations_systems:         ["team"],
     brand_digital_assets:       ["product"],
-    customer_base:              ["product"],
     "360_business_walkthrough": ["360_preview"],
   };
   const sectionImages: ReportImageEntry[] = reportImages
@@ -425,7 +423,7 @@ function SectionContent({
           <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ aspectRatio: "16/9" }}>
             <iframe
               srcDoc={resolvedSrcDoc}
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-same-origin"
               className="w-full h-full"
               allow="fullscreen; xr-spatial-tracking"
               title="360° Business Walkthrough"
