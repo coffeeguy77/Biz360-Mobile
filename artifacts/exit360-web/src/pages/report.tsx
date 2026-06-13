@@ -1485,9 +1485,23 @@ export function ReportPage() {
 
                       {/* Per-section report visuals */}
                       {!section.isLocked && (data?.meta?.reportVisuals ?? [])
-                        .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && v.status === "ready")
+                        .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
                         .sort((a, b) => a.sortOrder - b.sortOrder)
-                        .map((v) => <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />)
+                        .map((v) => v.status === "ready"
+                          ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
+                          : (
+                            <div key={v.id} className={cn(
+                              "rounded-xl border p-4 mt-4 flex items-center gap-3",
+                              printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
+                            )}>
+                              <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
+                              <div>
+                                <div className={cn("text-sm font-semibold", printMode ? "text-slate-600" : "text-slate-400")}>{v.title}</div>
+                                <div className="text-xs text-slate-500 mt-0.5">Data not available — chart pending source data</div>
+                              </div>
+                            </div>
+                          )
+                        )
                       }
 
                       {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
@@ -1527,9 +1541,23 @@ export function ReportPage() {
 
               {/* Per-section report visuals */}
               {!section.isLocked && (data?.meta?.reportVisuals ?? [])
-                .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && v.status === "ready")
+                .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
                 .sort((a, b) => a.sortOrder - b.sortOrder)
-                .map((v) => <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />)
+                .map((v) => v.status === "ready"
+                  ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
+                  : (
+                    <div key={v.id} className={cn(
+                      "rounded-xl border p-4 mt-4 flex items-center gap-3",
+                      printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
+                    )}>
+                      <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
+                      <div>
+                        <div className={cn("text-sm font-semibold", printMode ? "text-slate-600" : "text-slate-400")}>{v.title}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Data not available — chart pending source data</div>
+                      </div>
+                    </div>
+                  )
+                )
               }
             </section>
           );
@@ -1538,7 +1566,7 @@ export function ReportPage() {
         {/* Global report visuals — no specific section, rendered as a standalone block */}
         {(() => {
           const globalVisuals = (data?.meta?.reportVisuals ?? [])
-            .filter((v) => !v.sectionKey && v.includeInHtml && v.status === "ready")
+            .filter((v) => !v.sectionKey && v.includeInHtml)
             .sort((a, b) => a.sortOrder - b.sortOrder);
           if (!globalVisuals.length) return null;
           return (
@@ -1550,9 +1578,21 @@ export function ReportPage() {
                 Data &amp; Insights
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {globalVisuals.map((v) => (
-                  <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
-                ))}
+                {globalVisuals.map((v) => v.status === "ready"
+                  ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
+                  : (
+                    <div key={v.id} className={cn(
+                      "rounded-xl border p-4 flex items-center gap-3",
+                      printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
+                    )}>
+                      <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
+                      <div>
+                        <div className={cn("text-sm font-semibold", printMode ? "text-slate-600" : "text-slate-400")}>{v.title}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Data not available — chart pending source data</div>
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             </div>
           );

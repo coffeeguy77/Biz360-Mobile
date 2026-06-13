@@ -26,6 +26,7 @@ interface ReportVisual {
   subtitle: string | null;
   visualType: string;
   dataSourceType: string;
+  dataSourceConfig: Record<string, unknown> | null;
   chartData: Record<string, unknown> | null;
   status: string;
   sourceLabel: string | null;
@@ -50,7 +51,6 @@ const VISUAL_TYPES: Array<{ key: string; label: string; icon: string; desc: stri
   { key: "funnel",                label: "Buyer Funnel",        icon: "filter",       desc: "Engagement stages" },
   { key: "checklist",             label: "Checklist",           icon: "check-square", desc: "Ticked / pending items" },
   { key: "score_card",            label: "Score Card",          icon: "award",        desc: "Business health gauge" },
-  { key: "risk_matrix",           label: "Risk Matrix",         icon: "alert-triangle", desc: "Lease or risk risk heat map" },
 ];
 
 const DATA_SOURCES: Array<{ key: string; label: string; icon: string; desc: string }> = [
@@ -104,6 +104,42 @@ const ACCENT_COLORS = [
   { key: "#8B5CF6", label: "Purple" }, { key: "#F59E0B", label: "Amber" },
   { key: "#6B7280", label: "Neutral" },
 ];
+
+// Fields available for explicit selection per data source (metric-based sources only)
+const SOURCE_FIELDS: Record<string, Array<{ key: string; label: string }>> = {
+  listing: [
+    { key: "businessName",    label: "Business Name" },
+    { key: "suburb",          label: "Suburb" },
+    { key: "state",           label: "State" },
+    { key: "category",        label: "Category" },
+    { key: "askingPrice",     label: "Asking Price" },
+    { key: "staffCount",      label: "Staff Count" },
+    { key: "ownerHours",      label: "Owner Hours / Week" },
+    { key: "trainingPeriod",  label: "Training Period" },
+  ],
+  valuation: [
+    { key: "estimatedValue",       label: "Estimated Value" },
+    { key: "valuationLow",         label: "Valuation (Low)" },
+    { key: "valuationHigh",        label: "Valuation (High)" },
+    { key: "revenue",              label: "Revenue" },
+    { key: "cogs",                 label: "COGS" },
+    { key: "grossProfit",          label: "Gross Profit" },
+    { key: "ebitda",               label: "EBITDA" },
+    { key: "adjustedEbitda",       label: "Adj. EBITDA" },
+    { key: "equipmentValue",       label: "Equipment Value" },
+    { key: "businessHealthScore",  label: "Health Score" },
+  ],
+  equipment: [
+    { key: "totalItems",            label: "Total Items" },
+    { key: "totalSecondhandValue",  label: "Total SH Value" },
+    { key: "totalReplacementValue", label: "Total Replacement Value" },
+  ],
+  tour: [
+    { key: "spaceCount", label: "Space Count" },
+    { key: "pinCount",   label: "Pin Count" },
+    { key: "audioCount", label: "Audio Pins" },
+  ],
+};
 
 // ─── Preview renderer ─────────────────────────────────────────────────────────
 
@@ -317,6 +353,7 @@ export default function ChartsStatsScreen() {
   const [wizSource,   setWizSource]   = useState("valuation");
   const [wizColor,    setWizColor]    = useState("#3B82F6");
   const [wizManual,   setWizManual]   = useState<Array<{ label: string; value: string }>>([]);
+  const [wizFields,   setWizFields]   = useState<string[]>([]);
   const [wizPreview,  setWizPreview]  = useState<ReportVisual | null>(null);
   const [resolving,   setResolving]   = useState(false);
 
@@ -347,9 +384,9 @@ export default function ChartsStatsScreen() {
     setResolving(true);
     try {
       const body: Record<string, unknown> = {
-        dataSourceType:  wizSource,
-        visualType:      wizType,
-        dataSourceConfig: {},
+        dataSourceType:   wizSource,
+        visualType:       wizType,
+        dataSourceConfig: wizFields.length > 0 ? { fields: wizFields } : {},
       };
       if (wizSource === "manual" && wizManual.length) {
         body.manualData = wizManual.filter((r) => r.label.trim());
@@ -368,6 +405,7 @@ export default function ChartsStatsScreen() {
           subtitle: wizSubtitle || null,
           visualType: wizType,
           dataSourceType: wizSource,
+          dataSourceConfig: wizFields.length > 0 ? { fields: wizFields } : null,
           chartData: data.chartData,
           status: data.status,
           sourceLabel: data.resolved?.sourceLabel ?? null,
@@ -394,6 +432,7 @@ export default function ChartsStatsScreen() {
     setWizSource(template?.dataSourceType ?? "valuation");
     setWizColor(template?.accentColor ?? "#3B82F6");
     setWizManual([]);
+    setWizFields([]);
     setWizPreview(null);
     setModalOpen(true);
   }
@@ -408,6 +447,7 @@ export default function ChartsStatsScreen() {
     setWizSource(v.dataSourceType);
     setWizColor((v.chartData as any)?.accentColor ?? "#3B82F6");
     setWizManual([]);
+    setWizFields((v.dataSourceConfig as any)?.fields ?? []);
     setWizPreview(v);
     setModalOpen(true);
   }
@@ -428,9 +468,9 @@ export default function ChartsStatsScreen() {
         subtitle:        wizSubtitle.trim() || null,
         sectionKey:      wizSection || null,
         visualType:      wizType,
-        dataSourceType:  wizSource,
-        dataSourceConfig: {},
-        visualConfig:    { accentColor: wizColor },
+        dataSourceType:   wizSource,
+        dataSourceConfig: wizFields.length > 0 ? { fields: wizFields } : {},
+        visualConfig:     { accentColor: wizColor },
         includeInPdf:    true,
         includeInHtml:   true,
         includeInBuyerReport: true,
@@ -507,11 +547,16 @@ export default function ChartsStatsScreen() {
 
   // ─── Wizard steps ─────────────────────────────────────────────────────────
 
+  const needsFieldConfig = wizSource !== "manual"
+    && ["stat_card", "metric_grid", "table"].includes(wizType)
+    && !!SOURCE_FIELDS[wizSource];
+
   const wizardSteps = [
     "Section",
     "Visual Type",
     "Data Source",
     ...(wizSource === "manual" ? ["Enter Data"] : []),
+    ...(needsFieldConfig ? ["Fields"] : []),
     "Style",
     "Preview",
   ];
@@ -519,9 +564,10 @@ export default function ChartsStatsScreen() {
   // ─── Step renderers ───────────────────────────────────────────────────────
 
   function renderStep() {
-    // Dynamic step mapping based on whether manual is chosen
-    const hasManual = wizSource === "manual";
-    const steps = ["section", "type", "source", ...(hasManual ? ["manual"] : []), "style", "preview"];
+    // Dynamic step mapping based on whether manual/field-config is chosen
+    const hasManual  = wizSource === "manual";
+    const hasFields  = wizSource !== "manual" && ["stat_card", "metric_grid", "table"].includes(wizType) && !!SOURCE_FIELDS[wizSource];
+    const steps = ["section", "type", "source", ...(hasManual ? ["manual"] : []), ...(hasFields ? ["fields"] : []), "style", "preview"];
     const currentKey = steps[step] ?? "preview";
 
     switch (currentKey) {
@@ -638,6 +684,44 @@ export default function ChartsStatsScreen() {
             </Text>
           </View>
         );
+
+      case "fields": {
+        const availableFields = SOURCE_FIELDS[wizSource] ?? [];
+        return (
+          <View style={wiz.stepContent}>
+            <Text style={wiz.stepHint}>Select which metrics to include (uncheck all to use defaults)</Text>
+            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+              {availableFields.map((f) => {
+                const checked = wizFields.length === 0 || wizFields.includes(f.key);
+                return (
+                  <TouchableOpacity
+                    key={f.key}
+                    style={[wiz.option, checked && wiz.optionSelected]}
+                    onPress={() => {
+                      setWizFields((prev) => {
+                        if (prev.length === 0) {
+                          return availableFields.map((af) => af.key).filter((k) => k !== f.key);
+                        }
+                        return prev.includes(f.key)
+                          ? prev.filter((k) => k !== f.key)
+                          : [...prev, f.key];
+                      });
+                    }}
+                  >
+                    <Feather name={checked ? "check-square" : "square"} size={16} color={checked ? "#3B82F6" : "#6B7280"} />
+                    <Text style={[wiz.optionLabel, checked && wiz.optionLabelSelected, { marginLeft: 8 }]}>{f.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {wizFields.length > 0 && (
+              <TouchableOpacity onPress={() => setWizFields([])} style={{ marginTop: 8 }}>
+                <Text style={{ color: "#6B7280", fontSize: 11, fontFamily: "Inter_400Regular" }}>Reset — include all fields</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      }
 
       case "style":
         return (
