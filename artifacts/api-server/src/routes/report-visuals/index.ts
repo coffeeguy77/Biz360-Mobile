@@ -115,22 +115,27 @@ async function resolveChartData(
     }
 
     case "divisions": {
-      const units = await db.select().from(businessUnitsTable).where(eq(businessUnitsTable.cafeId, cafeId));
+      // Only include active divisions (isIncludedInSale = true) — disabled divisions
+      // must never appear in charts, tables, or report outputs
+      const units = await db.select().from(businessUnitsTable).where(
+        and(
+          eq(businessUnitsTable.cafeId, cafeId),
+          eq(businessUnitsTable.isIncludedInSale, true),
+        ),
+      );
       if (!units.length) return absent("Division Data");
       const rows = units.map((u) => ({
-        name:              u.name,
-        included:          u.isIncludedInSale,
-        revenueSharePct:   Number(u.revenueSharePct ?? 0),
-        revenue:           fmt((u as any).revenue?.toString()),
-        cogs:              fmt((u as any).cogs?.toString()),
-        grossProfit:       fmt((u as any).grossProfit?.toString()),
-        valuation:         fmt((u as any).valuation?.toString()),
-        equipmentAlloc:    fmt((u as any).equipmentAllocation?.toString()),
+        name:            u.name,
+        included:        true,
+        revenueSharePct: Number(u.revenueSharePct ?? 0),
+        revenue:         fmt((u as any).revenue?.toString()),
+        cogs:            fmt((u as any).cogs?.toString()),
+        grossProfit:     fmt((u as any).grossProfit?.toString()),
+        valuation:       fmt((u as any).valuation?.toString()),
+        equipmentAlloc:  fmt((u as any).equipmentAllocation?.toString()),
       }));
-      const includedUnits = rows.filter((r) => r.included);
-      const excludedUnits = rows.filter((r) => !r.included);
       return {
-        data: { rows, includedUnits, excludedUnits, totalCount: rows.length },
+        data: { rows, includedUnits: rows, excludedUnits: [], totalCount: rows.length },
         status: "ready",
         sourceLabel: "App — Divisions",
         sourceConfidence: "high",
