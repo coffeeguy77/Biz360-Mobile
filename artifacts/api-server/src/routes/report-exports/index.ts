@@ -4,6 +4,7 @@ import { v2 as cloudinary } from "cloudinary";
 import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
   cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
+  reportVisualsTable,
 } from "@workspace/db";
 import { eq, asc, and, desc, isNull, sql } from "drizzle-orm";
 import { logger } from "../../lib/logger";
@@ -1150,6 +1151,16 @@ interface PdfExtraData {
   equipment: Array<{ name: string; category: string | null; currentValue: string | null }>;
   buyerFunnel: Array<{ eventType: string; count: number }>;
   isSellerDraft: boolean;
+  reportVisuals: Array<{
+    id: string;
+    sectionKey: string | null;
+    title: string;
+    subtitle: string | null;
+    visualType: string;
+    chartData: Record<string, unknown> | null;
+    sourceLabel: string | null;
+    visualConfig: Record<string, unknown> | null;
+  }>;
 }
 
 // ── Helper: parse chartData from a section into an array (or null) ─────────────
@@ -1592,7 +1603,29 @@ async function buildPdf(
       }
     }
 
+    // ── Render seller/buyer-appropriate report_visuals for this chapter ─────
+    // buyer_summary + data_room: visuals suppressed (page-budget + duplication).
+    // For all other styles: render visuals whose section_key matches any section
+    // in this chapter. Global visuals (sectionKey=null) are rendered at the end.
+    if (style !== "data_room" && style !== "buyer_summary" && extra.reportVisuals.length > 0) {
+      const chapterKeys = new Set(group.secs.map((s: any) => s.sectionKey as string));
+      const chapterVisuals = extra.reportVisuals.filter(
+        (v) => v.sectionKey && chapterKeys.has(v.sectionKey),
+      );
+      if (chapterVisuals.length > 0) {
+        y = renderReportVisualsBlock(ctx, chapterVisuals, y);
+      }
+    }
+
     carryY = y;
+  }
+
+  // Render global visuals (sectionKey=null) after all chapters
+  if (style !== "data_room" && style !== "buyer_summary" && extra.reportVisuals.length > 0) {
+    const globalVisuals = extra.reportVisuals.filter((v) => !v.sectionKey);
+    if (globalVisuals.length > 0) {
+      y = renderReportVisualsBlock(ctx, globalVisuals, y);
+    }
   }
 }
 
@@ -1605,6 +1638,212 @@ function filterSections(allSections: any[], mode: string, style: PdfStyle): any[
     if (style === "buyer_summary" && s.visibility === "seller_only") return false;
     return true;
   });
+}
+
+// ── Report-visual PDF renderers ───────────────────────────────────────────────
+// Each function renders one visual_type using PDFKit primitives.
+// Returns updated y position. Never renders fake data — callers must gate on
+// status==="ready" before calling these.
+
+function renderPdfVisualHeader(ctx: PdfCtx, title: string, subtitle: string | null, sourceLabel: string | null, y: number): number {
+  y = checkY(ctx, y, 36);
+  ctx.doc.save().moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).strokeColor(BORDER_C).stroke().restore();
+  y += 6;
+  ctx.doc.font("Helvetica-Bold").fontSize(8.5).fillColor(HEADING_C).text(sanitizePdfText(title), MARGIN, y, { width: CONTENT_W - 100 });
+  if (sourceLabel) {
+    ctx.doc.font("Helvetica-Oblique").fontSize(7).fillColor(SUBTITLE_C)
+      .text(sanitizePdfText(sourceLabel), MARGIN, y, { width: CONTENT_W, align: "right" });
+  }
+  y += 13;
+  if (subtitle) {
+    y = checkY(ctx, y, 14);
+    ctx.doc.font("Helvetica").fontSize(7.5).fillColor(SUBTITLE_C).text(sanitizePdfText(subtitle), MARGIN, y, { width: CONTENT_W });
+    y += 11;
+  }
+  return y;
+}
+
+function renderPdfStatCardVisual(ctx: PdfCtx, cd: Record<string, unknown>, accentColor: string, y: number): number {
+  const metrics = (cd.metrics as Array<{ label: string; value: unknown }>) ?? [];
+  const m = metrics[0];
+  if (!m) return y;
+  y = checkY(ctx, y, 48);
+  ctx.doc.save().rect(MARGIN, y, CONTENT_W, 40).fill(CHAPTER_BG).restore();
+  ctx.doc.font("Helvetica-Bold").fontSize(20).fillColor(accentColor)
+    .text(sanitizePdfText(String(m.value)), MARGIN + 12, y + 8, { width: CONTENT_W - 24 });
+  ctx.doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
+    .text(sanitizePdfText(m.label), MARGIN + 12, y + 28, { width: CONTENT_W - 24 });
+  return y + 48;
+}
+
+function renderPdfMetricGridVisual(ctx: PdfCtx, cd: Record<string, unknown>, accentColor: string, y: number): number {
+  const metrics = (cd.metrics as Array<{ label: string; value: unknown }>) ?? [];
+  if (!metrics.length) return y;
+  const cols  = Math.min(metrics.length, 4);
+  const cellW = (CONTENT_W - (cols - 1) * 6) / cols;
+  const cellH = 38;
+  y = checkY(ctx, y, cellH + 4);
+  for (let i = 0; i < Math.min(metrics.length, 4); i++) {
+    const m = metrics[i];
+    const x = MARGIN + i * (cellW + 6);
+    ctx.doc.save().rect(x, y, cellW, cellH).fill(CHAPTER_BG).restore();
+    ctx.doc.font("Helvetica-Bold").fontSize(12).fillColor(accentColor)
+      .text(sanitizePdfText(String(m.value)), x + 6, y + 7, { width: cellW - 12, align: "center" });
+    ctx.doc.font("Helvetica").fontSize(6.5).fillColor(SUBTITLE_C)
+      .text(sanitizePdfText(m.label), x + 4, y + 22, { width: cellW - 8, align: "center" });
+  }
+  return y + cellH + 8;
+}
+
+function renderPdfTableVisual(ctx: PdfCtx, cd: Record<string, unknown>, y: number): number {
+  const rows = (cd.rows as Array<{ label: string; value: unknown }>) ?? [];
+  if (!rows.length) return y;
+  const ROW_H = 14;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    y = checkY(ctx, y, ROW_H);
+    if (i % 2 === 0) ctx.doc.save().rect(MARGIN, y, CONTENT_W, ROW_H).fill(CHAPTER_BG).restore();
+    ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
+      .text(sanitizePdfText(String(rows[i].label)), MARGIN + 8, y + 3, { width: CONTENT_W * 0.55 });
+    ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(HEADING_C)
+      .text(sanitizePdfText(String(rows[i].value ?? "—")), MARGIN + CONTENT_W * 0.6, y + 3, { width: CONTENT_W * 0.38, align: "right" });
+    y += ROW_H;
+  }
+  return y + 6;
+}
+
+function renderPdfBarsVisual(ctx: PdfCtx, cd: Record<string, unknown>, accentColor: string, y: number): number {
+  const bars = (cd.bars as Array<{ label: string; value: unknown; raw?: number }>) ?? [];
+  if (!bars.length) return y;
+  const maxRaw = Math.max(...bars.map((b) => Number(b.raw ?? 0)), 1);
+  const BAR_H = 14;
+  const LBL_W = 90;
+  const VAL_W = 50;
+  const BAR_W = CONTENT_W - LBL_W - VAL_W - 20;
+  for (const b of bars.slice(0, 8)) {
+    y = checkY(ctx, y, BAR_H + 4);
+    const pct = Math.max(Math.round((Number(b.raw ?? 0) / maxRaw) * BAR_W), 2);
+    ctx.doc.font("Helvetica").fontSize(7.5).fillColor(BODY_TEXT)
+      .text(sanitizePdfText(String(b.label)), MARGIN, y + 3, { width: LBL_W, ellipsis: true });
+    const barX = MARGIN + LBL_W + 8;
+    ctx.doc.save().rect(barX, y + 4, BAR_W, 7).fill("#E2E8F0").restore();
+    ctx.doc.save().rect(barX, y + 4, pct, 7).fill(accentColor).restore();
+    ctx.doc.font("Helvetica-Bold").fontSize(7.5).fillColor(HEADING_C)
+      .text(sanitizePdfText(String(b.value ?? "")), barX + BAR_W + 6, y + 3, { width: VAL_W });
+    y += BAR_H + 3;
+  }
+  return y + 4;
+}
+
+function renderPdfBridgeVisual(ctx: PdfCtx, cd: Record<string, unknown>, y: number): number {
+  const rows = [
+    { label: "Adjusted EBITDA",   value: String(cd.adjustedEbitda ?? "—"), accent: BLUE_ACC },
+    { label: "Equipment Value",   value: String(cd.equipmentValue ?? "—"),  accent: "#10B981" },
+  ];
+  const ROW_H = 18;
+  for (const r of rows) {
+    y = checkY(ctx, y, ROW_H);
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, ROW_H - 2).fill(CHAPTER_BG).restore();
+    ctx.doc.font("Helvetica").fontSize(8.5).fillColor(BODY_TEXT)
+      .text(r.label, MARGIN + 8, y + 4, { width: CONTENT_W * 0.55 });
+    ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(r.accent)
+      .text(r.value, MARGIN, y + 4, { width: CONTENT_W - 8, align: "right" });
+    y += ROW_H;
+  }
+  // Total row
+  y = checkY(ctx, y, 22);
+  ctx.doc.save().rect(MARGIN, y, CONTENT_W, 20).fill(DARK_MID).restore();
+  ctx.doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#93C5FD")
+    .text("Estimated Value Range", MARGIN + 8, y + 6, { width: CONTENT_W * 0.5 });
+  ctx.doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#BFDBFE")
+    .text(`${String(cd.valuationLow ?? "—")} – ${String(cd.valuationHigh ?? "—")}`, MARGIN, y + 5, { width: CONTENT_W - 8, align: "right" });
+  return y + 28;
+}
+
+function renderPdfChecklistVisual(ctx: PdfCtx, cd: Record<string, unknown>, y: number): number {
+  const items = (cd.items as Array<{ label: string; status: string }>) ?? [];
+  if (!items.length) return y;
+  const ITEM_H = 13;
+  const colorOf = (s: string) => s === "available" ? "#16A34A" : s === "pending" ? "#D97706" : "#EF4444";
+  const dotOf   = (s: string) => s === "available" ? "●" : s === "pending" ? "◑" : "○";
+  for (const item of items.slice(0, 10)) {
+    y = checkY(ctx, y, ITEM_H);
+    ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(colorOf(item.status)).text(dotOf(item.status), MARGIN, y + 2, { width: 12 });
+    ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
+      .text(sanitizePdfText(item.label), MARGIN + 14, y + 2, { width: CONTENT_W - 14 });
+    y += ITEM_H;
+  }
+  return y + 4;
+}
+
+function renderPdfFunnelVisual(ctx: PdfCtx, cd: Record<string, unknown>, accentColor: string, y: number): number {
+  const funnel = (cd.funnel as Array<{ label: string; value: number; pct: number }>) ?? [];
+  if (!funnel.length) return y;
+  return renderPdfBarsVisual(ctx, { bars: funnel.filter((f) => f.value > 0).map((f) => ({ label: f.label, value: String(f.value), raw: f.pct })) }, accentColor, y);
+}
+
+function renderPdfDonutLegendVisual(ctx: PdfCtx, cd: Record<string, unknown>, y: number): number {
+  const slices = (cd.slices as Array<{ label: string; value: unknown }>) ?? [];
+  if (!slices.length) return y;
+  const COLORS = [BLUE_ACC, "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#6B7280"];
+  const ITEM_H = 13;
+  for (let i = 0; i < Math.min(slices.length, 6); i++) {
+    y = checkY(ctx, y, ITEM_H);
+    ctx.doc.save().circle(MARGIN + 5, y + 7, 4).fill(COLORS[i % COLORS.length]).restore();
+    ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
+      .text(sanitizePdfText(String(slices[i].label)), MARGIN + 14, y + 3, { width: CONTENT_W - 80 });
+    ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(HEADING_C)
+      .text(sanitizePdfText(String(slices[i].value ?? "")), MARGIN, y + 3, { width: CONTENT_W - 8, align: "right" });
+    y += ITEM_H;
+  }
+  return y + 4;
+}
+
+function renderPdfScoreCardVisual(ctx: PdfCtx, cd: Record<string, unknown>, accentColor: string, y: number): number {
+  const score = Number(cd.score ?? 0);
+  const label = sanitizePdfText(String(cd.label ?? "Score"));
+  y = checkY(ctx, y, 48);
+  ctx.doc.save().rect(MARGIN, y, CONTENT_W, 40).fill(CHAPTER_BG).restore();
+  ctx.doc.font("Helvetica-Bold").fontSize(24).fillColor(accentColor)
+    .text(String(score), MARGIN + 12, y + 7, { width: 60 });
+  ctx.doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
+    .text(`/ 100 — ${label}`, MARGIN + 72, y + 15, { width: CONTENT_W - 84 });
+  return y + 48;
+}
+
+function renderOneReportVisual(
+  ctx: PdfCtx,
+  v: PdfExtraData["reportVisuals"][0],
+  y: number,
+): number {
+  const cd = v.chartData;
+  if (!cd) return y;
+  const accentColor = (v.visualConfig?.accentColor as string | undefined) ?? BLUE_ACC;
+  y = renderPdfVisualHeader(ctx, v.title, v.subtitle, v.sourceLabel, y);
+  switch (v.visualType) {
+    case "stat_card":           y = renderPdfStatCardVisual(ctx, cd, accentColor, y);  break;
+    case "metric_grid":         y = renderPdfMetricGridVisual(ctx, cd, accentColor, y); break;
+    case "table":               y = renderPdfTableVisual(ctx, cd, y);                  break;
+    case "bar_chart":
+    case "horizontal_bar_chart":y = renderPdfBarsVisual(ctx, cd, accentColor, y);     break;
+    case "valuation_bridge":    y = renderPdfBridgeVisual(ctx, cd, y);                 break;
+    case "checklist":           y = renderPdfChecklistVisual(ctx, cd, y);              break;
+    case "funnel":              y = renderPdfFunnelVisual(ctx, cd, accentColor, y);    break;
+    case "donut_chart":         y = renderPdfDonutLegendVisual(ctx, cd, y);            break;
+    case "score_card":          y = renderPdfScoreCardVisual(ctx, cd, accentColor, y); break;
+    default: break;
+  }
+  return y + 8;
+}
+
+function renderReportVisualsBlock(
+  ctx: PdfCtx,
+  visuals: PdfExtraData["reportVisuals"],
+  y: number,
+): number {
+  for (const v of visuals) {
+    y = renderOneReportVisual(ctx, v, y);
+  }
+  return y;
 }
 
 // ── Authenticated PDF handler (GET + POST) ────────────────────────────────────
@@ -1666,7 +1905,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
     const styleLabel   = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[style] ?? "Compact Broker IM";
 
     // ── Parallel data fetch: snapshot, equipment, buyer funnel, report images ──
-    const [snapshotRows, equipmentRows, funnelLogs, reportImageRows] = await Promise.all([
+    const [snapshotRows, equipmentRows, funnelLogs, reportImageRows, reportVisualsRows] = await Promise.all([
       db.select({
         adjustedEbitda: valuationSnapshotsTable.adjustedEbitda,
         valuationMidpoint: valuationSnapshotsTable.valuationMidpoint,
@@ -1715,6 +1954,27 @@ async function handlePdf(req: any, res: any): Promise<void> {
           asc(reportImagesTable.sortOrder),
         )
         .limit(1),
+      // Report visuals (status=ready, include_in_pdf=true, appropriate visibility)
+      db.select({
+        id:          reportVisualsTable.id,
+        sectionKey:  reportVisualsTable.sectionKey,
+        title:       reportVisualsTable.title,
+        subtitle:    reportVisualsTable.subtitle,
+        visualType:  reportVisualsTable.visualType,
+        chartData:   reportVisualsTable.chartData,
+        sourceLabel: reportVisualsTable.sourceLabel,
+        visualConfig:reportVisualsTable.visualConfig,
+      }).from(reportVisualsTable)
+        .where(and(
+          eq(reportVisualsTable.listingId, listingId),
+          eq(reportVisualsTable.status, "ready"),
+          eq(reportVisualsTable.includeInPdf, true),
+          isNull(reportVisualsTable.deletedAt),
+          isSellerDraft
+            ? eq(reportVisualsTable.includeInSellerReport, true)
+            : eq(reportVisualsTable.includeInBuyerReport, true),
+        ))
+        .orderBy(asc(reportVisualsTable.sortOrder), asc(reportVisualsTable.createdAt)),
     ]);
 
     const snapshot = snapshotRows[0] ?? null;
@@ -1820,6 +2080,7 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
     const extra: PdfExtraData = {
       heroImageBuffer, bodyImageBuffers, snapshot, equipment, buyerFunnel, isSellerDraft,
+      reportVisuals: reportVisualsRows as PdfExtraData["reportVisuals"],
     };
 
     const doc = new PDFDocument({ size: "A4", margin: 0, info: {
@@ -1923,6 +2184,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       equipment: [],
       buyerFunnel: [],
       isSellerDraft: false,
+      reportVisuals: [],
     };
 
     // Fetch report_images cover (non-panoramic) for the public PDF.

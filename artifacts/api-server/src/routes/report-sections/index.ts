@@ -17,6 +17,7 @@ import {
   reportAccessLogsTable,
   reportAccessGrantsTable,
   reportImagesTable,
+  reportVisualsTable,
   kvStore,
 } from "@workspace/db";
 import multer from "multer";
@@ -1280,7 +1281,37 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       }
     }
 
-    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages, tourSrcDoc } });
+    // ── Fetch report_visuals (status=ready, HTML-included) ────────────────────
+    const reportVisuals = await db
+      .select({
+        id:           reportVisualsTable.id,
+        sectionKey:   reportVisualsTable.sectionKey,
+        title:        reportVisualsTable.title,
+        subtitle:     reportVisualsTable.subtitle,
+        visualType:   reportVisualsTable.visualType,
+        chartData:    reportVisualsTable.chartData,
+        sourceLabel:  reportVisualsTable.sourceLabel,
+        sourceConfidence: reportVisualsTable.sourceConfidence,
+        visualConfig: reportVisualsTable.visualConfig,
+        includeInBuyerReport: reportVisualsTable.includeInBuyerReport,
+        visibility:   reportVisualsTable.visibility,
+        sortOrder:    reportVisualsTable.sortOrder,
+      })
+      .from(reportVisualsTable)
+      .where(
+        and(
+          eq(reportVisualsTable.listingId, listingId),
+          eq(reportVisualsTable.status, "ready"),
+          eq(reportVisualsTable.includeInHtml, true),
+          isNull(reportVisualsTable.deletedAt),
+          accessLevel === "seller"
+            ? eq(reportVisualsTable.includeInSellerReport, true)
+            : eq(reportVisualsTable.includeInBuyerReport, true),
+        ),
+      )
+      .orderBy(asc(reportVisualsTable.sortOrder));
+
+    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages, reportVisuals, tourSrcDoc } });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });

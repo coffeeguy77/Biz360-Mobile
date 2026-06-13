@@ -150,6 +150,9 @@ export default function ReportHubScreen() {
     total: number; coverSet: boolean; heroCount: number;
     exteriorCount: number; equipCount: number; has360: boolean;
   } | null>(null);
+  const [visualStats, setVisualStats] = useState<{
+    total: number; ready: number; needsData: number; buyerVisible: number;
+  } | null>(null);
 
   const snap = latestSnapshot.combined;
   const listingId = selectedCafe?.listingId ?? selectedCafe?.listing_id;
@@ -160,11 +163,12 @@ export default function ReportHubScreen() {
     if (!token) return;
     setLoading(true);
     try {
-      const [sectRes, verRes, cafeRes, imgRes] = await Promise.all([
+      const [sectRes, verRes, cafeRes, imgRes, vizRes] = await Promise.all([
         fetch(`${API_BASE}/api/report-sections/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/report-versions/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/valuation/cafes`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE}/api/report-images/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE}/api/report-visuals/${listingId}`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (sectRes.ok) {
         const data = await sectRes.json();
@@ -185,6 +189,16 @@ export default function ReportHubScreen() {
           exteriorCount: active.filter((i: any) => i.imageRole === "exterior").length,
           equipCount:    active.filter((i: any) => i.imageRole === "equipment").length,
           has360:        active.some((i: any) => i.imageRole === "360_preview"),
+        });
+      }
+      if (vizRes.ok) {
+        const data = await vizRes.json();
+        const vs: any[] = data.visuals ?? [];
+        setVisualStats({
+          total:        vs.length,
+          ready:        vs.filter((v: any) => v.status === "ready").length,
+          needsData:    vs.filter((v: any) => v.status === "needs_data").length,
+          buyerVisible: vs.filter((v: any) => v.includeInBuyerReport).length,
         });
       }
       if (cafeRes.ok) {
@@ -704,6 +718,69 @@ export default function ReportHubScreen() {
           )}
         </TouchableOpacity>
 
+        {/* Charts & Stats readiness card */}
+        <TouchableOpacity
+          style={[styles.completenessCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => listingId && router.push({ pathname: "/(seller)/valuation/charts-stats" as any, params: { listingId } })}
+          activeOpacity={0.8}
+        >
+          <View style={styles.completenessHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Feather name="bar-chart-2" size={15} color="#34D399" />
+              <Text style={[styles.completenessTitle, { color: colors.foreground }]}>Charts & Stats</Text>
+            </View>
+            {visualStats !== null && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: visualStats.ready > 0 ? "#16A34A" : "#6B7280" }}>
+                  {visualStats.total} visual{visualStats.total !== 1 ? "s" : ""}
+                </Text>
+                <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+              </View>
+            )}
+          </View>
+
+          {visualStats === null ? (
+            <Text style={[styles.completenessHint, { color: colors.mutedForeground }]}>Loading visual status…</Text>
+          ) : visualStats.total === 0 ? (
+            <>
+              <Text style={[styles.completenessHint, { color: colors.mutedForeground }]}>No charts or stat cards added yet.</Text>
+              <View style={[styles.recommendMore, { borderColor: "#34D39933" }]}>
+                <Feather name="bar-chart-2" size={13} color="#34D399" />
+                <Text style={[styles.recommendText, { color: "#34D399" }]}>Add data-backed visuals to strengthen your IM</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                {([
+                  { label: `${visualStats.ready} Ready`,          ok: visualStats.ready > 0,      icon: "check-circle" },
+                  { label: `${visualStats.needsData} Needs Data`, ok: visualStats.needsData === 0, icon: visualStats.needsData > 0 ? "alert-circle" : "check-circle" },
+                  { label: `${visualStats.buyerVisible} Buyer`,   ok: visualStats.buyerVisible > 0,icon: "eye" },
+                ] as { label: string; ok: boolean; icon: string }[]).map(({ label, ok, icon }) => (
+                  <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: ok ? "#16A34A18" : "#6B728018", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 }}>
+                    <Feather name={icon as any} size={11} color={ok ? "#16A34A" : "#6B7280"} />
+                    <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: ok ? "#16A34A" : "#6B7280" }}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+              {visualStats.needsData > 0 ? (
+                <View style={[styles.recommendMore, { borderColor: "#F59E0B33" }]}>
+                  <Feather name="alert-triangle" size={13} color="#F59E0B" />
+                  <Text style={[styles.recommendText, { color: "#F59E0B" }]}>
+                    {visualStats.needsData} visual{visualStats.needsData !== 1 ? "s" : ""} need source data — tap to review
+                  </Text>
+                  <Feather name="chevron-right" size={13} color="#F59E0B" />
+                </View>
+              ) : (
+                <View style={styles.recommendRow}>
+                  <Feather name="check-circle" size={13} color="#16A34A" />
+                  <Text style={[styles.recommendText, { color: "#16A34A" }]}>All visuals have data — tap to manage</Text>
+                </View>
+              )}
+            </>
+          )}
+        </TouchableOpacity>
+
         {/* Primary actions */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ACTIONS</Text>
         <View style={styles.primaryGrid}>
@@ -788,7 +865,7 @@ export default function ReportHubScreen() {
             { label: "Access Settings", icon: "lock", color: "#8B5CF6", route: "/(seller)/valuation/report-access" },
             { label: "Version History", icon: "clock", color: "#6B7280", route: "/(seller)/valuation/report-versions", badge: versions.length > 0 ? `${versions.length}` : null },
             { label: "Report Checks", icon: "check-square", color: "#16A34A", route: "/(seller)/valuation/report-checks", badge: (missingRequired.length + needsReviewSections.length) > 0 ? `${missingRequired.length + needsReviewSections.length}` : null },
-            { label: "Charts & Stats", icon: "bar-chart-2", color: "#34D399", route: null },
+            { label: "Charts & Stats", icon: "bar-chart-2", color: "#34D399", route: "/(seller)/valuation/charts-stats" },
             { label: "Due Diligence Pack", icon: "check-square", color: "#F87171", route: "/(seller)/valuation/due-diligence" },
           ].map(({ label, icon, color, route, badge }) => (
             <TouchableOpacity

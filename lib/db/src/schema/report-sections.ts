@@ -188,3 +188,45 @@ export const reportImagesTable = pgTable("report_images", {
 
 export type ReportImage = typeof reportImagesTable.$inferSelect;
 export type InsertReportImage = typeof reportImagesTable.$inferInsert;
+
+// ─── report_visuals ───────────────────────────────────────────────────────────
+// Each row is a seller-created visual (chart, stat card, table, etc.) that can
+// be attached to a specific report section and rendered in PDF / HTML reports.
+//
+// visual_type: stat_card | metric_grid | table | bar_chart | horizontal_bar_chart
+//              | donut_chart | valuation_bridge | funnel | checklist | score_card
+//              | risk_matrix | location_snapshot
+// data_source_type: listing | valuation | divisions | equipment | lease | tour
+//                   | buyer_engagement | due_diligence | manual
+// source_confidence: high | medium | low | manual | unavailable
+// status: ready | needs_data | needs_review | hidden
+
+export const reportVisualsTable = pgTable("report_visuals", {
+  id:                   uuid("id").primaryKey().defaultRandom(),
+  userId:               text("user_id").notNull(),
+  listingId:            text("listing_id").notNull(),
+  sectionKey:           text("section_key"),
+  title:                text("title").notNull(),
+  subtitle:             text("subtitle"),
+  visualType:           text("visual_type").notNull().default("stat_card"),
+  dataSourceType:       text("data_source_type").notNull().default("manual"),
+  dataSourceConfig:     jsonb("data_source_config").$type<Record<string, unknown>>(),
+  visualConfig:         jsonb("visual_config").$type<Record<string, unknown>>(),
+  manualData:           jsonb("manual_data").$type<Array<Record<string, unknown>>>(),
+  chartData:            jsonb("chart_data").$type<Record<string, unknown>>(),
+  sortOrder:            integer("sort_order").notNull().default(0),
+  includeInPdf:         boolean("include_in_pdf").notNull().default(true),
+  includeInHtml:        boolean("include_in_html").notNull().default(true),
+  includeInBuyerReport: boolean("include_in_buyer_report").notNull().default(true),
+  includeInSellerReport:boolean("include_in_seller_report").notNull().default(true),
+  visibility:           text("visibility").notNull().default("public"),
+  sourceLabel:          text("source_label"),
+  sourceConfidence:     text("source_confidence").notNull().default("manual"),
+  status:               text("status").notNull().default("needs_data"),
+  createdAt:            timestamp("created_at").defaultNow(),
+  updatedAt:            timestamp("updated_at").defaultNow(),
+  deletedAt:            timestamp("deleted_at"),
+});
+
+export type ReportVisual = typeof reportVisualsTable.$inferSelect;
+export type InsertReportVisual = typeof reportVisualsTable.$inferInsert;

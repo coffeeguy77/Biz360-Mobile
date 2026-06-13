@@ -9,6 +9,7 @@ import sellerLeasesRouter from "./seller-leases/index";
 import reportSectionsRouter from "./report-sections/index";
 import reportExportsRouter from "./report-exports/index";
 import reportImagesRouter from "./report-images/index";
+import reportVisualsRouter from "./report-visuals/index";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(sellerLeasesRouter);
 router.use(reportSectionsRouter);
 router.use(reportExportsRouter);
 router.use(reportImagesRouter);
+router.use(reportVisualsRouter);
 
 export default router;
