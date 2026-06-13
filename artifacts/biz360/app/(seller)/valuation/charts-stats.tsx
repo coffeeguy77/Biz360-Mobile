@@ -1005,9 +1005,10 @@ export default function ChartsStatsScreen() {
                   onPress={() => {
                     const nextStep = step + 1;
                     setStep(nextStep);
-                    // Auto-resolve on preview step
+                    // Auto-resolve on preview step — must mirror renderStep's step array exactly
                     const hasManual = wizSource === "manual";
-                    const steps = ["section", "type", "source", ...(hasManual ? ["manual"] : []), "style", "preview"];
+                    const hasFields = wizSource !== "manual" && ["stat_card", "metric_grid", "table"].includes(wizType) && !!SOURCE_FIELDS[wizSource];
+                    const steps = ["section", "type", "source", ...(hasManual ? ["manual"] : []), ...(hasFields ? ["fields"] : []), "style", "preview"];
                     if ((steps[nextStep] ?? "") === "preview") {
                       setTimeout(resolvePreview, 100);
                     }

@@ -1281,7 +1281,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       }
     }
 
-    // ── Fetch report_visuals (status=ready, HTML-included) ────────────────────
+    // ── Fetch report_visuals (HTML-included; all statuses so UI can show placeholders) ─
     const reportVisuals = await db
       .select({
         id:           reportVisualsTable.id,
@@ -1289,6 +1289,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         title:        reportVisualsTable.title,
         subtitle:     reportVisualsTable.subtitle,
         visualType:   reportVisualsTable.visualType,
+        status:       reportVisualsTable.status,
         chartData:    reportVisualsTable.chartData,
         sourceLabel:  reportVisualsTable.sourceLabel,
         sourceConfidence: reportVisualsTable.sourceConfidence,
@@ -1301,7 +1302,6 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       .where(
         and(
           eq(reportVisualsTable.listingId, listingId),
-          eq(reportVisualsTable.status, "ready"),
           eq(reportVisualsTable.includeInHtml, true),
           isNull(reportVisualsTable.deletedAt),
           accessLevel === "seller"

@@ -1621,10 +1621,11 @@ async function buildPdf(
   }
 
   // Render global visuals (sectionKey=null) after all chapters
+  // Note: `y` is block-scoped inside the loop above — use carryY for position continuity
   if (style !== "data_room" && style !== "buyer_summary" && extra.reportVisuals.length > 0) {
     const globalVisuals = extra.reportVisuals.filter((v) => !v.sectionKey);
     if (globalVisuals.length > 0) {
-      y = renderReportVisualsBlock(ctx, globalVisuals, y);
+      carryY = renderReportVisualsBlock(ctx, globalVisuals, carryY);
     }
   }
 }
