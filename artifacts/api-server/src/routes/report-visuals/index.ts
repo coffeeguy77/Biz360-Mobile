@@ -153,7 +153,10 @@ async function resolveChartData(
       const rows = units.map((u) => {
         const snap = snapByUnit.get(u.id);
         const rawRevenue = Number(snap?.grossRevenue ?? 0);
-        const revenueSharePct = totalRevenue > 0
+        // If THIS unit has a snapshot, derive pct from actual revenue.
+        // If this unit lacks a snapshot (but others have one), fall back to
+        // the manually-stored revenueSharePct rather than forcing it to 0.
+        const revenueSharePct = snap != null && totalRevenue > 0
           ? Math.round((rawRevenue / totalRevenue) * 1000) / 10
           : Number(u.revenueSharePct ?? 0);
         return {
@@ -409,9 +412,21 @@ function buildChartData(
     case "table": {
       if (Array.isArray((raw as any).rows)) {
         const rows = (raw as any).rows as any[];
-        // Division rows: map name → label, revenue → value
+        // Division rows: flatten each unit's available metrics into separate label-value rows
+        // so that revenue, gross profit, EBITDA, and valuation are all exposed for any metric view
         if (rows.length && rows[0].name !== undefined && rows[0].rawRevenue !== undefined) {
-          return { rows: rows.map((r) => ({ label: r.name, value: r.revenue })), ...resolved };
+          const divRows: Array<{ label: string; value: string }> = [];
+          for (const r of rows) {
+            if (r.revenue     !== "—") divRows.push({ label: `${r.name} — Revenue`,      value: r.revenue });
+            if (r.grossProfit !== "—") divRows.push({ label: `${r.name} — Gross Profit`, value: r.grossProfit });
+            if (r.ebitda      !== "—") divRows.push({ label: `${r.name} — EBITDA`,       value: r.ebitda });
+            if (r.valuation   !== "—") divRows.push({ label: `${r.name} — Valuation`,    value: r.valuation });
+          }
+          // Fallback: if snapshots hadn't populated any metric (manual pct only), show share %
+          if (!divRows.length) {
+            for (const r of rows) divRows.push({ label: r.name, value: `${r.revenueSharePct}%` });
+          }
+          return { rows: divRows, ...resolved };
         }
         return { rows, ...resolved };
       }
@@ -423,7 +438,7 @@ function buildChartData(
     case "horizontal_bar_chart":
       if ((raw as any).rows) {
         const rows = (raw as any).rows as any[];
-        // Division rows: map name → label, revenue → value, rawRevenue → raw
+        // Division rows: show revenue per division; use rawRevenue for proportional bar widths
         if (rows.length && rows[0].name !== undefined && rows[0].rawRevenue !== undefined) {
           return { bars: rows.map((r) => ({ label: r.name, value: r.revenue, raw: r.rawRevenue })), ...resolved };
         }

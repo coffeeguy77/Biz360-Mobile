@@ -220,9 +220,11 @@ function VisualPreview({ visual }: { visual: ReportVisual | null }) {
       const slices = (d.slices as Array<{ label: string; value: unknown; raw?: number }>) ?? [];
       const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#6B7280"];
       const visible = slices.slice(0, 6);
-      const numerics = visible.map((s) =>
-        s.raw != null ? Math.max(Number(s.raw), 0) : Math.max(Number(s.value ?? 0), 0)
-      );
+      // Always use `value` (revenueSharePct %) for arc sizing — it is always a
+      // consistent percentage regardless of whether the unit has snapshot data.
+      // Using `raw` (revenue amounts) would produce wrong proportions in mixed
+      // scenarios where some units fall back to stored manual percentages.
+      const numerics = visible.map((s) => Math.max(Number(s.value ?? 0), 0));
       const total = numerics.reduce((a, b) => a + b, 0);
       if (total === 0) {
         return (
