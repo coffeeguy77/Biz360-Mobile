@@ -220,11 +220,18 @@ function VisualPreview({ visual }: { visual: ReportVisual | null }) {
       const slices = (d.slices as Array<{ label: string; value: unknown; raw?: number }>) ?? [];
       const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#6B7280"];
       const visible = slices.slice(0, 6);
-      // Always use `value` (revenueSharePct %) for arc sizing — it is always a
-      // consistent percentage regardless of whether the unit has snapshot data.
-      // Using `raw` (revenue amounts) would produce wrong proportions in mixed
-      // scenarios where some units fall back to stored manual percentages.
-      const numerics = visible.map((s) => Math.max(Number(s.value ?? 0), 0));
+      // Arc sizing strategy:
+      // 1. Prefer `raw` (numeric) when it is a finite positive number — this covers
+      //    equipment/category donuts where value is a formatted currency string.
+      // 2. Fall back to stripping currency/commas from `value` and parsing it —
+      //    this covers division slices using revenueSharePct (already a decimal like 45.2)
+      //    or units that fell back to manually-stored percentages (no snapshot).
+      const numerics = visible.map((s) => {
+        const rawN = s.raw != null ? Number(s.raw) : NaN;
+        if (Number.isFinite(rawN) && rawN > 0) return rawN;
+        const valN = Number(String(s.value ?? "").replace(/[$,\s]/g, ""));
+        return Number.isFinite(valN) && valN > 0 ? valN : 0;
+      });
       const total = numerics.reduce((a, b) => a + b, 0);
       if (total === 0) {
         return (
