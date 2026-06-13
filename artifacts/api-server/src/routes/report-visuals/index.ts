@@ -403,6 +403,8 @@ function buildMetricList(raw: Record<string, unknown>, config: Record<string, un
 }
 
 // ─── GET /api/report-visuals/:listingId ────────────────────────────────────────
+// Auto-resolves chart_data for rows with status="needs_data" so callers always
+// receive the freshest available data without a separate resolve call.
 router.get("/report-visuals/:listingId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
   const { listingId } = req.params as { listingId: string };
@@ -413,6 +415,43 @@ router.get("/report-visuals/:listingId", requireAuth, async (req, res): Promise<
       .from(reportVisualsTable)
       .where(and(eq(reportVisualsTable.listingId, listingId), isNull(reportVisualsTable.deletedAt)))
       .orderBy(asc(reportVisualsTable.sortOrder), asc(reportVisualsTable.createdAt));
+
+    // Auto-resolve rows whose data is stale or missing so GET always returns
+    // up-to-date chartData from live sources.
+    const needsResolve = rows.filter((r) => r.status === "needs_data" || !r.chartData);
+    if (needsResolve.length > 0) {
+      await Promise.all(
+        needsResolve.map(async (row) => {
+          try {
+            const resolved = await resolveChartData(
+              listingId, cafe.id, userId,
+              row.dataSourceType ?? "manual",
+              (row.dataSourceConfig as Record<string, unknown>) ?? {},
+            );
+            const chartData = buildChartData(
+              row.visualType ?? "stat_card", resolved,
+              (row.dataSourceConfig as Record<string, unknown>) ?? {},
+              (row.manualData as Array<Record<string, unknown>> | null) ?? undefined,
+            );
+            if (chartData) {
+              await db.update(reportVisualsTable).set({
+                chartData,
+                status:           "ready",
+                sourceLabel:      resolved.sourceLabel,
+                sourceConfidence: resolved.sourceConfidence,
+                updatedAt:        new Date(),
+              }).where(eq(reportVisualsTable.id, row.id));
+              // Mutate so the response reflects refreshed data without a second DB round-trip
+              (row as any).chartData = chartData;
+              (row as any).status = "ready";
+              (row as any).sourceLabel = resolved.sourceLabel;
+              (row as any).sourceConfidence = resolved.sourceConfidence;
+            }
+          } catch { /* non-fatal — return stored row */ }
+        }),
+      );
+    }
+
     res.json({ visuals: rows });
   } catch (err: any) {
     res.status(err.status ?? 500).json({ error: err.message ?? "Failed to load visuals" });
@@ -581,11 +620,14 @@ router.delete("/report-visuals/:listingId/:id", requireAuth, async (req, res): P
 });
 
 // ─── GET /api/report-visuals/:listingId/for-section/:sectionKey ───────────────
-// Used by PDF + HTML renderers to fetch visuals for a specific section.
-router.get("/report-visuals/:listingId/for-section/:sectionKey", async (req, res): Promise<void> => {
+// Seller-only endpoint (requires auth + listing ownership).
+// Visibility is determined from the authenticated user's ownership — the
+// `seller` query param is never trusted for privilege decisions.
+router.get("/report-visuals/:listingId/for-section/:sectionKey", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.id;
   const { listingId, sectionKey } = req.params as { listingId: string; sectionKey: string };
-  const isSeller = req.query.seller === "1";
   try {
+    await assertListingAccess(listingId, userId);
     const rows = await db
       .select()
       .from(reportVisualsTable)
@@ -595,13 +637,13 @@ router.get("/report-visuals/:listingId/for-section/:sectionKey", async (req, res
           eq(reportVisualsTable.sectionKey, sectionKey),
           eq(reportVisualsTable.status, "ready"),
           isNull(reportVisualsTable.deletedAt),
-          isSeller ? eq(reportVisualsTable.includeInSellerReport, true) : eq(reportVisualsTable.includeInBuyerReport, true),
+          eq(reportVisualsTable.includeInSellerReport, true),
         ),
       )
       .orderBy(asc(reportVisualsTable.sortOrder));
     res.json({ visuals: rows });
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to load section visuals" });
+    res.status(err.status ?? 500).json({ error: err.message ?? "Failed to load section visuals" });
   }
 });
 

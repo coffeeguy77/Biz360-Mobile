@@ -483,9 +483,9 @@ export default function ChartsStatsScreen() {
     ]);
   }
 
-  // ── Toggle PDF/Buyer inclusion ────────────────────────────────────────────
+  // ── Toggle PDF/HTML/Buyer inclusion ──────────────────────────────────────
 
-  async function toggleField(id: string, field: "includeInPdf" | "includeInBuyerReport", current: boolean) {
+  async function toggleField(id: string, field: "includeInPdf" | "includeInHtml" | "includeInBuyerReport", current: boolean) {
     const token = await getToken();
     if (!token) return;
     try {
@@ -814,9 +814,13 @@ export default function ChartsStatsScreen() {
                   <Feather name={v.includeInPdf ? "check-circle" : "circle"} size={13} color={v.includeInPdf ? "#3B82F6" : "#6B7280"} />
                   <Text style={[s.toggleText, { color: v.includeInPdf ? "#3B82F6" : "#6B7280" }]}>PDF</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={s.toggleChip} onPress={() => toggleField(v.id, "includeInHtml", v.includeInHtml)}>
+                  <Feather name={v.includeInHtml ? "check-circle" : "circle"} size={13} color={v.includeInHtml ? "#8B5CF6" : "#6B7280"} />
+                  <Text style={[s.toggleText, { color: v.includeInHtml ? "#8B5CF6" : "#6B7280" }]}>Online</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={s.toggleChip} onPress={() => toggleField(v.id, "includeInBuyerReport", v.includeInBuyerReport)}>
                   <Feather name={v.includeInBuyerReport ? "check-circle" : "circle"} size={13} color={v.includeInBuyerReport ? "#10B981" : "#6B7280"} />
-                  <Text style={[s.toggleText, { color: v.includeInBuyerReport ? "#10B981" : "#6B7280" }]}>Buyer Visible</Text>
+                  <Text style={[s.toggleText, { color: v.includeInBuyerReport ? "#10B981" : "#6B7280" }]}>Buyer</Text>
                 </TouchableOpacity>
                 {v.sourceLabel && (
                   <Text style={[s.sourceChip, { color: "#6B7280" }]} numberOfLines={1}>
@@ -830,6 +834,10 @@ export default function ChartsStatsScreen() {
                 <TouchableOpacity style={s.actionBtn} onPress={() => openEdit(v)}>
                   <Feather name="edit-2" size={14} color="#3B82F6" />
                   <Text style={[s.actionText, { color: "#3B82F6" }]}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.actionBtn} onPress={() => { setEditVisual(v); setWizPreview(v); setStep(wizardSteps.length - 1); setWizTitle(v.title); setWizSubtitle(v.subtitle ?? ""); setWizSection(v.sectionKey ?? ""); setWizType(v.visualType); setWizSource(v.dataSourceType); setModalOpen(true); }}>
+                  <Feather name="eye" size={14} color="#A78BFA" />
+                  <Text style={[s.actionText, { color: "#A78BFA" }]}>Preview</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.actionBtn} onPress={() => handleDelete(v.id, v.title)}>
                   <Feather name="trash-2" size={14} color="#EF4444" />

@@ -10,6 +10,10 @@ import { cn } from "@/lib/utils";
 import {
   SECTION_CHART_MAP, sectionHasChartData,
 } from "@/components/report/ChartComponents";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Cell, PieChart, Pie, Legend,
+} from "recharts";
 
 interface ReportSection {
   id: string;
@@ -47,6 +51,21 @@ interface ReportImageEntry {
   sourceType: string;
 }
 
+interface ReportVisualEntry {
+  id: string;
+  sectionKey: string | null;
+  title: string;
+  subtitle: string | null;
+  visualType: string;
+  dataSourceType: string;
+  chartData: Record<string, unknown> | null;
+  status: string;
+  sourceLabel: string | null;
+  includeInBuyerReport: boolean;
+  includeInHtml: boolean;
+  sortOrder: number;
+}
+
 interface ReportMeta {
   businessName: string;
   listingId: string;
@@ -56,7 +75,9 @@ interface ReportMeta {
   badges?: string[];
   heroImageUrl?: string | null;
   reportHeroImageUrl?: string | null;
+  tourSrcDoc?: string | null;
   reportImages?: ReportImageEntry[];
+  reportVisuals?: ReportVisualEntry[];
 }
 
 interface ReportData {
@@ -313,6 +334,215 @@ function SectionImageStrip({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── Report Visual Block ───────────────────────────────────────────────────────
+// Renders a single saved report visual entry from meta.reportVisuals.
+// Returns null silently if chartData is absent or doesn't match the visual type.
+const VIZ_PALETTE = ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EC4899", "#14B8A6", "#F97316", "#6366F1"];
+const VIZ_TIP: React.CSSProperties = {
+  backgroundColor: "#0F2040", border: "1px solid #1E3A5C",
+  borderRadius: 8, color: "#e2e8f0", fontSize: 12,
+};
+
+function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; printMode: boolean }) {
+  const d = visual.chartData ?? {};
+  if (!visual.chartData) return null;
+
+  let content: React.ReactNode = null;
+
+  switch (visual.visualType) {
+    case "stat_card": {
+      const metrics = (d.metrics as Array<{ label: string; value: unknown }>) ?? [];
+      const m = metrics[0];
+      if (!m) return null;
+      content = (
+        <div className="text-center py-3">
+          <div className={cn("text-3xl font-bold", printMode ? "text-blue-600" : "text-blue-400")}>{String(m.value)}</div>
+          <div className={cn("text-sm mt-1", printMode ? "text-slate-500" : "text-slate-400")}>{m.label}</div>
+        </div>
+      );
+      break;
+    }
+    case "metric_grid": {
+      const metrics = (d.metrics as Array<{ label: string; value: unknown }>) ?? [];
+      if (!metrics.length) return null;
+      content = (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {metrics.slice(0, 4).map((m, i) => (
+            <div key={i} className={cn("rounded-xl p-3 text-center", printMode ? "bg-blue-50 border border-blue-100" : "bg-blue-500/10")}>
+              <div className={cn("text-lg font-bold", printMode ? "text-blue-700" : "text-blue-300")}>{String(m.value)}</div>
+              <div className={cn("text-xs mt-1", printMode ? "text-slate-500" : "text-slate-400")}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+      );
+      break;
+    }
+    case "table": {
+      const rows = (d.rows as Array<{ label: string; value: unknown }>) ?? [];
+      if (!rows.length) return null;
+      content = (
+        <div className={cn("rounded-lg overflow-hidden border", printMode ? "border-slate-200" : "border-slate-700/50")}>
+          {rows.map((r, i) => (
+            <div key={i} className={cn("flex justify-between px-4 py-2 text-sm",
+              printMode ? (i % 2 === 0 ? "bg-slate-50" : "bg-white") : (i % 2 === 0 ? "bg-slate-800/30" : ""))}>
+              <span className={printMode ? "text-slate-600" : "text-slate-400"}>{r.label}</span>
+              <span className={cn("font-semibold", printMode ? "text-slate-900" : "text-white")}>{String(r.value ?? "—")}</span>
+            </div>
+          ))}
+        </div>
+      );
+      break;
+    }
+    case "bar_chart":
+    case "horizontal_bar_chart": {
+      const bars = (d.bars as Array<{ label: string; value: unknown; raw?: number }>) ?? [];
+      if (!bars.length) return null;
+      const isHoriz = visual.visualType === "horizontal_bar_chart";
+      content = (
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={bars} layout={isHoriz ? "vertical" : "horizontal"}
+            margin={{ left: isHoriz ? 60 : 0, right: 20, top: 5, bottom: isHoriz ? 5 : 20 }}>
+            <CartesianGrid stroke="#1E3A5C" {...(isHoriz ? { horizontal: false } : { vertical: false })} />
+            {isHoriz ? (
+              <>
+                <XAxis type="number" tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="label" tick={{ fill: "#8B9CB8", fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
+              </>
+            ) : (
+              <>
+                <XAxis dataKey="label" tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
+              </>
+            )}
+            <Tooltip contentStyle={VIZ_TIP} />
+            <Bar dataKey="raw" radius={isHoriz ? [0, 4, 4, 0] : [4, 4, 0, 0]}>
+              {bars.map((_, i) => <Cell key={i} fill={VIZ_PALETTE[i % VIZ_PALETTE.length]} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      );
+      break;
+    }
+    case "donut_chart": {
+      const slices = (d.slices as Array<{ label: string; value: unknown }>) ?? [];
+      if (!slices.length) return null;
+      content = (
+        <ResponsiveContainer width="100%" height={220}>
+          <PieChart>
+            <Pie data={slices} dataKey="value" nameKey="label" cx="50%" cy="50%"
+              innerRadius={55} outerRadius={90} paddingAngle={3}>
+              {slices.map((_, i) => <Cell key={i} fill={VIZ_PALETTE[i % VIZ_PALETTE.length]} />)}
+            </Pie>
+            <Tooltip contentStyle={VIZ_TIP} />
+            <Legend iconType="circle" iconSize={8}
+              formatter={(n) => <span style={{ color: "#8B9CB8", fontSize: 11 }}>{n}</span>} />
+          </PieChart>
+        </ResponsiveContainer>
+      );
+      break;
+    }
+    case "valuation_bridge": {
+      if (!d.rawAdjustedEbitda && !d.rawEquipmentValue) return null;
+      const mult = 2.25;
+      const bridgeData = [
+        { name: "Adj. EBITDA × Multiple", value: Math.round(Number(d.rawAdjustedEbitda ?? 0) * mult), type: "start" },
+        { name: "Equipment",              value: Math.round(Number(d.rawEquipmentValue ?? 0)),          type: "add"   },
+        { name: "Est. Value",             value: Math.round(Number(d.rawAdjustedEbitda ?? 0) * mult + Number(d.rawEquipmentValue ?? 0)), type: "total" },
+      ];
+      content = (
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={bridgeData} margin={{ left: 40, right: 20, top: 5, bottom: 5 }}>
+            <CartesianGrid vertical={false} stroke="#1E3A5C" />
+            <XAxis dataKey="name" tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={VIZ_TIP} />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+              {bridgeData.map((e, i) => (
+                <Cell key={i} fill={e.type === "total" ? "#10B981" : e.type === "add" ? "#8B5CF6" : "#3B82F6"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      );
+      break;
+    }
+    case "funnel": {
+      const funnel = (d.funnel as Array<{ label: string; value: number; pct: number }>) ?? [];
+      const active = funnel.filter((f) => f.value > 0);
+      if (!active.length) return null;
+      content = (
+        <div className="space-y-2">
+          {active.slice(0, 8).map((f, i) => (
+            <div key={i} className="flex items-center gap-3 text-sm">
+              <span className={cn("w-36 text-xs truncate", printMode ? "text-slate-500" : "text-slate-400")}>{f.label}</span>
+              <div className={cn("flex-1 rounded-full h-2 overflow-hidden", printMode ? "bg-slate-200" : "bg-slate-700/40")}>
+                <div className="h-2 rounded-full bg-violet-500" style={{ width: `${f.pct}%` }} />
+              </div>
+              <span className={cn("w-8 text-right text-xs font-semibold", printMode ? "text-slate-900" : "text-white")}>{f.value}</span>
+            </div>
+          ))}
+        </div>
+      );
+      break;
+    }
+    case "checklist": {
+      const items = (d.items as Array<{ label: string; status: string }>) ?? [];
+      if (!items.length) return null;
+      content = (
+        <div className="space-y-1.5">
+          {items.map((item, i) => {
+            const isAvail   = item.status === "available";
+            const isPending = item.status === "pending";
+            return (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <span className={isAvail ? "text-green-400" : isPending ? "text-amber-400" : "text-red-400"}>
+                  {isAvail ? "✓" : isPending ? "○" : "✕"}
+                </span>
+                <span className={printMode ? "text-slate-700" : "text-slate-300"}>{item.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+      break;
+    }
+    case "score_card": {
+      const score = Number(d.score ?? 0);
+      content = (
+        <div className="text-center py-3">
+          <div className={cn("text-5xl font-bold",
+            score >= 70 ? "text-green-400" : score >= 40 ? "text-amber-400" : "text-red-400")}>
+            {score}
+          </div>
+          <div className={cn("text-sm mt-1", printMode ? "text-slate-500" : "text-slate-400")}>{String(d.label ?? "Score")}</div>
+        </div>
+      );
+      break;
+    }
+    default:
+      return null;
+  }
+
+  if (!content) return null;
+
+  return (
+    <div className={cn("rounded-xl border p-4 mt-4", printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/60 border-[#1E3A5C]/60")}>
+      <div className="mb-3">
+        <div className={cn("text-sm font-semibold", printMode ? "text-slate-900" : "text-white")}>{visual.title}</div>
+        {visual.subtitle && (
+          <div className={cn("text-xs mt-0.5", printMode ? "text-slate-500" : "text-slate-400")}>{visual.subtitle}</div>
+        )}
+      </div>
+      {content}
+      {visual.sourceLabel && (
+        <div className={cn("text-xs mt-2 text-right", printMode ? "text-slate-400" : "text-slate-500")}>
+          Source: {visual.sourceLabel}
+        </div>
+      )}
     </div>
   );
 }
@@ -1253,6 +1483,13 @@ export function ReportPage() {
                         : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
                       }
 
+                      {/* Per-section report visuals */}
+                      {!section.isLocked && (data?.meta?.reportVisuals ?? [])
+                        .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && v.status === "ready")
+                        .sort((a, b) => a.sortOrder - b.sortOrder)
+                        .map((v) => <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />)
+                      }
+
                       {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
                         <SellerNotesBlock notes={section.sellerNotes} printMode={printMode} />
                       )}
@@ -1287,9 +1524,39 @@ export function ReportPage() {
                 ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
                 : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
               }
+
+              {/* Per-section report visuals */}
+              {!section.isLocked && (data?.meta?.reportVisuals ?? [])
+                .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && v.status === "ready")
+                .sort((a, b) => a.sortOrder - b.sortOrder)
+                .map((v) => <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />)
+              }
             </section>
           );
         })}
+
+        {/* Global report visuals — no specific section, rendered as a standalone block */}
+        {(() => {
+          const globalVisuals = (data?.meta?.reportVisuals ?? [])
+            .filter((v) => !v.sectionKey && v.includeInHtml && v.status === "ready")
+            .sort((a, b) => a.sortOrder - b.sortOrder);
+          if (!globalVisuals.length) return null;
+          return (
+            <div className={cn(
+              "rounded-2xl border p-8",
+              printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/50 border-[#1E3A5C]/60"
+            )}>
+              <h2 className={cn("text-xl font-bold mb-6", printMode ? "text-slate-900" : "text-white")}>
+                Data &amp; Insights
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {globalVisuals.map((v) => (
+                  <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </main>
 
       {/* ── Disclaimer ────────────────────────────────────────────────────────── */}

@@ -152,6 +152,7 @@ export default function ReportHubScreen() {
   } | null>(null);
   const [visualStats, setVisualStats] = useState<{
     total: number; ready: number; needsData: number; buyerVisible: number;
+    manual: number; verified: number; sellerOnly: number; htmlVisible: number;
   } | null>(null);
 
   const snap = latestSnapshot.combined;
@@ -199,6 +200,10 @@ export default function ReportHubScreen() {
           ready:        vs.filter((v: any) => v.status === "ready").length,
           needsData:    vs.filter((v: any) => v.status === "needs_data").length,
           buyerVisible: vs.filter((v: any) => v.includeInBuyerReport).length,
+          manual:       vs.filter((v: any) => v.dataSourceType === "manual").length,
+          verified:     vs.filter((v: any) => v.sourceConfidence === "high").length,
+          sellerOnly:   vs.filter((v: any) => !v.includeInBuyerReport).length,
+          htmlVisible:  vs.filter((v: any) => v.includeInHtml).length,
         });
       }
       if (cafeRes.ok) {
@@ -753,9 +758,13 @@ export default function ReportHubScreen() {
             <>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                 {([
-                  { label: `${visualStats.ready} Ready`,          ok: visualStats.ready > 0,      icon: "check-circle" },
-                  { label: `${visualStats.needsData} Needs Data`, ok: visualStats.needsData === 0, icon: visualStats.needsData > 0 ? "alert-circle" : "check-circle" },
-                  { label: `${visualStats.buyerVisible} Buyer`,   ok: visualStats.buyerVisible > 0,icon: "eye" },
+                  { label: `${visualStats.ready} Ready`,           ok: visualStats.ready > 0,       icon: "check-circle" },
+                  { label: `${visualStats.needsData} Needs Data`,  ok: visualStats.needsData === 0,  icon: visualStats.needsData > 0 ? "alert-circle" : "check-circle" },
+                  { label: `${visualStats.buyerVisible} Buyer`,    ok: visualStats.buyerVisible > 0, icon: "eye" },
+                  { label: `${visualStats.htmlVisible} Online`,    ok: visualStats.htmlVisible > 0,  icon: "globe" },
+                  { label: `${visualStats.verified} Verified`,     ok: visualStats.verified > 0,     icon: "shield" },
+                  { label: `${visualStats.manual} Manual`,         ok: visualStats.manual === 0,     icon: visualStats.manual > 0 ? "edit-2" : "check-circle" },
+                  { label: `${visualStats.sellerOnly} Seller-only`,ok: true,                         icon: "lock" },
                 ] as { label: string; ok: boolean; icon: string }[]).map(({ label, ok, icon }) => (
                   <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: ok ? "#16A34A18" : "#6B728018", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 }}>
                     <Feather name={icon as any} size={11} color={ok ? "#16A34A" : "#6B7280"} />
@@ -771,10 +780,17 @@ export default function ReportHubScreen() {
                   </Text>
                   <Feather name="chevron-right" size={13} color="#F59E0B" />
                 </View>
+              ) : visualStats.manual > 0 ? (
+                <View style={[styles.recommendMore, { borderColor: "#F59E0B33" }]}>
+                  <Feather name="edit-2" size={13} color="#F59E0B" />
+                  <Text style={[styles.recommendText, { color: "#F59E0B" }]}>
+                    {visualStats.manual} manual visual{visualStats.manual !== 1 ? "s" : ""} — consider linking to live app data
+                  </Text>
+                </View>
               ) : (
                 <View style={styles.recommendRow}>
                   <Feather name="check-circle" size={13} color="#16A34A" />
-                  <Text style={[styles.recommendText, { color: "#16A34A" }]}>All visuals have data — tap to manage</Text>
+                  <Text style={[styles.recommendText, { color: "#16A34A" }]}>All visuals backed by live app data — tap to manage</Text>
                 </View>
               )}
             </>
