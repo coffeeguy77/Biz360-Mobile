@@ -1,0 +1,365 @@
+Build the Charts & Stats section as a Report Visuals Builder.
+
+Current issue:
+The app has a “Charts & Stats” entry in the IM Report area, but it is not built yet. We need this to become a flexible builder where sellers/admins can create real report visuals and attach them to specific report sections.
+
+CRITICAL:
+Do not use fake/demo chart data.
+Every chart, stat, graph, table or visual must come from real app data or seller-entered manual data.
+If data is missing, show “Data not available” and do not render fake visuals.
+
+GOAL:
+Create a visual builder that lets the seller choose:
+1. Which report section the visual belongs to
+2. What type of visual to create
+3. What real data source to use
+4. How it should be displayed
+5. Whether it appears in PDF, HTML, buyer report and seller report
+
+DATABASE
+
+Create a report_visuals table.
+
+Fields:
+- id
+- user_id
+- listing_id
+- section_key
+- title
+- subtitle
+- visual_type
+- data_source_type
+- data_source_config JSON
+- visual_config JSON
+- manual_data JSON
+- chart_data JSON
+- sort_order
+- include_in_pdf boolean
+- include_in_html boolean
+- include_in_buyer_report boolean
+- include_in_seller_report boolean
+- visibility: public / approved_buyers / seller_only / hidden
+- source_label
+- source_confidence: high / medium / low / manual / unavailable
+- status: ready / needs_data / needs_review / hidden
+- created_at
+- updated_at
+- deleted_at
+
+VISUAL TYPES
+
+Support these visual types for v1:
+
+1. stat_card
+Single large metric.
+
+2. metric_grid
+Multiple stat cards in one block.
+
+3. table
+Clean comparison table.
+
+4. bar_chart
+Vertical bar chart.
+
+5. horizontal_bar_chart
+Best for division revenue, equipment values, top assets.
+
+6. donut_chart
+Only for real part-of-total data.
+
+7. valuation_bridge
+Adjusted EBITDA × multiple + equipment = estimated value.
+
+8. funnel
+Views → tour starts → enquiries → document requests → inspections.
+
+9. checklist
+Due diligence or verification checklist.
+
+10. score_card
+Business health, lease risk, confidence score.
+
+11. risk_matrix
+Risk level vs mitigation.
+
+12. location_snapshot
+Location/travel/catchment stats and notes.
+
+DATA SOURCES
+
+The builder should offer these real data sources:
+
+Listing Data:
+- business name
+- suburb
+- state
+- category
+- asking price
+- staff count
+- owner hours
+- training period
+
+Valuation Data:
+- estimated value
+- valuation range
+- revenue
+- COGS
+- gross profit
+- EBITDA
+- adjusted EBITDA
+- equipment value
+- business health score
+- valuation multiple
+
+Division Data:
+- division name
+- included/excluded
+- revenue
+- COGS
+- gross profit
+- valuation
+- equipment allocation
+
+Equipment Ledger:
+- total second-hand value
+- total replacement value
+- item count
+- top assets by value
+- category totals only if real category fields exist
+
+Lease Analysis:
+- lease count
+- clause count
+- risk distribution
+- top risk categories
+- critical/high/medium/low clause counts
+
+360 Tour Data:
+- spaces/scenes count
+- pin count
+- audio count
+- start scene
+- scene names
+
+Buyer Engagement:
+- listing views
+- tour starts
+- unique buyers
+- messages
+- calls clicked
+- saved count
+- document requests
+- financial access requests
+
+Due Diligence:
+- document checklist
+- available/pending/missing docs
+
+Manual Data:
+- seller-entered rows
+- seller-entered labels and values
+- must be marked Seller Supplied / Manual Entry
+
+CHART RULES
+
+Do not render charts unless the selected data source has real data.
+
+Examples:
+- Revenue by Division requires real division revenue.
+- Valuation by Division requires real division valuation values.
+- Equipment Category chart requires real equipment categories and values.
+- Lease Risk chart requires real lease analysis.
+- Business Health breakdown requires real category-level scores.
+- Buyer Funnel requires real engagement stats.
+- Donut charts require data that adds up to a meaningful total.
+
+If data is missing:
+- status = needs_data
+- show “Data not available”
+- do not render fake visual.
+
+BUILDER SCREEN
+
+Create screen:
+(seller)/valuation/charts-stats.tsx
+
+Title:
+Charts & Stats
+
+Subtitle:
+Build visuals for your buyer report and PDF.
+
+Top summary:
+- Visuals created count
+- Ready count
+- Needs data count
+- Buyer-visible count
+
+Actions:
+- Add Visual
+- Preview Report Visuals
+
+Visual card list:
+Each visual card shows:
+- title
+- visual type badge
+- report section
+- data source
+- status
+- PDF toggle
+- HTML toggle
+- buyer/seller visibility
+- Edit
+- Delete
+- Preview
+
+ADD VISUAL FLOW
+
+Use a modal or step screen.
+
+Step 1:
+Choose report section.
+
+Step 2:
+Choose visual type.
+
+Step 3:
+Choose data source.
+
+Step 4:
+Configure fields.
+Examples:
+- x-axis field
+- y-axis field
+- label field
+- value field
+- include/exclude divisions
+- include/exclude hidden/private data
+- max rows
+- sorting
+- show source badge
+- show values
+- show percentages
+
+Step 5:
+Style.
+Options:
+- compact
+- standard
+- feature
+- accent colour: blue / green / purple / amber / neutral
+- show border
+- show title
+- show subtitle
+- show data source badge
+
+Step 6:
+Preview and save.
+
+PREVIEW
+
+Preview must show:
+- mobile preview
+- PDF preview
+- HTML preview if possible
+
+If data is missing, preview shows:
+“Data not available. Connect or enter data before this visual can be published.”
+
+MANUAL DATA ENTRY
+
+For manual charts/tables, allow seller to enter rows.
+
+Manual data fields:
+- label
+- value
+- optional category
+- optional note
+
+Manual visuals must be clearly marked:
+Seller Supplied
+
+Do not show manual data as verified.
+
+REPORT INTEGRATION
+
+PDF exporter:
+- render report_visuals attached to each section_key
+- respect include_in_pdf
+- respect buyer/seller visibility
+- use static chart rendering or simple SVG/CSS charts
+- skip unavailable visuals
+
+HTML report:
+- render report_visuals attached to each section_key
+- respect include_in_html
+- use interactive/responsive charts where possible
+- skip unavailable visuals or show seller-only “needs data” warnings
+
+App preview:
+- render report visuals inside the app preview
+
+ACCESS CONTROL
+
+Only listing owner/admin can create/edit/delete report visuals.
+
+Buyer can only see visuals where:
+- include_in_buyer_report = true
+- visibility allows buyer access
+- data source does not expose seller-only data
+
+DATA INTEGRITY
+
+Add a Visuals section to Data Integrity Panel.
+
+Show:
+- visuals ready
+- visuals hidden due to missing data
+- manual visuals
+- verified visuals
+- seller-only visuals
+- buyer-visible visuals
+
+Example:
+✅ Valuation Bridge — App calculated
+✅ Lease Risk Distribution — Lease analysis
+⚠️ Equipment Category Chart — needs equipment categories
+⚠️ Buyer Funnel — no engagement data yet
+✍️ Growth Opportunity Table — seller supplied
+
+DEFAULT VISUAL TEMPLATES
+
+Seed recommended visual templates but do not render them until data exists.
+
+Templates:
+1. Valuation Bridge → Valuation Summary
+2. Revenue by Division → Financial Performance
+3. Division Valuation → Division Breakdown
+4. Equipment Summary → Plant & Equipment
+5. Top Equipment Assets → Plant & Equipment
+6. Lease Risk Distribution → Lease & Premises
+7. Buyer Engagement Funnel → Buyer Pack
+8. Due Diligence Checklist → Due Diligence
+9. Business Health Score → Valuation Summary
+10. 360 Tour Summary → 360 Business Walkthrough
+11. Canberra Location Snapshot → Location Context
+
+These templates should appear as “Available templates”, not fake rendered charts.
+
+SUCCESS CRITERIA
+
+This is complete when:
+1. Charts & Stats opens a real builder screen.
+2. Seller can create a visual and attach it to a report section.
+3. Seller can choose visual type and real data source.
+4. Seller can preview visual before saving.
+5. Seller can style the visual.
+6. Visuals save to database.
+7. PDF renders saved visuals.
+8. HTML renders saved visuals.
+9. Buyer visibility rules are respected.
+10. Missing data does not produce fake charts.
+11. Manual data is clearly marked Seller Supplied.
+12. Default templates exist but do not render fake data.
+13. Data Integrity Panel shows which visuals are real, missing or manual.
