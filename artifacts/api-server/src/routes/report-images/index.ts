@@ -30,7 +30,9 @@ const PANORAMIC_BLOCKED_ROLES = [
 const ALL_ROLES = [...NON_PANORAMIC_ROLES, "360_preview"] as const;
 type ImageRole = typeof ALL_ROLES[number];
 
-const PANORAMIC_THRESHOLD = 2.2;
+// Standard equirectangular panoramas are 2:1 (ratio 2.0). Use 1.8 to catch
+// all wide-format panoramas including those slightly under 2:1.
+const PANORAMIC_THRESHOLD = 1.8;
 
 /** Returns true if userId is an admin (comma-separated ADMIN_USER_IDS env var). */
 function isAdminUser(userId: string): boolean {

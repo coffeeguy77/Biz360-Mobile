@@ -630,12 +630,18 @@ export default function ReportImagesScreen() {
         Alert.alert("Error", data.error ?? "Could not add tour thumbnail.");
         return;
       }
-      setImages((prev) => [...prev, data.image]);
+      // Only append if not already in the local list (idempotency: server may return
+      // alreadyExists=true with a 200, which would create a duplicate key in the grid).
+      if (!data.alreadyExists) {
+        setImages((prev) => [...prev, data.image]);
+      }
       if (data.isPanoramic) {
         Alert.alert(
           "360° Tour Scene Added",
           data.warning ?? "This scene is panoramic and has been assigned the 360° Preview role. It won't appear as a PDF cover.",
         );
+      } else if (data.alreadyExists) {
+        Alert.alert("Already Added", `"${scene.name}" is already in your Report Images.`);
       } else {
         Alert.alert("Added", `"${scene.name}" thumbnail added to Report Images.`);
       }

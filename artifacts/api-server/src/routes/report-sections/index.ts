@@ -364,14 +364,21 @@ router.get("/report-sections/auto-fill/:listingId", requireAuth, async (req, res
     }
 
     // ── 360_business_walkthrough ─────────────────────────────────────────────
-    // Pull live tour spaces from the KV store (key: biz360_tour_spaces_v1_{listingId})
-    const [tourRow] = await db
+    // Pull live tour spaces from the KV store. Spaces migrated v1 → v2; read v2 first.
+    const [tourRowV2] = await db
       .select({ value: kvStore.value })
       .from(kvStore)
-      .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+      .where(eq(kvStore.key, `biz360_tour_spaces_v2_${listingId}`))
       .limit(1);
-
-    const tourSpaces = Array.isArray(tourRow?.value) ? (tourRow.value as Record<string, unknown>[]) : [];
+    let tourSpaces: Record<string, unknown>[] = Array.isArray(tourRowV2?.value) ? (tourRowV2.value as Record<string, unknown>[]) : [];
+    if (tourSpaces.length === 0) {
+      const [tourRowV1] = await db
+        .select({ value: kvStore.value })
+        .from(kvStore)
+        .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+        .limit(1);
+      tourSpaces = Array.isArray(tourRowV1?.value) ? (tourRowV1.value as Record<string, unknown>[]) : [];
+    }
     const spaceCount = tourSpaces.length;
     const spaceNames = tourSpaces
       .map((s) => s.name as string | undefined)
@@ -1242,14 +1249,23 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       (s) => s.sectionKey === "360_business_walkthrough" && !s.isLocked,
     );
     if (tour360Unlocked) {
-      const [tourKvRow] = await db
+      // Tour spaces migrated v1 → v2; read v2 first, fall back to v1.
+      const [tourKvV2] = await db
         .select({ value: kvStore.value })
         .from(kvStore)
-        .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+        .where(eq(kvStore.key, `biz360_tour_spaces_v2_${listingId}`))
         .limit(1);
-      const tourSpaces = Array.isArray(tourKvRow?.value) ? (tourKvRow.value as Array<Record<string, unknown>>) : [];
-      if (tourSpaces.length > 0) {
-        tourSrcDoc = buildTourSrcDoc(tourSpaces);
+      let tourKvSpaces: Array<Record<string, unknown>> = Array.isArray(tourKvV2?.value) ? (tourKvV2.value as Array<Record<string, unknown>>) : [];
+      if (tourKvSpaces.length === 0) {
+        const [tourKvV1] = await db
+          .select({ value: kvStore.value })
+          .from(kvStore)
+          .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+          .limit(1);
+        tourKvSpaces = Array.isArray(tourKvV1?.value) ? (tourKvV1.value as Array<Record<string, unknown>>) : [];
+      }
+      if (tourKvSpaces.length > 0) {
+        tourSrcDoc = buildTourSrcDoc(tourKvSpaces);
       }
     }
 
