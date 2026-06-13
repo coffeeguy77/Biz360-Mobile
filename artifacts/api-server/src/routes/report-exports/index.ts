@@ -178,7 +178,7 @@ function isAllowedImageUrl(rawUrl: string): boolean {
   return false;
 }
 
-async function fetchImageBuffer(url: string, timeoutMs = 4000): Promise<Buffer | null> {
+async function fetchImageBuffer(url: string, timeoutMs = 12000): Promise<Buffer | null> {
   if (!isAllowedImageUrl(url)) return null;
   try {
     const controller = new AbortController();

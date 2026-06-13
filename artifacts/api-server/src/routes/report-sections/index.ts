@@ -68,6 +68,81 @@ async function assertListingOwner(listingId: string, ownerId: string) {
 }
 
 /**
+ * Build a Pannellum srcdoc HTML string from tour spaces for embedding in an iframe.
+ * Ported from listing-detail.tsx buildMultiSceneSrcdoc — no external dependencies.
+ */
+function buildTourSrcDoc(spaces: Array<Record<string, unknown>>): string {
+  const spacesJson = JSON.stringify(spaces);
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+<script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+  #pano{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;background:#000}
+  @keyframes kfNavFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+  .nav-pin-label{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.82);color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;font-family:system-ui,-apple-system,sans-serif;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+  .pnlm-hotspot.pnlm-nav-pin-wrap{background:transparent!important;border:none!important;box-shadow:none!important;width:44px!important;height:44px!important;overflow:visible!important;margin-left:-22px!important;margin-top:-22px!important}
+  .pnlm-hotspot.pnlm-nav-pin-wrap::before{display:none!important}
+</style>
+</head>
+<body>
+<div id="pano"></div>
+<script>
+var SPACES=${spacesJson};
+function xToYaw(x){return(x-0.5)*360}
+function createNavPin(container,args){
+  container.style.cssText='width:44px;height:44px;overflow:visible;position:relative;cursor:pointer';
+  container.innerHTML='<svg width="44" height="44" viewBox="0 0 44 44" fill="none" style="display:block;animation:kfNavFloat 2.5s ease-in-out infinite"><circle cx="22" cy="22" r="20" fill="white" stroke="#94a3b8" stroke-width="1.5"/><path d="M22 29V17M15 24l7-8 7 8" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var label=document.createElement('span');
+  label.className='nav-pin-label';
+  label.textContent=args.label;
+  container.appendChild(label);
+  container.addEventListener('click',function(e){
+    e.stopPropagation();
+    try{var resolvedYaw=typeof args.targetYaw==='number'?args.targetYaw:null;viewer.loadScene(args.sceneId,null,resolvedYaw,null);}catch(err){}
+  });
+}
+var validIds=new Set(SPACES.filter(function(s){return s.panoramaUrl&&String(s.panoramaUrl).indexOf('file://')!==0}).map(function(s){return s.id}));
+var firstScene=null,scenesConfig={};
+SPACES.forEach(function(s){
+  if(!validIds.has(s.id))return;
+  if(!firstScene)firstScene=s.id;
+  if(s.isStartScene)firstScene=s.id;
+  var hotSpots=[];
+  (s.pins||[]).forEach(function(pin){
+    if(pin.type==='navigation'&&validIds.has(pin.targetSpaceId)){
+      hotSpots.push({pitch:40,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title,targetYaw:typeof pin.targetYaw==='number'?pin.targetYaw:null}});
+    }
+  });
+  var sc={type:'equirectangular',panorama:s.panoramaUrl,title:s.name,hotSpots:hotSpots,pitch:0,yaw:typeof s.defaultYaw==='number'?s.defaultYaw:(typeof s.panoramaStartYaw==='number'?s.panoramaStartYaw:0)};
+  if(typeof s.groundPitch==='number')sc.groundPitch=s.groundPitch;
+  scenesConfig[s.id]=sc;
+});
+var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:150},scenes:scenesConfig});
+function doResize(){try{viewer.resize()}catch(e){}}
+window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
+window.addEventListener('resize',doResize);
+viewer.on('scenechange',function(id){
+  try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}
+});
+window.addEventListener('message',function(e){
+  if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{
+    var gotoSp=SPACES.find(function(s){return s.id===e.data.sceneId});
+    var gotoYaw=typeof e.data.yaw==='number'?e.data.yaw:(gotoSp&&typeof gotoSp.defaultYaw==='number'?gotoSp.defaultYaw:(gotoSp&&typeof gotoSp.panoramaStartYaw==='number'?gotoSp.panoramaStartYaw:0));
+    viewer.loadScene(e.data.sceneId,0,gotoYaw,100);
+  }catch(e2){}
+});
+</script>
+</body>
+</html>`;
+}
+
+/**
  * Verify a report section belongs to the authenticated user.
  */
 async function assertSectionOwner(sectionId: string, ownerId: string) {
@@ -1156,7 +1231,21 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       };
     }
 
-    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages } });
+    // ── Build 360 tour srcdoc for embedding in the HTML report ─────────────────
+    // Fetch tour spaces from KV and generate the Pannellum iframe HTML so the
+    // report viewer can embed the tour via srcDoc without needing a separate URL.
+    let tourSrcDoc: string | null = null;
+    const [tourKvRow] = await db
+      .select({ value: kvStore.value })
+      .from(kvStore)
+      .where(eq(kvStore.key, `biz360_tour_spaces_v1_${listingId}`))
+      .limit(1);
+    const tourSpaces = Array.isArray(tourKvRow?.value) ? (tourKvRow.value as Array<Record<string, unknown>>) : [];
+    if (tourSpaces.length > 0) {
+      tourSrcDoc = buildTourSrcDoc(tourSpaces);
+    }
+
+    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages, tourSrcDoc } });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });

@@ -322,11 +322,13 @@ function SectionContent({
   listingId,
   reportImages,
   printMode,
+  tourSrcDoc,
 }: {
   section: ReportSection;
   listingId: string;
   reportImages?: ReportImageEntry[];
   printMode: boolean;
+  tourSrcDoc?: string | null;
 }) {
   const ChartComponent = SECTION_CHART_MAP[section.sectionKey];
   const chartData = section.chartData
@@ -358,9 +360,11 @@ function SectionContent({
   const SECTION_ROLE_MAP: Record<string, string[]> = {
     business_overview:          ["interior", "listing_hero"],
     plant_equipment_summary:    ["equipment"],
-    sale_inclusions:            ["equipment"],
     lease_premises_summary:     ["exterior"],
-    business_location_market_context: ["exterior"],
+    staff_owner_involvement:    ["team"],
+    operations_systems:         ["team"],
+    brand_digital_assets:       ["product"],
+    customer_base:              ["product"],
     "360_business_walkthrough": ["360_preview"],
   };
   const sectionImages: ReportImageEntry[] = reportImages
@@ -407,14 +411,19 @@ function SectionContent({
               onLoad={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
             />
           </div>
+        ) : tourSrcDoc ? (
+          <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ aspectRatio: "16/9" }}>
+            <iframe
+              srcDoc={tourSrcDoc}
+              className="w-full h-full"
+              allow="fullscreen; xr-spatial-tracking"
+              title="360° Business Walkthrough"
+              onLoad={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
+            />
+          </div>
         ) : (
           <div className="mt-4 flex justify-center">
-            <button
-              onClick={() => recordAccessLog(listingId, "tour_clicked", { sectionKey: section.sectionKey })}
-              className="inline-flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-sm px-5 py-2.5 rounded-xl border border-blue-500/30 transition-colors"
-            >
-              🎯 Enter Virtual Tour
-            </button>
+            <p className="text-slate-500 italic text-sm">No virtual tour uploaded yet.</p>
           </div>
         )
       )}
@@ -1232,7 +1241,7 @@ export function ReportPage() {
 
                       {section.isLocked
                         ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                        : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} />
+                        : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
                       }
 
                       {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
@@ -1267,7 +1276,7 @@ export function ReportPage() {
               </div>
               {section.isLocked
                 ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} />
+                : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
               }
             </section>
           );
