@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import Svg, { Circle, Path } from "react-native-svg";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
@@ -216,17 +217,53 @@ function VisualPreview({ visual }: { visual: ReportVisual | null }) {
       );
     }
     case "donut_chart": {
-      const slices = (d.slices as Array<{ label: string; value: unknown }>) ?? [];
+      const slices = (d.slices as Array<{ label: string; value: unknown; raw?: number }>) ?? [];
       const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#6B7280"];
+      const visible = slices.slice(0, 6);
+      const numerics = visible.map((s) =>
+        s.raw != null ? Math.max(Number(s.raw), 0) : Math.max(Number(s.value ?? 0), 0)
+      );
+      const total = numerics.reduce((a, b) => a + b, 0);
+      if (total === 0) {
+        return (
+          <View style={pv.noData}>
+            <Feather name="info" size={14} color="#6B7280" />
+            <Text style={pv.noDataText}>No division revenue data yet</Text>
+          </View>
+        );
+      }
+      const SIZE = 120;
+      const CX = SIZE / 2, CY = SIZE / 2;
+      const RO = 52, RI = 30;
+      const toR = (deg: number) => (deg * Math.PI) / 180;
+      let ang = -90;
+      const svgPaths = visible.map((s, i) => {
+        const pct = numerics[i] / total;
+        const sweep = pct * 360;
+        const end = ang + sweep;
+        const large = sweep > 180 ? 1 : 0;
+        const x1 = CX + RO * Math.cos(toR(ang)),  y1 = CY + RO * Math.sin(toR(ang));
+        const x2 = CX + RO * Math.cos(toR(end)),  y2 = CY + RO * Math.sin(toR(end));
+        const x3 = CX + RI * Math.cos(toR(end)),  y3 = CY + RI * Math.sin(toR(end));
+        const x4 = CX + RI * Math.cos(toR(ang)),  y4 = CY + RI * Math.sin(toR(ang));
+        const pathD = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${RO} ${RO} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} L ${x3.toFixed(2)} ${y3.toFixed(2)} A ${RI} ${RI} 0 ${large} 0 ${x4.toFixed(2)} ${y4.toFixed(2)} Z`;
+        ang = end;
+        return { pathD, color: COLORS[i % COLORS.length], label: s.label, pct: Math.round(pct * 100) };
+      });
       return (
         <View style={pv.donut}>
-          {slices.slice(0, 5).map((s, i) => (
-            <View key={i} style={pv.donutRow}>
-              <View style={[pv.donutDot, { backgroundColor: COLORS[i % COLORS.length] }]} />
-              <Text style={pv.donutLabel} numberOfLines={1}>{s.label}</Text>
-              <Text style={pv.donutVal}>{String(s.value)}</Text>
-            </View>
-          ))}
+          <Svg width={SIZE} height={SIZE} style={{ alignSelf: "center" }}>
+            {svgPaths.map((p, i) => <Path key={i} d={p.pathD} fill={p.color} />)}
+          </Svg>
+          <View style={{ marginTop: 6 }}>
+            {svgPaths.map((p, i) => (
+              <View key={i} style={pv.donutRow}>
+                <View style={[pv.donutDot, { backgroundColor: p.color }]} />
+                <Text style={pv.donutLabel} numberOfLines={1}>{p.label}</Text>
+                <Text style={pv.donutVal}>{p.pct}%</Text>
+              </View>
+            ))}
+          </View>
         </View>
       );
     }

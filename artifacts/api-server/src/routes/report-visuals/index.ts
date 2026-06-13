@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   db, cafesTable, valuationSnapshotsTable, businessUnitsTable,
   cafeEquipmentTable, sellerLeasesTable, sellerLeaseClausesTable,
@@ -115,8 +115,7 @@ async function resolveChartData(
     }
 
     case "divisions": {
-      // Only include active divisions (isIncludedInSale = true) — disabled divisions
-      // must never appear in charts, tables, or report outputs
+      // Only include active divisions (isIncludedInSale = true)
       const units = await db.select().from(businessUnitsTable).where(
         and(
           eq(businessUnitsTable.cafeId, cafeId),
@@ -124,16 +123,53 @@ async function resolveChartData(
         ),
       );
       if (!units.length) return absent("Division Data");
-      const rows = units.map((u) => ({
-        name:            u.name,
-        included:        true,
-        revenueSharePct: Number(u.revenueSharePct ?? 0),
-        revenue:         fmt((u as any).revenue?.toString()),
-        cogs:            fmt((u as any).cogs?.toString()),
-        grossProfit:     fmt((u as any).grossProfit?.toString()),
-        valuation:       fmt((u as any).valuation?.toString()),
-        equipmentAlloc:  fmt((u as any).equipmentAllocation?.toString()),
-      }));
+
+      // Fetch latest published per-unit snapshot for each active unit
+      const unitSnaps = await db.select().from(valuationSnapshotsTable).where(
+        and(
+          eq(valuationSnapshotsTable.cafeId, cafeId),
+          eq(valuationSnapshotsTable.isPublished, true),
+          isNotNull(valuationSnapshotsTable.unitId),
+        ),
+      ).orderBy(desc(valuationSnapshotsTable.createdAt));
+
+      // Map: unitId → latest published snapshot (first occurrence = newest due to order)
+      const snapByUnit = new Map<string, typeof unitSnaps[0]>();
+      for (const s of unitSnaps) {
+        if (s.unitId && !snapByUnit.has(s.unitId)) snapByUnit.set(s.unitId, s);
+      }
+
+      // No per-unit snapshots published + no manually-set percentages → needs_data
+      const hasSnapshots = units.some((u) => snapByUnit.has(u.id));
+      const hasManualPcts = units.some((u) => Number(u.revenueSharePct ?? 0) > 0);
+      if (!hasSnapshots && !hasManualPcts) return absent("Division Data");
+
+      // Compute total revenue for share-percentage derivation
+      const totalRevenue = units.reduce((sum, u) => {
+        const snap = snapByUnit.get(u.id);
+        return sum + Number(snap?.grossRevenue ?? 0);
+      }, 0);
+
+      const rows = units.map((u) => {
+        const snap = snapByUnit.get(u.id);
+        const rawRevenue = Number(snap?.grossRevenue ?? 0);
+        const revenueSharePct = totalRevenue > 0
+          ? Math.round((rawRevenue / totalRevenue) * 1000) / 10
+          : Number(u.revenueSharePct ?? 0);
+        return {
+          name:           u.name,
+          included:       true,
+          revenueSharePct,
+          rawRevenue,
+          revenue:        fmt(snap?.grossRevenue?.toString()),
+          cogs:           fmt(snap?.cogs?.toString()),
+          grossProfit:    fmt(snap?.grossProfit?.toString()),
+          ebitda:         fmt(snap?.ebitda?.toString()),
+          adjustedEbitda: fmt(snap?.adjustedEbitda?.toString()),
+          valuation:      fmt(snap?.valuationMidpoint?.toString()),
+        };
+      });
+
       return {
         data: { rows, includedUnits: rows, excludedUnits: [], totalCount: rows.length },
         status: "ready",
@@ -371,14 +407,28 @@ function buildChartData(
       return { metrics: buildMetricList(raw, config), ...resolved };
 
     case "table": {
-      if (Array.isArray((raw as any).rows)) return { rows: (raw as any).rows, ...resolved };
+      if (Array.isArray((raw as any).rows)) {
+        const rows = (raw as any).rows as any[];
+        // Division rows: map name → label, revenue → value
+        if (rows.length && rows[0].name !== undefined && rows[0].rawRevenue !== undefined) {
+          return { rows: rows.map((r) => ({ label: r.name, value: r.revenue })), ...resolved };
+        }
+        return { rows, ...resolved };
+      }
       const metrics = buildMetricList(raw, config);
       return { rows: metrics.map((m) => ({ label: m.label, value: m.value })), ...resolved };
     }
 
     case "bar_chart":
     case "horizontal_bar_chart":
-      if ((raw as any).rows) return { bars: (raw as any).rows, ...resolved };
+      if ((raw as any).rows) {
+        const rows = (raw as any).rows as any[];
+        // Division rows: map name → label, revenue → value, rawRevenue → raw
+        if (rows.length && rows[0].name !== undefined && rows[0].rawRevenue !== undefined) {
+          return { bars: rows.map((r) => ({ label: r.name, value: r.revenue, raw: r.rawRevenue })), ...resolved };
+        }
+        return { bars: rows, ...resolved };
+      }
       if ((raw as any).funnel) return { bars: (raw as any).funnel, ...resolved };
       if ((raw as any).topAssets) return { bars: (raw as any).topAssets.map((a: any) => ({ label: a.name, value: a.value, raw: a.raw })), ...resolved };
       if ((raw as any).riskRows) return { bars: (raw as any).riskRows, ...resolved };
@@ -389,7 +439,12 @@ function buildChartData(
       if ((raw as any).riskRows) return { slices: (raw as any).riskRows, ...resolved };
       if ((raw as any).categoryRows) return { slices: (raw as any).categoryRows.map((c: any) => ({ label: c.cat, value: c.value, raw: c.raw })), ...resolved };
       if (Array.isArray((raw as any).rows)) {
-        return { slices: (raw as any).rows.map((r: any) => ({ label: r.name ?? r.label, value: r.revenueSharePct ?? r.value })), ...resolved };
+        const rows = (raw as any).rows as any[];
+        // Division rows: use revenueSharePct as the proportion value, include raw for SVG rendering
+        if (rows.length && rows[0].name !== undefined && rows[0].rawRevenue !== undefined) {
+          return { slices: rows.map((r) => ({ label: r.name, value: r.revenueSharePct, raw: r.rawRevenue })), ...resolved };
+        }
+        return { slices: rows.map((r: any) => ({ label: r.name ?? r.label, value: r.revenueSharePct ?? r.value })), ...resolved };
       }
       return null;
 
