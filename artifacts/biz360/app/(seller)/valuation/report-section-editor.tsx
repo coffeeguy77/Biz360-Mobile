@@ -294,7 +294,7 @@ export default function ReportSectionEditorScreen() {
     ]);
   }
 
-  const selVis = VISIBILITY_OPTIONS.find((v) => v.value === visibility)!;
+  const selVis = VISIBILITY_OPTIONS.find((v) => v.value === visibility) ?? VISIBILITY_OPTIONS[1];
   const wordCount = countWords(body);
   const srcCfg = DATA_SOURCE_LABELS[dataSource] ?? DATA_SOURCE_LABELS.seller_supplied;
 
