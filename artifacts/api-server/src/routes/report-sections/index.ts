@@ -310,11 +310,11 @@ router.get("/report-sections/auto-fill/:listingId", requireAuth, async (req, res
 
     // ── division_breakdown ───────────────────────────────────────────────────
     if (units.length > 0) {
-      const bullets = units.map(
-        (u) => `${u.name} — ${u.isIncludedInSale ? "Included in sale" : "Excluded from sale"} (${u.revenueSharePct}% of revenue)`,
+      const bullets = includedUnits.map(
+        (u) => `${u.name} — ${u.revenueSharePct}% of revenue`,
       );
       suggestions["division_breakdown"] = {
-        suggestedBody: `This business has ${units.length} division${units.length !== 1 ? "s" : ""}. ${includedUnits.length} ${includedUnits.length !== 1 ? "are" : "is"} included in the sale.`,
+        suggestedBody: `This business has ${includedUnits.length} division${includedUnits.length !== 1 ? "s" : ""} included in the sale.`,
         suggestedBullets: bullets,
         tableData: null,
         sourceLabel: "app_generated",
@@ -1315,12 +1315,17 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       }
     }
 
-    // Override tableData on division_breakdown with live included-only data
-    const enrichedFiltered = filtered.map((s) =>
-      s.sectionKey === "division_breakdown" && divisionTableRows
-        ? { ...s, tableData: divisionTableRows }
-        : s,
-    );
+    // Override tableData and bulletPoints on division_breakdown with live included-only data.
+    // This ensures excluded units (not part of the sale) are never surfaced in the HTML report.
+    const enrichedFiltered = filtered.map((s) => {
+      if (s.sectionKey === "division_breakdown" && divisionTableRows) {
+        const includedBullets = divisionTableRows.map(
+          (r) => `${r.Division}${r.Revenue && r.Revenue !== "—" ? ` — Revenue: ${r.Revenue}` : ""}${r.Value && r.Value !== "—" ? `, Value: ${r.Value}` : ""}`,
+        );
+        return { ...s, tableData: divisionTableRows, bulletPoints: includedBullets };
+      }
+      return s;
+    });
 
     // ── Fetch report_visuals (HTML-included; all statuses so UI can show placeholders) ─
     const reportVisuals = await db

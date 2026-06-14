@@ -419,7 +419,7 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
               </>
             )}
             <Tooltip contentStyle={VIZ_TIP} />
-            <Bar dataKey="raw" radius={isHoriz ? [0, 4, 4, 0] : [4, 4, 0, 0]}>
+            <Bar dataKey={bars[0]?.raw != null ? "raw" : "value"} radius={isHoriz ? [0, 4, 4, 0] : [4, 4, 0, 0]}>
               {bars.map((_, i) => <Cell key={i} fill={VIZ_PALETTE[i % VIZ_PALETTE.length]} />)}
             </Bar>
           </BarChart>

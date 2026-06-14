@@ -92,6 +92,37 @@ async function resolveChartData(
       if (!snap || !snap.adjustedEbitda) return absent("Valuation");
       const aebitda = Number(snap.adjustedEbitda);
       const equipVal = Number(snap.totalEquipmentValue ?? 0);
+
+      // Compute business health score server-side — mirrors the mobile app formula:
+      //   score = Math.round(sectionCompleteness × 0.5 + ebitdaHealth × 0.5)
+      // Section completeness: how many of the 12 required section keys have content.
+      // EBITDA health: adjustedEbitda / grossRevenue × 100, capped at 100.
+      const REQUIRED_KEYS = [
+        "business_overview", "reason_for_sale", "key_selling_points",
+        "financial_performance_summary", "addbacks_adjusted_ebitda",
+        "app_valuation_summary", "plant_equipment_summary",
+        "lease_premises_summary", "staff_owner_involvement", "customer_base",
+        "operations_systems", "growth_opportunities",
+      ];
+      const allSections = await db.select({
+        sectionKey: reportSectionsTable.sectionKey,
+        body: reportSectionsTable.body,
+        bulletPoints: reportSectionsTable.bulletPoints,
+        tableData: reportSectionsTable.tableData,
+      }).from(reportSectionsTable).where(eq(reportSectionsTable.listingId, listingId));
+      const filled = REQUIRED_KEYS.filter((k) => {
+        const sec = allSections.find((s) => s.sectionKey === k);
+        if (!sec) return false;
+        return !!(sec.body?.trim() || (Array.isArray(sec.bulletPoints) && sec.bulletPoints.length > 0) || sec.tableData);
+      }).length;
+      const completenessScore = REQUIRED_KEYS.length > 0
+        ? Math.round((filled / REQUIRED_KEYS.length) * 100) : 0;
+      const grossRev = Number(snap.grossRevenue ?? 0);
+      const ebitdaHealthScore = grossRev > 0
+        ? Math.min(100, Math.round((aebitda / grossRev) * 100 * 3.5))
+        : 0;
+      const businessHealthScore = Math.round(completenessScore * 0.5 + ebitdaHealthScore * 0.5);
+
       return {
         data: {
           estimatedValue:    fmt(snap.valuationMidpoint?.toString()),
@@ -103,7 +134,7 @@ async function resolveChartData(
           ebitda:            fmt(snap.ebitda?.toString()),
           adjustedEbitda:    fmt(snap.adjustedEbitda?.toString()),
           equipmentValue:    fmt(snap.totalEquipmentValue?.toString()),
-          businessHealthScore: (snap as any).businessHealthScore ?? null,
+          businessHealthScore,
           valuationMultiple:   (snap as any).valuationMultiple ?? null,
           rawAdjustedEbitda: Number(snap.adjustedEbitda),
           rawEquipmentValue: equipVal,
@@ -480,7 +511,7 @@ function buildChartData(
       return null;
 
     case "score_card":
-      if (raw.businessHealthScore) return { score: raw.businessHealthScore, label: "Business Health", ...resolved };
+      if (raw.businessHealthScore != null) return { score: Number(raw.businessHealthScore), label: "Business Health Score", ...resolved };
       return null;
 
     default:

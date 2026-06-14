@@ -313,21 +313,17 @@ export function PanoramaViewer() {
     <div className="w-full bg-card border border-border rounded-xl overflow-hidden shadow-2xl flex flex-col">
       <div className="p-4 border-b border-border bg-background/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-bold text-foreground">The Daily Press Espresso Bar</h3>
-          <p className="text-sm text-muted-foreground">Fitzroy VIC</p>
+          <h3 className="text-lg font-bold text-foreground">360° Business Tour</h3>
+          <p className="text-sm text-muted-foreground">Interactive Demo</p>
         </div>
         <div className="flex gap-4 text-sm">
           <div className="text-right">
-            <div className="text-muted-foreground">Asking Price</div>
-            <div className="font-semibold text-foreground">$185,000</div>
+            <div className="text-muted-foreground">Type</div>
+            <div className="font-semibold text-foreground">Interactive</div>
           </div>
           <div className="text-right">
-            <div className="text-muted-foreground">Weekly Rev</div>
-            <div className="font-semibold text-green-400">$18.5K</div>
-          </div>
-          <div className="text-right">
-            <div className="text-muted-foreground">Staff</div>
-            <div className="font-semibold text-foreground">4 FTE</div>
+            <div className="text-muted-foreground">Rooms</div>
+            <div className="font-semibold text-green-400">{DEMO_SPACES.length}</div>
           </div>
         </div>
       </div>

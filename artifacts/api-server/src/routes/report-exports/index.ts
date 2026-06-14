@@ -4,7 +4,7 @@ import { v2 as cloudinary } from "cloudinary";
 import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
   cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
-  reportVisualsTable,
+  reportVisualsTable, businessUnitsTable,
 } from "@workspace/db";
 import { eq, asc, and, desc, isNull, sql } from "drizzle-orm";
 import { logger } from "../../lib/logger";
@@ -1929,6 +1929,62 @@ async function handlePdf(req: any, res: any): Promise<void> {
         .orderBy(asc(reportSectionsTable.sortOrder));
     }
 
+    // ── Dynamically override division_breakdown section with live included-only data ──
+    // This prevents excluded units (not part of the sale) from appearing in the PDF,
+    // regardless of what stale chartData/tableData is stored in the DB.
+    try {
+      const includedUnits = await db.select().from(businessUnitsTable).where(
+        and(eq(businessUnitsTable.cafeId, cafe.id), eq(businessUnitsTable.isIncludedInSale, true)),
+      );
+      if (includedUnits.length > 0) {
+        const fmtDiv = (n: string | null | undefined) =>
+          n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+        const snapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
+        await Promise.all(includedUnits.map(async (u) => {
+          const [uSnap] = await db.select().from(valuationSnapshotsTable).where(
+            and(eq(valuationSnapshotsTable.cafeId, cafe.id), eq(valuationSnapshotsTable.unitId, u.id)),
+          ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+          if (uSnap) snapByUnit.set(u.id, uSnap);
+        }));
+        const totalRevenue = includedUnits.reduce((sum, u) => sum + Number(snapByUnit.get(u.id)?.grossRevenue ?? 0), 0);
+        const divChartRows = includedUnits.map((u) => {
+          const uSnap = snapByUnit.get(u.id);
+          const rawRevenue = Number(uSnap?.grossRevenue ?? 0);
+          const revenueSharePct = uSnap != null && totalRevenue > 0
+            ? Math.round((rawRevenue / totalRevenue) * 1000) / 10
+            : Number(u.revenueSharePct ?? 0);
+          return {
+            name: u.name,
+            included: true,
+            revenue: rawRevenue,
+            valuation: Number(uSnap?.valuationMidpoint ?? 0),
+            revenueSharePct,
+          };
+        });
+        const divTableRows = includedUnits.map((u) => {
+          const uSnap = snapByUnit.get(u.id);
+          return {
+            Division: u.name,
+            Revenue: fmtDiv(uSnap?.grossRevenue?.toString()),
+            EBITDA: fmtDiv(uSnap?.ebitda?.toString()),
+            Value: fmtDiv(uSnap?.valuationMidpoint?.toString()),
+          };
+        });
+        const divBullets = includedUnits.map((u) => {
+          const uSnap = snapByUnit.get(u.id);
+          const rev = fmtDiv(uSnap?.grossRevenue?.toString());
+          return `${u.name}${rev !== "—" ? ` — Revenue: ${rev}` : ""}`;
+        });
+        allSections = allSections.map((s: any) =>
+          s.sectionKey === "division_breakdown"
+            ? { ...s, chartData: divChartRows, tableData: divTableRows, bulletPoints: divBullets }
+            : s,
+        );
+      }
+    } catch (_err) {
+      // Division enrichment failure is non-fatal — continue with stored data
+    }
+
     // Business-name — uses the shared resolver (business_name → name → trading_name
     // → section tableData → "My Business"); emoji stripped before PDF embedding.
     const biz = resolveBusinessName(cafe, allSections);
@@ -2182,7 +2238,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       .where(eq(reportSectionsTable.listingId, listingId))
       .orderBy(asc(reportSectionsTable.sortOrder));
 
-    const sections = allSections.filter((s) => {
+    let sections = allSections.filter((s) => {
       if (!s.includeInPdf) return false;
       if (s.visibility === "public") return true;
       if (s.visibility === "approved_buyers" && buyerUnlocked) return true;
@@ -2277,6 +2333,62 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       ]);
       pubExtra.snapshot = pubSnapshotRows[0] ?? null;
       pubExtra.equipment = pubEquipRows;
+    }
+
+    // ── Division breakdown enrichment for public PDF ───────────────────────────
+    // Override division_breakdown section data with live included-only units,
+    // preventing excluded units from appearing in the buyer PDF.
+    if (cafeMeta?.id) {
+      try {
+        const pubIncludedUnits = await db.select().from(businessUnitsTable).where(
+          and(eq(businessUnitsTable.cafeId, cafeMeta.id), eq(businessUnitsTable.isIncludedInSale, true)),
+        );
+        if (pubIncludedUnits.length > 0) {
+          const fmtDiv = (n: string | null | undefined) =>
+            n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+          const pubSnapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
+          await Promise.all(pubIncludedUnits.map(async (u) => {
+            const [uSnap] = await db.select().from(valuationSnapshotsTable).where(
+              and(eq(valuationSnapshotsTable.cafeId, cafeMeta!.id), eq(valuationSnapshotsTable.unitId, u.id)),
+            ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+            if (uSnap) pubSnapByUnit.set(u.id, uSnap);
+          }));
+          const pubTotalRevenue = pubIncludedUnits.reduce(
+            (sum, u) => sum + Number(pubSnapByUnit.get(u.id)?.grossRevenue ?? 0), 0,
+          );
+          const pubDivChartRows = pubIncludedUnits.map((u) => {
+            const uSnap = pubSnapByUnit.get(u.id);
+            const rawRevenue = Number(uSnap?.grossRevenue ?? 0);
+            const revenueSharePct = uSnap != null && pubTotalRevenue > 0
+              ? Math.round((rawRevenue / pubTotalRevenue) * 1000) / 10
+              : Number(u.revenueSharePct ?? 0);
+            return { name: u.name, included: true, revenue: rawRevenue, valuation: Number(uSnap?.valuationMidpoint ?? 0), revenueSharePct };
+          });
+          const pubDivTableRows = pubIncludedUnits.map((u) => {
+            const uSnap = pubSnapByUnit.get(u.id);
+            return {
+              Division: u.name,
+              Revenue: fmtDiv(uSnap?.grossRevenue?.toString()),
+              EBITDA: fmtDiv(uSnap?.ebitda?.toString()),
+              Value: fmtDiv(uSnap?.valuationMidpoint?.toString()),
+            };
+          });
+          const pubDivBullets = pubIncludedUnits.map((u) => {
+            const uSnap = pubSnapByUnit.get(u.id);
+            const rev = fmtDiv(uSnap?.grossRevenue?.toString());
+            const val = fmtDiv(uSnap?.valuationMidpoint?.toString());
+            return `${u.name}${rev !== "—" ? ` — Revenue: ${rev}` : ""}${val !== "—" ? `, Value: ${val}` : ""}`;
+          });
+          sections = sections.map((s: any) => {
+            if (s.sectionKey === "division_breakdown") {
+              return { ...s, chartData: { ...((s.chartData as object) ?? {}), bars: pubDivChartRows }, tableData: pubDivTableRows, bulletPoints: pubDivBullets };
+            }
+            return s;
+          });
+        }
+      } catch (e) {
+        logger.warn({ err: e }, "Public PDF: division enrichment failed (non-fatal)");
+      }
     }
 
     // ── report_images section resolver for public PDF ──────────────────────────
