@@ -1,0 +1,314 @@
+Fix PDF report export so saved Charts & Stats visuals and Report Images actually render in the PDF.
+
+Current issue:
+The Charts & Stats builder exists in the app, and Report Images exists / is being added, but none of the charts or photos appear in the PDF reports. The PDF looks almost the same as before. This means the PDF exporter is likely still using the old report section renderer and is not consuming report_visuals or report_images.
+
+Critical rule:
+The HTML report, app preview, and PDF export must all use the same report render payload. Do not maintain separate disconnected logic for PDF.
+
+Goal:
+When a seller adds a visual in Charts & Stats and marks it include_in_pdf=true, it must render inside the matching report section in the PDF.
+When a seller adds report images and marks include_in_pdf=true, those images must render on the PDF cover or matching section.
+
+TASK 1 — Create shared report render payload
+
+Create or update a shared server-side function:
+
+buildReportRenderPayload(listingId, viewerAccessLevel, reportMode)
+
+It must return:
+
+{
+listing,
+valuation,
+divisions,
+equipment,
+leases,
+tour,
+engagement,
+reportSections,
+reportImages,
+reportVisuals,
+access,
+diagnostics
+}
+
+Both HTML report and PDF export must consume this same payload.
+
+Do not let the PDF exporter query only report_sections and ignore report_visuals/report_images.
+
+TASK 2 — Add reportVisuals to PDF payload
+
+In the PDF export route, query report_visuals for the listing.
+
+Only include visuals where:
+
+* deleted_at is null
+* include_in_pdf = true
+* status = ready
+* visibility is allowed for the current PDF mode
+* buyer/seller visibility is respected
+
+For seller PDF:
+
+* include visuals where include_in_seller_report = true
+* show needs_data / needs_review warnings if relevant
+
+For buyer PDF:
+
+* include visuals where include_in_buyer_report = true
+* do not show seller-only visuals
+* do not show internal warnings
+* omit unavailable visuals cleanly
+
+Group visuals by section_key.
+
+Example:
+visualsBySection = {
+app_valuation_summary: [valuation_bridge],
+lease_premises_summary: [lease_risk_breakdown],
+business_overview: [360_tour_overview]
+}
+
+TASK 3 — Render visuals inside PDF sections
+
+When rendering each report section, insert attached visuals after the section intro/bullets or at a section-defined position.
+
+Each visual must render according to visual_type:
+
+Supported PDF-safe v1 visual types:
+
+* stat_card
+* metric_grid
+* table
+* horizontal_bar_chart
+* bar_chart
+* valuation_bridge
+* checklist
+* score_card
+
+For PDF, do not rely on interactive browser-only charts.
+Render static HTML/CSS/SVG visuals.
+
+Do not use Recharts in PDF unless it is proven to render reliably in Puppeteer.
+Prefer simple SVG or HTML/CSS bars for PDF.
+
+TASK 4 — Build PDF-safe chart components
+
+Create PDF-safe chart renderers:
+
+renderPdfMetricGrid(visual)
+renderPdfHorizontalBarChart(visual)
+renderPdfBarChart(visual)
+renderPdfValuationBridge(visual)
+renderPdfChecklist(visual)
+renderPdfScoreCard(visual)
+renderPdfTable(visual)
+
+These should use:
+
+* inline HTML/CSS
+* fixed dimensions
+* no animations
+* no lazy rendering
+* no client-side hooks
+* no responsive-only sizing
+* no canvas dependency
+
+For horizontal bar charts:
+
+* calculate max value server-side
+* render bars as div widths or SVG rects
+* show labels and values
+* if value is undefined, mark visual needs_data and do not render “undefined”
+
+TASK 5 — Fix undefined chart values
+
+The Lease Risk Breakdown currently shows undefined values in the app.
+
+Fix data mapping:
+Critical -> real critical count
+High -> real high count
+Medium -> real medium count
+Low -> real low count
+
+If any chart value is null/undefined:
+
+* do not render the chart
+* set status = needs_data
+* show seller-only warning:
+    “Chart hidden: missing value for Critical/High/Medium/Low”
+* never print “undefined” in app, HTML or PDF
+
+TASK 6 — Add reportImages to PDF payload
+
+In the PDF export route, query report_images for the listing.
+
+Only include images where:
+
+* deleted_at is null
+* include_in_pdf = true
+* visibility is allowed
+* buyer/seller visibility is respected
+
+Use the shared image resolver:
+resolveReportHeroImage(listingId)
+resolveReportSectionImage(listingId, sectionKey or role)
+
+The PDF cover must use:
+
+1. report_images role cover + is_primary
+2. report_images role listing_hero
+3. report_images role exterior
+4. non-panoramic listing hero fallback
+5. gradient fallback
+
+Do not use raw tour panoramas as PDF cover.
+
+TASK 7 — Render report images in PDF
+
+PDF cover:
+
+* render resolved hero image if available
+* use Cloudinary secure_url
+* use transformation: f_auto,q_auto,w_1600,c_fill
+* object-fit: cover
+* fixed dimensions
+
+Section images:
+
+* render images attached to section_key
+* show caption if present
+* use transformation: f_auto,q_auto,w_1000
+* do not lazy load
+
+Buyer PDF:
+
+* silently omit missing image blocks
+
+Seller PDF:
+
+* show small amber note only:
+    “Image missing — add one in Report Images”
+
+TASK 8 — Make Puppeteer wait for images and charts
+
+Before generating PDF, ensure all images and static chart elements are rendered.
+
+If using Puppeteer:
+
+* use waitUntil: “networkidle0” or equivalent
+* wait for document.fonts.ready
+* wait for all images to complete and decode
+* disable lazy loading for report images
+* ensure Cloudinary HTTPS URLs are absolute
+* add a timeout and log which images failed
+
+Example browser-side wait:
+await page.evaluate(async () => {
+await document.fonts.ready;
+const images = Array.from(document.images);
+await Promise.all(images.map(img => {
+if (img.complete) return Promise.resolve();
+return new Promise(resolve => {
+img.onload = resolve;
+img.onerror = resolve;
+});
+}));
+});
+
+TASK 9 — Add PDF render diagnostics
+
+Add seller/admin PDF diagnostics.
+
+When PDF export runs, log and/or return:
+
+* report_visuals queried count
+* report_visuals included count
+* visuals skipped with reasons
+* report_images queried count
+* report_images included count
+* hero image source
+* section images included
+* Cloudinary image load failures
+* sections rendered
+* PDF mode
+* buyer/seller access level
+
+Example diagnostics:
+Visuals queried: 8
+Visuals rendered: 5
+Skipped: Equipment Category — missing category values
+Skipped: Buyer Funnel — no engagement data
+Images queried: 4
+Images rendered: 3
+Hero image: report_images/cover
+Image load failures: 0
+
+TASK 10 — Add test page for PDF render
+
+Create an internal seller/admin-only route:
+
+/reports/:listingId/pdf-debug
+
+It should render the exact HTML used for PDF export in the browser.
+
+This is critical for debugging.
+
+On this page show:
+
+* final PDF HTML
+* report visuals
+* report images
+* diagnostics panel
+* buttons:
+    * Download PDF
+    * Refresh data
+    * Show render payload JSON
+
+This will make it obvious whether the PDF route receives images/visuals before Puppeteer captures it.
+
+TASK 11 — Fix include flags
+
+Ensure builder defaults are correct:
+
+When a seller creates a new visual:
+
+* include_in_pdf = true by default
+* include_in_html = true by default
+* include_in_seller_report = true by default
+* include_in_buyer_report = true only if safe/public
+
+When a seller uploads a report image:
+
+* include_in_pdf = true by default
+* include_in_html = true by default
+* include_in_seller_report = true by default
+* include_in_buyer_report = true by default unless section is seller-only
+
+TASK 12 — Do not render fake placeholders
+
+If a visual cannot render because data is missing:
+
+* seller PDF can show a small needs-data note
+* buyer PDF should omit it
+* never render fake chart data
+* never render undefined values
+* never render empty chart boxes
+
+TASK 13 — Success criteria
+
+This task is complete when:
+
+1. A saved Charts & Stats visual appears in the correct section of the PDF.
+2. A saved Report Image appears on the PDF cover or correct section.
+3. PDF export uses report_visuals and report_images from the database.
+4. PDF export uses the same render payload as HTML report.
+5. Cloudinary images load before PDF capture.
+6. PDF does not show “Image not supplied” to buyers.
+7. PDF does not show undefined chart values.
+8. Seller PDF can show small missing-data warnings.
+9. Buyer PDF omits missing visuals/images cleanly.
+10. PDF debug route shows exactly what will be exported.
+11. Diagnostics show why any visual or image was skipped.
+12. No fake/demo chart data is used.
