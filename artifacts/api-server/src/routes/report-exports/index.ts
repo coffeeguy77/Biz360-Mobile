@@ -967,15 +967,10 @@ function renderSection(
   const afterPara     = compact ? 5   : 8;
   const afterBullet   = compact ? 3   : 4;
 
-  // In buyer mode, replace placeholder content with a slim notice
+  // In buyer mode, skip placeholder sections entirely — don't show amber "to be confirmed" notices
   const isPlaceholder = sectionIsPlaceholder(section);
   if (isBuyerMode && isPlaceholder) {
-    y = checkY(ctx, y, 24);
-    doc.save().rect(colX, y, colW, 16).fill("#FEF9EC").restore();
-    doc.save().rect(colX, y, 3, 16).fill("#F59E0B").restore();
-    doc.font("Helvetica-Oblique").fontSize(7.5).fillColor("#92400E")
-      .text(`${section.title}: Information to be confirmed by seller.`, colX + 8, y + 4, { width: colW - 12 });
-    return y + 16 + 6;
+    return y;
   }
 
   // Section heading guard — ensure heading + at least 3 body lines fit before breaking
@@ -1786,14 +1781,54 @@ function renderPdfDonutLegendVisual(ctx: PdfCtx, cd: Record<string, unknown>, y:
   const slices = (cd.slices as Array<{ label: string; value: unknown }>) ?? [];
   if (!slices.length) return y;
   const COLORS = [BLUE_ACC, "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#6B7280"];
+
+  // ── Draw donut chart ─────────────────────────────────────────────────────────
+  const OUTER_R = 44;
+  const INNER_R = 24;
+  const CHART_H = OUTER_R * 2 + 8;
+  y = checkY(ctx, y, CHART_H + 6);
+
+  const cx = MARGIN + CONTENT_W / 2;
+  const cy = y + OUTER_R + 4;
+  const total = slices.reduce((s, sl) => s + Math.max(0, Number(sl.value ?? 0)), 0) || 1;
+
+  let startAngle = -Math.PI / 2; // start at 12 o'clock
+  for (let i = 0; i < Math.min(slices.length, 8); i++) {
+    const pct = Math.max(0, Number(slices[i].value ?? 0)) / total;
+    const sweep = pct * 2 * Math.PI;
+    const endAngle = startAngle + sweep;
+    const large = sweep > Math.PI ? 1 : 0;
+
+    const ox1 = cx + OUTER_R * Math.cos(startAngle);
+    const oy1 = cy + OUTER_R * Math.sin(startAngle);
+    const ox2 = cx + OUTER_R * Math.cos(endAngle);
+    const oy2 = cy + OUTER_R * Math.sin(endAngle);
+    const ix1 = cx + INNER_R * Math.cos(startAngle);
+    const iy1 = cy + INNER_R * Math.sin(startAngle);
+    const ix2 = cx + INNER_R * Math.cos(endAngle);
+    const iy2 = cy + INNER_R * Math.sin(endAngle);
+
+    const path = `M ${ox1.toFixed(2)} ${oy1.toFixed(2)} ` +
+      `A ${OUTER_R} ${OUTER_R} 0 ${large} 1 ${ox2.toFixed(2)} ${oy2.toFixed(2)} ` +
+      `L ${ix2.toFixed(2)} ${iy2.toFixed(2)} ` +
+      `A ${INNER_R} ${INNER_R} 0 ${large} 0 ${ix1.toFixed(2)} ${iy1.toFixed(2)} Z`;
+
+    ctx.doc.save().path(path).fill(COLORS[i % COLORS.length]).restore();
+    startAngle = endAngle;
+  }
+
+  y += CHART_H + 10;
+
+  // ── Legend rows with % values ────────────────────────────────────────────────
   const ITEM_H = 13;
-  for (let i = 0; i < Math.min(slices.length, 6); i++) {
+  for (let i = 0; i < Math.min(slices.length, 8); i++) {
     y = checkY(ctx, y, ITEM_H);
+    const pct = Math.round(Math.max(0, Number(slices[i].value ?? 0)) / total * 100);
     ctx.doc.save().circle(MARGIN + 5, y + 7, 4).fill(COLORS[i % COLORS.length]).restore();
     ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
-      .text(sanitizePdfText(String(slices[i].label)), MARGIN + 14, y + 3, { width: CONTENT_W - 80 });
+      .text(sanitizePdfText(String(slices[i].label)), MARGIN + 14, y + 3, { width: CONTENT_W - 60 });
     ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(HEADING_C)
-      .text(sanitizePdfText(String(slices[i].value ?? "")), MARGIN, y + 3, { width: CONTENT_W - 8, align: "right" });
+      .text(`${pct}%`, MARGIN, y + 3, { width: CONTENT_W - 8, align: "right" });
     y += ITEM_H;
   }
   return y + 4;

@@ -430,14 +430,28 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
     case "donut_chart": {
       const slices = (d.slices as Array<{ label: string; value: unknown }>) ?? [];
       if (!slices.length) return null;
+      const total = slices.reduce((s, sl) => s + Number(sl.value ?? 0), 0) || 1;
       content = (
-        <ResponsiveContainer width="100%" height={220}>
-          <PieChart>
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart margin={{ top: 24, bottom: 8, left: 24, right: 24 }}>
             <Pie data={slices} dataKey="value" nameKey="label" cx="50%" cy="50%"
-              innerRadius={55} outerRadius={90} paddingAngle={3}>
+              innerRadius={52} outerRadius={88} paddingAngle={3}
+              label={({ cx: pcx, cy: pcy, midAngle, outerRadius: or, value }) => {
+                const RADIAN = Math.PI / 180;
+                const r = or + 22;
+                const x = pcx + r * Math.cos(-midAngle * RADIAN);
+                const y2 = pcy + r * Math.sin(-midAngle * RADIAN);
+                const pct = Math.round((Number(value) / total) * 100);
+                return (
+                  <text x={x} y={y2} fill="#8B9CB8" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="600">
+                    {`${pct}%`}
+                  </text>
+                );
+              }}
+              labelLine={false}>
               {slices.map((_, i) => <Cell key={i} fill={VIZ_PALETTE[i % VIZ_PALETTE.length]} />)}
             </Pie>
-            <Tooltip contentStyle={VIZ_TIP} />
+            <Tooltip contentStyle={VIZ_TIP} formatter={(v: number) => [`${v.toFixed(1)}%`, ""]} />
             <Legend iconType="circle" iconSize={8}
               formatter={(n) => <span style={{ color: "#8B9CB8", fontSize: 11 }}>{n}</span>} />
           </PieChart>
