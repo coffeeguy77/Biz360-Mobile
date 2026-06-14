@@ -1936,51 +1936,51 @@ async function handlePdf(req: any, res: any): Promise<void> {
       const includedUnits = await db.select().from(businessUnitsTable).where(
         and(eq(businessUnitsTable.cafeId, cafe.id), eq(businessUnitsTable.isIncludedInSale, true)),
       );
-      if (includedUnits.length > 0) {
-        const fmtDiv = (n: string | null | undefined) =>
-          n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
-        const snapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
-        await Promise.all(includedUnits.map(async (u) => {
-          const [uSnap] = await db.select().from(valuationSnapshotsTable).where(
-            and(eq(valuationSnapshotsTable.cafeId, cafe.id), eq(valuationSnapshotsTable.unitId, u.id)),
-          ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
-          if (uSnap) snapByUnit.set(u.id, uSnap);
-        }));
-        const totalRevenue = includedUnits.reduce((sum, u) => sum + Number(snapByUnit.get(u.id)?.grossRevenue ?? 0), 0);
-        const divChartRows = includedUnits.map((u) => {
-          const uSnap = snapByUnit.get(u.id);
-          const rawRevenue = Number(uSnap?.grossRevenue ?? 0);
-          const revenueSharePct = uSnap != null && totalRevenue > 0
-            ? Math.round((rawRevenue / totalRevenue) * 1000) / 10
-            : Number(u.revenueSharePct ?? 0);
-          return {
-            name: u.name,
-            included: true,
-            revenue: rawRevenue,
-            valuation: Number(uSnap?.valuationMidpoint ?? 0),
-            revenueSharePct,
-          };
-        });
-        const divTableRows = includedUnits.map((u) => {
-          const uSnap = snapByUnit.get(u.id);
-          return {
-            Division: u.name,
-            Revenue: fmtDiv(uSnap?.grossRevenue?.toString()),
-            EBITDA: fmtDiv(uSnap?.ebitda?.toString()),
-            Value: fmtDiv(uSnap?.valuationMidpoint?.toString()),
-          };
-        });
-        const divBullets = includedUnits.map((u) => {
-          const uSnap = snapByUnit.get(u.id);
-          const rev = fmtDiv(uSnap?.grossRevenue?.toString());
-          return `${u.name}${rev !== "—" ? ` — Revenue: ${rev}` : ""}`;
-        });
-        allSections = allSections.map((s: any) =>
-          s.sectionKey === "division_breakdown"
-            ? { ...s, chartData: divChartRows, tableData: divTableRows, bulletPoints: divBullets }
-            : s,
-        );
-      }
+      // Always override (even when includedUnits is empty) so excluded unit names
+      // never leak from stale stored chartData/tableData/bulletPoints.
+      const fmtDiv = (n: string | null | undefined) =>
+        n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+      const snapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
+      await Promise.all(includedUnits.map(async (u) => {
+        const [uSnap] = await db.select().from(valuationSnapshotsTable).where(
+          and(eq(valuationSnapshotsTable.cafeId, cafe.id), eq(valuationSnapshotsTable.unitId, u.id)),
+        ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+        if (uSnap) snapByUnit.set(u.id, uSnap);
+      }));
+      const totalRevenue = includedUnits.reduce((sum, u) => sum + Number(snapByUnit.get(u.id)?.grossRevenue ?? 0), 0);
+      const divChartRows = includedUnits.map((u) => {
+        const uSnap = snapByUnit.get(u.id);
+        const rawRevenue = Number(uSnap?.grossRevenue ?? 0);
+        const revenueSharePct = uSnap != null && totalRevenue > 0
+          ? Math.round((rawRevenue / totalRevenue) * 1000) / 10
+          : Number(u.revenueSharePct ?? 0);
+        return {
+          name: u.name,
+          included: true,
+          revenue: rawRevenue,
+          valuation: Number(uSnap?.valuationMidpoint ?? 0),
+          revenueSharePct,
+        };
+      });
+      const divTableRows = includedUnits.map((u) => {
+        const uSnap = snapByUnit.get(u.id);
+        return {
+          Division: u.name,
+          Revenue: fmtDiv(uSnap?.grossRevenue?.toString()),
+          EBITDA: fmtDiv(uSnap?.ebitda?.toString()),
+          Value: fmtDiv(uSnap?.valuationMidpoint?.toString()),
+        };
+      });
+      const divBullets = includedUnits.map((u) => {
+        const uSnap = snapByUnit.get(u.id);
+        const rev = fmtDiv(uSnap?.grossRevenue?.toString());
+        return `${u.name}${rev !== "—" ? ` — Revenue: ${rev}` : ""}`;
+      });
+      allSections = allSections.map((s: any) =>
+        s.sectionKey === "division_breakdown"
+          ? { ...s, chartData: divChartRows, tableData: divTableRows, bulletPoints: divBullets }
+          : s,
+      );
     } catch (_err) {
       // Division enrichment failure is non-fatal — continue with stored data
     }
@@ -2343,49 +2343,49 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
         const pubIncludedUnits = await db.select().from(businessUnitsTable).where(
           and(eq(businessUnitsTable.cafeId, cafeMeta.id), eq(businessUnitsTable.isIncludedInSale, true)),
         );
-        if (pubIncludedUnits.length > 0) {
-          const fmtDiv = (n: string | null | undefined) =>
-            n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
-          const pubSnapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
-          await Promise.all(pubIncludedUnits.map(async (u) => {
-            const [uSnap] = await db.select().from(valuationSnapshotsTable).where(
-              and(eq(valuationSnapshotsTable.cafeId, cafeMeta!.id), eq(valuationSnapshotsTable.unitId, u.id)),
-            ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
-            if (uSnap) pubSnapByUnit.set(u.id, uSnap);
-          }));
-          const pubTotalRevenue = pubIncludedUnits.reduce(
-            (sum, u) => sum + Number(pubSnapByUnit.get(u.id)?.grossRevenue ?? 0), 0,
-          );
-          const pubDivChartRows = pubIncludedUnits.map((u) => {
-            const uSnap = pubSnapByUnit.get(u.id);
-            const rawRevenue = Number(uSnap?.grossRevenue ?? 0);
-            const revenueSharePct = uSnap != null && pubTotalRevenue > 0
-              ? Math.round((rawRevenue / pubTotalRevenue) * 1000) / 10
-              : Number(u.revenueSharePct ?? 0);
-            return { name: u.name, included: true, revenue: rawRevenue, valuation: Number(uSnap?.valuationMidpoint ?? 0), revenueSharePct };
-          });
-          const pubDivTableRows = pubIncludedUnits.map((u) => {
-            const uSnap = pubSnapByUnit.get(u.id);
-            return {
-              Division: u.name,
-              Revenue: fmtDiv(uSnap?.grossRevenue?.toString()),
-              EBITDA: fmtDiv(uSnap?.ebitda?.toString()),
-              Value: fmtDiv(uSnap?.valuationMidpoint?.toString()),
-            };
-          });
-          const pubDivBullets = pubIncludedUnits.map((u) => {
-            const uSnap = pubSnapByUnit.get(u.id);
-            const rev = fmtDiv(uSnap?.grossRevenue?.toString());
-            const val = fmtDiv(uSnap?.valuationMidpoint?.toString());
-            return `${u.name}${rev !== "—" ? ` — Revenue: ${rev}` : ""}${val !== "—" ? `, Value: ${val}` : ""}`;
-          });
-          sections = sections.map((s: any) => {
-            if (s.sectionKey === "division_breakdown") {
-              return { ...s, chartData: pubDivChartRows, tableData: pubDivTableRows, bulletPoints: pubDivBullets };
-            }
-            return s;
-          });
-        }
+        // Always override (even when pubIncludedUnits is empty) — excluded unit
+        // names must never leak from stale stored section data in the buyer PDF.
+        const fmtDiv = (n: string | null | undefined) =>
+          n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+        const pubSnapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
+        await Promise.all(pubIncludedUnits.map(async (u) => {
+          const [uSnap] = await db.select().from(valuationSnapshotsTable).where(
+            and(eq(valuationSnapshotsTable.cafeId, cafeMeta!.id), eq(valuationSnapshotsTable.unitId, u.id)),
+          ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+          if (uSnap) pubSnapByUnit.set(u.id, uSnap);
+        }));
+        const pubTotalRevenue = pubIncludedUnits.reduce(
+          (sum, u) => sum + Number(pubSnapByUnit.get(u.id)?.grossRevenue ?? 0), 0,
+        );
+        const pubDivChartRows = pubIncludedUnits.map((u) => {
+          const uSnap = pubSnapByUnit.get(u.id);
+          const rawRevenue = Number(uSnap?.grossRevenue ?? 0);
+          const revenueSharePct = uSnap != null && pubTotalRevenue > 0
+            ? Math.round((rawRevenue / pubTotalRevenue) * 1000) / 10
+            : Number(u.revenueSharePct ?? 0);
+          return { name: u.name, included: true, revenue: rawRevenue, valuation: Number(uSnap?.valuationMidpoint ?? 0), revenueSharePct };
+        });
+        const pubDivTableRows = pubIncludedUnits.map((u) => {
+          const uSnap = pubSnapByUnit.get(u.id);
+          return {
+            Division: u.name,
+            Revenue: fmtDiv(uSnap?.grossRevenue?.toString()),
+            EBITDA: fmtDiv(uSnap?.ebitda?.toString()),
+            Value: fmtDiv(uSnap?.valuationMidpoint?.toString()),
+          };
+        });
+        const pubDivBullets = pubIncludedUnits.map((u) => {
+          const uSnap = pubSnapByUnit.get(u.id);
+          const rev = fmtDiv(uSnap?.grossRevenue?.toString());
+          const val = fmtDiv(uSnap?.valuationMidpoint?.toString());
+          return `${u.name}${rev !== "—" ? ` — Revenue: ${rev}` : ""}${val !== "—" ? `, Value: ${val}` : ""}`;
+        });
+        sections = sections.map((s: any) => {
+          if (s.sectionKey === "division_breakdown") {
+            return { ...s, chartData: pubDivChartRows, tableData: pubDivTableRows, bulletPoints: pubDivBullets };
+          }
+          return s;
+        });
       } catch (e) {
         logger.warn({ err: e }, "Public PDF: division enrichment failed (non-fatal)");
       }

@@ -406,7 +406,7 @@ export const DEMO_LISTINGS: Listing[] = [
   },
   {
     id: "listing-salon-001",
-    businessName: "Luxe & Co Hair Studio",
+    businessName: "Hair & Beauty Studio",
     category: "Health & Beauty",
     subcategory: "Hair Salon",
     state: "NSW",
@@ -472,7 +472,7 @@ export const DEMO_LISTINGS: Listing[] = [
   },
   {
     id: "listing-laundromat-001",
-    businessName: "SpinCity Laundromat",
+    businessName: "Laundromat Business",
     category: "Services",
     subcategory: "Laundromat",
     state: "QLD",
@@ -505,7 +505,7 @@ export const DEMO_LISTINGS: Listing[] = [
   },
   {
     id: "listing-gym-001",
-    businessName: "Iron Republic Gym",
+    businessName: "Fitness & Gym Centre",
     category: "Health & Fitness",
     subcategory: "Gym",
     state: "VIC",
@@ -572,7 +572,7 @@ export const DEMO_LISTINGS: Listing[] = [
   },
   {
     id: "listing-restaurant-001",
-    businessName: "Ember & Stone Restaurant",
+    businessName: "Restaurant Business",
     category: "Food & Beverage",
     subcategory: "Restaurant",
     state: "NSW",

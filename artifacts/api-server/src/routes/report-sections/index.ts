@@ -1290,35 +1290,36 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
           eq(businessUnitsTable.isIncludedInSale, true),
         ),
       );
-      if (includedUnits.length > 0) {
-        const fmtDiv = (n: string | null | undefined) =>
-          n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
-        const snapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
-        await Promise.all(includedUnits.map(async (u) => {
-          const [snap] = await db.select().from(valuationSnapshotsTable).where(
-            and(
-              eq(valuationSnapshotsTable.cafeId, cafeRow!.id),
-              eq(valuationSnapshotsTable.unitId, u.id),
-            ),
-          ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
-          if (snap) snapByUnit.set(u.id, snap);
-        }));
-        divisionTableRows = includedUnits.map((u) => {
-          const snap = snapByUnit.get(u.id);
-          return {
-            Division: u.name,
-            Revenue: fmtDiv(snap?.grossRevenue?.toString()),
-            EBITDA: fmtDiv(snap?.ebitda?.toString()),
-            Value: fmtDiv(snap?.valuationMidpoint?.toString()),
-          };
-        });
-      }
+      // Always build divisionTableRows (even when empty) so the override below
+      // clears any stale excluded-unit data from the stored section row.
+      const fmtDiv = (n: string | null | undefined) =>
+        n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+      const snapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
+      await Promise.all(includedUnits.map(async (u) => {
+        const [snap] = await db.select().from(valuationSnapshotsTable).where(
+          and(
+            eq(valuationSnapshotsTable.cafeId, cafeRow!.id),
+            eq(valuationSnapshotsTable.unitId, u.id),
+          ),
+        ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+        if (snap) snapByUnit.set(u.id, snap);
+      }));
+      divisionTableRows = includedUnits.map((u) => {
+        const snap = snapByUnit.get(u.id);
+        return {
+          Division: u.name,
+          Revenue: fmtDiv(snap?.grossRevenue?.toString()),
+          EBITDA: fmtDiv(snap?.ebitda?.toString()),
+          Value: fmtDiv(snap?.valuationMidpoint?.toString()),
+        };
+      });
     }
 
     // Override tableData and bulletPoints on division_breakdown with live included-only data.
-    // This ensures excluded units (not part of the sale) are never surfaced in the HTML report.
+    // divisionTableRows is always set (may be []) so excluded unit names never leak
+    // from stale stored data — even when all units are excluded the section is cleared.
     const enrichedFiltered = filtered.map((s) => {
-      if (s.sectionKey === "division_breakdown" && divisionTableRows) {
+      if (s.sectionKey === "division_breakdown" && divisionTableRows !== null) {
         const includedBullets = divisionTableRows.map(
           (r) => `${r.Division}${r.Revenue && r.Revenue !== "—" ? ` — Revenue: ${r.Revenue}` : ""}${r.Value && r.Value !== "—" ? `, Value: ${r.Value}` : ""}`,
         );

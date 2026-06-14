@@ -114,7 +114,7 @@ async function resolveChartData(
         return !!(sec.body?.trim() || (Array.isArray(sec.bulletPoints) && sec.bulletPoints.length > 0) || sec.tableData);
       }).length;
       const hasAnySectionData = allSections.length > 0;
-      if (!snap && !hasAnySectionData) return absent("Valuation");
+      if (!snap && !hasAnySectionData) return absent("Business Health Score");
 
       const aebitda  = Number(snap?.adjustedEbitda ?? 0);
       const equipVal = Number(snap?.totalEquipmentValue ?? 0);

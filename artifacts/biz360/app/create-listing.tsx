@@ -375,8 +375,8 @@ export default function CreateListing() {
         {/* ── Step 0: Basic Info ── */}
         {step === 0 && (
           <View style={styles.fields}>
-            {textField("businessName", "Business Name *", "e.g. The Daily Press Cafe")}
-            {textField("suburb", "Suburb", "e.g. Fitzroy")}
+            {textField("businessName", "Business Name *", "e.g. My Business Name")}
+            {textField("suburb", "Suburb", "e.g. Inner City")}
             {textField("description", "Business Description", "Briefly describe the business, its history, and what makes it attractive to buyers…", false, true)}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>Category</Text>
