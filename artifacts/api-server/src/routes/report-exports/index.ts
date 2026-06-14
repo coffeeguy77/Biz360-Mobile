@@ -1688,7 +1688,7 @@ function renderPdfStatCardVisual(ctx: PdfCtx, cd: Record<string, unknown>, accen
   ctx.doc.font("Helvetica-Bold").fontSize(20).fillColor(accentColor)
     .text(sanitizePdfText(displayVal), MARGIN + 12, y + 8, { width: CONTENT_W - 24 });
   ctx.doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
-    .text(sanitizePdfText(m.label), MARGIN + 12, y + 28, { width: CONTENT_W - 24 });
+    .text(sanitizePdfText(String(m.label ?? "—")), MARGIN + 12, y + 28, { width: CONTENT_W - 24 });
   return y + 48;
 }
 
@@ -1707,7 +1707,7 @@ function renderPdfMetricGridVisual(ctx: PdfCtx, cd: Record<string, unknown>, acc
     ctx.doc.font("Helvetica-Bold").fontSize(12).fillColor(accentColor)
       .text(sanitizePdfText(displayVal), x + 6, y + 7, { width: cellW - 12, align: "center" });
     ctx.doc.font("Helvetica").fontSize(6.5).fillColor(SUBTITLE_C)
-      .text(sanitizePdfText(m.label), x + 4, y + 22, { width: cellW - 8, align: "center" });
+      .text(sanitizePdfText(String(m.label ?? "—")), x + 4, y + 22, { width: cellW - 8, align: "center" });
   }
   return y + cellH + 8;
 }
@@ -1720,7 +1720,7 @@ function renderPdfTableVisual(ctx: PdfCtx, cd: Record<string, unknown>, y: numbe
     y = checkY(ctx, y, ROW_H);
     if (i % 2 === 0) ctx.doc.save().rect(MARGIN, y, CONTENT_W, ROW_H).fill(CHAPTER_BG).restore();
     ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
-      .text(sanitizePdfText(String(rows[i].label)), MARGIN + 8, y + 3, { width: CONTENT_W * 0.55 });
+      .text(sanitizePdfText(String(rows[i].label ?? "—")), MARGIN + 8, y + 3, { width: CONTENT_W * 0.55 });
     ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(HEADING_C)
       .text(sanitizePdfText(String(rows[i].value ?? "—")), MARGIN + CONTENT_W * 0.6, y + 3, { width: CONTENT_W * 0.38, align: "right" });
     y += ROW_H;
@@ -1792,7 +1792,7 @@ function renderPdfChecklistVisual(ctx: PdfCtx, cd: Record<string, unknown>, y: n
     y = checkY(ctx, y, ITEM_H);
     ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(colorOf(item.status)).text(dotOf(item.status), MARGIN, y + 2, { width: 12 });
     ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
-      .text(sanitizePdfText(item.label), MARGIN + 14, y + 2, { width: CONTENT_W - 14 });
+      .text(sanitizePdfText(String(item.label ?? "—")), MARGIN + 14, y + 2, { width: CONTENT_W - 14 });
     y += ITEM_H;
   }
   return y + 4;
@@ -1853,7 +1853,7 @@ function renderPdfDonutLegendVisual(ctx: PdfCtx, cd: Record<string, unknown>, y:
     const pct = Math.round(Math.max(0, Number(slices[i].value ?? 0)) / total * 100);
     ctx.doc.save().circle(MARGIN + 5, y + 7, 4).fill(COLORS[i % COLORS.length]).restore();
     ctx.doc.font("Helvetica").fontSize(8).fillColor(BODY_TEXT)
-      .text(sanitizePdfText(String(slices[i].label)), MARGIN + 14, y + 3, { width: CONTENT_W - 60 });
+      .text(sanitizePdfText(String(slices[i].label ?? "—")), MARGIN + 14, y + 3, { width: CONTENT_W - 60 });
     ctx.doc.font("Helvetica-Bold").fontSize(8).fillColor(HEADING_C)
       .text(`${pct}%`, MARGIN, y + 3, { width: CONTENT_W - 8, align: "right" });
     y += ITEM_H;
@@ -2077,25 +2077,25 @@ async function handlePdf(req: any, res: any): Promise<void> {
           asc(reportImagesTable.sortOrder),
         )
         .limit(1),
-      // Report visuals (status=ready, include_in_pdf=true, appropriate visibility)
+      // Report visuals — fetch ALL non-deleted (unfiltered) so diagnostics can produce
+      // a full included/skipped list with reasons; filtering happens in code below.
       db.select({
-        id:          reportVisualsTable.id,
-        sectionKey:  reportVisualsTable.sectionKey,
-        title:       reportVisualsTable.title,
-        subtitle:    reportVisualsTable.subtitle,
-        visualType:  reportVisualsTable.visualType,
-        chartData:   reportVisualsTable.chartData,
-        sourceLabel: reportVisualsTable.sourceLabel,
-        visualConfig:reportVisualsTable.visualConfig,
+        id:                    reportVisualsTable.id,
+        sectionKey:            reportVisualsTable.sectionKey,
+        title:                 reportVisualsTable.title,
+        subtitle:              reportVisualsTable.subtitle,
+        visualType:            reportVisualsTable.visualType,
+        chartData:             reportVisualsTable.chartData,
+        sourceLabel:           reportVisualsTable.sourceLabel,
+        visualConfig:          reportVisualsTable.visualConfig,
+        status:                reportVisualsTable.status,
+        includeInPdf:          reportVisualsTable.includeInPdf,
+        includeInSellerReport: reportVisualsTable.includeInSellerReport,
+        includeInBuyerReport:  reportVisualsTable.includeInBuyerReport,
       }).from(reportVisualsTable)
         .where(and(
           eq(reportVisualsTable.listingId, listingId),
-          eq(reportVisualsTable.status, "ready"),
-          eq(reportVisualsTable.includeInPdf, true),
           isNull(reportVisualsTable.deletedAt),
-          isSellerDraft
-            ? eq(reportVisualsTable.includeInSellerReport, true)
-            : eq(reportVisualsTable.includeInBuyerReport, true),
         ))
         .orderBy(asc(reportVisualsTable.sortOrder), asc(reportVisualsTable.createdAt)),
     ]);
@@ -2201,16 +2201,38 @@ async function handlePdf(req: any, res: any): Promise<void> {
       bodyUrls.map(([key], i) => [key, bodyBuffers[i]]),
     );
 
+    // ── In-code visual filtering: derive included + skipped-with-reasons ────
+    // reportVisualsRows contains ALL non-deleted visuals (unfiltered from DB).
+    // Apply the same logic that was previously in SQL so we can produce diagnostics.
+    const includedVisuals = reportVisualsRows.filter(
+      (v) => v.status === "ready" && v.includeInPdf &&
+        (isSellerDraft ? v.includeInSellerReport : v.includeInBuyerReport),
+    );
+    const skippedVisualsLog = reportVisualsRows
+      .filter((v) => !includedVisuals.includes(v))
+      .map((v) => {
+        let reason: string;
+        if (v.status !== "ready")               reason = `status=${v.status}`;
+        else if (!v.includeInPdf)               reason = "includeInPdf=false";
+        else if (isSellerDraft && !v.includeInSellerReport) reason = "includeInSellerReport=false";
+        else if (!isSellerDraft && !v.includeInBuyerReport) reason = "includeInBuyerReport=false";
+        else                                    reason = "unknown";
+        return { id: v.id, title: v.title, visualType: v.visualType, sectionKey: v.sectionKey, reason };
+      });
+
     const extra: PdfExtraData = {
       heroImageBuffer, bodyImageBuffers, snapshot, equipment, buyerFunnel, isSellerDraft,
-      reportVisuals: reportVisualsRows as PdfExtraData["reportVisuals"],
+      reportVisuals: includedVisuals as PdfExtraData["reportVisuals"],
     };
 
     // ── PDF diagnostics ─────────────────────────────────────────────────────
     const pdfDiagnostics = {
       visualsQueried:        reportVisualsRows.length,
-      visualsWithSectionKey: reportVisualsRows.filter((v) => v.sectionKey).length,
-      visualsGlobal:         reportVisualsRows.filter((v) => !v.sectionKey).length,
+      visualsIncluded:       includedVisuals.length,
+      visualsWithSectionKey: includedVisuals.filter((v) => v.sectionKey).length,
+      visualsGlobal:         includedVisuals.filter((v) => !v.sectionKey).length,
+      skippedCount:          skippedVisualsLog.length,
+      skippedVisuals:        skippedVisualsLog,
       imagesQueried:         allReportImages.length,
       heroImageSource:       reportImgRaw ? "report_images_cover" : listingHeroUrl ? "listing_hero" : "gradient_fallback",
     };
@@ -2284,12 +2306,15 @@ router.get("/report-exports/:listingId/pdf-debug", requireAuth, async (req: any,
         id:                    reportVisualsTable.id,
         sectionKey:            reportVisualsTable.sectionKey,
         title:                 reportVisualsTable.title,
+        subtitle:              reportVisualsTable.subtitle,
         visualType:            reportVisualsTable.visualType,
+        chartData:             reportVisualsTable.chartData,
+        sourceLabel:           reportVisualsTable.sourceLabel,
+        visualConfig:          reportVisualsTable.visualConfig,
         status:                reportVisualsTable.status,
         includeInPdf:          reportVisualsTable.includeInPdf,
         includeInSellerReport: reportVisualsTable.includeInSellerReport,
         includeInBuyerReport:  reportVisualsTable.includeInBuyerReport,
-        sourceLabel:           reportVisualsTable.sourceLabel,
         sortOrder:             reportVisualsTable.sortOrder,
       }).from(reportVisualsTable)
         .where(and(eq(reportVisualsTable.listingId, listingId), isNull(reportVisualsTable.deletedAt)))
