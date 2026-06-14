@@ -85,19 +85,19 @@ const SECTION_OPTIONS = [
 
 // 11 default suggestion templates
 const DEFAULT_TEMPLATES: Array<{
-  title: string; visualType: string; dataSourceType: string; icon: string; accentColor: string;
+  title: string; visualType: string; dataSourceType: string; icon: string; accentColor: string; sectionKey?: string;
 }> = [
-  { title: "Revenue vs Profit Snapshot",    visualType: "metric_grid",          dataSourceType: "valuation",        icon: "trending-up",   accentColor: "#3B82F6" },
-  { title: "Valuation Bridge",              visualType: "valuation_bridge",     dataSourceType: "valuation",        icon: "bar-chart-2",   accentColor: "#8B5CF6" },
-  { title: "Revenue by Division",           visualType: "donut_chart",          dataSourceType: "divisions",        icon: "pie-chart",     accentColor: "#10B981" },
-  { title: "Divisions Breakdown Table",     visualType: "table",                dataSourceType: "divisions",        icon: "list",          accentColor: "#0EA5E9" },
-  { title: "Top 10 Equipment by Value",     visualType: "horizontal_bar_chart", dataSourceType: "equipment",        icon: "tool",          accentColor: "#F59E0B" },
-  { title: "Equipment by Category",         visualType: "donut_chart",          dataSourceType: "equipment",        icon: "pie-chart",     accentColor: "#F97316" },
-  { title: "Lease Risk Breakdown",          visualType: "horizontal_bar_chart", dataSourceType: "lease",            icon: "file-text",     accentColor: "#EF4444" },
-  { title: "Due Diligence Checklist",       visualType: "checklist",            dataSourceType: "due_diligence",    icon: "check-square",  accentColor: "#16A34A" },
-  { title: "360° Tour Overview",            visualType: "metric_grid",          dataSourceType: "tour",             icon: "aperture",      accentColor: "#6366F1" },
+  { title: "Revenue vs Profit Snapshot",    visualType: "metric_grid",          dataSourceType: "valuation",        icon: "trending-up",   accentColor: "#3B82F6", sectionKey: "financial_performance" },
+  { title: "Valuation Bridge",              visualType: "valuation_bridge",     dataSourceType: "valuation",        icon: "bar-chart-2",   accentColor: "#8B5CF6", sectionKey: "valuation_summary" },
+  { title: "Revenue by Division",           visualType: "donut_chart",          dataSourceType: "divisions",        icon: "pie-chart",     accentColor: "#10B981", sectionKey: "division_breakdown" },
+  { title: "Divisions Breakdown Table",     visualType: "table",                dataSourceType: "divisions",        icon: "list",          accentColor: "#0EA5E9", sectionKey: "division_breakdown" },
+  { title: "Top 10 Equipment by Value",     visualType: "horizontal_bar_chart", dataSourceType: "equipment",        icon: "tool",          accentColor: "#F59E0B", sectionKey: "plant_equipment_summary" },
+  { title: "Equipment by Category",         visualType: "donut_chart",          dataSourceType: "equipment",        icon: "pie-chart",     accentColor: "#F97316", sectionKey: "plant_equipment_summary" },
+  { title: "Lease Risk Breakdown",          visualType: "horizontal_bar_chart", dataSourceType: "lease",            icon: "file-text",     accentColor: "#EF4444", sectionKey: "lease_risk_valuation_impact" },
+  { title: "Due Diligence Checklist",       visualType: "checklist",            dataSourceType: "due_diligence",    icon: "check-square",  accentColor: "#16A34A", sectionKey: "due_diligence_overview" },
+  { title: "360° Tour Overview",            visualType: "metric_grid",          dataSourceType: "tour",             icon: "aperture",      accentColor: "#6366F1", sectionKey: "virtual_tour" },
   { title: "Buyer Engagement Funnel",       visualType: "funnel",               dataSourceType: "buyer_engagement", icon: "users",         accentColor: "#A78BFA" },
-  { title: "Business Health Score",         visualType: "score_card",           dataSourceType: "valuation",        icon: "award",         accentColor: "#34D399" },
+  { title: "Business Health Score",         visualType: "score_card",           dataSourceType: "valuation",        icon: "award",         accentColor: "#34D399", sectionKey: "financial_performance" },
 ];
 
 const ACCENT_COLORS = [
@@ -474,7 +474,7 @@ export default function ChartsStatsScreen() {
     setStep(0);
     setWizTitle(template?.title ?? "");
     setWizSubtitle("");
-    setWizSection("");
+    setWizSection(template?.sectionKey ?? "");
     setWizType(template?.visualType ?? "metric_grid");
     setWizSource(template?.dataSourceType ?? "valuation");
     setWizColor(template?.accentColor ?? "#3B82F6");

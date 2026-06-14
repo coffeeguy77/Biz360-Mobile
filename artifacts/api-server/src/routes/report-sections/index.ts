@@ -1073,7 +1073,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
 
     // Fetch business cover metadata from the KV store / cafes table
     const [cafeRow] = await db
-      .select({ name: cafesTable.name })
+      .select({ id: cafesTable.id, name: cafesTable.name })
       .from(cafesTable)
       .where(eq(cafesTable.listingId, listingId))
       .limit(1);
@@ -1281,6 +1281,47 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       }
     }
 
+    // ── Dynamically build division_breakdown table with included-only units ──────
+    let divisionTableRows: Array<Record<string, string>> | null = null;
+    if (cafeRow?.id) {
+      const includedUnits = await db.select().from(businessUnitsTable).where(
+        and(
+          eq(businessUnitsTable.cafeId, cafeRow.id),
+          eq(businessUnitsTable.isIncludedInSale, true),
+        ),
+      );
+      if (includedUnits.length > 0) {
+        const fmtDiv = (n: string | null | undefined) =>
+          n && Number(n) > 0 ? `$${Number(n).toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+        const snapByUnit = new Map<string, typeof valuationSnapshotsTable.$inferSelect>();
+        await Promise.all(includedUnits.map(async (u) => {
+          const [snap] = await db.select().from(valuationSnapshotsTable).where(
+            and(
+              eq(valuationSnapshotsTable.cafeId, cafeRow!.id),
+              eq(valuationSnapshotsTable.unitId, u.id),
+            ),
+          ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+          if (snap) snapByUnit.set(u.id, snap);
+        }));
+        divisionTableRows = includedUnits.map((u) => {
+          const snap = snapByUnit.get(u.id);
+          return {
+            Division: u.name,
+            Revenue: fmtDiv(snap?.grossRevenue?.toString()),
+            EBITDA: fmtDiv(snap?.ebitda?.toString()),
+            Value: fmtDiv(snap?.valuationMidpoint?.toString()),
+          };
+        });
+      }
+    }
+
+    // Override tableData on division_breakdown with live included-only data
+    const enrichedFiltered = filtered.map((s) =>
+      s.sectionKey === "division_breakdown" && divisionTableRows
+        ? { ...s, tableData: divisionTableRows }
+        : s,
+    );
+
     // ── Fetch report_visuals (HTML-included; all statuses so UI can show placeholders) ─
     const reportVisuals = await db
       .select({
@@ -1294,6 +1335,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         sourceLabel:  reportVisualsTable.sourceLabel,
         sourceConfidence: reportVisualsTable.sourceConfidence,
         visualConfig: reportVisualsTable.visualConfig,
+        includeInHtml:        reportVisualsTable.includeInHtml,
         includeInBuyerReport: reportVisualsTable.includeInBuyerReport,
         visibility:   reportVisualsTable.visibility,
         sortOrder:    reportVisualsTable.sortOrder,
@@ -1311,7 +1353,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       )
       .orderBy(asc(reportVisualsTable.sortOrder));
 
-    res.json({ sections: filtered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages, reportVisuals, tourSrcDoc } });
+    res.json({ sections: enrichedFiltered, accessLevel, buyerGranted, meta: { ...coverMeta, reportImages, reportVisuals, tourSrcDoc } });
   } catch (err: unknown) {
     const e = err as Error & { status?: number };
     res.status(e.status ?? 500).json({ error: e.message ?? "Failed to load HTML sections" });
