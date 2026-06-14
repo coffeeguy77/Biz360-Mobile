@@ -124,20 +124,20 @@ async function resolveChartData(
       );
       if (!units.length) return absent("Division Data");
 
-      // Fetch latest published per-unit snapshot for each active unit
-      const unitSnaps = await db.select().from(valuationSnapshotsTable).where(
-        and(
-          eq(valuationSnapshotsTable.cafeId, cafeId),
-          eq(valuationSnapshotsTable.isPublished, true),
-          isNotNull(valuationSnapshotsTable.unitId),
-        ),
-      ).orderBy(desc(valuationSnapshotsTable.createdAt));
-
-      // Map: unitId → latest published snapshot (first occurrence = newest due to order)
-      const snapByUnit = new Map<string, typeof unitSnaps[0]>();
-      for (const s of unitSnaps) {
-        if (s.unitId && !snapByUnit.has(s.unitId)) snapByUnit.set(s.unitId, s);
-      }
+      // Fetch the latest snapshot per unit regardless of published status —
+      // same logic as GET /snapshots/latest so chart data matches what the
+      // division tabs already show the seller.
+      type UnitSnap = typeof valuationSnapshotsTable.$inferSelect;
+      const snapByUnit = new Map<string, UnitSnap>();
+      await Promise.all(units.map(async (u) => {
+        const [snap] = await db.select().from(valuationSnapshotsTable).where(
+          and(
+            eq(valuationSnapshotsTable.cafeId, cafeId),
+            eq(valuationSnapshotsTable.unitId, u.id),
+          ),
+        ).orderBy(desc(valuationSnapshotsTable.createdAt)).limit(1);
+        if (snap) snapByUnit.set(u.id, snap);
+      }));
 
       // Compute total revenue for share-percentage derivation
       const totalRevenue = units.reduce((sum, u) => {
