@@ -2120,28 +2120,41 @@ async function handlePdf(req: any, res: any): Promise<void> {
       ? cloudinary.url(reportImgRaw.publicId, { width: 1600, crop: "fill", quality: "auto", fetch_format: "auto", secure: true })
       : null;
     // ── report_images section resolver ────────────────────────────────────────
-    // Fetch all non-deleted, PDF-included report_images for the listing so we can
-    // resolve per-chapter section images. Panoramic allowed for virtual_tour only.
-    // Visibility: seller copy respects includeInSellerReport; buyer/public respects includeInBuyerReport.
-    const allReportImages = await db
+    // Fetch ALL non-deleted images (unfiltered) so diagnostics can produce a
+    // full included/skipped list with reasons; filtering happens in code below.
+    const allReportImagesRaw = await db
       .select({
-        publicId:   reportImagesTable.cloudinaryPublicId,
-        imageRole:  reportImagesTable.imageRole,
-        sectionKey: reportImagesTable.sectionKey,
-        isPanoramic: reportImagesTable.isPanoramic,
-        sortOrder:  reportImagesTable.sortOrder,
-        isPrimary:  reportImagesTable.isPrimary,
+        publicId:              reportImagesTable.cloudinaryPublicId,
+        imageRole:             reportImagesTable.imageRole,
+        sectionKey:            reportImagesTable.sectionKey,
+        isPanoramic:           reportImagesTable.isPanoramic,
+        sortOrder:             reportImagesTable.sortOrder,
+        isPrimary:             reportImagesTable.isPrimary,
+        includeInPdf:          reportImagesTable.includeInPdf,
+        includeInSellerReport: reportImagesTable.includeInSellerReport,
+        includeInBuyerReport:  reportImagesTable.includeInBuyerReport,
       })
       .from(reportImagesTable)
       .where(and(
         eq(reportImagesTable.listingId, listingId),
-        eq(reportImagesTable.includeInPdf, true),
         isNull(reportImagesTable.deletedAt),
-        isSellerDraft
-          ? eq(reportImagesTable.includeInSellerReport, true)
-          : eq(reportImagesTable.includeInBuyerReport, true),
       ))
       .orderBy(desc(reportImagesTable.isPrimary), asc(reportImagesTable.sortOrder));
+
+    // Filter in code: images that actually appear in the PDF (for the resolver)
+    const allReportImages = allReportImagesRaw.filter(
+      (img) => img.includeInPdf && (isSellerDraft ? img.includeInSellerReport : img.includeInBuyerReport),
+    );
+    const skippedImagesLog = allReportImagesRaw
+      .filter((img) => !allReportImages.includes(img))
+      .map((img) => {
+        let reason: string;
+        if (!img.includeInPdf)                               reason = "includeInPdf=false";
+        else if (isSellerDraft && !img.includeInSellerReport) reason = "includeInSellerReport=false";
+        else if (!isSellerDraft && !img.includeInBuyerReport) reason = "includeInBuyerReport=false";
+        else                                                   reason = "unknown";
+        return { publicId: img.publicId, imageRole: img.imageRole, sectionKey: img.sectionKey, reason };
+      });
 
     /**
      * Pick the best report_image public_id for a PDF chapter.
@@ -2233,7 +2246,10 @@ async function handlePdf(req: any, res: any): Promise<void> {
       visualsGlobal:         includedVisuals.filter((v) => !v.sectionKey).length,
       skippedCount:          skippedVisualsLog.length,
       skippedVisuals:        skippedVisualsLog,
-      imagesQueried:         allReportImages.length,
+      imagesQueried:         allReportImagesRaw.length,
+      imagesIncluded:        allReportImages.length,
+      imagesSkipped:         skippedImagesLog.length,
+      skippedImages:         skippedImagesLog,
       heroImageSource:       reportImgRaw ? "report_images_cover" : listingHeroUrl ? "listing_hero" : "gradient_fallback",
     };
     logger.info({ listingId, mode, style, diagnostics: pdfDiagnostics }, "PDF export diagnostics");
@@ -2607,6 +2623,33 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
         logger.warn({ err: e }, "Public PDF: division enrichment failed (non-fatal)");
       }
     }
+
+    // ── Report visuals for public (buyer) PDF ─────────────────────────────────
+    // Mirrors the seller path: fetch all non-deleted, filter in code by buyer flags.
+    const pubVisualsRaw = await db
+      .select({
+        id:           reportVisualsTable.id,
+        sectionKey:   reportVisualsTable.sectionKey,
+        title:        reportVisualsTable.title,
+        subtitle:     reportVisualsTable.subtitle,
+        visualType:   reportVisualsTable.visualType,
+        chartData:    reportVisualsTable.chartData,
+        sourceLabel:  reportVisualsTable.sourceLabel,
+        visualConfig: reportVisualsTable.visualConfig,
+        status:       reportVisualsTable.status,
+        includeInPdf: reportVisualsTable.includeInPdf,
+        includeInBuyerReport: reportVisualsTable.includeInBuyerReport,
+      })
+      .from(reportVisualsTable)
+      .where(and(
+        eq(reportVisualsTable.listingId, listingId),
+        isNull(reportVisualsTable.deletedAt),
+      ))
+      .orderBy(asc(reportVisualsTable.sortOrder), asc(reportVisualsTable.createdAt));
+
+    pubExtra.reportVisuals = pubVisualsRaw.filter(
+      (v) => v.status === "ready" && v.includeInPdf && v.includeInBuyerReport,
+    ) as PdfExtraData["reportVisuals"];
 
     // ── report_images section resolver for public PDF ──────────────────────────
     // Fetch all non-deleted, PDF-included report images visible to buyers so we
