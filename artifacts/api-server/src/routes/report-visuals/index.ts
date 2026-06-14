@@ -77,7 +77,10 @@ async function resolveChartData(
     }
 
     case "valuation": {
-      const [snap] = await db
+      // Prefer the most-recently published snapshot; fall back to most-recent
+      // draft so that Revenue vs Profit / Valuation Bridge charts render even
+      // before the seller formally publishes their valuation.
+      let [snap] = await db
         .select()
         .from(valuationSnapshotsTable)
         .where(
@@ -89,6 +92,20 @@ async function resolveChartData(
         )
         .orderBy(desc(valuationSnapshotsTable.createdAt))
         .limit(1);
+      if (!snap) {
+        // No published snapshot — try any (draft) snapshot for this listing.
+        [snap] = await db
+          .select()
+          .from(valuationSnapshotsTable)
+          .where(
+            and(
+              eq(valuationSnapshotsTable.cafeId, cafeId),
+              sql`${valuationSnapshotsTable.unitId} IS NULL`,
+            ),
+          )
+          .orderBy(desc(valuationSnapshotsTable.createdAt))
+          .limit(1);
+      }
       // Compute business health score server-side — mirrors the mobile app formula:
       //   score = Math.round(sectionCompleteness × 0.5 + ebitdaHealth × 0.5)
       // Section completeness: how many of the 12 required section keys have content.
@@ -345,7 +362,8 @@ async function resolveChartData(
         counts[l.eventType] = (counts[l.eventType] ?? 0) + 1;
       }
       const funnel = [
-        { label: "Listing Views",      value: counts["section_viewed"] ?? 0 },
+        // "report_viewed" is the event logged when a buyer opens the report page.
+        { label: "Listing Views",       value: counts["report_viewed"] ?? counts["section_viewed"] ?? 0 },
         { label: "Tour Starts",         value: counts["tour_clicked"] ?? 0 },
         { label: "Unique Buyers",       value: new Set(logs.map((l) => l.buyerId ?? l.buyerPhone).filter(Boolean)).size },
         { label: "Messages",            value: counts["contact_clicked"] ?? 0 },
@@ -354,12 +372,13 @@ async function resolveChartData(
         { label: "Inspections Booked",  value: counts["inspection_booked"] ?? 0 },
         { label: "PDFs Downloaded",     value: counts["pdf_downloaded"] ?? 0 },
       ];
+      const hasAnyActivity = logs.length > 0;
       const max = Math.max(...funnel.map((f) => f.value), 1);
       return {
         data: { funnel: funnel.map((f) => ({ ...f, pct: Math.round((f.value / max) * 100) })), totalEvents: logs.length },
-        status: funnel[0].value > 0 ? "ready" : "needs_data",
+        status: hasAnyActivity ? "ready" : "needs_data",
         sourceLabel: "App — Buyer Engagement",
-        sourceConfidence: funnel[0].value > 0 ? "medium" : "unavailable",
+        sourceConfidence: hasAnyActivity ? "medium" : "unavailable",
       };
     }
 
