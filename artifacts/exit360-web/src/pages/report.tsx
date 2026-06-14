@@ -64,6 +64,9 @@ interface ReportVisualEntry {
   includeInBuyerReport: boolean;
   includeInHtml: boolean;
   sortOrder: number;
+  // above_body | below_body (default) | full_width | inline | sidebar
+  // inline and sidebar are rendered as below_body in the current layout.
+  sectionPlacement?: string | null;
 }
 
 interface ReportMeta {
@@ -1492,20 +1495,20 @@ export function ReportPage() {
                         </div>
                       </div>
 
-                      {section.isLocked
-                        ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                        : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
-                      }
-
-                      {/* Per-section report visuals */}
-                      {!section.isLocked && (data?.meta?.reportVisuals ?? [])
-                        .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
-                        .sort((a, b) => a.sortOrder - b.sortOrder)
-                        .map((v) => v.status === "ready"
+                      {(() => {
+                        const allVisuals = !section.isLocked
+                          ? (data?.meta?.reportVisuals ?? [])
+                              .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
+                              .sort((a, b) => a.sortOrder - b.sortOrder)
+                          : [];
+                        const aboveVisuals = allVisuals.filter((v) => v.sectionPlacement === "above_body");
+                        const belowVisuals = allVisuals.filter((v) => v.sectionPlacement !== "above_body");
+                        const renderVisual = (v: ReportVisualEntry) => v.status === "ready"
                           ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
                           : (
                             <div key={v.id} className={cn(
                               "rounded-xl border p-4 mt-4 flex items-center gap-3",
+                              v.sectionPlacement === "full_width" ? "w-full" : "",
                               printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
                             )}>
                               <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
@@ -1514,9 +1517,22 @@ export function ReportPage() {
                                 <div className="text-xs text-slate-500 mt-0.5">Data not available — chart pending source data</div>
                               </div>
                             </div>
-                          )
-                        )
-                      }
+                          );
+                        return (
+                          <>
+                            {/* above_body visuals render before section content */}
+                            {aboveVisuals.map(renderVisual)}
+
+                            {section.isLocked
+                              ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
+                              : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
+                            }
+
+                            {/* below_body / full_width / inline / sidebar visuals render after content */}
+                            {belowVisuals.map(renderVisual)}
+                          </>
+                        );
+                      })()}
 
                       {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
                         <SellerNotesBlock notes={section.sellerNotes} printMode={printMode} />
@@ -1548,20 +1564,20 @@ export function ReportPage() {
                   {section.subtitle && <p className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-500")}>{section.subtitle}</p>}
                 </div>
               </div>
-              {section.isLocked
-                ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
-              }
-
-              {/* Per-section report visuals */}
-              {!section.isLocked && (data?.meta?.reportVisuals ?? [])
-                .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
-                .sort((a, b) => a.sortOrder - b.sortOrder)
-                .map((v) => v.status === "ready"
+              {(() => {
+                const allVisuals = !section.isLocked
+                  ? (data?.meta?.reportVisuals ?? [])
+                      .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                  : [];
+                const aboveVisuals = allVisuals.filter((v) => v.sectionPlacement === "above_body");
+                const belowVisuals = allVisuals.filter((v) => v.sectionPlacement !== "above_body");
+                const renderVisual = (v: ReportVisualEntry) => v.status === "ready"
                   ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
                   : (
                     <div key={v.id} className={cn(
                       "rounded-xl border p-4 mt-4 flex items-center gap-3",
+                      v.sectionPlacement === "full_width" ? "w-full" : "",
                       printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
                     )}>
                       <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
@@ -1570,9 +1586,18 @@ export function ReportPage() {
                         <div className="text-xs text-slate-500 mt-0.5">Data not available — chart pending source data</div>
                       </div>
                     </div>
-                  )
-                )
-              }
+                  );
+                return (
+                  <>
+                    {aboveVisuals.map(renderVisual)}
+                    {section.isLocked
+                      ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
+                      : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
+                    }
+                    {belowVisuals.map(renderVisual)}
+                  </>
+                );
+              })()}
             </section>
           );
         })}

@@ -199,11 +199,11 @@ export interface Listing {
 export const DEMO_LISTINGS: Listing[] = [
   {
     id: "listing-cafe-001",
-    businessName: "The Daily Press Espresso Bar",
+    businessName: "Established Espresso Bar",
     category: "Food & Beverage",
     subcategory: "Cafe",
     state: "VIC",
-    suburb: "Fitzroy",
+    suburb: "Inner City",
     askingPrice: 185000,
     weeklyRevenue: 18500,
     adjustedProfit: 72000,
@@ -217,7 +217,7 @@ export const DEMO_LISTINGS: Listing[] = [
     trainingPeriod: "4 weeks",
     growthOpportunities:
       "Catering arm not yet activated, online orders, corporate accounts in nearby precinct",
-    risks: "New cafe opening 200m away in 6 months",
+    risks: "New competitor opening nearby in 6 months",
     verified: true,
     badges: ["identity", "abn", "financials", "lease", "tour", "seller_supplied"],
     hasTour: true,
@@ -226,7 +226,7 @@ export const DEMO_LISTINGS: Listing[] = [
     heroColor: "#7C4A1E",
     imageUrl: "https://picsum.photos/seed/cafe-biz360/800/500",
     description:
-      "Established espresso bar in the heart of Fitzroy. Strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
+      "Established espresso bar with strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
     savedCount: 47,
     viewCount: 312,
     tourStarts: 89,

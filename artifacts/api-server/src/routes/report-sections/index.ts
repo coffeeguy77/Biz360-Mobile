@@ -1343,7 +1343,8 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
         includeInHtml:        reportVisualsTable.includeInHtml,
         includeInBuyerReport: reportVisualsTable.includeInBuyerReport,
         visibility:   reportVisualsTable.visibility,
-        sortOrder:    reportVisualsTable.sortOrder,
+        sortOrder:         reportVisualsTable.sortOrder,
+        sectionPlacement:  reportVisualsTable.sectionPlacement,
       })
       .from(reportVisualsTable)
       .where(

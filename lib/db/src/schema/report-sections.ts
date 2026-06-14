@@ -215,6 +215,10 @@ export const reportVisualsTable = pgTable("report_visuals", {
   manualData:           jsonb("manual_data").$type<Array<Record<string, unknown>>>(),
   chartData:            jsonb("chart_data").$type<Record<string, unknown>>(),
   sortOrder:            integer("sort_order").notNull().default(0),
+  // section_placement controls where the visual renders relative to section body content.
+  // above_body: before body/bullets/table; below_body: after (default); full_width: after, full span.
+  // inline and sidebar are treated as below_body in the current renderer.
+  sectionPlacement:     text("section_placement").notNull().default("below_body"),
   includeInPdf:         boolean("include_in_pdf").notNull().default(true),
   includeInHtml:        boolean("include_in_html").notNull().default(true),
   includeInBuyerReport: boolean("include_in_buyer_report").notNull().default(true),

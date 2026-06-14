@@ -89,14 +89,12 @@ async function resolveChartData(
         )
         .orderBy(desc(valuationSnapshotsTable.createdAt))
         .limit(1);
-      if (!snap || !snap.adjustedEbitda) return absent("Valuation");
-      const aebitda = Number(snap.adjustedEbitda);
-      const equipVal = Number(snap.totalEquipmentValue ?? 0);
-
       // Compute business health score server-side — mirrors the mobile app formula:
       //   score = Math.round(sectionCompleteness × 0.5 + ebitdaHealth × 0.5)
       // Section completeness: how many of the 12 required section keys have content.
-      // EBITDA health: adjustedEbitda / grossRevenue × 100, capped at 100.
+      // EBITDA health: adjustedEbitda / grossRevenue × 100, capped at 100 (no multiplier).
+      // Score is computable even when snapshot is absent (uses sections-only half).
+      // Returns absent only when NEITHER snapshot NOR any section data is available.
       const REQUIRED_KEYS = [
         "business_overview", "reason_for_sale", "key_selling_points",
         "financial_performance_summary", "addbacks_adjusted_ebitda",
@@ -115,13 +113,29 @@ async function resolveChartData(
         if (!sec) return false;
         return !!(sec.body?.trim() || (Array.isArray(sec.bulletPoints) && sec.bulletPoints.length > 0) || sec.tableData);
       }).length;
+      const hasAnySectionData = allSections.length > 0;
+      if (!snap && !hasAnySectionData) return absent("Valuation");
+
+      const aebitda  = Number(snap?.adjustedEbitda ?? 0);
+      const equipVal = Number(snap?.totalEquipmentValue ?? 0);
       const completenessScore = REQUIRED_KEYS.length > 0
         ? Math.round((filled / REQUIRED_KEYS.length) * 100) : 0;
-      const grossRev = Number(snap.grossRevenue ?? 0);
-      const ebitdaHealthScore = grossRev > 0
-        ? Math.min(100, Math.round((aebitda / grossRev) * 100 * 3.5))
+      const grossRev = Number(snap?.grossRevenue ?? 0);
+      // EBITDA health: adjustedEbitda / grossRevenue × 100, capped at 100 — no multiplier.
+      const ebitdaHealthScore = grossRev > 0 && aebitda > 0
+        ? Math.min(100, Math.round((aebitda / grossRev) * 100))
         : 0;
       const businessHealthScore = Math.round(completenessScore * 0.5 + ebitdaHealthScore * 0.5);
+
+      if (!snap) {
+        // Snapshot absent — return sections-only health (no financial metrics)
+        return {
+          data: { businessHealthScore },
+          status: "ready",
+          sourceLabel: "App — Section Completeness",
+          sourceConfidence: "low",
+        };
+      }
 
       return {
         data: {

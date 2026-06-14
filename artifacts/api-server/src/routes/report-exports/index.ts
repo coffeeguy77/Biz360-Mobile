@@ -2381,7 +2381,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
           });
           sections = sections.map((s: any) => {
             if (s.sectionKey === "division_breakdown") {
-              return { ...s, chartData: { ...((s.chartData as object) ?? {}), bars: pubDivChartRows }, tableData: pubDivTableRows, bulletPoints: pubDivBullets };
+              return { ...s, chartData: pubDivChartRows, tableData: pubDivTableRows, bulletPoints: pubDivBullets };
             }
             return s;
           });
