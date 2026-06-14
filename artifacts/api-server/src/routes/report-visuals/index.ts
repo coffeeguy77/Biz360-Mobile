@@ -128,9 +128,11 @@ async function resolveChartData(
       const businessHealthScore = Math.round(completenessScore * 0.5 + ebitdaHealthScore * 0.5);
 
       if (!snap) {
-        // Snapshot absent — return sections-only health (no financial metrics)
+        // Snapshot absent — return sections-only health (no financial metrics).
+        // sectionsOnly:true signals buildChartData to return null for non-score-card types,
+        // so stat_card / metric_grid / valuation_bridge etc. show needs_data, not empty charts.
         return {
-          data: { businessHealthScore },
+          data: { businessHealthScore, sectionsOnly: true },
           status: "ready",
           sourceLabel: "App — Section Completeness",
           sourceConfidence: "low",
@@ -407,6 +409,9 @@ function buildChartData(
 ): Record<string, unknown> | null {
   if (resolved.status !== "ready" && !manualData?.length) return null;
   const raw = resolved.data ?? {};
+  // Sections-only valuation data (snapshot absent) is only meaningful for score_card.
+  // Guard here so stat_card / metric_grid / valuation_bridge etc. fall through to needs_data.
+  if ((raw as any).sectionsOnly === true && visualType !== "score_card") return null;
 
   // Manual data override — shape rows to match each renderer's expected contract
   if (manualData?.length) {

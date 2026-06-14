@@ -1501,14 +1501,24 @@ export function ReportPage() {
                               .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
                               .sort((a, b) => a.sortOrder - b.sortOrder)
                           : [];
-                        const aboveVisuals = allVisuals.filter((v) => v.sectionPlacement === "above_body");
-                        const belowVisuals = allVisuals.filter((v) => v.sectionPlacement !== "above_body");
-                        const renderVisual = (v: ReportVisualEntry) => v.status === "ready"
-                          ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
-                          : (
+                        const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
+                        const sidebarVisuals = allVisuals.filter((v) => v.sectionPlacement === "sidebar");
+                        // below_body (default), inline, full_width all render after section content
+                        const belowVisuals   = allVisuals.filter((v) =>
+                          !["above_body", "sidebar"].includes(v.sectionPlacement ?? "below_body")
+                        );
+                        // renderVisual applies placement-aware layout to BOTH ready and pending states
+                        const renderVisual = (v: ReportVisualEntry) => {
+                          const isFullWidth = v.sectionPlacement === "full_width";
+                          if (v.status === "ready") {
+                            return isFullWidth
+                              ? <div key={v.id} className="w-full"><ReportVisualBlock visual={v} printMode={printMode} /></div>
+                              : <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />;
+                          }
+                          return (
                             <div key={v.id} className={cn(
                               "rounded-xl border p-4 mt-4 flex items-center gap-3",
-                              v.sectionPlacement === "full_width" ? "w-full" : "",
+                              isFullWidth ? "w-full" : "",
                               printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
                             )}>
                               <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
@@ -1518,17 +1528,24 @@ export function ReportPage() {
                               </div>
                             </div>
                           );
+                        };
+                        const mainContent = section.isLocked
+                          ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
+                          : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />;
                         return (
                           <>
-                            {/* above_body visuals render before section content */}
+                            {/* above_body: render before section body */}
                             {aboveVisuals.map(renderVisual)}
-
-                            {section.isLocked
-                              ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                              : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
-                            }
-
-                            {/* below_body / full_width / inline / sidebar visuals render after content */}
+                            {/* sidebar: flex-row layout with section body in main column */}
+                            {sidebarVisuals.length > 0 ? (
+                              <div className="flex gap-6 items-start">
+                                <div className="flex-1 min-w-0">{mainContent}</div>
+                                <div className="w-56 flex-shrink-0 hidden sm:block space-y-3">
+                                  {sidebarVisuals.map(renderVisual)}
+                                </div>
+                              </div>
+                            ) : mainContent}
+                            {/* below_body / inline / full_width: render after section body */}
                             {belowVisuals.map(renderVisual)}
                           </>
                         );
@@ -1570,14 +1587,22 @@ export function ReportPage() {
                       .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
                       .sort((a, b) => a.sortOrder - b.sortOrder)
                   : [];
-                const aboveVisuals = allVisuals.filter((v) => v.sectionPlacement === "above_body");
-                const belowVisuals = allVisuals.filter((v) => v.sectionPlacement !== "above_body");
-                const renderVisual = (v: ReportVisualEntry) => v.status === "ready"
-                  ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
-                  : (
+                const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
+                const sidebarVisuals = allVisuals.filter((v) => v.sectionPlacement === "sidebar");
+                const belowVisuals   = allVisuals.filter((v) =>
+                  !["above_body", "sidebar"].includes(v.sectionPlacement ?? "below_body")
+                );
+                const renderVisual = (v: ReportVisualEntry) => {
+                  const isFullWidth = v.sectionPlacement === "full_width";
+                  if (v.status === "ready") {
+                    return isFullWidth
+                      ? <div key={v.id} className="w-full"><ReportVisualBlock visual={v} printMode={printMode} /></div>
+                      : <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />;
+                  }
+                  return (
                     <div key={v.id} className={cn(
                       "rounded-xl border p-4 mt-4 flex items-center gap-3",
-                      v.sectionPlacement === "full_width" ? "w-full" : "",
+                      isFullWidth ? "w-full" : "",
                       printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
                     )}>
                       <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
@@ -1587,13 +1612,21 @@ export function ReportPage() {
                       </div>
                     </div>
                   );
+                };
+                const mainContent = section.isLocked
+                  ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
+                  : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />;
                 return (
                   <>
                     {aboveVisuals.map(renderVisual)}
-                    {section.isLocked
-                      ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                      : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />
-                    }
+                    {sidebarVisuals.length > 0 ? (
+                      <div className="flex gap-6 items-start">
+                        <div className="flex-1 min-w-0">{mainContent}</div>
+                        <div className="w-56 flex-shrink-0 hidden sm:block space-y-3">
+                          {sidebarVisuals.map(renderVisual)}
+                        </div>
+                      </div>
+                    ) : mainContent}
                     {belowVisuals.map(renderVisual)}
                   </>
                 );
