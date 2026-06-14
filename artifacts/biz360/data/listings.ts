@@ -199,7 +199,7 @@ export interface Listing {
 export const DEMO_LISTINGS: Listing[] = [
   {
     id: "listing-cafe-001",
-    businessName: "Established Espresso Bar",
+    businessName: "Established Café",
     category: "Food & Beverage",
     subcategory: "Cafe",
     state: "VIC",
@@ -226,7 +226,7 @@ export const DEMO_LISTINGS: Listing[] = [
     heroColor: "#7C4A1E",
     imageUrl: "https://picsum.photos/seed/cafe-biz360/800/500",
     description:
-      "Established espresso bar with strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
+      "Established café with strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
     savedCount: 47,
     viewCount: 312,
     tourStarts: 89,

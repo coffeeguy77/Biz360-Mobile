@@ -28,9 +28,9 @@ export interface Listing {
 export const DEMO_LISTINGS: Listing[] = [
   {
     id: "user-listing-1779894194896",
-    businessName: "Specialty Coffee Roastery & Espresso Bar",
+    businessName: "Specialty Coffee Business",
     category: "Food & Beverage",
-    subcategory: "Specialty Coffee Roastery & Espresso Bar",
+    subcategory: "Specialty Coffee Business",
     state: "ACT",
     suburb: "Inner City",
     askingPrice: 300000,
@@ -47,7 +47,7 @@ export const DEMO_LISTINGS: Listing[] = [
     heroColor: "#D97706",
     imageUrl: "https://res.cloudinary.com/dzx6x1hou/image/upload/v1780049037/biz360/u-61414631463-1779893721125/user-listing-1779894194896/pano_1780049035695.jpg",
     description:
-      "Speciality coffee company roastery and espresso bar. 23-space virtual tour including roastery floor, hydroponic coffee farm, barista stations, retail and development rooms. Relocating interstate.",
+      "Specialty coffee business with 23-space virtual tour including production floor, hydroponic farm, barista stations, retail and development rooms. Relocating interstate.",
     savedCount: 0,
     viewCount: 84,
     tourStarts: 181,
@@ -55,7 +55,7 @@ export const DEMO_LISTINGS: Listing[] = [
   },
   {
     id: "listing-cafe-001",
-    businessName: "Established Espresso Bar",
+    businessName: "Established Café",
     category: "Food & Beverage",
     subcategory: "Cafe",
     state: "VIC",
@@ -74,7 +74,7 @@ export const DEMO_LISTINGS: Listing[] = [
     heroColor: "#7C4A1E",
     imageUrl: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=800",
     description:
-      "Established espresso bar with strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
+      "Established café with strong loyal customer base, premium equipment, and a proven revenue model. Turnkey operation with trained staff in place.",
     savedCount: 47,
     viewCount: 312,
     tourStarts: 89,

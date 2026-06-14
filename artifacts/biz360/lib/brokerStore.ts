@@ -26,10 +26,10 @@ export const TEAM_MEMBERS = ["James H.", "Emma K.", "Ryan B.", "Unassigned"];
 function defaultLeads(): Lead[] {
   const now = Date.now();
   return [
-    { id: "l1", name: "Michael Reynolds", listing: "Iron Republic Gym",        listingId: "listing-gym-001",        action: "Tour completed · 6:12 avg", assignedTo: "James H.", quality: "hot",  status: "open", timestamp: now - 1800000   },
-    { id: "l2", name: "Angela Torres",    listing: "Ember & Stone Restaurant", listingId: "listing-restaurant-001", action: "Financials requested",       assignedTo: "Emma K.",  quality: "hot",  status: "open", timestamp: now - 7200000   },
-    { id: "l3", name: "Sam Wu",           listing: "Iron Republic Gym",        listingId: "listing-gym-001",        action: "Saved listing",              assignedTo: "James H.", quality: "warm", status: "open", timestamp: now - 86400000  },
-    { id: "l4", name: "Rebecca Lane",     listing: "Ember & Stone Restaurant", listingId: "listing-restaurant-001", action: "Listing viewed × 3",         assignedTo: "Unassigned", quality: "cold", status: "open", timestamp: now - 259200000 },
+    { id: "l1", name: "Michael Reynolds", listing: "Fitness & Gym Centre",  listingId: "listing-gym-001",        action: "Tour completed · 6:12 avg", assignedTo: "James H.", quality: "hot",  status: "open", timestamp: now - 1800000   },
+    { id: "l2", name: "Angela Torres",    listing: "Restaurant Business",   listingId: "listing-restaurant-001", action: "Financials requested",       assignedTo: "Emma K.",  quality: "hot",  status: "open", timestamp: now - 7200000   },
+    { id: "l3", name: "Sam Wu",           listing: "Fitness & Gym Centre",  listingId: "listing-gym-001",        action: "Saved listing",              assignedTo: "James H.", quality: "warm", status: "open", timestamp: now - 86400000  },
+    { id: "l4", name: "Rebecca Lane",     listing: "Restaurant Business",   listingId: "listing-restaurant-001", action: "Listing viewed × 3",         assignedTo: "Unassigned", quality: "cold", status: "open", timestamp: now - 259200000 },
   ];
 }
 

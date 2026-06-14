@@ -570,12 +570,14 @@ function SectionContent({
   reportImages,
   printMode,
   tourSrcDoc,
+  inlineVisuals,
 }: {
   section: ReportSection;
   listingId: string;
   reportImages?: ReportImageEntry[];
   printMode: boolean;
   tourSrcDoc?: string | null;
+  inlineVisuals?: ReportVisualEntry[];
 }) {
   const ChartComponent = SECTION_CHART_MAP[section.sectionKey];
   const chartData = section.chartData
@@ -642,6 +644,27 @@ function SectionContent({
         <p className="text-slate-500 italic text-sm">This section has not yet been completed.</p>
       )}
       {section.body && <SectionBodyText body={section.body} />}
+      {/* inline visuals — embedded in section flow after body text, before bullets */}
+      {inlineVisuals && inlineVisuals.length > 0 && (
+        <div className="space-y-3">
+          {inlineVisuals.map((v) =>
+            v.status === "ready"
+              ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
+              : (
+                <div key={v.id} className={cn(
+                  "rounded-xl border p-4 flex items-center gap-3",
+                  printMode ? "bg-slate-50 border-slate-200" : "bg-[#0A1828]/40 border-[#1E3A5C]/40"
+                )}>
+                  <AlertTriangle size={14} className="text-slate-500 flex-shrink-0" />
+                  <div>
+                    <div className={cn("text-sm font-semibold", printMode ? "text-slate-600" : "text-slate-400")}>{v.title}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Data not available — chart pending source data</div>
+                  </div>
+                </div>
+              )
+          )}
+        </div>
+      )}
       {section.bulletPoints && section.bulletPoints.length > 0 && (
         <SectionBullets bullets={section.bulletPoints} />
       )}
@@ -1503,9 +1526,11 @@ export function ReportPage() {
                           : [];
                         const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
                         const sidebarVisuals = allVisuals.filter((v) => v.sectionPlacement === "sidebar");
-                        // below_body (default), inline, full_width all render after section content
+                        // inline: embedded inside section flow (between body text and bullets)
+                        const inlineVisuals  = allVisuals.filter((v) => v.sectionPlacement === "inline");
+                        // below_body (default) and full_width render after all section content
                         const belowVisuals   = allVisuals.filter((v) =>
-                          !["above_body", "sidebar"].includes(v.sectionPlacement ?? "below_body")
+                          !["above_body", "sidebar", "inline"].includes(v.sectionPlacement ?? "below_body")
                         );
                         // renderVisual applies placement-aware layout to BOTH ready and pending states
                         const renderVisual = (v: ReportVisualEntry) => {
@@ -1531,7 +1556,7 @@ export function ReportPage() {
                         };
                         const mainContent = section.isLocked
                           ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                          : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />;
+                          : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} inlineVisuals={inlineVisuals} />;
                         return (
                           <>
                             {/* above_body: render before section body */}
@@ -1545,7 +1570,7 @@ export function ReportPage() {
                                 </div>
                               </div>
                             ) : mainContent}
-                            {/* below_body / inline / full_width: render after section body */}
+                            {/* below_body / full_width: render after all section content */}
                             {belowVisuals.map(renderVisual)}
                           </>
                         );
@@ -1589,8 +1614,9 @@ export function ReportPage() {
                   : [];
                 const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
                 const sidebarVisuals = allVisuals.filter((v) => v.sectionPlacement === "sidebar");
+                const inlineVisuals  = allVisuals.filter((v) => v.sectionPlacement === "inline");
                 const belowVisuals   = allVisuals.filter((v) =>
-                  !["above_body", "sidebar"].includes(v.sectionPlacement ?? "below_body")
+                  !["above_body", "sidebar", "inline"].includes(v.sectionPlacement ?? "below_body")
                 );
                 const renderVisual = (v: ReportVisualEntry) => {
                   const isFullWidth = v.sectionPlacement === "full_width";
@@ -1615,7 +1641,7 @@ export function ReportPage() {
                 };
                 const mainContent = section.isLocked
                   ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                  : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} />;
+                  : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} inlineVisuals={inlineVisuals} />;
                 return (
                   <>
                     {aboveVisuals.map(renderVisual)}
