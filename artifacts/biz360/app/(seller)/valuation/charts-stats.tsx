@@ -209,7 +209,7 @@ function VisualPreview({ visual }: { visual: ReportVisual | null }) {
                 <View style={pv.barTrack}>
                   <View style={[pv.barFill, { width: `${pct}%` as any }]} />
                 </View>
-                <Text style={pv.barVal}>{String(b.value)}</Text>
+                <Text style={pv.barVal}>{b.value != null && String(b.value) !== "undefined" ? String(b.value) : (b as any).count != null ? String((b as any).count) : "—"}</Text>
               </View>
             );
           })}

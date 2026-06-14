@@ -1577,12 +1577,35 @@ async function buildPdf(
 
       if (growthSec && riskSec) {
         y = renderTwoColumnPair(ctx, growthSec, riskSec, y, isBuyerMode, isCompact);
+        // Inject visuals for both paired sections immediately after the two-column block
+        if (style !== "data_room" && extra.reportVisuals.length > 0) {
+          const pairVisuals = extra.reportVisuals.filter(
+            (v) => v.sectionKey === growthSec.sectionKey || v.sectionKey === riskSec.sectionKey,
+          );
+          if (pairVisuals.length > 0) y = renderReportVisualsBlock(ctx, pairVisuals, y, isBuyerMode);
+        }
       } else {
-        if (growthSec) y = renderSection(ctx, growthSec, y, isBuyerMode, isCompact);
-        if (riskSec)   y = renderSection(ctx, riskSec,   y, isBuyerMode, isCompact);
+        if (growthSec) {
+          y = renderSection(ctx, growthSec, y, isBuyerMode, isCompact);
+          if (style !== "data_room" && extra.reportVisuals.length > 0) {
+            const sv = extra.reportVisuals.filter((v) => v.sectionKey === growthSec.sectionKey);
+            if (sv.length > 0) y = renderReportVisualsBlock(ctx, sv, y, isBuyerMode);
+          }
+        }
+        if (riskSec) {
+          y = renderSection(ctx, riskSec,   y, isBuyerMode, isCompact);
+          if (style !== "data_room" && extra.reportVisuals.length > 0) {
+            const sv = extra.reportVisuals.filter((v) => v.sectionKey === riskSec.sectionKey);
+            if (sv.length > 0) y = renderReportVisualsBlock(ctx, sv, y, isBuyerMode);
+          }
+        }
       }
       for (const sec of otherSecs) {
         y = renderSection(ctx, sec, y, isBuyerMode, isCompact);
+        if (style !== "data_room" && extra.reportVisuals.length > 0) {
+          const sv = extra.reportVisuals.filter((v) => v.sectionKey === sec.sectionKey);
+          if (sv.length > 0) y = renderReportVisualsBlock(ctx, sv, y, isBuyerMode);
+        }
       }
 
     } else {
@@ -1595,32 +1618,28 @@ async function buildPdf(
           }
         }
         y = renderSection(ctx, sec, y, isBuyerMode, isCompact);
-      }
-    }
-
-    // ── Render seller/buyer-appropriate report_visuals for this chapter ─────
-    // buyer_summary + data_room: visuals suppressed (page-budget + duplication).
-    // For all other styles: render visuals whose section_key matches any section
-    // in this chapter. Global visuals (sectionKey=null) are rendered at the end.
-    if (style !== "data_room" && style !== "buyer_summary" && extra.reportVisuals.length > 0) {
-      const chapterKeys = new Set(group.secs.map((s: any) => s.sectionKey as string));
-      const chapterVisuals = extra.reportVisuals.filter(
-        (v) => v.sectionKey && chapterKeys.has(v.sectionKey),
-      );
-      if (chapterVisuals.length > 0) {
-        y = renderReportVisualsBlock(ctx, chapterVisuals, y);
+        // ── Per-section visual injection ───────────────────────────────────
+        // Visuals are injected immediately after the section they are linked to
+        // (matched by sectionKey). data_room style skips all report_visuals.
+        // buyer_summary style now includes report_visuals filtered by DB query
+        // (includeInBuyerReport=true), rendered cleanly with no seller labels.
+        if (style !== "data_room" && extra.reportVisuals.length > 0) {
+          const sv = extra.reportVisuals.filter((v) => v.sectionKey === sec.sectionKey);
+          if (sv.length > 0) y = renderReportVisualsBlock(ctx, sv, y, isBuyerMode);
+        }
       }
     }
 
     carryY = y;
   }
 
-  // Render global visuals (sectionKey=null) after all chapters
-  // Note: `y` is block-scoped inside the loop above — use carryY for position continuity
-  if (style !== "data_room" && style !== "buyer_summary" && extra.reportVisuals.length > 0) {
+  // Render global visuals (sectionKey=null) after all chapters.
+  // data_room skips all report_visuals; all other styles (including buyer_summary)
+  // render global visuals here — buyer visuals are already filtered by DB query.
+  if (style !== "data_room" && extra.reportVisuals.length > 0) {
     const globalVisuals = extra.reportVisuals.filter((v) => !v.sectionKey);
     if (globalVisuals.length > 0) {
-      carryY = renderReportVisualsBlock(ctx, globalVisuals, carryY);
+      carryY = renderReportVisualsBlock(ctx, globalVisuals, carryY, isBuyerMode);
     }
   }
 }
@@ -1663,10 +1682,11 @@ function renderPdfStatCardVisual(ctx: PdfCtx, cd: Record<string, unknown>, accen
   const metrics = (cd.metrics as Array<{ label: string; value: unknown }>) ?? [];
   const m = metrics[0];
   if (!m) return y;
+  const displayVal = m.value != null && String(m.value) !== "undefined" ? String(m.value) : "—";
   y = checkY(ctx, y, 48);
   ctx.doc.save().rect(MARGIN, y, CONTENT_W, 40).fill(CHAPTER_BG).restore();
   ctx.doc.font("Helvetica-Bold").fontSize(20).fillColor(accentColor)
-    .text(sanitizePdfText(String(m.value)), MARGIN + 12, y + 8, { width: CONTENT_W - 24 });
+    .text(sanitizePdfText(displayVal), MARGIN + 12, y + 8, { width: CONTENT_W - 24 });
   ctx.doc.font("Helvetica").fontSize(8).fillColor(SUBTITLE_C)
     .text(sanitizePdfText(m.label), MARGIN + 12, y + 28, { width: CONTENT_W - 24 });
   return y + 48;
@@ -1682,9 +1702,10 @@ function renderPdfMetricGridVisual(ctx: PdfCtx, cd: Record<string, unknown>, acc
   for (let i = 0; i < Math.min(metrics.length, 4); i++) {
     const m = metrics[i];
     const x = MARGIN + i * (cellW + 6);
+    const displayVal = m.value != null && String(m.value) !== "undefined" ? String(m.value) : "—";
     ctx.doc.save().rect(x, y, cellW, cellH).fill(CHAPTER_BG).restore();
     ctx.doc.font("Helvetica-Bold").fontSize(12).fillColor(accentColor)
-      .text(sanitizePdfText(String(m.value)), x + 6, y + 7, { width: cellW - 12, align: "center" });
+      .text(sanitizePdfText(displayVal), x + 6, y + 7, { width: cellW - 12, align: "center" });
     ctx.doc.font("Helvetica").fontSize(6.5).fillColor(SUBTITLE_C)
       .text(sanitizePdfText(m.label), x + 4, y + 22, { width: cellW - 8, align: "center" });
   }
@@ -1708,23 +1729,29 @@ function renderPdfTableVisual(ctx: PdfCtx, cd: Record<string, unknown>, y: numbe
 }
 
 function renderPdfBarsVisual(ctx: PdfCtx, cd: Record<string, unknown>, accentColor: string, y: number): number {
-  const bars = (cd.bars as Array<{ label: string; value: unknown; raw?: number }>) ?? [];
+  const bars = (cd.bars as Array<{ label: string; value: unknown; raw?: number; count?: number }>) ?? [];
   if (!bars.length) return y;
-  const maxRaw = Math.max(...bars.map((b) => Number(b.raw ?? 0)), 1);
+  const maxRaw = Math.max(...bars.map((b) => Number((b as any).raw ?? (b as any).count ?? 0)), 1);
   const BAR_H = 14;
   const LBL_W = 90;
   const VAL_W = 50;
   const BAR_W = CONTENT_W - LBL_W - VAL_W - 20;
   for (const b of bars.slice(0, 8)) {
+    // Resolve display value; skip any bar where no renderable value exists
+    const displayVal = b.value != null && String(b.value) !== "undefined"
+      ? String(b.value)
+      : (b as any).count != null ? String((b as any).count) : null;
+    if (displayVal === null) continue;
+    const rawNum = Number((b as any).raw ?? (b as any).count ?? 0);
     y = checkY(ctx, y, BAR_H + 4);
-    const pct = Math.max(Math.round((Number(b.raw ?? 0) / maxRaw) * BAR_W), 2);
+    const pct = Math.max(Math.round((rawNum / maxRaw) * BAR_W), 2);
     ctx.doc.font("Helvetica").fontSize(7.5).fillColor(BODY_TEXT)
-      .text(sanitizePdfText(String(b.label)), MARGIN, y + 3, { width: LBL_W, ellipsis: true });
+      .text(sanitizePdfText(String(b.label ?? "—")), MARGIN, y + 3, { width: LBL_W, ellipsis: true });
     const barX = MARGIN + LBL_W + 8;
     ctx.doc.save().rect(barX, y + 4, BAR_W, 7).fill("#E2E8F0").restore();
     ctx.doc.save().rect(barX, y + 4, pct, 7).fill(accentColor).restore();
     ctx.doc.font("Helvetica-Bold").fontSize(7.5).fillColor(HEADING_C)
-      .text(sanitizePdfText(String(b.value ?? "")), barX + BAR_W + 6, y + 3, { width: VAL_W });
+      .text(sanitizePdfText(displayVal), barX + BAR_W + 6, y + 3, { width: VAL_W });
     y += BAR_H + 3;
   }
   return y + 4;
@@ -1850,11 +1877,14 @@ function renderOneReportVisual(
   ctx: PdfCtx,
   v: PdfExtraData["reportVisuals"][0],
   y: number,
+  isBuyerMode?: boolean,
 ): number {
   const cd = v.chartData;
   if (!cd) return y;
   const accentColor = (v.visualConfig?.accentColor as string | undefined) ?? BLUE_ACC;
-  y = renderPdfVisualHeader(ctx, v.title, v.subtitle, v.sourceLabel, y);
+  // Buyer mode: omit sourceLabel so buyer charts are clean (no seller-attribution notes)
+  const sourceLabel = isBuyerMode ? null : v.sourceLabel;
+  y = renderPdfVisualHeader(ctx, v.title, v.subtitle, sourceLabel, y);
   switch (v.visualType) {
     case "stat_card":           y = renderPdfStatCardVisual(ctx, cd, accentColor, y);  break;
     case "metric_grid":         y = renderPdfMetricGridVisual(ctx, cd, accentColor, y); break;
@@ -1875,9 +1905,10 @@ function renderReportVisualsBlock(
   ctx: PdfCtx,
   visuals: PdfExtraData["reportVisuals"],
   y: number,
+  isBuyerMode?: boolean,
 ): number {
   for (const v of visuals) {
-    y = renderOneReportVisual(ctx, v, y);
+    y = renderOneReportVisual(ctx, v, y, isBuyerMode);
   }
   return y;
 }
@@ -2175,6 +2206,16 @@ async function handlePdf(req: any, res: any): Promise<void> {
       reportVisuals: reportVisualsRows as PdfExtraData["reportVisuals"],
     };
 
+    // ── PDF diagnostics ─────────────────────────────────────────────────────
+    const pdfDiagnostics = {
+      visualsQueried:        reportVisualsRows.length,
+      visualsWithSectionKey: reportVisualsRows.filter((v) => v.sectionKey).length,
+      visualsGlobal:         reportVisualsRows.filter((v) => !v.sectionKey).length,
+      imagesQueried:         allReportImages.length,
+      heroImageSource:       reportImgRaw ? "report_images_cover" : listingHeroUrl ? "listing_hero" : "gradient_fallback",
+    };
+    logger.info({ listingId, mode, style, diagnostics: pdfDiagnostics }, "PDF export diagnostics");
+
     const doc = new PDFDocument({ size: "A4", margin: 0, info: {
       Title: `Information Memorandum — ${biz}`,
       Author: "Exit360",
@@ -2185,6 +2226,10 @@ async function handlePdf(req: any, res: any): Promise<void> {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Cache-Control", "no-cache");
+    // Expose diagnostics to seller/admin via response header (visible in network inspector)
+    if (isSellerDraft) {
+      res.setHeader("X-Pdf-Diagnostics", JSON.stringify(pdfDiagnostics));
+    }
     doc.pipe(res);
 
     const ctx: PdfCtx = { doc, biz, pg: 1 };
@@ -2210,6 +2255,153 @@ async function handlePdf(req: any, res: any): Promise<void> {
 
 router.get("/report-exports/pdf/:listingId",  requireAuth, handlePdf);
 router.post("/report-exports/pdf/:listingId", requireAuth, handlePdf);
+
+// ── PDF debug route (authenticated seller-only) ───────────────────────────────
+// Returns an HTML page with the full PDF render payload, diagnostics panel,
+// and a Download PDF link. Useful for diagnosing missing visuals / images.
+router.get("/report-exports/:listingId/pdf-debug", requireAuth, async (req: any, res: any): Promise<void> => {
+  const userId    = req.user!.id as string;
+  const listingId = req.params.listingId as string;
+
+  try {
+    const [cafe] = await db
+      .select({ id: cafesTable.id, name: cafesTable.name, businessName: cafesTable.businessName })
+      .from(cafesTable)
+      .where(and(eq(cafesTable.listingId, listingId), eq(cafesTable.ownerId, userId)))
+      .limit(1);
+
+    if (!cafe) {
+      res.status(403).send("<h1>Not authorised to debug this listing</h1>");
+      return;
+    }
+
+    const [sections, allVisuals, allImages] = await Promise.all([
+      db.select({ sectionKey: reportSectionsTable.sectionKey, title: reportSectionsTable.title, visibility: (reportSectionsTable as any).visibility })
+        .from(reportSectionsTable)
+        .where(eq(reportSectionsTable.listingId, listingId))
+        .orderBy(asc(reportSectionsTable.sortOrder)),
+      db.select({
+        id:                    reportVisualsTable.id,
+        sectionKey:            reportVisualsTable.sectionKey,
+        title:                 reportVisualsTable.title,
+        visualType:            reportVisualsTable.visualType,
+        status:                reportVisualsTable.status,
+        includeInPdf:          reportVisualsTable.includeInPdf,
+        includeInSellerReport: reportVisualsTable.includeInSellerReport,
+        includeInBuyerReport:  reportVisualsTable.includeInBuyerReport,
+        sourceLabel:           reportVisualsTable.sourceLabel,
+        sortOrder:             reportVisualsTable.sortOrder,
+      }).from(reportVisualsTable)
+        .where(and(eq(reportVisualsTable.listingId, listingId), isNull(reportVisualsTable.deletedAt)))
+        .orderBy(asc(reportVisualsTable.sortOrder), asc(reportVisualsTable.createdAt)),
+      db.select({
+        id:                    reportImagesTable.id,
+        imageRole:             reportImagesTable.imageRole,
+        sectionKey:            reportImagesTable.sectionKey,
+        isPrimary:             reportImagesTable.isPrimary,
+        includeInPdf:          reportImagesTable.includeInPdf,
+        includeInSellerReport: reportImagesTable.includeInSellerReport,
+        includeInBuyerReport:  reportImagesTable.includeInBuyerReport,
+        cloudinarySecureUrl:   reportImagesTable.cloudinarySecureUrl,
+      }).from(reportImagesTable)
+        .where(and(eq(reportImagesTable.listingId, listingId), isNull(reportImagesTable.deletedAt)))
+        .orderBy(asc(reportImagesTable.sortOrder)),
+    ]);
+
+    const pdfVisuals   = allVisuals.filter((v) => v.status === "ready" && v.includeInPdf && v.includeInSellerReport);
+    const skippedVisuals = allVisuals
+      .filter((v) => !(v.status === "ready" && v.includeInPdf && v.includeInSellerReport))
+      .map((v) => ({
+        id: v.id, title: v.title,
+        reason: v.status !== "ready" ? `status=${v.status}` : !v.includeInPdf ? "includeInPdf=false" : "includeInSellerReport=false",
+      }));
+    const pdfImages    = allImages.filter((i) => i.includeInPdf && i.includeInSellerReport);
+    const diagnostics  = {
+      sectionsTotal:         sections.length,
+      visualsQueried:        allVisuals.length,
+      visualsInPdf:          pdfVisuals.length,
+      visualsWithSectionKey: pdfVisuals.filter((v) => v.sectionKey).length,
+      visualsGlobal:         pdfVisuals.filter((v) => !v.sectionKey).length,
+      skippedCount:          skippedVisuals.length,
+      skippedVisuals,
+      imagesQueried:         allImages.length,
+      imagesSellerPdf:       pdfImages.length,
+      imagesBuyerPdf:        allImages.filter((i) => i.includeInPdf && i.includeInBuyerReport).length,
+    };
+
+    const payload = {
+      listingId,
+      cafe:         { id: cafe.id, name: cafe.name ?? cafe.businessName },
+      sections,
+      reportVisuals: pdfVisuals,
+      reportImages:  pdfImages,
+      diagnostics,
+    };
+
+    const json    = JSON.stringify(payload, null, 2).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const skipHtml = skippedVisuals.length > 0
+      ? `<div class="skip-list">${skippedVisuals.map((v) => `<div class="skip-item">⚠ ${v.title ?? v.id} — ${v.reason}</div>`).join("")}</div>`
+      : `<div class="skip-item ok">✓ No skipped visuals</div>`;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PDF Debug — ${listingId}</title>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:0}
+    .hdr{background:#1e3a5c;padding:14px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #334155}
+    .hdr h1{margin:0;font-size:15px;color:#93c5fd;flex:1}
+    .btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:6px}
+    .btn-p{background:#2563eb;color:#fff}.btn-s{background:#334155;color:#e2e8f0}.btn:hover{opacity:.85}
+    .diag{background:#1e293b;border:1px solid #334155;border-radius:8px;margin:16px 24px;padding:16px}
+    .diag h2{margin:0 0 12px;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+    .card{background:#0f172a;border-radius:6px;padding:10px 12px}
+    .card .v{font-size:22px;font-weight:700;color:#60a5fa}
+    .card .l{font-size:11px;color:#64748b;margin-top:2px}
+    .skip-list{margin-top:12px}
+    .skip-item{font-size:12px;color:#f87171;background:#2d1a1a;border-radius:4px;padding:4px 8px;margin-bottom:4px}
+    .skip-item.ok{color:#4ade80;background:#0f2d1a}
+    .json-section{margin:0 24px 24px}
+    .json-section h2{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+    pre{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;overflow-x:auto;font-size:11px;line-height:1.5;color:#e2e8f0;max-height:60vh;overflow-y:auto}
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <h1>PDF Debug — ${listingId}</h1>
+    <button class="btn btn-s" onclick="location.reload()">↻ Refresh</button>
+    <a class="btn btn-p" href="/api/report-exports/pdf/${listingId}?mode=seller&style=compact" target="_blank">⬇ Download PDF</a>
+  </div>
+  <div class="diag">
+    <h2>Diagnostics</h2>
+    <div class="grid">
+      <div class="card"><div class="v">${diagnostics.visualsInPdf}</div><div class="l">Visuals in PDF</div></div>
+      <div class="card"><div class="v">${diagnostics.visualsWithSectionKey}</div><div class="l">Section-linked</div></div>
+      <div class="card"><div class="v">${diagnostics.visualsGlobal}</div><div class="l">Global visuals</div></div>
+      <div class="card"><div class="v">${diagnostics.skippedCount}</div><div class="l">Skipped</div></div>
+      <div class="card"><div class="v">${diagnostics.imagesSellerPdf}</div><div class="l">Seller images</div></div>
+      <div class="card"><div class="v">${diagnostics.imagesBuyerPdf}</div><div class="l">Buyer images</div></div>
+    </div>
+    ${skipHtml}
+  </div>
+  <div class="json-section">
+    <h2>Render Payload</h2>
+    <pre>${json}</pre>
+  </div>
+</body>
+</html>`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch (err: unknown) {
+    const e = err as Error;
+    logger.error({ err: e }, "PDF debug failed");
+    if (!res.headersSent) res.status(500).send(`<pre>Error: ${(e as Error).message}</pre>`);
+  }
+});
 
 // ── Public buyer PDF ──────────────────────────────────────────────────────────
 router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): Promise<void> => {

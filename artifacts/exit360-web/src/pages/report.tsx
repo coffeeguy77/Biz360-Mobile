@@ -1030,6 +1030,17 @@ export function ReportPage() {
               <Download size={12} />
               {downloading ? "Generating…" : "Download PDF"}
             </button>
+            {isSeller && (
+              <a
+                href={`/api/report-exports/${listingId}/pdf-debug`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 transition-colors"
+              >
+                <ExternalLink size={12} />
+                PDF Debug
+              </a>
+            )}
           </div>
         </div>
       </nav>
@@ -1154,6 +1165,16 @@ export function ReportPage() {
             >
               <Download size={15} /> Download PDF
             </button>
+            {isSeller && (
+              <a
+                href={`/api/report-exports/${listingId}/pdf-debug`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 text-sm font-medium px-5 py-2.5 rounded-xl border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 transition-colors"
+              >
+                <ExternalLink size={15} /> PDF Debug
+              </a>
+            )}
             <button
               onClick={() => recordAccessLog(listingId, "contact_clicked")}
               className={cn(

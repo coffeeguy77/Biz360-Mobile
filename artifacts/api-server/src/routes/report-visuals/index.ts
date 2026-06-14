@@ -510,12 +510,12 @@ function buildChartData(
       }
       if ((raw as any).funnel) return { bars: (raw as any).funnel, ...resolved };
       if ((raw as any).topAssets) return { bars: (raw as any).topAssets.map((a: any) => ({ label: a.name, value: a.value, raw: a.raw })), ...resolved };
-      if ((raw as any).riskRows) return { bars: (raw as any).riskRows, ...resolved };
+      if ((raw as any).riskRows) return { bars: (raw as any).riskRows.map((r: any) => ({ label: r.label, value: String(r.count ?? 0), raw: Number(r.count ?? 0), color: r.color })), ...resolved };
       if ((raw as any).categoryRows) return { bars: (raw as any).categoryRows.map((c: any) => ({ label: c.cat, value: c.value, raw: c.raw })), ...resolved };
       return { bars: buildMetricList(raw, config), ...resolved };
 
     case "donut_chart":
-      if ((raw as any).riskRows) return { slices: (raw as any).riskRows, ...resolved };
+      if ((raw as any).riskRows) return { slices: (raw as any).riskRows.map((r: any) => ({ label: r.label, value: Number(r.count ?? 0), raw: Number(r.count ?? 0), color: r.color })), ...resolved };
       if ((raw as any).categoryRows) return { slices: (raw as any).categoryRows.map((c: any) => ({ label: c.cat, value: c.value, raw: c.raw })), ...resolved };
       if (Array.isArray((raw as any).rows)) {
         const rows = (raw as any).rows as any[];
