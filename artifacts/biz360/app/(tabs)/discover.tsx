@@ -19,6 +19,7 @@ import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingListings } from "@/lib/adminStore";
 import { pendingToListing } from "@/lib/listingUtils";
+import { apiGet } from "@/lib/apiStore";
 import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
 
 const DEFAULT_FILTERS: FilterState = {
@@ -40,14 +41,25 @@ export default function DiscoverScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([getPendingListings(), getSavedIds()]).then(([all, ids]) => {
+      (async () => {
+        const [all, ids] = await Promise.all([getPendingListings(), getSavedIds()]);
         if (!active) return;
         const approved = all
           .filter((p) => p.status === "approved")
           .map(pendingToListing);
-        setListings(approved);
         setSavedIds(ids);
-      });
+        // Resolve cover photo: listing.photos[0] first, then first tour space photo
+        const withPhotos = await Promise.all(
+          approved.map(async (listing) => {
+            if (listing.imageUrl) return listing;
+            const spaces = await apiGet<any[]>(`biz360_tour_spaces_v1_${listing.id}`);
+            const photo = spaces?.[0]?.photos?.[0] ?? spaces?.[0]?.panoramaUrl ?? null;
+            return photo ? { ...listing, imageUrl: photo } : listing;
+          }),
+        );
+        if (!active) return;
+        setListings(withPhotos);
+      })();
       return () => { active = false; };
     }, []),
   );
