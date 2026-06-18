@@ -191,6 +191,8 @@ export default function ReportHubScreen() {
           equipCount:    active.filter((i: any) => i.imageRole === "equipment").length,
           has360:        active.some((i: any) => i.imageRole === "360_preview"),
         });
+      } else {
+        setImageStats({ total: 0, coverSet: false, heroCount: 0, exteriorCount: 0, equipCount: 0, has360: false });
       }
       if (vizRes.ok) {
         const data = await vizRes.json();
@@ -205,6 +207,8 @@ export default function ReportHubScreen() {
           sellerOnly:   vs.filter((v: any) => !v.includeInBuyerReport).length,
           htmlVisible:  vs.filter((v: any) => v.includeInHtml).length,
         });
+      } else {
+        setVisualStats({ total: 0, ready: 0, needsData: 0, buyerVisible: 0, manual: 0, verified: 0, sellerOnly: 0, htmlVisible: 0 });
       }
       if (cafeRes.ok) {
         const data = await cafeRes.json();
@@ -221,7 +225,10 @@ export default function ReportHubScreen() {
         const sc = selectedCafe as any;
         setBusinessName(sc?.businessName ?? sc?.title ?? sc?.name ?? "My Business");
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      setImageStats((s) => s ?? { total: 0, coverSet: false, heroCount: 0, exteriorCount: 0, equipCount: 0, has360: false });
+      setVisualStats((s) => s ?? { total: 0, ready: 0, needsData: 0, buyerVisible: 0, manual: 0, verified: 0, sellerOnly: 0, htmlVisible: 0 });
+    }
     finally { setLoading(false); }
   }, [listingId, selectedCafe?.id]);
 
