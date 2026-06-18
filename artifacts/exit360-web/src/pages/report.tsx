@@ -943,6 +943,8 @@ export function ReportPage() {
     return { rendered, missing, placeholderCount: placeholderSections.length, imageTotal: imgs.length, imageDiagnostics };
   }, [sections, data?.meta?.reportImages, data?.accessLevel]);
 
+  const isSeller = data?.accessLevel === "seller";
+
   // IntersectionObserver — highlights the chapter link in sidebar + tab strip
   // as the user scrolls, using a top-biased rootMargin so the active chapter
   // updates as soon as its header enters the top 30% of the viewport.
