@@ -19,7 +19,8 @@ import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingListings } from "@/lib/adminStore";
 import { pendingToListing } from "@/lib/listingUtils";
-import { apiGet } from "@/lib/apiStore";
+import { getTourSpaces } from "@/lib/tourStore";
+import { API_BASE } from "@/lib/apiStore";
 import { getSavedIds, toggleSaved as persistToggleSaved } from "@/lib/savedStore";
 
 const DEFAULT_FILTERS: FilterState = {
@@ -48,12 +49,25 @@ export default function DiscoverScreen() {
           .filter((p) => p.status === "approved")
           .map(pendingToListing);
         setSavedIds(ids);
-        // Resolve cover photo: listing.photos[0] first, then first tour space photo
+        // Resolve cover photo with a 3-level fallback per listing:
+        // 1. photos[0] from PendingListing (set at submission time)
+        // 2. primary-cover from report_images DB (most reliable — seller's uploaded cover)
+        // 3. first tour space photo / panorama URL
         const withPhotos = await Promise.all(
           approved.map(async (listing) => {
             if (listing.imageUrl) return listing;
-            const spaces = await apiGet<any[]>(`biz360_tour_spaces_v1_${listing.id}`);
-            const photo = spaces?.[0]?.photos?.[0] ?? spaces?.[0]?.panoramaUrl ?? null;
+            // Try report_images primary cover (public endpoint, no auth needed)
+            try {
+              const res = await fetch(`${API_BASE}/report-images/${listing.id}/primary-cover`);
+              if (res.ok) {
+                const data = await res.json() as { coverUrl?: string; url?: string };
+                const url = data.coverUrl ?? data.url;
+                if (url) return { ...listing, imageUrl: url };
+              }
+            } catch { /* non-fatal */ }
+            // Fallback: first tour space photo or panorama
+            const spaces = await getTourSpaces(listing.id);
+            const photo = spaces[0]?.photos?.[0] ?? spaces[0]?.panoramaUrl ?? null;
             return photo ? { ...listing, imageUrl: photo } : listing;
           }),
         );

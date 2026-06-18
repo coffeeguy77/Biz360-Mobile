@@ -1,5 +1,5 @@
 const domain   = process.env.EXPO_PUBLIC_DOMAIN;
-const API_BASE = domain ? `https://${domain}/api` : "/api";
+export const API_BASE = domain ? `https://${domain}/api` : "/api";
 
 const TIMEOUT_MS = 8000;
 
