@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, not, or, sql } from "drizzle-orm";
 import {
   db, cafesTable, valuationSnapshotsTable, businessUnitsTable,
   cafeEquipmentTable, sellerLeasesTable, sellerLeaseClausesTable,
@@ -241,8 +241,13 @@ async function resolveChartData(
     }
 
     case "equipment": {
+      // Exclude items in the "Keeping" category — seller intends to keep those, not sell them.
       const eq2 = await db.select().from(cafeEquipmentTable).where(
-        and(eq(cafeEquipmentTable.cafeId, cafeId), eq(cafeEquipmentTable.suspended, false)),
+        and(
+          eq(cafeEquipmentTable.cafeId, cafeId),
+          eq(cafeEquipmentTable.suspended, false),
+          or(isNull(cafeEquipmentTable.category), not(sql`lower(${cafeEquipmentTable.category}) = 'keeping'`)),
+        ),
       );
       if (!eq2.length) return absent("Equipment Ledger");
       const totalSH = eq2.reduce((s, e) => s + Number(e.secondhandValue ?? e.currentValue ?? 0), 0);
@@ -502,9 +507,11 @@ function buildChartData(
     case "horizontal_bar_chart":
       if ((raw as any).rows) {
         const rows = (raw as any).rows as any[];
-        // Division rows: show revenue per division; use rawRevenue for proportional bar widths
+        // Division rows: show revenue per division; use rawRevenue for proportional bar widths.
+        // Fall back to revenueSharePct when rawRevenue is 0 for all units (e.g. snapshots not yet computed).
         if (rows.length && rows[0].name !== undefined && rows[0].rawRevenue !== undefined) {
-          return { bars: rows.map((r) => ({ label: r.name, value: r.revenue, raw: r.rawRevenue })), ...resolved };
+          const hasRevenue = rows.some((r: any) => (r.rawRevenue ?? 0) > 0);
+          return { bars: rows.map((r: any) => ({ label: r.name, value: r.revenue, raw: hasRevenue ? r.rawRevenue : r.revenueSharePct })), ...resolved };
         }
         return { bars: rows, ...resolved };
       }
