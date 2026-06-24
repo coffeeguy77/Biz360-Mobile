@@ -26,6 +26,7 @@ export const cafesTable = pgTable("val_cafes", {
   currency: text("currency").default("AUD"),
   timezone: text("timezone"),
   listingId: text("listing_id"),
+  slug: text("slug").unique(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

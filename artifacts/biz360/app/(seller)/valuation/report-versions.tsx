@@ -67,9 +67,11 @@ export default function ReportVersionsScreen() {
   async function handleViewHtml(version: ReportVersion) {
     if (!listingId) return;
     const token = await getAuthToken();
-    // Use clean route /reports/:listingId/:versionId for versioned snapshots
+    // Prefer slug for a friendly URL; fall back to raw listingId for older cafes.
+    const slug = (selectedCafe as any)?.slug ?? null;
+    const urlId = slug ?? listingId;
     const url = version.generatedHtmlUrl ??
-      `${API_BASE.replace(/\/api$/, "")}/reports/${listingId}/${version.id}`;
+      `${API_BASE.replace(/\/api$/, "")}/reports/${urlId}/${version.id}`;
     try {
       await Linking.openURL(url);
     } catch {

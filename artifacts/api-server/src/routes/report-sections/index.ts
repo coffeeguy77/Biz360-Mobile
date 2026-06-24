@@ -1058,7 +1058,22 @@ router.patch("/report-versions/:id", requireAuth, async (req, res): Promise<void
 // Buyer OTP-based unlocking is handled by the buyer access task (Task #78).
 // Raw phone params are intentionally absent — no proof-of-possession bypass.
 router.get("/report-sections/html/:listingId", async (req, res): Promise<void> => {
-  const { listingId } = req.params as { listingId: string };
+  const { listingId: rawParam } = req.params as { listingId: string };
+
+  // ── Slug resolution ─────────────────────────────────────────────────────────
+  // The path param may be either a raw listing ID (user-listing-XXXXX) or a
+  // human-readable slug (bean-culture-espresso-bar). Resolve slug → listingId
+  // so the rest of the handler always works with the canonical listingId.
+  let listingId = rawParam;
+  {
+    const [bySlug] = await db
+      .select({ listingId: cafesTable.listingId })
+      .from(cafesTable)
+      .where(eq(cafesTable.slug, rawParam))
+      .limit(1);
+    if (bySlug?.listingId) listingId = bySlug.listingId;
+  }
+
   try {
     const allSections = await db
       .select()

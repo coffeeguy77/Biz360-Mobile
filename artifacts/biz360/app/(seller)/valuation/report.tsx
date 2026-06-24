@@ -377,7 +377,11 @@ export default function ReportHubScreen() {
           if (previewCode) previewParam = `?previewCode=${previewCode}`;
         }
       }
-      const url = `${base}/reports/${listingId}${previewParam}`;
+      // Use the slug for a friendly URL (e.g. exit360.com.au/reports/bean-culture-espresso-bar)
+      // Fall back to the raw listing ID if the cafe doesn't have a slug yet.
+      const slug = (selectedCafe as any)?.slug ?? null;
+      const urlId = slug ?? listingId;
+      const url = `${base}/reports/${urlId}${previewParam}`;
       const supported = await Linking.canOpenURL(url);
       if (supported) await Linking.openURL(url);
       else Alert.alert("Cannot open URL", url);

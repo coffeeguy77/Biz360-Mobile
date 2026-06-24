@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, ne } from "drizzle-orm";
 import { v2 as cloudinary } from "cloudinary";
 import { db, cafesTable, cafeIntegrationsTable, cafeEquipmentTable, ownerAdjustmentsTable, valuationSnapshotsTable, squareOrdersCacheTable, xeroPLMappingsTable, xeroSupplierMappingsTable, businessUnitsTable, reportImagesTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
@@ -12,6 +12,36 @@ cloudinary.config({
 });
 
 const router: IRouter = Router();
+
+// ── Slug helpers ───────────────────────────────────────────────────────────────
+
+/** Convert a business name to a URL-safe kebab-case slug. */
+function toSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[''`]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .substring(0, 80);
+}
+
+/**
+ * Ensure the slug is unique in val_cafes. If it collides, appends -2, -3 etc.
+ * Pass `excludeId` when updating an existing record so it doesn't collide with itself.
+ */
+async function findUniqueSlug(base: string, excludeId?: string): Promise<string> {
+  let candidate = base;
+  let attempt = 1;
+  while (true) {
+    const conditions = excludeId
+      ? and(eq(cafesTable.slug, candidate), ne(cafesTable.id, excludeId))
+      : eq(cafesTable.slug, candidate);
+    const [existing] = await db.select({ id: cafesTable.id }).from(cafesTable).where(conditions).limit(1);
+    if (!existing) return candidate;
+    attempt++;
+    candidate = `${base}-${attempt}`;
+  }
+}
 
 async function assertCafeOwner(cafeId: string, userId: string) {
   const [cafe] = await db.select().from(cafesTable).where(and(eq(cafesTable.id, cafeId), eq(cafesTable.ownerId, userId)));
@@ -34,7 +64,8 @@ router.post("/", async (req, res) => {
   const userId = req.user!.id;
   const { name, city, businessType, currency, timezone, listing_id } = req.body as { name?: string; city?: string; businessType?: string; currency?: string; timezone?: string; listing_id?: string };
   if (!name) return res.status(400).json({ error: "name is required" });
-  const [cafe] = await db.insert(cafesTable).values({ ownerId: userId, name, city: city || null, businessType: businessType || "cafe", currency: currency || "AUD", timezone: timezone || null, listingId: listing_id || null }).returning();
+  const slug = await findUniqueSlug(toSlug(name));
+  const [cafe] = await db.insert(cafesTable).values({ ownerId: userId, name, city: city || null, businessType: businessType || "cafe", currency: currency || "AUD", timezone: timezone || null, listingId: listing_id || null, slug }).returning();
   logger.info({ cafeId: cafe.id, userId }, "Café created");
   return res.status(201).json(cafe);
 });
@@ -52,12 +83,24 @@ router.patch("/:cafeId", async (req, res) => {
   const existing = await assertCafeOwner(req.params.cafeId!, userId).catch((e) => { res.status(e.status ?? 403).json({ error: e.message }); return null; });
   if (!existing) return;
   const { name, city, timezone, currency, listing_id } = req.body as { name?: string; city?: string; timezone?: string; currency?: string; listing_id?: string };
+  // Auto-update slug when name changes, unless a slug was already manually set
+  let slugUpdate: string | undefined;
+  if (name !== undefined && name !== existing.name) {
+    const base = toSlug(name);
+    if (base) slugUpdate = await findUniqueSlug(base, existing.id);
+  }
+  // Backfill: if this cafe has no slug yet, generate one from current name
+  if (!existing.slug) {
+    const base = toSlug(name ?? existing.name);
+    if (base) slugUpdate = slugUpdate ?? await findUniqueSlug(base, existing.id);
+  }
   const [updated] = await db.update(cafesTable).set({
     ...(name !== undefined && { name }),
     ...(city !== undefined && { city }),
     ...(timezone !== undefined && { timezone }),
     ...(currency !== undefined && { currency }),
     ...(listing_id !== undefined && { listingId: listing_id }),
+    ...(slugUpdate !== undefined && { slug: slugUpdate }),
   }).where(eq(cafesTable.id, existing.id)).returning();
   return res.json(updated);
 });
