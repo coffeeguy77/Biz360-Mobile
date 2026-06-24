@@ -75,6 +75,7 @@ function hasContent(s: ReportSection): boolean {
 
 function needsReview(s: ReportSection): boolean {
   if (!hasContent(s)) return false;
+  if (s.status === "complete") return false;
   const text = [
     s.body ?? "",
     ...(Array.isArray(s.bulletPoints) ? s.bulletPoints : []),
