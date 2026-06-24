@@ -1,9 +1,9 @@
 import { useParams } from "wouter";
 import { useEffect, useState, useRef, useMemo } from "react";
 import {
-  Lock, Download, ExternalLink, Phone, Calendar, Shield,
+  Lock, Download, Phone, Calendar, Shield,
   CheckCircle2, FileText, MapPin, Printer, ChevronRight, Eye,
-  ChevronDown, ChevronUp, AlertTriangle,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -261,41 +261,6 @@ function SectionTable({ data }: { data: unknown }) {
   );
 }
 
-// ── Collapsible seller-only notes badge ───────────────────────────────────────
-function SellerNotesBlock({ notes, printMode }: { notes: string; printMode: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <div className={cn(
-      "mt-5 rounded-xl border-l-2 border-amber-500/40",
-      printMode ? "bg-amber-50" : "bg-amber-500/5"
-    )}>
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center gap-2 px-4 py-2.5 text-left"
-      >
-        <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">Seller Notes</span>
-        <span className={cn(
-          "text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1",
-          printMode ? "bg-amber-100 text-amber-600" : "bg-amber-500/20 text-amber-400"
-        )}>
-          Needs Review
-        </span>
-        <span className="ml-auto text-amber-400/60">
-          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        </span>
-      </button>
-      {expanded && (
-        <p className={cn(
-          "px-4 pb-3 text-sm leading-relaxed",
-          printMode ? "text-amber-800" : "text-amber-300"
-        )}>
-          {notes}
-        </p>
-      )}
-    </div>
-  );
-}
 
 // ── Section image strip (from report_images) ──────────────────────────────────
 function SectionImageStrip({
@@ -880,70 +845,6 @@ export function ReportPage() {
 
   const [activeChapter, setActiveChapter] = useState<string | null>(null);
 
-  // Data Integrity Panel — computed for seller view only.
-  // Tells the seller which charts rendered from real data vs which were hidden,
-  // and summarises the image readiness across report_images.
-  const dataIntegrity = useMemo(() => {
-    const rendered: { key: string; title: string }[] = [];
-    const missing: { key: string; title: string }[] = [];
-    const chartKeys = Object.keys(SECTION_CHART_MAP);
-    for (const key of chartKeys) {
-      const sec = sections.find((s) => s.sectionKey === key);
-      if (!sec) continue;
-      const title = sec.title || key.replace(/_/g, " ");
-      if (sectionHasChartData(key, sec.chartData)) rendered.push({ key, title });
-      else missing.push({ key, title });
-    }
-    const placeholderSections = sections.filter(
-      (s) =>
-        !s.isLocked &&
-        !s.body?.trim() &&
-        !(s.bulletPoints?.length) &&
-        !s.tableData &&
-        !sectionHasChartData(s.sectionKey, s.chartData),
-    );
-    // ── Image diagnostics (seller-only) ───────────────────────────────────────
-    const imgs = data?.meta?.reportImages ?? [];
-    const isSeller = data?.accessLevel === "seller";
-
-    // Cover resolution (mirrors API priority chain)
-    const primaryCoverImage =
-      imgs.find((i) => i.isPrimary && !i.isPanoramic) ??
-      imgs.find((i) => i.imageRole === "listing_hero" && !i.isPanoramic) ??
-      imgs.find((i) => !i.isPanoramic) ??
-      null;
-    const coverSet = primaryCoverImage !== null;
-
-    // Cover diagnostics
-    const coverSource: string = primaryCoverImage
-      ? { uploaded: "Uploaded photo", listing_photo: "Listing photo", tour_thumbnail: "Tour thumbnail" }[primaryCoverImage.sourceType] ?? primaryCoverImage.sourceType
-      : "Fallback (no image — gradient will be used)";
-    const panoramaAsCovetStr = primaryCoverImage?.isPanoramic ? "⚠️ YES (will look distorted — use a flat photo)" : "✅ No";
-
-    // Category-level status
-    const hasExterior   = imgs.some((i) => i.imageRole === "exterior");
-    const hasInterior   = imgs.some((i) => i.imageRole === "interior");
-    const hasEquipment  = imgs.some((i) => i.imageRole === "equipment");
-    const has360Preview = imgs.some((i) => i.imageRole === "360_preview");
-
-    // Buyer-visibility
-    const hiddenFromBuyerCount = imgs.filter((i) => !i.includeInBuyerReport).length;
-
-    const imageDiagnostics = isSeller ? {
-      coverSet,
-      coverSource,
-      panoramaAsCovetStr,
-      hasExterior,
-      hasInterior,
-      hasEquipment,
-      has360Preview,
-      hiddenFromBuyerCount,
-    } : null;
-
-    return { rendered, missing, placeholderCount: placeholderSections.length, imageTotal: imgs.length, imageDiagnostics };
-  }, [sections, data?.meta?.reportImages, data?.accessLevel]);
-
-  const isSeller = data?.accessLevel === "seller";
 
   // IntersectionObserver — highlights the chapter link in sidebar + tab strip
   // as the user scrolls, using a top-biased rootMargin so the active chapter
@@ -1032,17 +933,6 @@ export function ReportPage() {
               <Download size={12} />
               {downloading ? "Generating…" : "Download PDF"}
             </button>
-            {isSeller && (
-              <a
-                href={`/api/report-exports/${listingId}/pdf-debug`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 transition-colors"
-              >
-                <ExternalLink size={12} />
-                PDF Debug
-              </a>
-            )}
           </div>
         </div>
       </nav>
@@ -1167,16 +1057,6 @@ export function ReportPage() {
             >
               <Download size={15} /> Download PDF
             </button>
-            {isSeller && (
-              <a
-                href={`/api/report-exports/${listingId}/pdf-debug`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 text-sm font-medium px-5 py-2.5 rounded-xl border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 transition-colors"
-              >
-                <ExternalLink size={15} /> PDF Debug
-              </a>
-            )}
             <button
               onClick={() => recordAccessLog(listingId, "contact_clicked")}
               className={cn(
@@ -1208,102 +1088,6 @@ export function ReportPage() {
         </div>
       </section>
 
-      {/* ── Data Integrity Panel (seller-only) ──────────────────────────────── */}
-      {data?.accessLevel === "seller" && (dataIntegrity.rendered.length > 0 || dataIntegrity.missing.length > 0 || dataIntegrity.placeholderCount > 0) && (
-        <div className={cn(
-          "rounded-2xl border p-6 print:hidden",
-          printMode ? "bg-amber-50 border-amber-200" : "bg-amber-500/5 border-amber-500/20"
-        )}>
-          <div className="flex items-center gap-2.5 mb-4">
-            <AlertTriangle size={15} className="text-amber-400 flex-shrink-0" />
-            <h3 className={cn("text-sm font-bold uppercase tracking-wider", printMode ? "text-amber-700" : "text-amber-400")}>
-              Data Integrity Summary — Seller View Only
-            </h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            {/* Charts rendered from real data */}
-            {dataIntegrity.rendered.length > 0 && (
-              <div>
-                <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-2", printMode ? "text-green-700" : "text-green-400")}>
-                  ✅ Charts showing real data ({dataIntegrity.rendered.length})
-                </p>
-                <ul className="space-y-1">
-                  {dataIntegrity.rendered.map(({ key, title }) => (
-                    <li key={key} className={cn("text-xs", printMode ? "text-slate-600" : "text-slate-400")}>
-                      • {title}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {/* Charts hidden due to missing data */}
-            {dataIntegrity.missing.length > 0 && (
-              <div>
-                <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-2", printMode ? "text-amber-700" : "text-amber-400")}>
-                  ⚠️ Charts hidden — no data uploaded ({dataIntegrity.missing.length})
-                </p>
-                <ul className="space-y-1">
-                  {dataIntegrity.missing.map(({ key, title }) => (
-                    <li key={key} className={cn("text-xs", printMode ? "text-slate-600" : "text-slate-400")}>
-                      • {title}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-          {dataIntegrity.placeholderCount > 0 && (
-            <p className={cn("text-xs border-t pt-3", printMode ? "border-amber-200 text-amber-700" : "border-amber-500/20 text-amber-400/80")}>
-              ⚠️ {dataIntegrity.placeholderCount} section{dataIntegrity.placeholderCount !== 1 ? "s" : ""} have no content yet — add body text, bullet points, table data, or chart data in the Biz360 app to complete them.
-            </p>
-          )}
-          {/* Image readiness diagnostics — seller-only */}
-          {dataIntegrity.imageDiagnostics && (
-            <div className={cn("border-t pt-3 mt-3 space-y-1.5", printMode ? "border-amber-200" : "border-amber-500/20")}>
-              <p className={cn("font-bold uppercase tracking-wider text-[10px] mb-2", printMode ? "text-slate-500" : "text-slate-500")}>
-                📸 Report Images ({dataIntegrity.imageTotal} photo{dataIntegrity.imageTotal !== 1 ? "s" : ""})
-              </p>
-
-              {dataIntegrity.imageTotal === 0
-                ? <p className={cn("text-xs", printMode ? "text-amber-700" : "text-amber-400/80")}>⚠️ No images added — open Report Images in the Biz360 app</p>
-                : <>
-                  {/* Cover */}
-                  <p className={cn("text-xs", printMode ? "text-slate-700" : "text-slate-300")}>
-                    <span className="font-semibold">Cover:</span>{" "}
-                    {dataIntegrity.imageDiagnostics.coverSet
-                      ? <span className={printMode ? "text-green-700" : "text-green-400"}>✅ Set — {dataIntegrity.imageDiagnostics.coverSource}</span>
-                      : <span className={printMode ? "text-amber-700" : "text-amber-400"}>⚠️ Not set — gradient fallback will be used</span>}
-                  </p>
-
-                  {/* Panorama-as-cover guard */}
-                  <p className={cn("text-xs", printMode ? "text-slate-700" : "text-slate-300")}>
-                    <span className="font-semibold">Panorama as cover:</span>{" "}
-                    {dataIntegrity.imageDiagnostics.panoramaAsCovetStr}
-                  </p>
-
-                  {/* Category status */}
-                  {[
-                    { label: "Exterior photo", ok: dataIntegrity.imageDiagnostics.hasExterior },
-                    { label: "Interior photo", ok: dataIntegrity.imageDiagnostics.hasInterior },
-                    { label: "Equipment photo", ok: dataIntegrity.imageDiagnostics.hasEquipment },
-                    { label: "360° preview image", ok: dataIntegrity.imageDiagnostics.has360Preview },
-                  ].map(({ label, ok }) => (
-                    <p key={label} className={cn("text-xs", printMode ? (ok ? "text-green-700" : "text-amber-700") : (ok ? "text-green-400" : "text-amber-400/80"))}>
-                      {ok ? "✅" : "⚠️"} {label}: {ok ? "Added" : "Missing"}
-                    </p>
-                  ))}
-
-                  {/* Hidden-from-buyer count */}
-                  {dataIntegrity.imageDiagnostics.hiddenFromBuyerCount > 0 && (
-                    <p className={cn("text-xs", printMode ? "text-slate-500" : "text-slate-400")}>
-                      🔒 {dataIntegrity.imageDiagnostics.hiddenFromBuyerCount} image{dataIntegrity.imageDiagnostics.hiddenFromBuyerCount !== 1 ? "s" : ""} hidden from buyers
-                    </p>
-                  )}
-                </>}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ── Chapter Nav (sticky horizontal tab strip) ───────────────────────── */}
       {groupedSections.length > 0 && (
@@ -1599,9 +1383,6 @@ export function ReportPage() {
                         );
                       })()}
 
-                      {section.sellerNotes && !section.isLocked && data?.accessLevel === "seller" && (
-                        <SellerNotesBlock notes={section.sellerNotes} printMode={printMode} />
-                      )}
                     </section>
                   );
                 })}
