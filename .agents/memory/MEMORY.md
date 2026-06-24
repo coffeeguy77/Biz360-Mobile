@@ -5,3 +5,4 @@
 - [Pannellum hotspot styling](pannellum-hotspot-styling.md) — never use cssText in createTooltipFunc; use individual style props + negative margins to center; emoji icons only.
 - [pnpm symlinks + Metro](pnpm-metro-symlinks.md) — Metro does not follow pnpm symlinks by default; must add unstable_enableSymlinks to metro.config.js, and install packages at the correct SDK-pinned version.
 - [Replit proxy timeout + async jobs](replit-proxy-timeout.md) — Replit proxy enforces 2-min HTTP timeout; long Anthropic calls must use async job pattern (return jobId instantly, client polls status endpoint).
+- [PDF renderer vs report-visuals](pdf-render-vs-report-visuals.md) — PDF reads pre-stored chartData; report-visuals fixes don't affect existing PDF output

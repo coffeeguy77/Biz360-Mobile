@@ -6,7 +6,7 @@ import {
   cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
   reportVisualsTable, businessUnitsTable,
 } from "@workspace/db";
-import { eq, asc, and, desc, isNull, sql } from "drizzle-orm";
+import { eq, asc, and, desc, isNull, sql, or } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { generateChartSvg } from "../../lib/chart-svg";
 import {
@@ -1290,6 +1290,14 @@ async function buildPdf(
   // Compact flag: tighter spacing in compact and buyer_summary styles
   const isCompact = style === "compact" || style === "buyer_summary";
 
+  // Strip stored bar_chart/horizontal_bar_chart visuals for division_breakdown —
+  // renderDivisionChart already renders this from live unit-snapshot data.
+  // Stored versions carry stale equal-width raw:1 values that misrepresent proportions.
+  extra.reportVisuals = (extra.reportVisuals ?? []).filter((v) =>
+    !(v.sectionKey === "division_breakdown" &&
+      (v.visualType === "bar_chart" || v.visualType === "horizontal_bar_chart"))
+  );
+
   // ── 1. Cover page ──────────────────────────────────────────────────────────
   const coverMetrics = extractCoverMetrics(sections);
   renderCover(ctx, meta, coverMetrics, extra.heroImageBuffer);
@@ -2043,9 +2051,15 @@ async function handlePdf(req: any, res: any): Promise<void> {
         category: cafeEquipmentTable.category,
         currentValue: cafeEquipmentTable.currentValue,
       }).from(cafeEquipmentTable)
+        .leftJoin(businessUnitsTable, eq(cafeEquipmentTable.unitId, businessUnitsTable.id))
         .where(and(
           eq(cafeEquipmentTable.cafeId, cafe.id),
           eq(cafeEquipmentTable.suspended, false),
+          or(
+            isNull(cafeEquipmentTable.unitId),
+            eq(businessUnitsTable.isIncludedInSale, true),
+          ),
+          sql`lower(${cafeEquipmentTable.category}) != 'keeping'`,
         )),
       db.select({
         eventType: reportAccessLogsTable.eventType,
@@ -2559,9 +2573,15 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
           category: cafeEquipmentTable.category,
           currentValue: cafeEquipmentTable.currentValue,
         }).from(cafeEquipmentTable)
+          .leftJoin(businessUnitsTable, eq(cafeEquipmentTable.unitId, businessUnitsTable.id))
           .where(and(
             eq(cafeEquipmentTable.cafeId, cafeMeta.id),
             eq(cafeEquipmentTable.suspended, false),
+            or(
+              isNull(cafeEquipmentTable.unitId),
+              eq(businessUnitsTable.isIncludedInSale, true),
+            ),
+            sql`lower(${cafeEquipmentTable.category}) != 'keeping'`,
           )),
       ]);
       pubExtra.snapshot = pubSnapshotRows[0] ?? null;
