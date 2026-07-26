@@ -4,7 +4,7 @@ import { v2 as cloudinary } from "cloudinary";
 import {
   db, reportSectionsTable, reportExportsTable, cafesTable, reportVersionsTable,
   cafeEquipmentTable, valuationSnapshotsTable, reportAccessLogsTable, reportImagesTable,
-  reportVisualsTable, businessUnitsTable,
+  reportVisualsTable, businessUnitsTable, customReportsTable,
 } from "@workspace/db";
 import { eq, asc, and, desc, isNull, sql, or } from "drizzle-orm";
 import { logger } from "../../lib/logger";
@@ -620,6 +620,65 @@ function renderDueDiligenceChecklist(
   return y + 8;
 }
 
+// ── Custom Financial Report summary block ─────────────────────────────────────
+function renderCustomReportSummary(
+  ctx: PdfCtx,
+  reports: CustomReportSummary[],
+  y: number,
+): number {
+  if (!reports.length) return y;
+
+  y = checkY(ctx, y, 24 + reports.length * 68);
+  ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(HEADING_C)
+    .text("CUSTOM FINANCIAL REPORTS", MARGIN, y, { width: CONTENT_W });
+  y += 14;
+
+  const COL = Math.floor(CONTENT_W / 3) - 6;
+  const GREEN  = "#10B981";
+  const RED    = "#EF4444";
+
+  for (const rpt of reports) {
+    y = checkY(ctx, y, 62);
+    // Card background
+    ctx.doc.save().rect(MARGIN, y, CONTENT_W, 56).fill(CHAPTER_BG).restore();
+    ctx.doc.save().rect(MARGIN, y, 4, 56).fill(BLUE_ACC).restore();
+
+    // Report name + description
+    const descStr = rpt.description ? ` — ${rpt.description}` : "";
+    const nameStr = `${rpt.name}${descStr}`.slice(0, 80);
+    ctx.doc.font("Helvetica-Bold").fontSize(8.5).fillColor(HEADING_C)
+      .text(nameStr, MARGIN + 12, y + 8, { width: CONTENT_W - 20 });
+
+    // Three metric columns: Income / Expenses / Net Profit
+    const hasData = rpt.totalIncome > 0 || rpt.totalExpenses > 0 || rpt.netProfit !== 0;
+    if (hasData) {
+      const metrics = [
+        { label: "Total Income",   value: fmtCurrency(rpt.totalIncome),   color: HEADING_C },
+        { label: "Total Expenses", value: fmtCurrency(rpt.totalExpenses), color: HEADING_C },
+        { label: "Net Profit",     value: fmtCurrency(rpt.netProfit),     color: rpt.netProfit >= 0 ? GREEN : RED },
+      ];
+      metrics.forEach(({ label, value, color }, i) => {
+        const cx = MARGIN + 12 + i * (COL + 6);
+        ctx.doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C)
+          .text(label, cx, y + 24, { width: COL });
+        ctx.doc.font("Helvetica-Bold").fontSize(9).fillColor(color)
+          .text(value, cx, y + 35, { width: COL });
+      });
+    } else {
+      ctx.doc.font("Helvetica-Oblique").fontSize(7.5).fillColor(SUBTITLE_C)
+        .text("Monthly breakdown available in the Biz360 app.", MARGIN + 12, y + 28, { width: CONTENT_W - 20 });
+    }
+
+    // Period label bottom-right
+    const periodLabel = `${rpt.dateRangeMonths}‑month period`;
+    ctx.doc.font("Helvetica").fontSize(7).fillColor(SUBTITLE_C)
+      .text(periodLabel, MARGIN + CONTENT_W - 90, y + 44, { width: 90, align: "right" });
+
+    y += 62;
+  }
+  return y + 8;
+}
+
 // ── Cover metrics extractor ────────────────────────────────────────────────────
 // Uses COVER_METRIC_TARGETS for deterministic extraction of the 6 key cover fields:
 // asking price, valuation range, revenue, EBITDA, equipment value, lease term.
@@ -1134,6 +1193,17 @@ function renderSection(
 }
 
 // ── Extra data fed into buildPdf from the DB queries in each handler ───────────
+interface CustomReportSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  dateRangeMonths: number;
+  totalIncome: number;
+  totalExpenses: number;
+  netProfit: number;
+  monthCount: number;
+}
+
 interface PdfExtraData {
   heroImageBuffer: Buffer | null;
   bodyImageBuffers: Map<string, Buffer | null>;   // chapterKey → buffer (null = not found)
@@ -1156,6 +1226,8 @@ interface PdfExtraData {
     sourceLabel: string | null;
     visualConfig: Record<string, unknown> | null;
   }>;
+  /** Custom financial reports flagged includeInIm=true */
+  customReports: CustomReportSummary[];
 }
 
 // ── Helper: parse chartData from a section into an array (or null) ─────────────
@@ -1453,6 +1525,10 @@ async function buildPdf(
           const revDivSec = group.secs.find((s) => s.sectionKey === "division_breakdown");
           const revDivData = parseChartData(revDivSec);
           y = renderDivisionChart(ctx, revDivData ?? [], "revenue", "Revenue by Division", y, extra.isSellerDraft);
+          // Inject custom financial reports flagged for IM
+          if (extra.customReports?.length) {
+            y = renderCustomReportSummary(ctx, extra.customReports, y);
+          }
           break;
         }
 
@@ -2035,6 +2111,20 @@ async function handlePdf(req: any, res: any): Promise<void> {
     const filename     = `im-report-${listingId.slice(0, 8)}-${mode}-${style}.pdf`;
     const styleLabel   = { compact: "Compact Broker IM", detailed: "Detailed Full Report", buyer_summary: "Buyer Summary", data_room: "Data Room Appendix" }[style] ?? "Compact Broker IM";
 
+    // ── Custom financial reports flagged for IM inclusion ─────────────────────
+    const imCustomReports = await db
+      .select({
+        id: customReportsTable.id,
+        name: customReportsTable.name,
+        description: customReportsTable.description,
+        dateRangeMonths: customReportsTable.dateRangeMonths,
+      })
+      .from(customReportsTable)
+      .where(and(
+        eq(customReportsTable.cafeId, cafe.id),
+        eq(customReportsTable.includeInIm, true),
+      ));
+
     // ── Parallel data fetch: snapshot, equipment, buyer funnel, report images ──
     const [snapshotRows, equipmentRows, funnelLogs, reportImageRows, reportVisualsRows] = await Promise.all([
       db.select({
@@ -2250,6 +2340,15 @@ async function handlePdf(req: any, res: any): Promise<void> {
     const extra: PdfExtraData = {
       heroImageBuffer, bodyImageBuffers, snapshot, equipment, buyerFunnel, isSellerDraft,
       reportVisuals: includedVisuals as PdfExtraData["reportVisuals"],
+      customReports: imCustomReports.map((r) => ({
+        ...r,
+        // Totals are not available without running buildReportData; default to 0
+        // so the PDF can still render the report card even without live data.
+        totalIncome: 0,
+        totalExpenses: 0,
+        netProfit: 0,
+        monthCount: r.dateRangeMonths,
+      })),
     };
 
     // ── PDF diagnostics ─────────────────────────────────────────────────────
@@ -2524,6 +2623,7 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       buyerFunnel: [],
       isSellerDraft: false,
       reportVisuals: [],
+      customReports: [],   // public/buyer PDF does not show seller-side custom reports
     };
 
     // Fetch report_images cover (non-panoramic) for the public PDF.

@@ -226,3 +226,55 @@ export const xeroSupplierMappingsTable = pgTable(
 );
 
 export type XeroSupplierMapping = typeof xeroSupplierMappingsTable.$inferSelect;
+
+// ─── custom_reports ──────────────────────────────────────────────────────────
+// Seller-created named financial reports that pull from Square/Xero data.
+// Private by default; include_in_im controls whether a summary appears in the
+// seller's IM report Financial Performance chapter.
+
+export const customReportsTable = pgTable(
+  "custom_reports",
+  {
+    id:              uuid("id").primaryKey().defaultRandom(),
+    cafeId:          uuid("cafe_id").notNull(),
+    ownerId:         text("owner_id").notNull(),
+    name:            text("name").notNull(),
+    description:     text("description"),
+    dateRangeMonths: integer("date_range_months").notNull().default(12),
+    includeInIm:     boolean("include_in_im").notNull().default(false),
+    createdAt:       timestamp("created_at").defaultNow(),
+    updatedAt:       timestamp("updated_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type CustomReport = typeof customReportsTable.$inferSelect;
+
+// ─── custom_report_line_items ─────────────────────────────────────────────────
+// Each line item is one income or expense source the seller selected.
+// source: 'xero_pl' — pulls from Xero P&L by account name
+//         'square'  — uses Square order revenue totals
+
+export const customReportLineItemsTable = pgTable(
+  "custom_report_line_items",
+  {
+    id:              uuid("id").primaryKey().defaultRandom(),
+    reportId:        uuid("report_id").notNull(),
+    // kind: 'income' | 'expense'
+    kind:            text("kind").notNull(),
+    label:           text("label").notNull(),
+    // source: 'xero_pl' | 'square'
+    source:          text("source").notNull(),
+    xeroAccountId:   text("xero_account_id"),
+    xeroAccountName: text("xero_account_name"),
+    sortOrder:       integer("sort_order").notNull().default(0),
+    createdAt:       timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.reportId], foreignColumns: [customReportsTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type CustomReportLineItem = typeof customReportLineItemsTable.$inferSelect;

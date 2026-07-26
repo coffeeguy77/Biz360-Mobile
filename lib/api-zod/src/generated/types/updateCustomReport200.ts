@@ -5,7 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CustomReport } from './customReport';
 
-export interface HealthStatus {
-  status: string;
-}
+export type UpdateCustomReport200 = {
+  report?: CustomReport;
+};

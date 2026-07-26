@@ -24,6 +24,175 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /valuation/custom-reports:
+    get:
+      operationId: listCustomReports
+      tags: [customReports]
+      summary: List custom financial reports for a cafe
+      parameters:
+        - name: cafeId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reports:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomReport"
+    post:
+      operationId: createCustomReport
+      tags: [customReports]
+      summary: Create a new custom financial report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomReportBody"
+      responses:
+        "201":
+          description: Created report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report:
+                    $ref: "#/components/schemas/CustomReport"
+
+  /valuation/custom-reports/{id}:
+    patch:
+      operationId: updateCustomReport
+      tags: [customReports]
+      summary: Update report metadata
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomReportBody"
+      responses:
+        "200":
+          description: Updated report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report:
+                    $ref: "#/components/schemas/CustomReport"
+    delete:
+      operationId: deleteCustomReport
+      tags: [customReports]
+      summary: Delete a custom report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /valuation/custom-reports/{id}/line-items:
+    get:
+      operationId: getCustomReportLineItems
+      tags: [customReports]
+      summary: Get line items for a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Line items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomReportLineItem"
+    put:
+      operationId: replaceCustomReportLineItems
+      tags: [customReports]
+      summary: Replace all line items for a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/CustomReportLineItemInput"
+      responses:
+        "200":
+          description: Saved items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomReportLineItem"
+
+  /valuation/custom-reports/{id}/data:
+    get:
+      operationId: getCustomReportData
+      tags: [customReports]
+      summary: Get monthly aggregated data for a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Monthly data and totals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomReportData"
+
 components:
   schemas:
     HealthStatus:
@@ -33,4 +202,175 @@ components:
           type: string
       required:
         - status
+
+    CustomReport:
+      type: object
+      properties:
+        id:
+          type: string
+        cafeId:
+          type: string
+        ownerId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        dateRangeMonths:
+          type: integer
+        includeInIm:
+          type: boolean
+        incomeCount:
+          type: integer
+        expenseCount:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - cafeId
+        - name
+        - dateRangeMonths
+        - includeInIm
+
+    CreateCustomReportBody:
+      type: object
+      properties:
+        cafeId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        dateRangeMonths:
+          type: integer
+      required:
+        - cafeId
+        - name
+
+    UpdateCustomReportBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        dateRangeMonths:
+          type: integer
+        includeInIm:
+          type: boolean
+
+    CustomReportLineItem:
+      type: object
+      properties:
+        id:
+          type: string
+        reportId:
+          type: string
+        kind:
+          type: string
+        label:
+          type: string
+        source:
+          type: string
+        xeroAccountId:
+          type: string
+          nullable: true
+        xeroAccountName:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - reportId
+        - kind
+        - label
+        - source
+
+    CustomReportLineItemInput:
+      type: object
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        source:
+          type: string
+        xeroAccountId:
+          type: string
+          nullable: true
+        xeroAccountName:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+      required:
+        - kind
+        - label
+        - source
+
+    CustomReportMonthRow:
+      type: object
+      properties:
+        month:
+          type: string
+        income:
+          type: number
+        expenses:
+          type: number
+        net:
+          type: number
+      required:
+        - month
+        - income
+        - expenses
+        - net
+
+    CustomReportData:
+      type: object
+      properties:
+        months:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomReportMonthRow"
+        totals:
+          type: object
+          properties:
+            income:
+              type: number
+            expenses:
+              type: number
+            net:
+              type: number
+        growth:
+          type: object
+          properties:
+            momPct:
+              type: number
+              nullable: true
+            popPct:
+              type: number
+              nullable: true
+        period:
+          type: object
+          properties:
+            fromDate:
+              type: string
+            toDate:
+              type: string
+            months:
+              type: integer
+      required:
+        - months
+        - totals
+        - growth
+        - period
 

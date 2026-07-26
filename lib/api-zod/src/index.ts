@@ -1,2 +1,3 @@
 export * from "./generated/api";
-export * from "./generated/types";
+// Re-export only types that are not already exported as Zod schemas from ./generated/api
+export type { HealthStatus } from "./generated/types";

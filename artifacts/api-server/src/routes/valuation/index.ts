@@ -12,6 +12,7 @@ import xeroRouter from "./xero";
 import oauthRouter from "./oauth";
 import reportAccessRouter, { verifyReportAccessToken, checkPwd, signReportAccessToken } from "./report-access";
 import ndaRouter from "./nda";
+import customReportsRouter from "./custom-reports";
 
 const router: IRouter = Router();
 
@@ -87,5 +88,6 @@ router.use("/valuation/cafes/:cafeId/nda-settings", ndaRouter);
 router.use("/valuation/cafes", cafesRouter);
 router.use("/valuation", squareRouter);
 router.use("/valuation", xeroRouter);
+router.use("/valuation", customReportsRouter);
 
 export default router;
