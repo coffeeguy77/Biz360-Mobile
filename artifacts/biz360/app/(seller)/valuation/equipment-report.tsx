@@ -1,34 +1,13 @@
 import { Feather } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import { router } from "expo-router";
+import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator, Platform, ScrollView, Share, StyleSheet,
+  Platform, ScrollView, Share, StyleSheet,
   Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { useValuation, ValUnit } from "@/context/ValuationContext";
-
-const domain = process.env.EXPO_PUBLIC_DOMAIN;
-const API_BASE = domain ? `https://${domain}` : "";
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-interface Equipment {
-  id: string;
-  unitId?: string | null;
-  name: string;
-  category?: string | null;
-  brand?: string | null;
-  condition?: string | null;
-  valuationMode?: string | null;
-  purchasePrice?: string | null;
-  secondhandValue?: string | null;
-  replacementCost?: string | null;
-  currentValue?: string | null;
-  ownership?: string | null;
-  isLeased?: boolean;
-}
+import { useValuation, ValEquipment } from "@/context/ValuationContext";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -55,8 +34,8 @@ function conditionColor(condition?: string | null): string {
 
 function buildShareText(
   unitName: string,
-  items: Equipment[],
-  categoryMap: Record<string, Equipment[]>,
+  items: ValEquipment[],
+  categoryMap: Record<string, ValEquipment[]>,
 ): string {
   const totalValue = items.reduce((s, i) => s + num(i.currentValue), 0);
   const totalRepl  = items.reduce((s, i) => s + num(i.replacementCost), 0);
@@ -74,8 +53,7 @@ function buildShareText(
     for (const item of catItems) {
       const brand = item.brand ? ` [${item.brand}]` : "";
       const cond  = item.condition ? ` — ${item.condition}` : "";
-      const val   = fmt(item.currentValue);
-      lines.push(`  • ${item.name}${brand}${cond}: ${val}`);
+      lines.push(`  • ${item.name}${brand}${cond}: ${fmt(item.currentValue)}`);
     }
     lines.push("");
   }
@@ -88,74 +66,53 @@ function buildShareText(
 export default function EquipmentReportScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { selectedCafe, authToken, businessUnits: ctxUnits } = useValuation();
+  const { equipment, businessUnits } = useValuation();
 
-  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null); // null = All Units
-  const [equipment, setEquipment] = useState<Equipment[]>([]);
-  const [loading, setLoading] = useState(false);
+  // "__all__" = no filter
+  const [selectedUnitId, setSelectedUnitId] = useState<string>("__all__");
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
-  const authHeaders = () => ({
-    Authorization: `Bearer ${authToken}`,
-  });
+  // ── Filtered equipment ────────────────────────────────────────────────────────
 
-  // Units — include an "All Units" sentinel
-  type UnitOrSentinel = (ValUnit & { sentinel?: boolean }) | { id: string; name: string; sentinel: true; isIncludedInSale?: boolean | null };
-  const units: UnitOrSentinel[] = useMemo(() => [
-    { id: "__all__", name: "All Units", sentinel: true as const },
-    ...ctxUnits,
-  ], [ctxUnits]);
+  const visibleEquipment = useMemo(() => {
+    const active = equipment.filter((e) => !e.suspended);
+    if (selectedUnitId === "__all__") return active;
+    return active.filter((e) => e.unitId === selectedUnitId);
+  }, [equipment, selectedUnitId]);
 
-  const selectedUnit = useMemo(
-    () => units.find((u) => (selectedUnitId === null ? u.id === "__all__" : u.id === selectedUnitId)),
-    [units, selectedUnitId],
-  );
-
-  const fetchEquipment = useCallback(async (unitId: string | null) => {
-    if (!selectedCafe || !authToken) return;
-    setLoading(true);
-    try {
-      const qs = unitId ? `?unit_id=${unitId}` : "";
-      const res = await fetch(
-        `${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment${qs}`,
-        { headers: { Authorization: `Bearer ${authToken}` } },
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setEquipment(data.equipment ?? []);
-        const cats = [...new Set((data.equipment ?? []).map((e: Equipment) => e.category ?? "Uncategorised"))] as string[];
-        const expMap: Record<string, boolean> = {};
-        cats.forEach((c) => { expMap[c] = true; });
-        setExpandedCategories(expMap);
-      }
-    } catch {}
-    setLoading(false);
-  }, [selectedCafe?.id, authToken]);
-
-  // Load on first focus and when the cafe changes
-  useFocusEffect(useCallback(() => {
-    fetchEquipment(selectedUnitId);
-  }, [fetchEquipment]));
-
-  // ── Derived data ─────────────────────────────────────────────────────────────
-
-  const categoryMap = useMemo<Record<string, Equipment[]>>(() => {
-    const map: Record<string, Equipment[]> = {};
-    for (const item of equipment) {
+  const categoryMap = useMemo<Record<string, ValEquipment[]>>(() => {
+    const map: Record<string, ValEquipment[]> = {};
+    for (const item of visibleEquipment) {
       const cat = item.category?.trim() || "Uncategorised";
       if (!map[cat]) map[cat] = [];
       map[cat].push(item);
     }
-    // Sort items within each category by currentValue descending
     for (const cat of Object.keys(map)) {
       map[cat].sort((a, b) => num(b.currentValue) - num(a.currentValue));
     }
     return map;
-  }, [equipment]);
+  }, [visibleEquipment]);
 
-  const totalCurrentValue   = useMemo(() => equipment.reduce((s, i) => s + num(i.currentValue), 0),   [equipment]);
-  const totalReplacementCost = useMemo(() => equipment.reduce((s, i) => s + num(i.replacementCost), 0), [equipment]);
-  const totalPurchasePrice   = useMemo(() => equipment.reduce((s, i) => s + num(i.purchasePrice), 0),   [equipment]);
+  // Auto-expand all categories when the selection changes
+  const prevUnitRef = React.useRef<string>("");
+  if (prevUnitRef.current !== selectedUnitId) {
+    prevUnitRef.current = selectedUnitId;
+    const cats = Object.keys(categoryMap);
+    const expMap: Record<string, boolean> = {};
+    cats.forEach((c) => { expMap[c] = true; });
+    // setState during render is allowed when condition is met in React
+    // Use a timeout-free approach — we'll set it below via useEffect
+  }
+
+  React.useEffect(() => {
+    const cats = Object.keys(categoryMap);
+    const expMap: Record<string, boolean> = {};
+    cats.forEach((c) => { expMap[c] = true; });
+    setExpandedCategories(expMap);
+  }, [selectedUnitId]);
+
+  const totalCurrentValue    = useMemo(() => visibleEquipment.reduce((s, i) => s + num(i.currentValue), 0),    [visibleEquipment]);
+  const totalReplacementCost = useMemo(() => visibleEquipment.reduce((s, i) => s + num(i.replacementCost), 0), [visibleEquipment]);
 
   const categoryTotals = useMemo(() =>
     Object.fromEntries(
@@ -166,13 +123,16 @@ export default function EquipmentReportScreen() {
     ),
   [categoryMap]);
 
+  const selectedUnitName = selectedUnitId === "__all__"
+    ? "All Units"
+    : (businessUnits.find((u) => u.id === selectedUnitId)?.name ?? "Unknown");
+
   // ── Actions ───────────────────────────────────────────────────────────────────
 
   const handleShare = async () => {
-    const unitName = selectedUnit?.name ?? "All Units";
-    const text = buildShareText(unitName, equipment, categoryMap);
+    const text = buildShareText(selectedUnitName, visibleEquipment, categoryMap);
     try {
-      await Share.share({ message: text, title: `Equipment Report — ${unitName}` });
+      await Share.share({ message: text, title: `Equipment Report — ${selectedUnitName}` });
     } catch {}
   };
 
@@ -180,6 +140,11 @@ export default function EquipmentReportScreen() {
     setExpandedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
 
   // ── Render ────────────────────────────────────────────────────────────────────
+
+  const units = [
+    { id: "__all__", name: "All Units", isIncludedInSale: false },
+    ...businessUnits,
+  ];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -201,7 +166,7 @@ export default function EquipmentReportScreen() {
               Pick a business location to view its equipment
             </Text>
           </View>
-          {equipment.length > 0 && (
+          {visibleEquipment.length > 0 && (
             <TouchableOpacity
               style={[styles.shareBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={handleShare}
@@ -216,9 +181,7 @@ export default function EquipmentReportScreen() {
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>LOCATION</Text>
         <View style={styles.unitGrid}>
           {units.map((unit) => {
-            const active = selectedUnitId === null
-              ? unit.id === "__all__"
-              : unit.id === selectedUnitId;
+            const active = unit.id === selectedUnitId;
             return (
               <TouchableOpacity
                 key={unit.id}
@@ -229,11 +192,7 @@ export default function EquipmentReportScreen() {
                     borderColor: active ? colors.primary : colors.border,
                   },
                 ]}
-                onPress={() => {
-                  const newUnitId = unit.id === "__all__" ? null : unit.id;
-                  setSelectedUnitId(newUnitId);
-                  fetchEquipment(newUnitId);
-                }}
+                onPress={() => setSelectedUnitId(unit.id)}
                 activeOpacity={0.8}
               >
                 <Feather
@@ -242,15 +201,12 @@ export default function EquipmentReportScreen() {
                   color={active ? "#fff" : colors.mutedForeground}
                 />
                 <Text
-                  style={[
-                    styles.unitCardText,
-                    { color: active ? "#fff" : colors.foreground },
-                  ]}
+                  style={[styles.unitCardText, { color: active ? "#fff" : colors.foreground }]}
                   numberOfLines={2}
                 >
                   {unit.name}
                 </Text>
-                {!unit.sentinel && !active && unit.isIncludedInSale && (
+                {unit.id !== "__all__" && !active && unit.isIncludedInSale && (
                   <View style={[styles.saleBadge, { backgroundColor: `${colors.primary}20` }]}>
                     <Text style={[styles.saleBadgeText, { color: colors.primary }]}>In sale</Text>
                   </View>
@@ -265,59 +221,48 @@ export default function EquipmentReportScreen() {
           })}
         </View>
 
-        {/* Loading */}
-        {loading && (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
-        )}
-
-        {/* No data */}
-        {!loading && equipment.length === 0 && (
+        {/* No equipment */}
+        {visibleEquipment.length === 0 && (
           <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="inbox" size={28} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No equipment found</Text>
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              {selectedUnitId
-                ? "This location has no equipment assigned to it yet."
+              {selectedUnitId !== "__all__"
+                ? "No equipment is assigned to this location yet. Go to Equipment to assign or add items."
                 : "No equipment has been added to this business yet."}
             </Text>
             <TouchableOpacity
               style={[styles.goBtn, { backgroundColor: colors.primary }]}
               onPress={() => router.push("/(seller)/valuation/equipment" as any)}
             >
-              <Feather name="plus" size={14} color="#fff" />
-              <Text style={styles.goBtnText}>Add Equipment</Text>
+              <Feather name="tool" size={14} color="#fff" />
+              <Text style={styles.goBtnText}>Go to Equipment</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Summary Cards */}
-        {!loading && equipment.length > 0 && (
+        {/* Summary row */}
+        {visibleEquipment.length > 0 && (
           <>
             <View style={styles.summaryRow}>
               <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Feather name="dollar-sign" size={16} color="#3B82F6" />
                 <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Current Value</Text>
-                <Text style={[styles.summaryValue, { color: "#3B82F6" }]}>
-                  {fmt(totalCurrentValue)}
-                </Text>
+                <Text style={[styles.summaryValue, { color: "#3B82F6" }]}>{fmt(totalCurrentValue)}</Text>
               </View>
               <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Feather name="refresh-cw" size={16} color="#8B5CF6" />
-                <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Replacement Cost</Text>
-                <Text style={[styles.summaryValue, { color: "#8B5CF6" }]}>
-                  {fmt(totalReplacementCost)}
-                </Text>
+                <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Replacement</Text>
+                <Text style={[styles.summaryValue, { color: "#8B5CF6" }]}>{fmt(totalReplacementCost)}</Text>
               </View>
               <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Feather name="package" size={16} color="#F59E0B" />
                 <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Items</Text>
-                <Text style={[styles.summaryValue, { color: "#F59E0B" }]}>
-                  {equipment.length}
-                </Text>
+                <Text style={[styles.summaryValue, { color: "#F59E0B" }]}>{visibleEquipment.length}</Text>
               </View>
             </View>
 
-            {/* Category overview bar */}
+            {/* Category overview */}
             <View style={[styles.overviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.overviewTitle, { color: colors.foreground }]}>By Category</Text>
               {Object.entries(categoryTotals)
@@ -326,17 +271,13 @@ export default function EquipmentReportScreen() {
                   const pct = totalCurrentValue > 0 ? value / totalCurrentValue : 0;
                   return (
                     <View key={cat} style={styles.catRow}>
-                      <View style={{ flex: 1 }}>
-                        <View style={styles.catLabelRow}>
-                          <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
-                          <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{count} item{count !== 1 ? "s" : ""}</Text>
-                          <Text style={[styles.catValue, { color: colors.foreground }]}>{fmt(value)}</Text>
-                        </View>
-                        <View style={[styles.barBg, { backgroundColor: colors.border }]}>
-                          <View
-                            style={[styles.barFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: colors.primary }]}
-                          />
-                        </View>
+                      <View style={styles.catLabelRow}>
+                        <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
+                        <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{count}</Text>
+                        <Text style={[styles.catValue, { color: colors.foreground }]}>{fmt(value)}</Text>
+                      </View>
+                      <View style={[styles.barBg, { backgroundColor: colors.border }]}>
+                        <View style={[styles.barFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: colors.primary }]} />
                       </View>
                     </View>
                   );
@@ -352,7 +293,6 @@ export default function EquipmentReportScreen() {
               })
               .map(([cat, items]) => (
                 <View key={cat} style={[styles.categorySection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  {/* Category header */}
                   <TouchableOpacity
                     style={styles.categoryHeader}
                     onPress={() => toggleCategory(cat)}
@@ -371,7 +311,6 @@ export default function EquipmentReportScreen() {
                     />
                   </TouchableOpacity>
 
-                  {/* Items */}
                   {expandedCategories[cat] && (
                     <View style={[styles.itemList, { borderTopColor: colors.border }]}>
                       {items.map((item, idx) => (
@@ -385,21 +324,21 @@ export default function EquipmentReportScreen() {
                           <View style={{ flex: 1, gap: 3 }}>
                             <Text style={[styles.itemName, { color: colors.foreground }]}>{item.name}</Text>
                             <View style={styles.itemMetaRow}>
-                              {item.brand && (
+                              {item.brand ? (
                                 <View style={[styles.tag, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}30` }]}>
                                   <Text style={[styles.tagText, { color: colors.primary }]}>{item.brand}</Text>
                                 </View>
-                              )}
-                              {item.condition && (
+                              ) : null}
+                              {item.condition ? (
                                 <View style={[styles.tag, { backgroundColor: `${conditionColor(item.condition)}15`, borderColor: `${conditionColor(item.condition)}30` }]}>
                                   <Text style={[styles.tagText, { color: conditionColor(item.condition) }]}>{item.condition}</Text>
                                 </View>
-                              )}
-                              {item.ownership === "leased" && (
+                              ) : null}
+                              {item.ownership === "leased" ? (
                                 <View style={[styles.tag, { backgroundColor: "#F59E0B15", borderColor: "#F59E0B30" }]}>
                                   <Text style={[styles.tagText, { color: "#F59E0B" }]}>Leased</Text>
                                 </View>
-                              )}
+                              ) : null}
                             </View>
                           </View>
                           <View style={{ alignItems: "flex-end", gap: 3 }}>
@@ -417,10 +356,8 @@ export default function EquipmentReportScreen() {
                 </View>
               ))}
 
-            {/* Footer note */}
             <Text style={[styles.footerNote, { color: colors.mutedForeground }]}>
               * Current value is the secondhand, replacement, or manual value as configured per item.
-              Purchase price used where no other value is set.
             </Text>
           </>
         )}
@@ -437,52 +374,52 @@ const styles = StyleSheet.create({
   backBtn:      { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", marginTop: 2 },
   title:        { fontSize: 22, fontFamily: "Inter_700Bold" },
   subtitle:     { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
-  shareBtn:     { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  shareBtn:     { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, marginTop: 4 },
   shareBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 
   sectionLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.8 },
 
-  unitGrid:     { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  unitCard:     { width: "47%", borderRadius: 14, borderWidth: 1.5, padding: 14, gap: 8, position: "relative" },
-  unitCardText: { fontSize: 14, fontFamily: "Inter_600SemiBold", lineHeight: 19 },
-  saleBadge:    { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  saleBadgeText:{ fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  activeCheck:  { position: "absolute", top: 10, right: 10, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center" },
+  unitGrid:      { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  unitCard:      { width: "47%", borderRadius: 14, borderWidth: 1.5, padding: 14, gap: 8, position: "relative" },
+  unitCardText:  { fontSize: 14, fontFamily: "Inter_600SemiBold", lineHeight: 19 },
+  saleBadge:     { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  saleBadgeText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  activeCheck:   { position: "absolute", top: 10, right: 10, width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center" },
 
-  emptyCard:    { borderRadius: 14, borderWidth: 1, padding: 28, alignItems: "center", gap: 8 },
-  emptyTitle:   { fontSize: 16, fontFamily: "Inter_600SemiBold", marginTop: 4 },
-  emptyText:    { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 19 },
-  goBtn:        { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
-  goBtnText:    { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  emptyCard:  { borderRadius: 14, borderWidth: 1, padding: 28, alignItems: "center", gap: 8 },
+  emptyTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", marginTop: 4 },
+  emptyText:  { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 19 },
+  goBtn:      { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  goBtnText:  { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
 
   summaryRow:   { flexDirection: "row", gap: 10 },
   summaryCard:  { flex: 1, borderRadius: 12, borderWidth: 1, padding: 12, gap: 4, alignItems: "center" },
   summaryLabel: { fontSize: 10, fontFamily: "Inter_500Medium", textAlign: "center" },
   summaryValue: { fontSize: 16, fontFamily: "Inter_700Bold", textAlign: "center" },
 
-  overviewCard: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 12 },
-  overviewTitle:{ fontSize: 14, fontFamily: "Inter_700Bold" },
-  catRow:       { gap: 6 },
-  catLabelRow:  { flexDirection: "row", alignItems: "center", gap: 8 },
-  catName:      { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
-  catCount:     { fontSize: 12, fontFamily: "Inter_400Regular" },
-  catValue:     { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  barBg:        { height: 6, borderRadius: 3, overflow: "hidden" },
-  barFill:      { height: "100%", borderRadius: 3 },
+  overviewCard:  { borderRadius: 14, borderWidth: 1, padding: 16, gap: 12 },
+  overviewTitle: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  catRow:        { gap: 5 },
+  catLabelRow:   { flexDirection: "row", alignItems: "center", gap: 8 },
+  catName:       { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  catCount:      { fontSize: 12, fontFamily: "Inter_400Regular" },
+  catValue:      { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  barBg:         { height: 6, borderRadius: 3, overflow: "hidden" },
+  barFill:       { height: "100%", borderRadius: 3 },
 
   categorySection: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   categoryHeader:  { flexDirection: "row", alignItems: "center", padding: 14, gap: 10 },
   categoryName:    { fontSize: 15, fontFamily: "Inter_700Bold" },
   categoryMeta:    { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
 
-  itemList:     { borderTopWidth: 1 },
-  itemRow:      { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
-  itemName:     { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  itemMetaRow:  { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
-  tag:          { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
-  tagText:      { fontSize: 10, fontFamily: "Inter_500Medium" },
-  itemValue:    { fontSize: 14, fontFamily: "Inter_700Bold" },
-  itemRepl:     { fontSize: 11, fontFamily: "Inter_400Regular" },
+  itemList:    { borderTopWidth: 1 },
+  itemRow:     { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
+  itemName:    { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  itemMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
+  tag:         { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
+  tagText:     { fontSize: 10, fontFamily: "Inter_500Medium" },
+  itemValue:   { fontSize: 14, fontFamily: "Inter_700Bold" },
+  itemRepl:    { fontSize: 11, fontFamily: "Inter_400Regular" },
 
-  footerNote:   { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 17, paddingHorizontal: 8 },
+  footerNote: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 17, paddingHorizontal: 8 },
 });
