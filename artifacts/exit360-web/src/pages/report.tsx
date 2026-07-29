@@ -118,11 +118,6 @@ function LockedSection({
   listingId: string;
   sectionKey: string;
 }) {
-  const [requested, setRequested] = useState(false);
-  function handleRequest() {
-    setRequested(true);
-    recordAccessLog(listingId, "access_requested", { sectionKey });
-  }
   return (
     <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8 flex flex-col items-center gap-4 text-center">
       <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center">
@@ -133,19 +128,16 @@ function LockedSection({
         {subtitle && <p className="text-slate-400 text-sm mt-1">{subtitle}</p>}
       </div>
       <p className="text-slate-400 text-sm max-w-xs">
-        This section is available to approved buyers only. Request access to unlock full content.
+        This section is available to approved buyers. Sign in to your buyer portal to unlock it.
       </p>
-      {requested ? (
-        <p className="text-emerald-400 text-sm font-semibold">✓ Access request sent</p>
-      ) : (
-        <button
-          onClick={handleRequest}
-          className="mt-1 inline-flex items-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm font-semibold px-4 py-2 rounded-lg border border-amber-500/30 transition-colors"
-        >
-          <Shield size={14} />
-          Request Access
-        </button>
-      )}
+      <a
+        href="/buyers"
+        onClick={() => recordAccessLog(listingId, "access_requested", { sectionKey })}
+        className="mt-1 inline-flex items-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm font-semibold px-4 py-2 rounded-lg border border-amber-500/30 transition-colors"
+      >
+        <Shield size={14} />
+        Sign in to Buyer Portal
+      </a>
     </div>
   );
 }

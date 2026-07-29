@@ -61,8 +61,8 @@ async function verifyBuyerToken(token: string): Promise<string | null> {
 }
 
 /** Issue a report-access token for a specific listing (unlocks approved_buyer sections). */
-async function signReportAccessToken(listingId: string): Promise<string> {
-  return new SignJWT({ listingId, type: "report-access" })
+async function signReportAccessToken(listingId: string, phone: string): Promise<string> {
+  return new SignJWT({ listingId, phone, type: "buyer-report-access" })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("24h")
     .sign(getJwtSecret());
@@ -200,7 +200,7 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
       if (!cafe) return null;
       // Only issue an accessToken if they have IM report access
       const accessToken = perms.canViewImReport && cafe.listingId
-        ? await signReportAccessToken(cafe.listingId)
+        ? await signReportAccessToken(cafe.listingId, phone)
         : null;
       return {
         cafeId,

@@ -19,6 +19,9 @@ import {
   reportImagesTable,
   reportVisualsTable,
   kvStore,
+  buyerPortalGroupMembersTable,
+  buyerPortalGroupsTable,
+  buyerPortalGroupPermissionsTable,
 } from "@workspace/db";
 import multer from "multer";
 import { requireAuth } from "../../middlewares/auth";
@@ -27,7 +30,8 @@ import { buildDefaultSections, SECTION_DEFAULTS } from "../../lib/report-section
 
 // ─── Buyer access token verification ─────────────────────────────────────────
 // Buyer JWTs are issued by POST /api/biz360/report-access-tokens/issue after
-// Twilio OTP verification. They carry { listingId, phone, type }.
+// Twilio OTP verification, OR by /api/buyer-portal/my-access for portal members.
+// They carry { listingId, phone, type: "buyer-report-access" }.
 async function verifyBuyerAccessToken(
   token: string,
   listingId: string,
@@ -42,6 +46,37 @@ async function verifyBuyerAccessToken(
     return typeof p["phone"] === "string" ? p["phone"] : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Check if a phone number has been granted access via the buyer portal group system.
+ * Looks up: phone → group member → group (cafeId) → cafe (listingId) + permissions (canViewImReport).
+ */
+async function checkBuyerPortalAccess(phone: string, listingId: string): Promise<boolean> {
+  try {
+    const { inArray } = await import("drizzle-orm");
+    const normalised = phone.replace(/\s/g, "");
+
+    const memberships = await db
+      .select({ groupId: buyerPortalGroupMembersTable.groupId })
+      .from(buyerPortalGroupMembersTable)
+      .where(eq(buyerPortalGroupMembersTable.phone, normalised));
+
+    if (!memberships.length) return false;
+    const groupIds = memberships.map((m) => m.groupId);
+
+    const [match] = await db
+      .select({ id: buyerPortalGroupPermissionsTable.id })
+      .from(buyerPortalGroupPermissionsTable)
+      .innerJoin(buyerPortalGroupsTable, eq(buyerPortalGroupsTable.id, buyerPortalGroupPermissionsTable.groupId))
+      .innerJoin(cafesTable, and(eq(cafesTable.id, buyerPortalGroupsTable.cafeId), eq(cafesTable.listingId, listingId)))
+      .where(and(inArray(buyerPortalGroupPermissionsTable.groupId, groupIds), eq(buyerPortalGroupPermissionsTable.canViewImReport, true)))
+      .limit(1);
+
+    return !!match;
+  } catch {
+    return false;
   }
 }
 
@@ -1146,8 +1181,9 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
       } catch { /* fall through to public */ }
     }
 
-    // Check buyer access token (issued by /api/biz360/report-access-tokens/issue
-    // after Twilio OTP verification). Token carries phone + listingId claim.
+    // Check buyer access token — issued either by the OTP flow or the buyer portal.
+    // Both token types carry { listingId, phone, type: "buyer-report-access" }.
+    // Grant if phone is in report_access_grants OR in a buyer portal group with canViewImReport.
     let buyerGranted = false;
     if (accessLevel === "public") {
       const accessToken = req.query["accessToken"] as string | undefined;
@@ -1164,7 +1200,7 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
               ),
             )
             .limit(1);
-          buyerGranted = !!grant;
+          buyerGranted = !!grant || await checkBuyerPortalAccess(phone, listingId);
         }
       }
     }
@@ -1417,7 +1453,7 @@ router.get("/report-versions/public-snapshot/:versionId", async (req, res): Prom
             ),
           )
           .limit(1);
-        buyerGranted = !!grant;
+        buyerGranted = !!grant || await checkBuyerPortalAccess(phone, version.listingId);
       }
     }
 
