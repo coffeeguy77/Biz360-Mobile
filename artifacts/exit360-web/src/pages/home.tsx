@@ -183,7 +183,7 @@ export function Home() {
                   <div className="text-xs text-muted-foreground mt-0.5">Profit</div>
                 </div>
                 <div className="col-span-2">
-                  <div className="text-2xl font-bold text-foreground">$1,215,300</div>
+                  <div className="text-2xl font-bold text-foreground">$1.2M</div>
                   <div className="text-xs text-muted-foreground mt-0.5">Equipment Value</div>
                 </div>
               </div>
