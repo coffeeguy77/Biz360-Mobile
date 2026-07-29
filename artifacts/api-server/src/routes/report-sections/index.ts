@@ -1222,6 +1222,22 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
           } catch { /* invalid token — stay locked */ }
         }
       }
+
+      // Path 3: backward-compat — old-format URL token (type: "report-access", no phone).
+      // These were issued by the buyer portal before the phone-embedding fix. Any valid
+      // signed JWT for this listingId was issued by us to an approved buyer — grant access.
+      if (!buyerGranted && accessToken) {
+        try {
+          const secret = process.env.JWT_SECRET;
+          if (secret) {
+            const { payload } = await jwtVerify(accessToken, new TextEncoder().encode(secret));
+            const p = payload as Record<string, unknown>;
+            if (p["listingId"] === listingId && p["type"] === "report-access") {
+              buyerGranted = true;
+            }
+          }
+        } catch { /* invalid */ }
+      }
     }
 
     // Sanitise fields that must never reach non-seller viewers regardless of section visibility.

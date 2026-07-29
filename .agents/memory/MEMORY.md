@@ -6,3 +6,4 @@
 - [pnpm symlinks + Metro](pnpm-metro-symlinks.md) — Metro does not follow pnpm symlinks by default; must add unstable_enableSymlinks to metro.config.js, and install packages at the correct SDK-pinned version.
 - [Replit proxy timeout + async jobs](replit-proxy-timeout.md) — Replit proxy enforces 2-min HTTP timeout; long Anthropic calls must use async job pattern (return jobId instantly, client polls status endpoint).
 - [PDF renderer vs report-visuals](pdf-render-vs-report-visuals.md) — PDF reads pre-stored chartData; report-visuals fixes don't affect existing PDF output
+- [Vite static build for deployment](vite-static-build.md) — dist/public must be manually pre-built (PORT=25700 BASE_PATH=/) before publish; dev workflow never updates it

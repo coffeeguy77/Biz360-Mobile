@@ -2570,7 +2570,9 @@ router.get("/report-exports/pdf-public/:listingId", async (req: any, res: any): 
       const secret = process.env.JWT_SECRET;
       if (secret) {
         const { payload } = await jwtVerify(rawToken, new TextEncoder().encode(secret));
-        if (payload.type === "buyer-report-access" && payload.listingId === listingId) {
+        // Accept new format (type: "buyer-report-access") and old format (type: "report-access")
+        if (payload.listingId === listingId &&
+            (payload.type === "buyer-report-access" || payload.type === "report-access")) {
           buyerUnlocked = true;
         }
       }
