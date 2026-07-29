@@ -49,6 +49,9 @@ async function scheduleCleanup() {
 }
 
 // Run first pass 30 s after startup so the DB is ready, then every 24 h
-setTimeout(scheduleCleanup, 30_000);
+// Only runs in production — never in local dev to avoid wiping assets on restart
+if (process.env.NODE_ENV === "production") {
+  setTimeout(scheduleCleanup, 30_000);
+}
 
 export default app;
