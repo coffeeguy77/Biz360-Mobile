@@ -80,6 +80,7 @@ function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): string 
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+<script>(function(){var _I=window.Image;window.Image=function(w,h){var i=typeof w!='undefined'?new _I(w,h):new _I();i.crossOrigin='anonymous';return i};window.Image.prototype=_I.prototype;Object.defineProperty(window.Image,'prototype',{value:_I.prototype})})();<\/script>
 <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"><\/script>
 <style>
   *{box-sizing:border-box}
