@@ -300,3 +300,69 @@ export const customReportLineItemsTable = pgTable(
 );
 
 export type CustomReportLineItem = typeof customReportLineItemsTable.$inferSelect;
+
+// ─── buyer_portal_groups ──────────────────────────────────────────────────────
+// Seller-created groups that bundle one or more buyers (by phone) and define
+// which content each group is allowed to see via the EXIT360 buyer portal.
+
+export const buyerPortalGroupsTable = pgTable(
+  "buyer_portal_groups",
+  {
+    id:          uuid("id").primaryKey().defaultRandom(),
+    cafeId:      uuid("cafe_id").notNull(),
+    ownerId:     text("owner_id").notNull(),
+    name:        text("name").notNull(),
+    description: text("description"),
+    createdAt:   timestamp("created_at").defaultNow(),
+    updatedAt:   timestamp("updated_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type BuyerPortalGroup = typeof buyerPortalGroupsTable.$inferSelect;
+
+// ─── buyer_portal_group_members ───────────────────────────────────────────────
+
+export const buyerPortalGroupMembersTable = pgTable(
+  "buyer_portal_group_members",
+  {
+    id:      uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id").notNull(),
+    phone:   text("phone").notNull(), // E.164 e.g. +61412345678
+    name:    text("name"),
+    addedAt: timestamp("added_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.groupId], foreignColumns: [buyerPortalGroupsTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type BuyerPortalGroupMember = typeof buyerPortalGroupMembersTable.$inferSelect;
+
+// ─── buyer_portal_group_permissions ──────────────────────────────────────────
+// What each group is allowed to see. One row per (group, cafe) combination so
+// a single group can have different permissions across multiple listings.
+
+export const buyerPortalGroupPermissionsTable = pgTable(
+  "buyer_portal_group_permissions",
+  {
+    id:                 uuid("id").primaryKey().defaultRandom(),
+    groupId:            uuid("group_id").notNull(),
+    cafeId:             uuid("cafe_id").notNull(),
+    canViewImReport:    boolean("can_view_im_report").notNull().default(false),
+    canViewWalkthrough: boolean("can_view_walkthrough").notNull().default(false),
+    canViewFinancials:  boolean("can_view_financials").notNull().default(false),
+    canViewEquipment:   boolean("can_view_equipment").notNull().default(false),
+    createdAt:          timestamp("created_at").defaultNow(),
+    updatedAt:          timestamp("updated_at").defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.groupId], foreignColumns: [buyerPortalGroupsTable.id] }).onDelete("cascade"),
+    foreignKey({ columns: [t.cafeId],  foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+    { type: "unique", name: "buyer_portal_perms_group_cafe_uniq", columns: [t.groupId, t.cafeId] } as any,
+  ]
+);
+
+export type BuyerPortalGroupPermissions = typeof buyerPortalGroupPermissionsTable.$inferSelect;
