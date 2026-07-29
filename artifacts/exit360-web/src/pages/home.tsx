@@ -170,25 +170,21 @@ export function Home() {
             <Card className="p-6 border-border bg-card">
               <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Key Metrics</div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-2xl font-bold text-foreground">{formatPrice(bc.askingPrice)}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Asking Price</div>
+                <div className="col-span-2">
+                  <div className="text-2xl font-bold text-foreground">$1.5M – $2.1M</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Valuation Est.</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-foreground">{formatPrice(bc.weeklyRevenue * 52)}</div>
+                  <div className="text-2xl font-bold text-foreground">$1.21M</div>
                   <div className="text-xs text-muted-foreground mt-0.5">Annual Revenue</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-foreground flex items-center gap-1">
-                    <Users size={18} className="text-primary" />{bc.staffCount}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Staff</div>
+                  <div className="text-2xl font-bold text-foreground">$558K</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Profit</div>
                 </div>
-                <div>
-                  <div className="text-2xl font-bold text-foreground flex items-center gap-1">
-                    <Clock size={18} className="text-primary" />{bc.ownerHours}h
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Owner Hours / wk</div>
+                <div className="col-span-2">
+                  <div className="text-2xl font-bold text-foreground">$1,215,300</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Equipment Value</div>
                 </div>
               </div>
             </Card>
