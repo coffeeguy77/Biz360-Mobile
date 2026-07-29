@@ -28,7 +28,7 @@ export interface Listing {
 export const DEMO_LISTINGS: Listing[] = [
   {
     id: "user-listing-1779894194896",
-    businessName: "Bean Culture Espresso Bar",
+    businessName: "Bean Culture Coffee Roastery",
     category: "Food & Beverage",
     subcategory: "Specialty Coffee",
     state: "ACT",
