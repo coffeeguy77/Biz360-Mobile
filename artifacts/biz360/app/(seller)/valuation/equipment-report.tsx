@@ -111,25 +111,18 @@ export default function EquipmentReportScreen() {
     [units, selectedUnitId],
   );
 
-  useFocusEffect(useCallback(() => {
+  const fetchEquipment = useCallback(async (unitId: string | null) => {
     if (!selectedCafe || !authToken) return;
-    if (selectedUnitId === undefined) return; // not initialised yet
-    fetchEquipment();
-  }, [selectedCafe?.id, authToken, selectedUnitId]));
-
-  const fetchEquipment = async () => {
-    if (!selectedCafe) return;
     setLoading(true);
     try {
-      const qs = selectedUnitId ? `?unit_id=${selectedUnitId}` : "";
+      const qs = unitId ? `?unit_id=${unitId}` : "";
       const res = await fetch(
         `${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment${qs}`,
-        { headers: authHeaders() },
+        { headers: { Authorization: `Bearer ${authToken}` } },
       );
       if (res.ok) {
         const data = await res.json();
         setEquipment(data.equipment ?? []);
-        // Default all categories expanded
         const cats = [...new Set((data.equipment ?? []).map((e: Equipment) => e.category ?? "Uncategorised"))] as string[];
         const expMap: Record<string, boolean> = {};
         cats.forEach((c) => { expMap[c] = true; });
@@ -137,7 +130,12 @@ export default function EquipmentReportScreen() {
       }
     } catch {}
     setLoading(false);
-  };
+  }, [selectedCafe?.id, authToken]);
+
+  // Load on first focus and when the cafe changes
+  useFocusEffect(useCallback(() => {
+    fetchEquipment(selectedUnitId);
+  }, [fetchEquipment]));
 
   // ── Derived data ─────────────────────────────────────────────────────────────
 
@@ -232,7 +230,9 @@ export default function EquipmentReportScreen() {
                   },
                 ]}
                 onPress={() => {
-                  setSelectedUnitId(unit.id === "__all__" ? null : unit.id);
+                  const newUnitId = unit.id === "__all__" ? null : unit.id;
+                  setSelectedUnitId(newUnitId);
+                  fetchEquipment(newUnitId);
                 }}
                 activeOpacity={0.8}
               >
