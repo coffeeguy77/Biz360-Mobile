@@ -184,6 +184,7 @@ export default function ValuationIndex() {
                 { label: "Full Report", icon: "file-text", route: "/(seller)/valuation/report" },
                 { label: "Fin. Reports", icon: "bar-chart-2", route: "/(seller)/valuation/custom-reports" },
                 { label: "Buyer Access", icon: "users", route: "/(seller)/buyer-groups" },
+                { label: "Documents", icon: "paperclip", route: "/(seller)/valuation/documents" },
               ].map(({ label, icon, route }) => (
                 <TouchableOpacity
                   key={label}

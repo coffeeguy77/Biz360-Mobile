@@ -11,6 +11,7 @@ import reportExportsRouter from "./report-exports/index";
 import reportImagesRouter from "./report-images/index";
 import reportVisualsRouter from "./report-visuals/index";
 import buyerPortalRouter from "./buyer-portal";
+import listingDocumentsRouter from "./listing-documents/index";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(reportExportsRouter);
 router.use(reportImagesRouter);
 router.use(reportVisualsRouter);
 router.use(buyerPortalRouter);
+router.use(listingDocumentsRouter);
 
 export default router;

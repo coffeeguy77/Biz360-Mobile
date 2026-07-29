@@ -414,6 +414,7 @@ export function ListingDetail() {
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
   const [tourAutoPanAll, setTourAutoPanAll] = useState(false);
   const [liveData, setLiveData] = useState<{ listing: any; snapshot: any } | null>(null);
+  const [publicDocs, setPublicDocs] = useState<{ id: string; title: string; docType: string; url: string; mimeType: string | null }[]>([]);
 
   // Report access gate state
   const [accessInfo, setAccessInfo] = useState<{ mode: string; hasAccess: boolean; smsUnlockEnabled?: boolean } | null>(null);
@@ -477,6 +478,15 @@ export function ListingDetail() {
     if (!listing?.isRealListing) return;
     fetchLiveData(listing.id);
   }, [listing?.id, fetchLiveData]);
+
+  // Fetch public documents for this listing
+  useEffect(() => {
+    if (!listing?.isRealListing) return;
+    fetch(`/api/public/listing-documents/${listing.id}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.docs) setPublicDocs(d.docs); })
+      .catch(() => {});
+  }, [listing?.id]);
 
   const checkAccess = useCallback(async (lid: string) => {
     setAccessChecking(true);
@@ -990,6 +1000,48 @@ export function ListingDetail() {
                 })}
               </div>
             </div>
+
+            {/* Attached documents — only shown when seller has uploaded any */}
+            {publicDocs.length > 0 && (
+              <div>
+                <h2 className="font-semibold text-lg mb-3">Attached Documents</h2>
+                <div className="flex flex-col gap-2">
+                  {publicDocs.map((doc) => {
+                    const iconMap: Record<string, string> = {
+                      valuation: "📊",
+                      equipment: "🔧",
+                      financials: "📈",
+                      other: "📄",
+                    };
+                    const labelMap: Record<string, string> = {
+                      valuation: "Valuation Report",
+                      equipment: "Equipment List",
+                      financials: "Financial Report",
+                      other: "Document",
+                    };
+                    return (
+                      <a
+                        key={doc.id}
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-card/80 hover:border-primary/40 transition-all group"
+                      >
+                        <span className="text-xl">{iconMap[doc.docType] ?? "📄"}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-foreground truncate">{doc.title}</div>
+                          <div className="text-xs text-muted-foreground">{labelMap[doc.docType] ?? "Document"}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-primary font-semibold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          <ExternalLink size={12} /> View
+                        </div>
+                        <ExternalLink size={14} className="text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: sidebar */}

@@ -12,6 +12,23 @@ import {
   foreignKey,
 } from "drizzle-orm/pg-core";
 
+// ─── listing_documents ───────────────────────────────────────────────────────
+
+export const listingDocumentsTable = pgTable("listing_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  listingId: text("listing_id").notNull(),
+  ownerId: text("owner_id").notNull(),
+  title: text("title").notNull(),
+  docType: text("doc_type").notNull().default("other"), // valuation | equipment | financials | other
+  url: text("url").notNull(),
+  cloudinaryPublicId: text("cloudinary_public_id"),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type ListingDocument = typeof listingDocumentsTable.$inferSelect;
+
 // ─── val_cafes ──────────────────────────────────────────────────────────────
 
 export const cafesTable = pgTable("val_cafes", {
