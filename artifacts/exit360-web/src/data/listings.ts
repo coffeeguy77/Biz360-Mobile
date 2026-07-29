@@ -28,9 +28,9 @@ export interface Listing {
 export const DEMO_LISTINGS: Listing[] = [
   {
     id: "user-listing-1779894194896",
-    businessName: "Specialty Coffee Business",
+    businessName: "Bean Culture Espresso Bar",
     category: "Food & Beverage",
-    subcategory: "Specialty Coffee Business",
+    subcategory: "Specialty Coffee",
     state: "ACT",
     suburb: "Inner City",
     askingPrice: 300000,
@@ -45,9 +45,9 @@ export const DEMO_LISTINGS: Listing[] = [
     hasTour: true,
     confidential: false,
     heroColor: "#D97706",
-    imageUrl: "https://res.cloudinary.com/dzx6x1hou/image/upload/v1780049037/biz360/u-61414631463-1779893721125/user-listing-1779894194896/pano_1780049035695.jpg",
+    imageUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&q=80&w=1200",
     description:
-      "Specialty coffee business with 23-space virtual tour including production floor, hydroponic farm, barista stations, retail and development rooms. Relocating interstate.",
+      "Specialty coffee operation with 23-space immersive tour — production floor, hydroponic farm, barista stations, retail and development rooms. Fully verified. Relocating interstate.",
     savedCount: 0,
     viewCount: 84,
     tourStarts: 181,
