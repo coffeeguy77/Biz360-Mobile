@@ -1,11 +1,42 @@
 import { Link } from "wouter";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Building, ShieldCheck, ArrowRight, Eye, Play, TrendingUp, Clock, Users, MapPin } from "lucide-react";
-import { DEMO_LISTINGS } from "@/data/listings";
+import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
+
+const BEAN_CULTURE_ID = "user-listing-1779894194896";
+const BEAN_CULTURE_STATIC = DEMO_LISTINGS.find(l => l.id === BEAN_CULTURE_ID)!;
+
+function useLiveListing(id: string) {
+  const [data, setData] = useState<Record<string, any> | null>(null);
+  useEffect(() => {
+    fetch(`/api/public/listing/${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d?.listing && setData(d.listing))
+      .catch(() => {});
+  }, [id]);
+  return data;
+}
 
 export function Home() {
+  const liveData = useLiveListing(BEAN_CULTURE_ID);
+
+  // Merge: live API wins for price/revenue/staff fields; static provides tour/image/badge data
+  const bc = {
+    ...BEAN_CULTURE_STATIC,
+    businessName: liveData?.businessName ?? BEAN_CULTURE_STATIC.businessName,
+    suburb:       liveData?.suburb       ?? BEAN_CULTURE_STATIC.suburb,
+    state:        liveData?.state        ?? BEAN_CULTURE_STATIC.state,
+    askingPrice:  liveData?.askingPrice  ?? BEAN_CULTURE_STATIC.askingPrice,
+    weeklyRevenue:liveData?.weeklyRevenue?? BEAN_CULTURE_STATIC.weeklyRevenue,
+    adjustedProfit:liveData?.adjustedProfit ?? BEAN_CULTURE_STATIC.adjustedProfit,
+    staffCount:   liveData?.staffCount   ?? BEAN_CULTURE_STATIC.staffCount,
+    ownerHours:   liveData?.ownerHours   ?? BEAN_CULTURE_STATIC.ownerHours,
+    description:  liveData?.description  ?? BEAN_CULTURE_STATIC.description,
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
       
@@ -92,116 +123,105 @@ export function Home() {
       </section>
 
       {/* Bean Culture Featured Listing */}
-      {(() => {
-        const bc = DEMO_LISTINGS.find(l => l.id === "user-listing-1779894194896")!;
-        return (
-          <section className="py-24 px-6 max-w-7xl mx-auto">
-            <div className="text-center max-w-3xl mx-auto mb-14">
-              <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20 px-3 py-1 mb-4">
-                Featured Listing
+      <section className="py-24 px-6 max-w-7xl mx-auto">
+        <div className="text-center max-w-3xl mx-auto mb-14">
+          <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20 px-3 py-1 mb-4">
+            Featured Listing
+          </Badge>
+          <h2 className="text-3xl md:text-5xl font-bold mb-5">Meet Bean Culture.</h2>
+          <p className="text-lg text-muted-foreground">
+            A fully verified specialty coffee operation with a 23-space immersive 360° tour. This is what serious due diligence looks like.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8 items-stretch">
+          {/* Image + tour overlay */}
+          <div className="relative rounded-2xl overflow-hidden shadow-2xl group min-h-[420px]">
+            <img
+              src={bc.imageUrl}
+              alt="Bean Culture Espresso Bar — Barista station"
+              className="w-full h-full object-cover absolute inset-0 group-hover:scale-105 transition-transform duration-700"
+              style={{ objectPosition: "center center" }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+            <div className="absolute top-4 left-4">
+              <Badge className="bg-amber-500 text-black font-semibold px-3 py-1 text-xs">
+                23-Space 360° Tour
               </Badge>
-              <h2 className="text-3xl md:text-5xl font-bold mb-5">Meet Bean Culture.</h2>
-              <p className="text-lg text-muted-foreground">
-                A fully verified specialty coffee operation with a 23-space immersive 360° tour. This is what serious due diligence looks like.
-              </p>
             </div>
-
-            <div className="grid md:grid-cols-2 gap-8 items-stretch">
-              {/* Image + tour overlay */}
-              <div className="relative rounded-2xl overflow-hidden shadow-2xl group min-h-[420px]">
-                <img
-                  src={bc.imageUrl}
-                  alt="Bean Culture Espresso Bar — Barista station"
-                  className="w-full h-full object-cover absolute inset-0 group-hover:scale-105 transition-transform duration-700"
-                  style={{ objectPosition: "center center" }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                {/* Tour badge */}
-                <div className="absolute top-4 left-4">
-                  <Badge className="bg-amber-500 text-black font-semibold px-3 py-1 text-xs">
-                    23-Space 360° Tour
-                  </Badge>
+            <Link href={`/listings/${bc.id}`}>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-[72px] h-[72px] bg-white/20 backdrop-blur-sm border border-white/30 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/30 hover:scale-110 transition-all duration-200">
+                  <Play fill="white" className="text-white ml-1" size={28} />
                 </div>
-                {/* Play button */}
-                <Link href={`/listings/${bc.id}`}>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-18 h-18 w-[72px] h-[72px] bg-white/20 backdrop-blur-sm border border-white/30 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/30 hover:scale-110 transition-all duration-200">
-                      <Play fill="white" className="text-white ml-1" size={28} />
-                    </div>
+              </div>
+            </Link>
+            <div className="absolute bottom-0 left-0 right-0 p-6">
+              <div className="text-white text-xl font-bold mb-1">{bc.businessName}</div>
+              <div className="flex items-center gap-1 text-white/70 text-sm">
+                <MapPin size={12} />
+                {bc.suburb}, {bc.state} &nbsp;·&nbsp; {bc.subcategory}
+              </div>
+            </div>
+          </div>
+
+          {/* Details card */}
+          <div className="flex flex-col gap-4">
+            <Card className="p-6 border-border bg-card">
+              <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Key Metrics</div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-2xl font-bold text-foreground">{formatPrice(bc.askingPrice)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Asking Price</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-foreground">{formatPrice(bc.weeklyRevenue * 52)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Annual Revenue</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-foreground flex items-center gap-1">
+                    <Users size={18} className="text-primary" />{bc.staffCount}
                   </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Staff</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-foreground flex items-center gap-1">
+                    <Clock size={18} className="text-primary" />{bc.ownerHours}h
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Owner Hours / wk</div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 border-border bg-card">
+              <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Verified & Documented</div>
+              <div className="flex flex-wrap gap-2">
+                {["ID Verified", "ABN Verified", "Financials", "Lease Docs", "Equipment List", "360 Tour", "Broker Listed", "Accountant Verified"].map(badge => (
+                  <span key={badge} className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 rounded-full">
+                    <CheckCircle2 size={10} />
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-6 border-border bg-card flex-1 flex flex-col justify-between gap-4">
+              <p className="text-sm text-muted-foreground leading-relaxed">{bc.description}</p>
+              <div className="flex gap-3 items-center">
+                <Link href={`/listings/${bc.id}`} className="flex-1">
+                  <Button className="w-full gap-2">
+                    View Listing <ArrowRight size={16} />
+                  </Button>
                 </Link>
-                {/* Bottom meta */}
-                <div className="absolute bottom-0 left-0 right-0 p-6">
-                  <div className="text-white text-xl font-bold mb-1">{bc.businessName}</div>
-                  <div className="flex items-center gap-1 text-white/70 text-sm">
-                    <MapPin size={12} />
-                    {bc.suburb}, {bc.state} &nbsp;·&nbsp; {bc.subcategory}
-                  </div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                  <TrendingUp size={12} className="text-amber-400" />
+                  {bc.tourStarts} tours started
                 </div>
               </div>
-
-              {/* Details card */}
-              <div className="flex flex-col gap-4">
-                {/* Key metrics */}
-                <Card className="p-6 border-border bg-card">
-                  <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Key Metrics</div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-2xl font-bold text-foreground">$300K</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Asking Price</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-foreground">$780K</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Annual Revenue</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-foreground flex items-center gap-1">
-                        <Users size={18} className="text-primary" />4
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Staff</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-foreground flex items-center gap-1">
-                        <Clock size={18} className="text-primary" />40h
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Owner Hours / wk</div>
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Verification badges */}
-                <Card className="p-6 border-border bg-card">
-                  <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Verified & Documented</div>
-                  <div className="flex flex-wrap gap-2">
-                    {["ID Verified", "ABN Verified", "Financials", "Lease Docs", "Equipment List", "360 Tour", "Broker Listed", "Accountant Verified"].map(badge => (
-                      <span key={badge} className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 rounded-full">
-                        <CheckCircle2 size={10} />
-                        {badge}
-                      </span>
-                    ))}
-                  </div>
-                </Card>
-
-                {/* Description + CTA */}
-                <Card className="p-6 border-border bg-card flex-1 flex flex-col justify-between gap-4">
-                  <p className="text-sm text-muted-foreground leading-relaxed">{bc.description}</p>
-                  <div className="flex gap-3">
-                    <Link href={`/listings/${bc.id}`} className="flex-1">
-                      <Button className="w-full gap-2">
-                        View Listing <ArrowRight size={16} />
-                      </Button>
-                    </Link>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <TrendingUp size={12} className="text-amber-400" />
-                      {bc.tourStarts} tours started
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            </div>
-          </section>
-        );
-      })()}
+            </Card>
+          </div>
+        </div>
+      </section>
 
       {/* Value Props */}
       <section className="py-24 px-6 bg-card border-t border-border">
