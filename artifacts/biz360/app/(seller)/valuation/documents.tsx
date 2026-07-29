@@ -16,7 +16,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useValuation } from "@/context/ValuationContext";
-import { API_BASE } from "@/constants/api";
+import { API_BASE } from "@/lib/apiStore";
 
 const DOC_TYPES = [
   { value: "valuation", label: "Valuation Report", icon: "trending-up" },
