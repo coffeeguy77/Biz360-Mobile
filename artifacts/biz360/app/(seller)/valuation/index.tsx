@@ -175,6 +175,7 @@ export default function ValuationIndex() {
               {[
                 { label: "Divisions", icon: "layers", route: "/(seller)/valuation/units" },
                 { label: "Equipment", icon: "tool", route: "/(seller)/valuation/equipment" },
+                { label: "Equip. Report", icon: "file-text", route: "/(seller)/valuation/equipment-report" },
                 { label: "Add-backs", icon: "plus-circle", route: "/(seller)/valuation/adjustments" },
                 { label: "Connections", icon: "link", route: "/(seller)/valuation/profile" },
                 { label: "P&L Mapping", icon: "bar-chart-2", route: "/(seller)/valuation/pl-mappings" },
