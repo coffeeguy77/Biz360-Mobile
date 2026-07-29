@@ -1,13 +1,18 @@
 import { Feather } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  Platform, ScrollView, Share, StyleSheet,
+  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useValuation, ValEquipment } from "@/context/ValuationContext";
+
+const domain = process.env.EXPO_PUBLIC_DOMAIN;
+const API_BASE = domain ? `https://${domain}` : "";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -32,45 +37,17 @@ function conditionColor(condition?: string | null): string {
   }
 }
 
-function buildShareText(
-  unitName: string,
-  items: ValEquipment[],
-  categoryMap: Record<string, ValEquipment[]>,
-): string {
-  const totalValue = items.reduce((s, i) => s + num(i.currentValue), 0);
-  const totalRepl  = items.reduce((s, i) => s + num(i.replacementCost), 0);
-
-  const lines: string[] = [
-    `EQUIPMENT REPORT — ${unitName.toUpperCase()}`,
-    `Generated: ${new Date().toLocaleDateString("en-AU", { dateStyle: "long" })}`,
-    `Items: ${items.length} | Current Value: $${Math.round(totalValue).toLocaleString("en-AU")} | Replacement Cost: $${Math.round(totalRepl).toLocaleString("en-AU")}`,
-    "",
-  ];
-
-  for (const [cat, catItems] of Object.entries(categoryMap)) {
-    const catTotal = catItems.reduce((s, i) => s + num(i.currentValue), 0);
-    lines.push(`── ${cat.toUpperCase()} (${catItems.length} items, $${Math.round(catTotal).toLocaleString("en-AU")}) ──`);
-    for (const item of catItems) {
-      const brand = item.brand ? ` [${item.brand}]` : "";
-      const cond  = item.condition ? ` — ${item.condition}` : "";
-      lines.push(`  • ${item.name}${brand}${cond}: ${fmt(item.currentValue)}`);
-    }
-    lines.push("");
-  }
-
-  return lines.join("\n");
-}
-
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function EquipmentReportScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { equipment, businessUnits } = useValuation();
+  const { equipment, businessUnits, selectedCafe, authToken } = useValuation();
 
   // "__all__" = no filter
   const [selectedUnitId, setSelectedUnitId] = useState<string>("__all__");
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // ── Filtered equipment ────────────────────────────────────────────────────────
 
@@ -129,11 +106,35 @@ export default function EquipmentReportScreen() {
 
   // ── Actions ───────────────────────────────────────────────────────────────────
 
-  const handleShare = async () => {
-    const text = buildShareText(selectedUnitName, visibleEquipment, categoryMap);
+  const handleExportPdf = async () => {
+    if (!selectedCafe || !authToken) return;
+    setExportingPdf(true);
     try {
-      await Share.share({ message: text, title: `Equipment Report — ${selectedUnitName}` });
-    } catch {}
+      const qs = selectedUnitId !== "__all__" ? `?unit_id=${selectedUnitId}` : "";
+      const url = `${API_BASE}/api/valuation/cafes/${selectedCafe.id}/equipment/pdf${qs}`;
+      const safeName = selectedUnitName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const path = `${FileSystem.cacheDirectory}equipment-report-${safeName}.pdf`;
+
+      // downloadAsync streams directly to disk — reliable for binary PDFs
+      const result = await FileSystem.downloadAsync(url, path, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (result.status !== 200) {
+        Alert.alert("Error", "Could not generate PDF — please try again");
+        return;
+      }
+
+      await Sharing.shareAsync(result.uri, {
+        mimeType: "application/pdf",
+        dialogTitle: `Equipment Report — ${selectedUnitName}`,
+        UTI: "com.adobe.pdf",
+      });
+    } catch {
+      Alert.alert("Error", "Failed to export PDF");
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   const toggleCategory = (cat: string) =>
@@ -169,10 +170,16 @@ export default function EquipmentReportScreen() {
           {visibleEquipment.length > 0 && (
             <TouchableOpacity
               style={[styles.shareBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={handleShare}
+              onPress={handleExportPdf}
+              disabled={exportingPdf}
             >
-              <Feather name="share" size={16} color={colors.primary} />
-              <Text style={[styles.shareBtnText, { color: colors.primary }]}>Share</Text>
+              {exportingPdf
+                ? <ActivityIndicator size="small" color={colors.primary} />
+                : <Feather name="file-text" size={16} color={colors.primary} />
+              }
+              <Text style={[styles.shareBtnText, { color: colors.primary }]}>
+                {exportingPdf ? "Generating…" : "Export PDF"}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
