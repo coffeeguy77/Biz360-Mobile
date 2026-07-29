@@ -9,6 +9,10 @@ export interface Listing {
   weeklyRevenue: number;
   adjustedProfit: number;
   isRealListing?: boolean;
+  /** If set, shown as "Valuation Est." instead of asking price in the sidebar */
+  valuationRange?: string;
+  /** If set, overrides API-derived annual revenue display */
+  fixedAnnualRevenue?: number;
   rent: number;
   leaseExpiry: string;
   staffCount: number;
@@ -34,8 +38,10 @@ export const DEMO_LISTINGS: Listing[] = [
     state: "ACT",
     suburb: "Mitchell",
     askingPrice: 595000,
-    weeklyRevenue: 15000,
-    adjustedProfit: 0,
+    valuationRange: "$1.5M – $2.1M",
+    weeklyRevenue: 23269,
+    fixedAnnualRevenue: 1210000,
+    adjustedProfit: 558000,
     rent: 0,
     leaseExpiry: "",
     staffCount: 4,

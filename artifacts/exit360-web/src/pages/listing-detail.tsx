@@ -858,7 +858,8 @@ export function ListingDetail() {
       : listing.adjustedProfit;
   const hasProfit = liveAdjustedProfit > 0;
   const multiple = hasProfit ? (liveAskingPrice / liveAdjustedProfit).toFixed(1) + "×" : "—";
-  const annualRevenue = liveWeeklyRevenue * 52;
+  // Use fixedAnnualRevenue override when set (bypasses stale API weeklyRevenue)
+  const annualRevenue = listing.fixedAnnualRevenue ?? (liveWeeklyRevenue * 52);
 
   const audioGroups = spaces
     .filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"))
@@ -997,17 +998,36 @@ export function ListingDetail() {
               {/* Price card */}
               <div className="bg-card border border-border rounded-2xl p-6 flex flex-col gap-4">
                 <div className="text-center">
-                  <div className="text-3xl font-bold">{formatPrice(liveAskingPrice)}</div>
-                  <div className="text-sm text-muted-foreground mt-1">Asking Price</div>
+                  {listing.valuationRange ? (
+                    <>
+                      <div className="text-3xl font-bold">{listing.valuationRange}</div>
+                      <div className="text-sm text-muted-foreground mt-1">Valuation Est.</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold">{formatPrice(liveAskingPrice)}</div>
+                      <div className="text-sm text-muted-foreground mt-1">Asking Price</div>
+                    </>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-background rounded-xl p-3 text-center border border-border">
-                    <div className="text-base font-bold text-green-400">{formatRevenue(liveWeeklyRevenue)}</div>
-                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Weekly Revenue</div>
+                    <div className="text-base font-bold text-green-400">
+                      {annualRevenue >= 1000000
+                        ? `$${(annualRevenue / 1000000).toFixed(2)}M`
+                        : `$${(annualRevenue / 1000).toFixed(0)}K`}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Annual Revenue</div>
                   </div>
                   <div className="bg-background rounded-xl p-3 text-center border border-border">
-                    <div className="text-base font-bold text-green-400">${(annualRevenue / 1000).toFixed(0)}K</div>
-                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Annual Revenue</div>
+                    <div className={`text-base font-bold text-green-400 ${!hasProfit ? "!text-muted-foreground" : ""}`}>
+                      {hasProfit
+                        ? liveAdjustedProfit >= 1000000
+                          ? `$${(liveAdjustedProfit / 1000000).toFixed(2)}M`
+                          : `$${(liveAdjustedProfit / 1000).toFixed(0)}K`
+                        : "—"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Profit</div>
                   </div>
                   <div className="bg-background rounded-xl p-3 text-center border border-border">
                     <div className={`text-base font-bold ${hasProfit ? "" : "text-muted-foreground"}`}>{multiple}</div>
