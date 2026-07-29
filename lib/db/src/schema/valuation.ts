@@ -184,6 +184,28 @@ export const squareOrdersCacheTable = pgTable(
   ]
 );
 
+// ─── val_square_category_cache ──────────────────────────────────────────────
+// Per-category daily revenue from Square orders. Populated during /square/sync.
+// source_category_id is the Square catalog category object ID (for deduplication).
+
+export const squareCategoryCacheTable = pgTable(
+  "val_square_category_cache",
+  {
+    cafeId:      uuid("cafe_id").notNull(),
+    ownerId:     text("owner_id").notNull(),
+    orderDate:   date("order_date").notNull(),
+    categoryName: text("category_name").notNull(),
+    grossAmount: numeric("gross_amount"),
+    orderCount:  integer("order_count"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cafeId, t.orderDate, t.categoryName] }),
+    foreignKey({ columns: [t.cafeId], foreignColumns: [cafesTable.id] }).onDelete("cascade"),
+  ]
+);
+
+export type SquareCategoryCache = typeof squareCategoryCacheTable.$inferSelect;
+
 // ─── val_xero_pl_mappings ───────────────────────────────────────────────────
 
 export const xeroPLMappingsTable = pgTable(

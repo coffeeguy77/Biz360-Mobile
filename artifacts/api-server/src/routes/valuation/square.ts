@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, isNull } from "drizzle-orm";
-import { db, cafeIntegrationsTable, squareOrdersCacheTable, valuationSnapshotsTable, ownerAdjustmentsTable, cafeEquipmentTable, xeroPLMappingsTable, xeroSupplierMappingsTable, businessUnitsTable } from "@workspace/db";
+import { eq, and, gte, isNull, desc, sql } from "drizzle-orm";
+import { db, cafeIntegrationsTable, squareOrdersCacheTable, squareCategoryCacheTable, valuationSnapshotsTable, ownerAdjustmentsTable, cafeEquipmentTable, xeroPLMappingsTable, xeroSupplierMappingsTable, businessUnitsTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { assertCafeOwner } from "./cafes";
 import { computeGrossProfit, computeEbitda, computeAdjustedEbitda, computeValuationMidpoint } from "../../lib/valuation";
@@ -27,6 +27,57 @@ router.post("/square/sync", async (req, res) => {
   return res.json(result);
 });
 
+/**
+ * Build a map of Square catalog object IDs → category name.
+ * Fetches ITEM, ITEM_VARIATION, and CATEGORY objects from the Square Catalog API
+ * and resolves the chain: ITEM_VARIATION → ITEM → CATEGORY.
+ * Returns empty map on error (non-fatal — category drilldown degrades gracefully).
+ */
+async function buildSquareCatalogCategoryMap(accessToken: string): Promise<Record<string, string>> {
+  try {
+    const categoryNames: Record<string, string> = {};     // categoryId → name
+    const itemToCategory: Record<string, string> = {};    // itemId → categoryId (first category)
+    const variationToItem: Record<string, string> = {};   // variationId → itemId
+
+    let cursor: string | undefined;
+    do {
+      const url = `https://connect.squareup.com/v2/catalog/list?types=ITEM,ITEM_VARIATION,CATEGORY${cursor ? `&cursor=${cursor}` : ""}`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17" } });
+      if (!r.ok) break;
+      const data = await r.json() as any;
+      cursor = data.cursor;
+      for (const obj of data.objects ?? []) {
+        if (obj.type === "CATEGORY") {
+          categoryNames[obj.id] = obj.category_data?.name ?? "Uncategorised";
+        } else if (obj.type === "ITEM") {
+          // categories array: [{ id, ordinal }] — take first
+          const firstCatId = obj.item_data?.categories?.[0]?.id
+            ?? obj.item_data?.category_id  // fallback for older API shapes
+            ?? null;
+          if (firstCatId) itemToCategory[obj.id] = firstCatId;
+        } else if (obj.type === "ITEM_VARIATION") {
+          const itemId = obj.item_variation_data?.item_id;
+          if (itemId) variationToItem[obj.id] = itemId;
+        }
+      }
+    } while (cursor);
+
+    // Resolve: variationId → itemId → categoryId → categoryName
+    const map: Record<string, string> = {};
+    for (const [varId, itemId] of Object.entries(variationToItem)) {
+      const catId = itemToCategory[itemId];
+      if (catId && categoryNames[catId]) map[varId] = categoryNames[catId];
+    }
+    // Also allow direct item ID lookups (some line items reference the ITEM not ITEM_VARIATION)
+    for (const [itemId, catId] of Object.entries(itemToCategory)) {
+      if (categoryNames[catId]) map[itemId] = categoryNames[catId];
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: string, fromDate: Date, toDate: Date) {
   let locationIds: string[] = [];
   try {
@@ -37,10 +88,21 @@ async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: st
     }
   } catch {}
   if (locationIds.length === 0) { logger.warn({ cafeId }, "Square: no active locations found, skipping sync"); return; }
+
+  // Fetch catalog category map in parallel with orders (non-fatal if it fails)
+  const catalogMapPromise = buildSquareCatalogCategoryMap(accessToken);
+
   let cursor: string | undefined;
   const dailyTotals: Record<string, { gross: number; net: number; count: number }> = {};
+  // { date → { categoryName → { gross, count } } }
+  const categoryDailyTotals: Record<string, Record<string, { gross: number; count: number }>> = {};
+
   do {
-    const body: any = { location_ids: locationIds, query: { filter: { date_time_filter: { created_at: { start_at: fromDate.toISOString(), end_at: toDate.toISOString() } }, state_filter: { states: ["COMPLETED"] } } }, limit: 500 };
+    const body: any = {
+      location_ids: locationIds,
+      query: { filter: { date_time_filter: { created_at: { start_at: fromDate.toISOString(), end_at: toDate.toISOString() } }, state_filter: { states: ["COMPLETED"] } } },
+      limit: 500,
+    };
     if (cursor) body.cursor = cursor;
     const r = await fetch("https://connect.squareup.com/v2/orders/search", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17", "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!r.ok) break;
@@ -52,11 +114,71 @@ async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: st
       const net = (order.net_amounts?.total_money?.amount ?? order.total_money?.amount ?? 0) / 100;
       if (!dailyTotals[date]) dailyTotals[date] = { gross: 0, net: 0, count: 0 };
       dailyTotals[date].gross += gross; dailyTotals[date].net += net; dailyTotals[date].count += 1;
+
+      // Accumulate per-line-item category totals (resolved after catalog map is ready)
+      if (!categoryDailyTotals[date]) categoryDailyTotals[date] = {};
+      for (const li of order.line_items ?? []) {
+        const catalogId = li.catalog_object_id ?? null;
+        const itemName = li.name ?? "Other";
+        const lineGross = (li.gross_sales_money?.amount ?? li.total_money?.amount ?? 0) / 100;
+        if (lineGross === 0) continue;
+        // Temporarily use catalogId as key; will be resolved to categoryName after sync
+        const rawKey = catalogId ?? `__item__${itemName}`;
+        if (!categoryDailyTotals[date][rawKey]) categoryDailyTotals[date][rawKey] = { gross: 0, count: 0 };
+        categoryDailyTotals[date][rawKey].gross += lineGross;
+        categoryDailyTotals[date][rawKey].count += 1;
+      }
     }
   } while (cursor);
+
+  // Save daily totals (existing cache)
   for (const [date, totals] of Object.entries(dailyTotals)) {
     await db.insert(squareOrdersCacheTable).values({ cafeId, ownerId, orderDate: date, grossAmount: String(Math.round(totals.gross * 100) / 100), netAmount: String(Math.round(totals.net * 100) / 100), orderCount: totals.count })
       .onConflictDoUpdate({ target: [squareOrdersCacheTable.cafeId, squareOrdersCacheTable.orderDate], set: { grossAmount: String(Math.round(totals.gross * 100) / 100), netAmount: String(Math.round(totals.net * 100) / 100), orderCount: totals.count } });
+  }
+
+  // Resolve catalog IDs to category names and save per-category cache
+  try {
+    const catalogMap = await catalogMapPromise;
+    // Merge rawKey entries into category-name buckets
+    // { date → { resolvedCategoryName → { gross, count } } }
+    const resolvedByDate: Record<string, Record<string, { gross: number; count: number }>> = {};
+    for (const [date, rawEntries] of Object.entries(categoryDailyTotals)) {
+      resolvedByDate[date] = {};
+      for (const [rawKey, totals] of Object.entries(rawEntries)) {
+        let categoryName: string;
+        if (rawKey.startsWith("__item__")) {
+          // No catalog ID — use item name directly as fallback
+          categoryName = rawKey.slice("__item__".length);
+        } else {
+          // Resolve via catalog map; fall back to "Other" if not found
+          categoryName = catalogMap[rawKey] ?? "Other";
+        }
+        if (!resolvedByDate[date][categoryName]) resolvedByDate[date][categoryName] = { gross: 0, count: 0 };
+        resolvedByDate[date][categoryName].gross += totals.gross;
+        resolvedByDate[date][categoryName].count += totals.count;
+      }
+    }
+
+    // Upsert into val_square_category_cache
+    for (const [date, cats] of Object.entries(resolvedByDate)) {
+      for (const [categoryName, totals] of Object.entries(cats)) {
+        if (totals.gross === 0) continue;
+        await db.insert(squareCategoryCacheTable).values({
+          cafeId, ownerId, orderDate: date, categoryName,
+          grossAmount: String(Math.round(totals.gross * 100) / 100),
+          orderCount: totals.count,
+        }).onConflictDoUpdate({
+          target: [squareCategoryCacheTable.cafeId, squareCategoryCacheTable.orderDate, squareCategoryCacheTable.categoryName],
+          set: {
+            grossAmount: String(Math.round(totals.gross * 100) / 100),
+            orderCount: totals.count,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    logger.warn({ cafeId, err }, "Square: category cache update failed (non-fatal)");
   }
 }
 
@@ -314,6 +436,48 @@ router.get("/cafes/:cafeId/cogs-breakdown", async (req, res) => {
 
   result.sort((a, b) => b.total - a.total);
   return res.json(result);
+});
+
+/**
+ * GET /valuation/square/categories?cafeId=...
+ * Returns distinct Square item categories from the category cache for this cafe,
+ * with their total gross revenue over the last 12 months (for display only).
+ * Used by the Custom Financial Reports editor to let sellers pick specific categories.
+ */
+router.get("/square/categories", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.query as Record<string, string>;
+  if (!cafeId) return res.status(400).json({ error: "cafeId required" });
+
+  try { await assertCafeOwner(cafeId, userId); }
+  catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
+
+  // Aggregate per-category totals from the cache (last 12 months)
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - 12);
+  const fromStr = fromDate.toISOString().slice(0, 10);
+
+  const rows = await db
+    .select({
+      categoryName: squareCategoryCacheTable.categoryName,
+      total: sql<string>`sum(${squareCategoryCacheTable.grossAmount})`,
+    })
+    .from(squareCategoryCacheTable)
+    .where(
+      and(
+        eq(squareCategoryCacheTable.cafeId, cafeId),
+        sql`${squareCategoryCacheTable.orderDate} >= ${fromStr}`,
+      )
+    )
+    .groupBy(squareCategoryCacheTable.categoryName)
+    .orderBy(desc(sql`sum(${squareCategoryCacheTable.grossAmount})`));
+
+  const categories = rows.map((r) => ({
+    name: r.categoryName,
+    total: Math.round(Number(r.total ?? 0) * 100) / 100,
+  }));
+
+  return res.json({ categories, hasCategoryData: categories.length > 0 });
 });
 
 export { calculateAndSaveSnapshot };

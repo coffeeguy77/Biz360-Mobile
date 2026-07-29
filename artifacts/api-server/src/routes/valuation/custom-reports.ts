@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc } from "drizzle-orm";
-import { db, cafesTable, cafeIntegrationsTable, squareOrdersCacheTable, customReportsTable, customReportLineItemsTable } from "@workspace/db";
+import { db, cafesTable, cafeIntegrationsTable, squareOrdersCacheTable, squareCategoryCacheTable, customReportsTable, customReportLineItemsTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { assertCafeOwner } from "./cafes";
 import { getValidXeroToken } from "./xero";
@@ -210,6 +210,8 @@ async function buildReportData(
 
   const xeroItems = lineItems.filter((li) => li.source === "xero_pl");
   const squareItems = lineItems.filter((li) => li.source === "square");
+  // Square category items: source="square_category", xeroAccountName holds the category name
+  const squareCategoryItems = lineItems.filter((li) => li.source === "square_category");
 
   // ── Xero monthly data ──────────────────────────────────────────────────────
   if (xeroItems.length > 0) {
@@ -253,7 +255,7 @@ async function buildReportData(
     }
   }
 
-  // ── Square monthly data ────────────────────────────────────────────────────
+  // ── Square total monthly data ─────────────────────────────────────────────
   if (squareItems.some((li) => li.kind === "income")) {
     const fromStr = xeroDateStr(fromDate);
     const toStr = xeroDateStr(toDate);
@@ -262,21 +264,56 @@ async function buildReportData(
       const squareRows = await db
         .select()
         .from(squareOrdersCacheTable)
-        .where(
-          and(
-            eq(squareOrdersCacheTable.cafeId, cafeId),
-          )
-        );
+        .where(eq(squareOrdersCacheTable.cafeId, cafeId));
 
       for (const row of squareRows) {
         if (!row.orderDate) continue;
         if (row.orderDate < fromStr || row.orderDate > toStr) continue;
-        const month = row.orderDate.slice(0, 7); // "YYYY-MM"
+        const month = row.orderDate.slice(0, 7);
         if (!months.includes(month)) continue;
         incomeByMonth[month] = (incomeByMonth[month] ?? 0) + Number(row.grossAmount ?? 0);
       }
     } catch (err) {
       logger.warn({ cafeId, reportId, err }, "Square cache read failed for custom report");
+    }
+  }
+
+  // ── Square per-category monthly data ──────────────────────────────────────
+  // Each squareCategoryItem has source="square_category" and xeroAccountName = category name
+  const categoryIncomeItems = squareCategoryItems.filter((li) => li.kind === "income");
+  const categoryExpenseItems = squareCategoryItems.filter((li) => li.kind === "expense");
+
+  if (squareCategoryItems.length > 0) {
+    const fromStr = xeroDateStr(fromDate);
+    const toStr = xeroDateStr(toDate);
+
+    // Collect unique category names needed
+    const neededCategories = new Set(
+      squareCategoryItems.map((li) => li.xeroAccountName).filter(Boolean) as string[]
+    );
+
+    try {
+      const catRows = await db
+        .select()
+        .from(squareCategoryCacheTable)
+        .where(eq(squareCategoryCacheTable.cafeId, cafeId));
+
+      for (const row of catRows) {
+        if (!row.orderDate || !row.categoryName) continue;
+        if (row.orderDate < fromStr || row.orderDate > toStr) continue;
+        if (!neededCategories.has(row.categoryName)) continue;
+        const month = row.orderDate.slice(0, 7);
+        if (!months.includes(month)) continue;
+        const amount = Number(row.grossAmount ?? 0);
+
+        // Apply to income or expense buckets based on how the line item is configured
+        const hasIncomeLi = categoryIncomeItems.some((li) => li.xeroAccountName === row.categoryName);
+        const hasExpenseLi = categoryExpenseItems.some((li) => li.xeroAccountName === row.categoryName);
+        if (hasIncomeLi) incomeByMonth[month] = (incomeByMonth[month] ?? 0) + amount;
+        if (hasExpenseLi) expensesByMonth[month] = (expensesByMonth[month] ?? 0) + amount;
+      }
+    } catch (err) {
+      logger.warn({ cafeId, reportId, err }, "Square category cache read failed for custom report");
     }
   }
 

@@ -57,6 +57,13 @@
       "when": 1753516800000,
       "tag": "0007_custom_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1753776000000,
+      "tag": "0008_square_category_cache",
+      "breakpoints": true
     }
   ]
 }
