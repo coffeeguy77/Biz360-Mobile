@@ -134,7 +134,7 @@ function ListingCard({ item }: { item: ListingAccess }) {
               </Link>
             )}
             {(item.permissions.canViewFinancials || item.permissions.canViewEquipment) && reportHref && (
-              <Link href={`${reportHref}#chapter-financial_performance`}>
+              <Link href={`${reportHref}#chapter-${item.permissions.canViewFinancials ? "financial_performance" : "assets_equipment"}`}>
                 <a className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#0F2040] hover:bg-[#142950] border border-[#1E3A5C] text-white font-semibold text-sm transition-colors group">
                   <span className="flex items-center gap-2">
                     <BarChart2 size={15} className="text-emerald-400" />
