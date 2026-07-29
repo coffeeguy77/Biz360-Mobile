@@ -748,10 +748,23 @@ export function ReportPage() {
     // over localStorage. The raw JWT is never passed in the URL.
     const authToken = previewToken || localStorage.getItem("biz360_auth_token") || null;
 
+    // Buyer portal JWT — if the buyer is logged into the portal, send their JWT so
+    // the server can check group membership and unlock approved_buyers sections without
+    // relying on the URL accessToken (which may be stale from an older session).
+    const buyerPortalToken = localStorage.getItem("exit360_buyer_token") || null;
+
     // Build query string helper (appends accessToken when present)
     function qs(base: string): string {
       const at = accessToken;
       return at ? `${base}${base.includes("?") ? "&" : "?"}accessToken=${encodeURIComponent(at)}` : base;
+    }
+
+    // Build headers for all report fetch calls
+    function buildHeaders(): Record<string, string> {
+      const h: Record<string, string> = {};
+      if (authToken) h["Authorization"] = `Bearer ${authToken}`;
+      if (buyerPortalToken) h["X-Buyer-Token"] = buyerPortalToken;
+      return h;
     }
 
     if (versionId) {
@@ -762,17 +775,13 @@ export function ReportPage() {
       const endpoint = authToken
         ? `/api/report-versions/snapshot/${versionId}`
         : qs(`/api/report-versions/public-snapshot/${versionId}`);
-      fetch(endpoint, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      })
+      fetch(endpoint, { headers: buildHeaders() })
         .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
         .then((json: { sections: ReportSection[]; title?: string }) =>
           setData({ sections: json.sections, accessLevel: authToken ? "seller" : "public" }))
         .catch(() => {
           // Fall back to live sections if snapshot not accessible
-          fetch(qs(`/api/report-sections/html/${listingId}`), {
-            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-          })
+          fetch(qs(`/api/report-sections/html/${listingId}`), { headers: buildHeaders() })
             .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
             .then((json: ReportData) => setData(json))
             .catch((e) => setError(String(e)));
@@ -780,10 +789,8 @@ export function ReportPage() {
         .finally(() => setLoading(false));
     } else {
       // Live view: send seller token if present (unlocks approved_buyers + seller_only sections).
-      // accessToken forwarded so OTP-verified buyers can unlock approved_buyers sections.
-      fetch(qs(`/api/report-sections/html/${listingId}`), {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      })
+      // buyerPortalToken forwarded so portal members always get approved_buyers unlocked.
+      fetch(qs(`/api/report-sections/html/${listingId}`), { headers: buildHeaders() })
         .then((r) => r.ok ? r.json() : Promise.reject(r.statusText))
         .then((json: ReportData) => setData(json))
         .catch((e) => setError(String(e)))

@@ -1182,10 +1182,11 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
     }
 
     // Check buyer access token — issued either by the OTP flow or the buyer portal.
-    // Both token types carry { listingId, phone, type: "buyer-report-access" }.
-    // Grant if phone is in report_access_grants OR in a buyer portal group with canViewImReport.
+    // Also accepts a buyer portal JWT in the X-Buyer-Token header (role: "buyer_portal"),
+    // which lets portal members unlock sections even with a stale URL accessToken.
     let buyerGranted = false;
     if (accessLevel === "public") {
+      // Path 1: URL accessToken (issued by OTP flow or buyer portal my-access endpoint)
       const accessToken = req.query["accessToken"] as string | undefined;
       if (accessToken) {
         const phone = await verifyBuyerAccessToken(accessToken, listingId);
@@ -1201,6 +1202,23 @@ router.get("/report-sections/html/:listingId", async (req, res): Promise<void> =
             )
             .limit(1);
           buyerGranted = !!grant || await checkBuyerPortalAccess(phone, listingId);
+        }
+      }
+      // Path 2: X-Buyer-Token header — buyer portal JWT (role: "buyer_portal", carries phone)
+      // Allows portal members to view unlocked sections even without a valid URL accessToken.
+      if (!buyerGranted) {
+        const buyerPortalJwt = req.headers["x-buyer-token"] as string | undefined;
+        if (buyerPortalJwt) {
+          try {
+            const secret = process.env.JWT_SECRET;
+            if (secret) {
+              const { payload } = await jwtVerify(buyerPortalJwt, new TextEncoder().encode(secret));
+              const p = payload as Record<string, unknown>;
+              if (p["role"] === "buyer_portal" && typeof p["phone"] === "string") {
+                buyerGranted = await checkBuyerPortalAccess(p["phone"], listingId);
+              }
+            }
+          } catch { /* invalid token — stay locked */ }
         }
       }
     }
