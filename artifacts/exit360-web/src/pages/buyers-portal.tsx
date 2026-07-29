@@ -212,10 +212,12 @@ export function BuyersPortal() {
           </div>
           {data && (
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 bg-[#0F2040] border border-[#1E3A5C] rounded-full px-3 py-1.5 text-xs text-slate-400">
-                <Phone size={11} />
-                {toLocalPhone(data.phone)}
-              </div>
+              {data.phone && (
+                <div className="hidden sm:flex items-center gap-2 bg-[#0F2040] border border-[#1E3A5C] rounded-full px-3 py-1.5 text-xs text-slate-400">
+                  <Phone size={11} />
+                  {toLocalPhone(data.phone)}
+                </div>
+              )}
               <button
                 onClick={handleSignOut}
                 className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white transition-colors"

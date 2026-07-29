@@ -151,7 +151,7 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
     .where(eq(buyerPortalGroupMembersTable.phone, phone));
 
   if (!memberships.length) {
-    res.json({ listings: [] });
+    res.json({ listings: [], phone });
     return;
   }
 
