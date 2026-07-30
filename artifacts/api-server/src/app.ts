@@ -4,6 +4,8 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { runCleanup } from "./routes/biz360";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const app: Express = express();
 
@@ -32,6 +34,29 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.text({ type: ["text/csv", "text/plain"], limit: "10mb" }));
 
 app.use("/api", router);
+
+// ─── Serve built front-end (exit360-web) ──────────────────────────────────────
+// Vite builds the site to artifacts/exit360-web/dist/public. This server bundle
+// runs from artifacts/api-server/dist/index.mjs, so resolve the web build
+// relative to it (overridable via WEB_DIST_PATH).
+const webDist =
+  process.env.WEB_DIST_PATH ??
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../exit360-web/dist/public",
+  );
+
+app.use(express.static(webDist));
+
+// SPA fallback: serve index.html for any non-API GET/HEAD route so client-side
+// routing works on deep links / hard refresh. /api paths fall through to a 404.
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  if (req.path.startsWith("/api")) return next();
+  res.sendFile(path.join(webDist, "index.html"), (err) => {
+    if (err) next();
+  });
+});
 
 // ─── Scheduled Cloudinary cleanup ─────────────────────────────────────────────
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 h
