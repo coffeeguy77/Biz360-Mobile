@@ -1,0 +1,2 @@
+# Not needed to build/run the API server — keeps the Railway build context small.
+attached_assets/
