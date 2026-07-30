@@ -14,8 +14,10 @@ import {
   Camera,
   ShieldCheck,
   Clock,
+  Loader2,
 } from "lucide-react";
-import { DEMO_LISTINGS, formatPrice, formatRevenue, type Listing } from "@/data/listings";
+import { formatPrice, formatRevenue, type Listing } from "@/data/listings";
+import { fetchListings } from "@/lib/listingsApi";
 
 const CATEGORIES = ["All", "Food & Beverage", "Health & Beauty", "Health & Fitness", "Services"];
 const STATES = ["All States", "ACT", "VIC", "NSW", "QLD", "WA", "SA"];
@@ -153,25 +155,20 @@ export function Listings() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [state, setState] = useState("All States");
-  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const realListings = DEMO_LISTINGS.filter((l) => l.isRealListing);
-    Promise.all(
-      realListings.map((l) =>
-        fetch(`/api/public/listing/${l.id}`)
-          .then((r) => r.json())
-          .then((d) => ({ id: l.id, price: d?.listing?.askingPrice ?? null }))
-          .catch(() => ({ id: l.id, price: null }))
-      )
-    ).then((results) => {
-      const map: Record<string, number> = {};
-      results.forEach(({ id, price }) => { if (price != null) map[id] = price; });
-      setLivePrices(map);
+    let cancelled = false;
+    fetchListings().then((l) => {
+      if (cancelled) return;
+      setListings(l);
+      setLoading(false);
     });
+    return () => { cancelled = true; };
   }, []);
 
-  const filtered = DEMO_LISTINGS.filter((l) => {
+  const filtered = listings.filter((l) => {
     const matchSearch =
       !search ||
       l.businessName.toLowerCase().includes(search.toLowerCase()) ||
@@ -213,7 +210,7 @@ export function Listings() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Verified Businesses for Sale</h1>
           <p className="text-muted-foreground">
-            {DEMO_LISTINGS.length} listings · Browse, filter, and take 360° virtual tours before you commit.
+            {loading ? "…" : listings.length} listings · Browse, filter, and take 360° virtual tours before you commit.
           </p>
         </div>
 
@@ -252,7 +249,12 @@ export function Listings() {
         </div>
 
         {/* Grid */}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-24 text-muted-foreground">
+            <Loader2 size={40} className="mx-auto mb-4 animate-spin opacity-40" />
+            <p className="text-lg font-medium">Loading listings…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-24 text-muted-foreground">
             <Eye size={40} className="mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No listings match your filters</p>
@@ -261,10 +263,7 @@ export function Listings() {
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filtered.map((listing) => (
-              <ListingCard
-                key={listing.id}
-                listing={livePrices[listing.id] != null ? { ...listing, askingPrice: livePrices[listing.id] } : listing}
-              />
+              <ListingCard key={listing.id} listing={listing} />
             ))}
           </div>
         )}

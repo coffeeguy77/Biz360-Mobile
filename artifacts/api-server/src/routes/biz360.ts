@@ -122,6 +122,48 @@ async function hasListingAccess(
   return false;
 }
 
+// ─── Public listings index ────────────────────────────────────────────────────
+// GET /public/listings → every approved (non-suspended) listing, public-safe fields.
+// This is what makes the website data-driven: any approved listing shows up here
+// automatically, with no hardcoding.
+router.get("/public/listings", async (_req, res): Promise<void> => {
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const all = Array.isArray(rows[0]?.value) ? (rows[0]!.value as any[]) : [];
+    const listings = all
+      .filter((l) => l && l.status === "approved" && !l.suspended && l.listingId)
+      .map((l) => ({
+        id:             l.listingId,
+        listingId:      l.listingId,
+        businessName:   l.businessName ?? "Business for Sale",
+        category:       l.category ?? "",
+        subcategory:    l.subcategory ?? "",
+        state:          l.state ?? "",
+        suburb:         l.suburb ?? "",
+        askingPrice:    Number(l.askingPrice ?? 0),
+        weeklyRevenue:  Number(l.weeklyRevenue ?? 0),
+        adjustedProfit: Number(l.adjustedProfit ?? 0),
+        rent:           Number(l.rent ?? 0),
+        staffCount:     Number(l.staffCount ?? 0),
+        ownerHours:     Number(l.ownerHours ?? 0),
+        leaseExpiry:    l.leaseExpiry ?? "",
+        priceDisplay:   l.priceDisplay ?? "askingPrice",
+        badges:         Array.isArray(l.badges) ? l.badges : [],
+        hasTour:        Array.isArray(l.badges) ? l.badges.includes("tour") : false,
+        verified:       Array.isArray(l.badges) ? (l.badges.includes("identity") || l.badges.includes("abn")) : false,
+        confidential:   !!l.confidential,
+        heroColor:      l.heroColor ?? "#2563EB",
+        description:    l.description ?? "",
+        // only expose web-loadable image URLs (skip local file:// refs from the app)
+        imageUrl:       (Array.isArray(l.photos) ? l.photos.find((p: string) => typeof p === "string" && /^https?:\/\//.test(p)) : undefined) ?? null,
+        submittedByName: l.submittedByName ?? null,
+      }));
+    res.json({ listings });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch listings" });
+  }
+});
+
 router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
   const { listingId } = req.params;
   try {

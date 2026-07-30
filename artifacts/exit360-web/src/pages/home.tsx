@@ -4,38 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Building, ShieldCheck, ArrowRight, Eye, Play, TrendingUp, Clock, Users, MapPin } from "lucide-react";
-import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
-
-const BEAN_CULTURE_ID = "user-listing-1779894194896";
-const BEAN_CULTURE_STATIC = DEMO_LISTINGS.find(l => l.id === BEAN_CULTURE_ID)!;
-
-function useLiveListing(id: string) {
-  const [data, setData] = useState<Record<string, any> | null>(null);
-  useEffect(() => {
-    fetch(`/api/public/listing/${id}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => d?.listing && setData(d.listing))
-      .catch(() => {});
-  }, [id]);
-  return data;
-}
+import { formatPrice, formatRevenue, BADGE_LABELS, type Listing } from "@/data/listings";
+import { fetchListings } from "@/lib/listingsApi";
 
 export function Home() {
-  const liveData = useLiveListing(BEAN_CULTURE_ID);
+  const [listings, setListings] = useState<Listing[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchListings().then((l) => { if (!cancelled) setListings(l); });
+    return () => { cancelled = true; };
+  }, []);
 
-  // Merge: live API wins for price/revenue/staff fields; static provides tour/image/badge data
-  const bc = {
-    ...BEAN_CULTURE_STATIC,
-    businessName: liveData?.businessName ?? BEAN_CULTURE_STATIC.businessName,
-    suburb:       liveData?.suburb       ?? BEAN_CULTURE_STATIC.suburb,
-    state:        liveData?.state        ?? BEAN_CULTURE_STATIC.state,
-    askingPrice:  liveData?.askingPrice  ?? BEAN_CULTURE_STATIC.askingPrice,
-    weeklyRevenue:liveData?.weeklyRevenue?? BEAN_CULTURE_STATIC.weeklyRevenue,
-    adjustedProfit:liveData?.adjustedProfit ?? BEAN_CULTURE_STATIC.adjustedProfit,
-    staffCount:   liveData?.staffCount   ?? BEAN_CULTURE_STATIC.staffCount,
-    ownerHours:   liveData?.ownerHours   ?? BEAN_CULTURE_STATIC.ownerHours,
-    description:  liveData?.description  ?? BEAN_CULTURE_STATIC.description,
-  };
+  // Feature the first approved listing (prefer one with a 360° tour) — fully live from the API.
+  const bc = listings.find((l) => l.hasTour) ?? listings[0] ?? null;
 
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
@@ -104,7 +85,7 @@ export function Home() {
       <section className="border-y border-border bg-card/50">
         <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
           <div>
-            <div className="text-3xl font-bold text-foreground mb-1">320+</div>
+            <div className="text-3xl font-bold text-foreground mb-1">{listings.length || "—"}</div>
             <div className="text-sm text-muted-foreground font-medium">Verified Listings</div>
           </div>
           <div>
@@ -122,33 +103,38 @@ export function Home() {
         </div>
       </section>
 
-      {/* Bean Culture Featured Listing */}
+      {/* Featured Listing — live from the API */}
+      {bc && (
       <section className="py-24 px-6 max-w-7xl mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20 px-3 py-1 mb-4">
             Featured Listing
           </Badge>
-          <h2 className="text-3xl md:text-5xl font-bold mb-5">Meet Bean Culture.</h2>
+          <h2 className="text-3xl md:text-5xl font-bold mb-5">{bc.businessName}</h2>
           <p className="text-lg text-muted-foreground">
-            A fully verified specialty coffee operation with a 23-space immersive 360° tour. This is what serious due diligence looks like.
+            {bc.description}
           </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 items-stretch">
           {/* Image + tour overlay */}
-          <div className="relative rounded-2xl overflow-hidden shadow-2xl group min-h-[420px]">
-            <img
-              src={bc.imageUrl}
-              alt="Bean Culture Espresso Bar — Barista station"
-              className="w-full h-full object-cover absolute inset-0 group-hover:scale-105 transition-transform duration-700"
-              style={{ objectPosition: "center center" }}
-            />
+          <div className="relative rounded-2xl overflow-hidden shadow-2xl group min-h-[420px]" style={{ background: bc.heroColor + "22" }}>
+            {bc.imageUrl && (
+              <img
+                src={bc.imageUrl}
+                alt={bc.businessName}
+                className="w-full h-full object-cover absolute inset-0 group-hover:scale-105 transition-transform duration-700"
+                style={{ objectPosition: "center center" }}
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+            {bc.hasTour && (
             <div className="absolute top-4 left-4">
               <Badge className="bg-amber-500 text-black font-semibold px-3 py-1 text-xs">
-                23-Space 360° Tour
+                360° Tour
               </Badge>
             </div>
+            )}
             <Link href={`/listings/${bc.id}`}>
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="w-[72px] h-[72px] bg-white/20 backdrop-blur-sm border border-white/30 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/30 hover:scale-110 transition-all duration-200">
@@ -160,7 +146,7 @@ export function Home() {
               <div className="text-white text-xl font-bold mb-1">{bc.businessName}</div>
               <div className="flex items-center gap-1 text-white/70 text-sm">
                 <MapPin size={12} />
-                {bc.suburb}, {bc.state} &nbsp;·&nbsp; {bc.subcategory}
+                {bc.suburb}, {bc.state} &nbsp;·&nbsp; {bc.subcategory || bc.category}
               </div>
             </div>
           </div>
@@ -171,20 +157,20 @@ export function Home() {
               <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Key Metrics</div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <div className="text-2xl font-bold text-foreground">$1.5M – $2.1M</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Valuation Est.</div>
+                  <div className="text-2xl font-bold text-foreground">{formatPrice(bc.askingPrice)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Asking Price</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-foreground">$1.21M</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Annual Revenue</div>
+                  <div className="text-2xl font-bold text-foreground">{formatRevenue(bc.weeklyRevenue)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Revenue</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-foreground">$558K</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Profit</div>
+                  <div className="text-2xl font-bold text-foreground">{bc.adjustedProfit > 0 ? formatPrice(bc.adjustedProfit) : "—"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Adj. Profit</div>
                 </div>
                 <div className="col-span-2">
-                  <div className="text-2xl font-bold text-foreground">$1.2M</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Equipment Value</div>
+                  <div className="text-2xl font-bold text-foreground">{bc.staffCount} staff · {bc.ownerHours}h/wk</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Operations</div>
                 </div>
               </div>
             </Card>
@@ -192,10 +178,10 @@ export function Home() {
             <Card className="p-6 border-border bg-card">
               <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Verified & Documented</div>
               <div className="flex flex-wrap gap-2">
-                {["ID Verified", "ABN Verified", "Financials", "Lease Docs", "Equipment List", "360 Tour", "Broker Listed", "Accountant Verified"].map(badge => (
-                  <span key={badge} className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 rounded-full">
+                {bc.badges.map((b) => BADGE_LABELS[b]).filter(Boolean).map((label) => (
+                  <span key={label} className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 rounded-full">
                     <CheckCircle2 size={10} />
-                    {badge}
+                    {label}
                   </span>
                 ))}
               </div>
@@ -209,15 +195,18 @@ export function Home() {
                     View Listing <ArrowRight size={16} />
                   </Button>
                 </Link>
+                {bc.hasTour && (
                 <div className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
                   <TrendingUp size={12} className="text-amber-400" />
-                  {bc.tourStarts} tours started
+                  360° tour
                 </div>
+                )}
               </div>
             </Card>
           </div>
         </div>
       </section>
+      )}
 
       {/* Value Props */}
       <section className="py-24 px-6 bg-card border-t border-border">

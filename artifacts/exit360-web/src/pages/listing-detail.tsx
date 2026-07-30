@@ -24,7 +24,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DEMO_LISTINGS, formatPrice, formatRevenue, type Listing } from "@/data/listings";
+import { formatPrice, formatRevenue, type Listing } from "@/data/listings";
+import { mapApiListing } from "@/lib/listingsApi";
 import { NdaDocument } from "@/components/NdaDocument";
 
 const BADGE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -408,7 +409,9 @@ function DemoHero({ listing }: { listing: Listing }) {
 
 export function ListingDetail() {
   const [, params] = useRoute("/listings/:id");
-  const listing = DEMO_LISTINGS.find((l) => l.id === params?.id);
+  const listingId = params?.id ?? "";
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [listingLoading, setListingLoading] = useState(true);
 
   const [spaces, setSpaces] = useState<TourSpace[]>([]);
   const [spacesLoading, setSpacesLoading] = useState(false);
@@ -475,6 +478,24 @@ export function ListingDetail() {
     if (data) setLiveData(data);
   }, []);
 
+  // Load the base listing from the API (data-driven — no hardcoded list).
+  useEffect(() => {
+    let cancelled = false;
+    if (!listingId) { setListingLoading(false); return; }
+    setListingLoading(true);
+    fetch(`/api/public/listing/${encodeURIComponent(listingId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return;
+        if (d?.listing) { setListing(mapApiListing(d.listing)); setLiveData(d); }
+        else setListing(null);
+        setListingLoading(false);
+      })
+      .catch(() => { if (!cancelled) { setListing(null); setListingLoading(false); } });
+    return () => { cancelled = true; };
+  }, [listingId]);
+
+  // Re-fetch with auth headers once we know the listing (unlocks gated snapshot).
   useEffect(() => {
     if (!listing?.isRealListing) return;
     fetchLiveData(listing.id);
@@ -848,6 +869,14 @@ export function ListingDetail() {
     setPlayAllActive(false);
   }
 
+  if (listingLoading) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <Loader2 size={40} className="animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   if (!listing) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
@@ -1092,10 +1121,10 @@ export function ListingDetail() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 pt-2">
-                  <Link href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.name ?? "")}&return=/listings/${listing?.id ?? ""}`}>
+                  <Link href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
                     <Button className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
                   </Link>
-                  <Link href={`/sign-in?intent=enquiry&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.name ?? "")}&return=/listings/${listing?.id ?? ""}`}>
+                  <Link href={`/sign-in?intent=enquiry&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
                     <Button variant="outline" className="w-full gap-2"><Mail size={15} /> Send Enquiry</Button>
                   </Link>
                 </div>
