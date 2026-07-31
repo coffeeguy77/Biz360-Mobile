@@ -108,6 +108,8 @@ export interface PendingListing {
   state?: string;
   category?: string;
   askingPrice?: number;
+  askingPriceMin?: number;
+  askingPriceMax?: number;
   weeklyRevenue?: number;
   priceDisplay?: "askingPrice" | "weeklyRevenue" | "poa";
   stat2Display?: string;

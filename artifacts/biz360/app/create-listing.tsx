@@ -56,6 +56,8 @@ interface FormState {
   description: string;
   confidential: boolean;
   askingPrice: string;
+  askingPriceMin: string;
+  askingPriceMax: string;
   weeklyRevenue: string;
   adjustedProfit: string;
   rent: string;
@@ -79,7 +81,7 @@ interface FormState {
 
 const INITIAL_FORM: FormState = {
   businessName: "", category: "", state: "", suburb: "", description: "",
-  confidential: false, askingPrice: "", weeklyRevenue: "", adjustedProfit: "",
+  confidential: false, askingPrice: "", askingPriceMin: "", askingPriceMax: "", weeklyRevenue: "", adjustedProfit: "",
   rent: "", staffCount: "", ownerHours: "", leaseExpiry: "", leaseOptions: "",
   franchiseStatus: "", trainingPeriod: "", reasonForSale: "", growthOpportunities: "",
   risks: "", badges: [], contactPreference: "message", priceDisplay: "askingPrice",
@@ -111,6 +113,8 @@ export default function CreateListing() {
           description:        item.description        ?? "",
           confidential:       item.confidential       ?? false,
           askingPrice:        item.askingPrice        ? String(item.askingPrice)  : "",
+          askingPriceMin:     item.askingPriceMin     ? String(item.askingPriceMin): "",
+          askingPriceMax:     item.askingPriceMax     ? String(item.askingPriceMax): "",
           weeklyRevenue:      item.weeklyRevenue      ? String(item.weeklyRevenue): "",
           priceDisplay:       (item.priceDisplay      ?? "askingPrice") as FormState["priceDisplay"],
           stat2Display:       item.stat2Display       ?? "sde",
@@ -214,6 +218,14 @@ export default function CreateListing() {
 
     setSubmitting(true);
     try {
+      // Resolve the target listing id + owner up front so photos can be uploaded
+      // to the right Cloudinary folder (biz360/<userId>/<listingId>).
+      const existing = await getPendingListings();
+      const userId = user?.id ?? "unknown";
+      const listingId = editId
+        ? (existing.find((p) => p.id === editId)?.listingId ?? `user-listing-${Date.now()}`)
+        : `user-listing-${Date.now()}`;
+
       let savedPhotos = form.photos;
       try {
         if (Platform.OS !== "web" && form.photos.length > 0 && FileSystem.documentDirectory) {
@@ -240,6 +252,42 @@ export default function CreateListing() {
         // keep savedPhotos as-is — don't let a photo error kill the save
       }
 
+      // Upload any local (file://) photos to Cloudinary so they show on the
+      // website (same endpoint the 360° tour uses). Keep the local path as a
+      // fallback if an individual upload fails — never block the save on it.
+      try {
+        const domain  = process.env.EXPO_PUBLIC_DOMAIN;
+        const apiBase = domain ? `https://${domain}/api` : "/api";
+        savedPhotos = await Promise.all(
+          savedPhotos.map(async (uri, index) => {
+            if (typeof uri !== "string" || /^https?:\/\//.test(uri)) return uri; // already remote
+            try {
+              const base64   = await FileSystem.readAsStringAsync(uri, { encoding: "base64" });
+              const ext      = uri.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "jpg";
+              const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+              const ctrl     = new AbortController();
+              const timer    = setTimeout(() => ctrl.abort(), 120_000);
+              try {
+                const res = await fetch(`${apiBase}/biz360/img`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ key: `listing_photo_${index}`, data: base64, mimeType, userId, listingId }),
+                  signal: ctrl.signal,
+                });
+                clearTimeout(timer);
+                if (!res.ok) return uri;
+                const json = (await res.json()) as { url?: string };
+                return json.url ?? uri;
+              } catch { clearTimeout(timer); return uri; }
+            } catch {
+              return uri; // couldn't read/upload — keep local path
+            }
+          }),
+        );
+      } catch {
+        // non-fatal — keep savedPhotos as-is
+      }
+
       const fieldData = {
         businessName:        form.businessName.trim(),
         suburb:              form.suburb.trim() || "Unknown",
@@ -248,6 +296,8 @@ export default function CreateListing() {
         description:         form.description.trim(),
         confidential:        form.confidential,
         askingPrice:         parseInt(form.askingPrice.replace(/[^0-9]/g, ""))        || 0,
+        askingPriceMin:      parseInt(form.askingPriceMin.replace(/[^0-9]/g, ""))     || 0,
+        askingPriceMax:      parseInt(form.askingPriceMax.replace(/[^0-9]/g, ""))     || 0,
         weeklyRevenue:       parseInt(form.weeklyRevenue.replace(/[^0-9]/g, ""))      || 0,
         priceDisplay:        form.priceDisplay,
         stat2Display:        form.stat2Display,
@@ -269,8 +319,6 @@ export default function CreateListing() {
         photos:              savedPhotos,
       };
 
-      const existing = await getPendingListings();
-
       if (editId) {
         const updated = existing.map((p) =>
           p.id === editId
@@ -285,13 +333,12 @@ export default function CreateListing() {
           [{ text: "Done", onPress: () => router.back() }],
         );
       } else {
-        const listingId = `user-listing-${Date.now()}`;
         const newItem: PendingListing = {
           id: `p-${Date.now()}`,
           listingId,
           submittedAt: Date.now(),
           status: "pending",
-          submittedBy: user?.id ?? "unknown",
+          submittedBy: userId,
           submittedByName: user?.displayName ?? user?.name?.split(" ")[0] ?? "Seller",
           submittedByRole: user?.role ?? "seller",
           heroColor: randomHeroColor(),
@@ -426,6 +473,18 @@ export default function CreateListing() {
         {step === 1 && (
           <View style={styles.fields}>
             {textField("askingPrice",    "Asking Price ($)",                "185000",                  true)}
+            {/* Optional From/To range — for multi-facet businesses that can be broken up.
+                When both are set, the website shows a range instead of the single price. */}
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Asking Price Range (optional)</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 10, fontFamily: "Inter_400Regular" }}>
+                Set a From and To if the price is flexible or the business can be split. Leave blank to show the single Asking Price above.
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flex: 1 }}>{textField("askingPriceMin", "From ($)", "1500000", true)}</View>
+                <View style={{ flex: 1 }}>{textField("askingPriceMax", "To ($)",   "2100000", true)}</View>
+              </View>
+            </View>
             {textField("weeklyRevenue",  "Weekly Revenue ($)",              "18500",                   true)}
 
             {/* Price display selector */}
