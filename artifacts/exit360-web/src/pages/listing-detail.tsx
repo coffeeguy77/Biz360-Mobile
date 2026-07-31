@@ -24,7 +24,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatPrice, formatRevenue, type Listing } from "@/data/listings";
+import { formatPrice, getPriceStat, getStatSlot, type Listing } from "@/data/listings";
 import { mapApiListing } from "@/lib/listingsApi";
 import { NdaDocument } from "@/components/NdaDocument";
 
@@ -903,6 +903,18 @@ export function ListingDetail() {
   // Use fixedAnnualRevenue override when set (bypasses stale API weeklyRevenue)
   const annualRevenue = listing.fixedAnnualRevenue ?? (liveWeeklyRevenue * 52);
 
+  // Headline price + seller stat slots — identical logic to the /listings card
+  // and homepage, so every surface shows the same price (incl. From/To range)
+  // and the same seller-configured metrics.
+  const priceStat = getPriceStat(listing);
+  const slot2 = getStatSlot(listing.stat2Display ?? "sde", listing);
+  const slot3 = getStatSlot(listing.stat3Display ?? "staffCount", listing);
+  const sidebarStats = [
+    slot2,
+    slot3,
+    { value: String(listing.tourStarts), label: "Tour Starts" },
+  ].filter(Boolean) as { value: string; label: string; accent?: boolean }[];
+
   const audioGroups = spaces
     .filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"))
     .filter((s) => s.audioUrl || (s.pins || []).some((p) => p.type === "audio" && p.audioUrl));
@@ -1082,45 +1094,16 @@ export function ListingDetail() {
               {/* Price card */}
               <div className="bg-card border border-border rounded-2xl p-6 flex flex-col gap-4">
                 <div className="text-center">
-                  {listing.valuationRange ? (
-                    <>
-                      <div className="text-3xl font-bold">{listing.valuationRange}</div>
-                      <div className="text-sm text-muted-foreground mt-1">Valuation Est.</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-3xl font-bold">{formatPrice(liveAskingPrice)}</div>
-                      <div className="text-sm text-muted-foreground mt-1">Asking Price</div>
-                    </>
-                  )}
+                  <div className="text-3xl font-bold">{priceStat.value}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{priceStat.label}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-background rounded-xl p-3 text-center border border-border">
-                    <div className="text-base font-bold text-green-400">
-                      {annualRevenue >= 1000000
-                        ? `$${(annualRevenue / 1000000).toFixed(2)}M`
-                        : `$${(annualRevenue / 1000).toFixed(0)}K`}
+                  {sidebarStats.map((s, i) => (
+                    <div key={i} className="bg-background rounded-xl p-3 text-center border border-border">
+                      <div className={`text-base font-bold ${s.accent ? "text-green-400" : "text-foreground"}`}>{s.value}</div>
+                      <div className="text-[10px] text-muted-foreground font-medium mt-0.5">{s.label}</div>
                     </div>
-                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Annual Revenue</div>
-                  </div>
-                  <div className="bg-background rounded-xl p-3 text-center border border-border">
-                    <div className={`text-base font-bold text-green-400 ${!hasProfit ? "!text-muted-foreground" : ""}`}>
-                      {hasProfit
-                        ? liveAdjustedProfit >= 1000000
-                          ? `$${(liveAdjustedProfit / 1000000).toFixed(2)}M`
-                          : `$${(liveAdjustedProfit / 1000).toFixed(0)}K`
-                        : "—"}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Profit</div>
-                  </div>
-                  <div className="bg-background rounded-xl p-3 text-center border border-border">
-                    <div className={`text-base font-bold ${hasProfit ? "" : "text-muted-foreground"}`}>{multiple}</div>
-                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Profit Multiple</div>
-                  </div>
-                  <div className="bg-background rounded-xl p-3 text-center border border-border">
-                    <div className="text-base font-bold">{listing.tourStarts}</div>
-                    <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Tour Starts</div>
-                  </div>
+                  ))}
                 </div>
                 <div className="flex flex-col gap-2 pt-2">
                   <Link href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
