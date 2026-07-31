@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import {
   Lock, Download, Phone, Calendar, Shield,
   CheckCircle2, FileText, MapPin, Printer, ChevronRight, Eye,
-  AlertTriangle, Tag, DollarSign,
+  AlertTriangle, Tag, DollarSign, Menu, X, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -762,6 +762,8 @@ export function ReportPage() {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
   const [printMode, setPrintMode]     = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [downloading, setDownloading] = useState(false);
   // Token obtained by exchanging a one-time previewCode (stored in sessionStorage
   // so re-renders within the same tab don't re-fire the already-consumed code).
@@ -979,6 +981,18 @@ export function ReportPage() {
       )}>
         <div className="max-w-[1440px] mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
+            {groupedSections.length > 0 && (
+              <button
+                onClick={() => setMobileNavOpen(true)}
+                aria-label="Open chapters"
+                className={cn(
+                  "xl:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border flex-shrink-0",
+                  printMode ? "border-slate-200 text-slate-600" : "border-[#1E3A5C] text-slate-300 hover:text-white"
+                )}
+              >
+                <Menu size={16} />
+              </button>
+            )}
             <span className={cn("text-xs font-bold tracking-wider", printMode ? "text-slate-400" : "text-blue-500")}>
               EXIT360
             </span>
@@ -1012,6 +1026,35 @@ export function ReportPage() {
         </div>
       </nav>
 
+      {/* ── Mobile chapter drawer ──────────────────────────────────────────── */}
+      {mobileNavOpen && groupedSections.length > 0 && (
+        <div className="xl:hidden fixed inset-0 z-[60] print:hidden">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[82vw] bg-[#070F1C] border-r border-[#1E3A5C] overflow-y-auto py-5 shadow-2xl">
+            <div className="flex items-center justify-between px-5 mb-4">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Chapters</span>
+              <button onClick={() => setMobileNavOpen(false)} aria-label="Close" className="text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            {groupedSections.map((g, i) => (
+              <a
+                key={g.key}
+                href={`#chapter-${g.key}`}
+                onClick={() => { setActiveChapter(g.key); setMobileNavOpen(false); }}
+                className={cn(
+                  "flex items-center gap-2.5 px-5 py-2.5 text-[15px] border-l-2",
+                  activeChapter === g.key ? "border-blue-500 bg-blue-500/10 text-blue-300 font-semibold" : "border-transparent text-slate-300 hover:bg-[#1E3A5C]/40 hover:text-white"
+                )}
+              >
+                <span className="text-xs font-bold text-blue-600 w-5">{String(i + 1).padStart(2, "0")}</span>
+                <span>{g.title}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Cover Section ──────────────────────────────────────────────────── */}
       <section id="cover" className={cn(
         "pt-14 min-h-[72vh] flex flex-col justify-center relative overflow-hidden",
@@ -1039,10 +1082,18 @@ export function ReportPage() {
             </span>
           </div>
 
-          <p className={cn("text-sm font-semibold uppercase tracking-widest mb-2", printMode ? "text-slate-400" : "text-blue-400")}>
+          <p className={cn("text-sm font-semibold uppercase tracking-[0.25em] mb-3", printMode ? "text-slate-400" : "text-blue-400")}>
             Information Memorandum
           </p>
-          <h1 className={cn("text-4xl md:text-5xl font-bold mb-3 leading-tight", printMode ? "text-slate-900" : "text-white")}>
+          <h1
+            className={cn("text-5xl md:text-7xl xl:text-8xl font-extrabold mb-4 leading-[1.02] tracking-tight", printMode ? "text-slate-900" : "")}
+            style={printMode ? undefined : {
+              backgroundImage: "linear-gradient(120deg, #ffffff 0%, #dbeafe 40%, #c4b5fd 75%, #99f6e4 100%)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             {businessName}
           </h1>
 
@@ -1215,31 +1266,61 @@ export function ReportPage() {
           "hidden xl:flex flex-col sticky top-14 self-start w-56 flex-shrink-0 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-r z-30 py-6 print:hidden",
           printMode ? "bg-white border-slate-200" : "border-[#1E3A5C]"
         )}>
-          <p className={cn("text-xs font-bold uppercase tracking-widest px-5 mb-4", printMode ? "text-slate-400" : "text-slate-500")}>
-            Chapters
-          </p>
-          {groupedSections.map((g, i) => (
-            <a
-              key={g.key}
-              href={`#chapter-${g.key}`}
-              onClick={() => setActiveChapter(g.key)}
+          <div className="flex items-center justify-between px-5 mb-4">
+            <span className={cn("text-xs font-bold uppercase tracking-widest", printMode ? "text-slate-400" : "text-slate-500")}>
+              Chapters
+            </span>
+            <button
+              onClick={() => setSidebarExpanded((e) => !e)}
               className={cn(
-                "flex items-center gap-2.5 px-5 py-2.5 text-[15px] leading-snug transition-colors border-l-2",
-                activeChapter === g.key
-                  ? "border-blue-500 bg-blue-500/10 text-blue-300 font-semibold"
-                  : printMode
-                  ? "border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  : "border-transparent text-slate-400 hover:bg-[#1E3A5C]/40 hover:text-white"
+                "inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full border transition-colors",
+                printMode ? "border-slate-200 text-slate-500 hover:bg-slate-50" : "border-[#1E3A5C] text-slate-400 hover:text-white hover:bg-[#1E3A5C]/50"
               )}
             >
-              <span className={cn(
-                "text-xs font-bold flex-shrink-0 w-5",
-                activeChapter === g.key ? "text-blue-400" : "text-blue-600"
-              )}>
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span className="truncate">{g.title}</span>
-            </a>
+              <ChevronDown size={11} className={cn("transition-transform", sidebarExpanded ? "rotate-180" : "")} />
+              {sidebarExpanded ? "Collapse" : "Expand"}
+            </button>
+          </div>
+          {groupedSections.map((g, i) => (
+            <div key={g.key}>
+              <a
+                href={`#chapter-${g.key}`}
+                onClick={() => setActiveChapter(g.key)}
+                className={cn(
+                  "flex items-center gap-2.5 px-5 py-2.5 text-[15px] leading-snug transition-colors border-l-2",
+                  activeChapter === g.key
+                    ? "border-blue-500 bg-blue-500/10 text-blue-300 font-semibold"
+                    : printMode
+                    ? "border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    : "border-transparent text-slate-400 hover:bg-[#1E3A5C]/40 hover:text-white"
+                )}
+              >
+                <span className={cn(
+                  "text-xs font-bold flex-shrink-0 w-5",
+                  activeChapter === g.key ? "text-blue-400" : "text-blue-600"
+                )}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="truncate">{g.title}</span>
+              </a>
+              {sidebarExpanded && g.sections.length > 0 && (
+                <div className="pb-1">
+                  {g.sections.map((s) => (
+                    <a
+                      key={s.id}
+                      href={`#${s.sectionKey}`}
+                      className={cn(
+                        "flex items-center gap-2 pl-12 pr-4 py-1.5 text-[13px] leading-snug transition-colors",
+                        printMode ? "text-slate-500 hover:text-slate-800" : "text-slate-500 hover:text-slate-200"
+                      )}
+                    >
+                      <ChevronRight size={11} className="flex-shrink-0 opacity-60" />
+                      <span className="truncate">{s.title}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </aside>
       )}
