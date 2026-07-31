@@ -51,6 +51,21 @@ export function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): 
   .pnlm-audio-hs.active{background:#ea580c;box-shadow:0 0 0 6px rgba(234,88,12,0.3)}
   .pnlm-audio-hs-tooltip{position:absolute;bottom:38px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;font-size:11px;font-weight:500;padding:4px 8px;border-radius:4px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s}
   .pnlm-audio-hs:hover .pnlm-audio-hs-tooltip{opacity:1}
+  /* ── Street-View style navigation overlay ── */
+  #nav-layer{position:absolute;inset:0;pointer-events:none;z-index:20;font-family:system-ui,-apple-system,sans-serif}
+  #nav-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:8px;pointer-events:auto;cursor:pointer}
+  #nav-hint .ring{width:74px;height:74px;border-radius:50%;border:3px solid rgba(255,255,255,0.95);box-shadow:0 0 0 4px rgba(37,99,235,0.35),0 4px 18px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;background:rgba(37,99,235,0.25);backdrop-filter:blur(2px);transition:transform .15s,background .15s}
+  #nav-hint:hover .ring{transform:scale(1.08);background:rgba(37,99,235,0.5)}
+  #nav-hint .ring svg{width:34px;height:34px}
+  #nav-hint .hint-label{background:rgba(15,23,42,0.9);color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.5)}
+  .nav-edge{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;background:rgba(15,23,42,0.55);border:2px solid rgba(255,255,255,0.55);display:none;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;backdrop-filter:blur(2px);transition:background .15s}
+  .nav-edge:hover{background:rgba(37,99,235,0.7)}
+  .nav-edge svg{width:26px;height:26px;stroke:#fff}
+  #nav-edge-l{left:14px}#nav-edge-r{right:14px}
+  #nav-chips{position:absolute;left:0;right:0;bottom:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 14px;pointer-events:none}
+  .nav-chip{pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(15,23,42,0.82);color:#fff;font-size:12px;font-weight:600;padding:7px 13px;border-radius:20px;border:1px solid rgba(148,163,184,0.4);white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.45);transition:background .15s,transform .15s;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+  .nav-chip:hover{background:rgba(37,99,235,0.85);transform:translateY(-1px)}
+  .nav-chip .dot{width:8px;height:8px;border-radius:50%;background:#60a5fa;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -141,6 +156,8 @@ window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doR
 window.addEventListener('resize',doResize);
 viewer.on('scenechange',function(id){
   try{window.parent.postMessage({type:'pano_sceneChange',sceneId:id},'*')}catch(e){}
+  currentSceneId=id;
+  try{rebuildChips();}catch(e){}
   if(userInteracted)return;
   var scSp=SPACES.find(function(s){return s.id===id});
   if(AUTOPAN_ALL||(scSp&&scSp.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}
@@ -148,11 +165,101 @@ viewer.on('scenechange',function(id){
 });
 window.addEventListener('message',function(e){
   if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{
-    var gotoSp=SPACES.find(function(s){return s.id===e.data.sceneId});
-    var gotoYaw=typeof e.data.yaw==='number'?e.data.yaw:(gotoSp&&typeof gotoSp.defaultYaw==='number'?gotoSp.defaultYaw:(gotoSp&&typeof gotoSp.panoramaStartYaw==='number'?gotoSp.panoramaStartYaw:0));
-    viewer.loadScene(e.data.sceneId,0,gotoYaw,100);
+    gotoScene(e.data.sceneId, typeof e.data.yaw==='number'?e.data.yaw:null);
   }catch(e2){}
 });
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Street-View style navigation. Pannellum's own hotspot clicks proved
+   unreliable, so navigation is driven entirely from here instead:
+     • A bottom row of always-clickable scene chips (guaranteed to work).
+     • Left/right edge arrows that appear when a connected space is off to
+       the side — click to spin toward it.
+     • A centre reticle: turn to face a doorway/opening and it lights up with
+       "Enter <space>"; click the pano (or the reticle) to walk through.
+   ───────────────────────────────────────────────────────────────────────── */
+var currentSceneId=firstScene;
+function defaultYawFor(id){var s=SPACES.find(function(x){return x.id===id});return s&&typeof s.defaultYaw==='number'?s.defaultYaw:(s&&typeof s.panoramaStartYaw==='number'?s.panoramaStartYaw:0);}
+function gotoScene(id,yaw){
+  if(!validIds.has(id))return;
+  var y=typeof yaw==='number'?yaw:defaultYawFor(id);
+  try{viewer.loadScene(id,0,y,100);}catch(e){}
+}
+function navTargets(){
+  var s=SPACES.find(function(x){return x.id===currentSceneId});
+  if(!s)return [];
+  return (s.pins||[]).filter(function(p){return p.type==='navigation'&&validIds.has(p.targetSpaceId);}).map(function(p){
+    var tp=SPACES.find(function(x){return x.id===p.targetSpaceId});
+    return {id:p.targetSpaceId,label:(p.title||(tp&&tp.name)||'Next space'),yaw:xToYaw(p.position.x),targetYaw:(typeof p.targetYaw==='number'?p.targetYaw:null)};
+  });
+}
+function angDiff(a,b){var d=((a-b+540)%360)-180;return d;}
+
+// Build overlay DOM
+var navLayer=document.createElement('div');navLayer.id='nav-layer';
+navLayer.innerHTML=
+  '<div id="nav-hint"><div class="ring"><svg viewBox="0 0 44 44" fill="none"><path d="M22 8v22M12 20l10-12 10 12" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="hint-label"></div></div>'+
+  '<div class="nav-edge" id="nav-edge-l"><svg viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'+
+  '<div class="nav-edge" id="nav-edge-r"><svg viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'+
+  '<div id="nav-chips"></div>';
+document.body.appendChild(navLayer);
+var hintEl=document.getElementById('nav-hint');
+var edgeL=document.getElementById('nav-edge-l');
+var edgeR=document.getElementById('nav-edge-r');
+var chipsEl=document.getElementById('nav-chips');
+var hintTargetId='';
+
+hintEl.addEventListener('click',function(){if(hintTargetId)gotoScene(hintTargetId);});
+
+function rebuildChips(){
+  var targets=navTargets();
+  chipsEl.innerHTML='';
+  targets.forEach(function(t){
+    var b=document.createElement('div');b.className='nav-chip';
+    b.innerHTML='<span class="dot"></span>'+t.label;
+    b.addEventListener('click',function(){gotoScene(t.id,t.targetYaw);});
+    chipsEl.appendChild(b);
+  });
+}
+rebuildChips();
+
+// Turn-to-face reticle + edge arrows, updated each frame.
+function tick(){
+  var yaw;try{yaw=viewer.getYaw();}catch(e){yaw=0;}
+  var targets=navTargets();
+  var best=null,bestAbs=999,leftT=null,rightT=null,leftAbs=999,rightAbs=999;
+  targets.forEach(function(t){
+    var d=angDiff(t.yaw,yaw);var ad=Math.abs(d);
+    if(ad<bestAbs){bestAbs=ad;best={t:t,d:d};}
+    if(d<0&&ad<leftAbs&&ad<=110){leftAbs=ad;leftT=t;}
+    if(d>=0&&ad<rightAbs&&ad<=110){rightAbs=ad;rightT=t;}
+  });
+  if(best&&bestAbs<26){
+    hintEl.style.display='flex';
+    hintEl.querySelector('.hint-label').textContent='Enter '+best.t.label;
+    hintTargetId=best.t.id;
+  }else{hintEl.style.display='none';hintTargetId='';}
+  // Edge arrows only when the target is off to the side (not already centred)
+  if(leftT&&leftAbs>=24){edgeL.style.display='flex';edgeL.onclick=function(){gotoScene(leftT.id,leftT.targetYaw);};}else{edgeL.style.display='none';}
+  if(rightT&&rightAbs>=24){edgeR.style.display='flex';edgeR.onclick=function(){gotoScene(rightT.id,rightT.targetYaw);};}else{edgeR.style.display='none';}
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// Click-on-pano (not drag) walks through the opening you're facing.
+(function(){
+  var pano=document.getElementById('pano');if(!pano)return;
+  var dx=0,dy=0,dt=0,moved=false;
+  function down(x,y){dx=x;dy=y;dt=Date.now();moved=false;}
+  function move(x,y){if(dt&&(Math.abs(x-dx)>7||Math.abs(y-dy)>7))moved=true;}
+  function up(){if(dt&&!moved&&(Date.now()-dt)<450&&hintTargetId){gotoScene(hintTargetId);}dt=0;}
+  pano.addEventListener('mousedown',function(e){down(e.clientX,e.clientY);});
+  pano.addEventListener('mousemove',function(e){move(e.clientX,e.clientY);});
+  pano.addEventListener('mouseup',up);
+  pano.addEventListener('touchstart',function(e){if(e.touches[0])down(e.touches[0].clientX,e.touches[0].clientY);},{passive:true});
+  pano.addEventListener('touchmove',function(e){if(e.touches[0])move(e.touches[0].clientX,e.touches[0].clientY);},{passive:true});
+  pano.addEventListener('touchend',up);
+})();
 <\/script>
 </body>
 </html>`;

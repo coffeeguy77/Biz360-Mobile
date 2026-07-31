@@ -1,9 +1,10 @@
 import { useParams, useLocation } from "wouter";
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, Fragment } from "react";
 import {
   Lock, Download, Phone, Calendar, Shield,
   CheckCircle2, FileText, MapPin, Printer, ChevronRight, Eye,
   AlertTriangle, Tag, DollarSign, Menu, X, ChevronDown,
+  ArrowLeft, User, Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -701,7 +702,7 @@ function SectionContent({
       <div className="clear-both" />
       {!!section.tableData && <SectionTable data={section.tableData} />}
       {chartWillRender && (
-        <div className="mt-6 p-4 rounded-xl bg-[#070F1C]/60 border border-[#1E3A5C]/60">
+        <div className="report-chart-card mt-6 p-4 rounded-xl bg-[#070F1C]/60 border border-[#1E3A5C]/60">
           <ChartComponent data={chartData} />
         </div>
       )}
@@ -767,6 +768,116 @@ const ACCENT_COLORS = [
   "#EC4899", "#14B8A6", "#F97316", "#6366F1",
 ];
 
+// ── Equipment register ────────────────────────────────────────────────────────
+interface EquipmentItem {
+  id: string;
+  name: string;
+  category: string;
+  brand?: string | null;
+  condition?: string | null;
+  secondhandValue: number;
+  replacementCost: number;
+}
+interface EquipmentRegister {
+  items: EquipmentItem[];
+  totals: { secondhand: number; replacement: number };
+  count: number;
+}
+
+// ── Equipment register section ────────────────────────────────────────────────
+function EquipmentRegisterSection({ reg, printMode }: { reg: EquipmentRegister; printMode: boolean }) {
+  const fmt = (n: number) =>
+    n > 0 ? `$${n.toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+  const groups: Record<string, EquipmentItem[]> = {};
+  for (const it of reg.items) (groups[it.category] ||= []).push(it);
+  const cats = Object.keys(groups).sort();
+  const th = cn("px-4 py-2.5 font-semibold text-xs uppercase tracking-wider", printMode ? "text-slate-500" : "text-slate-400");
+  return (
+    <section id="equipment-register" className="max-w-[1440px] mx-auto px-6 mt-14 scroll-mt-24">
+      <div className={cn("rounded-2xl border p-6 sm:p-8 report-avoid-break", printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/50 border-[#1E3A5C]/60")}>
+        <div className="flex items-start gap-4 mb-5">
+          <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: "#F59E0B", minHeight: 40 }} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5 mb-1">
+              <Wrench size={18} className={printMode ? "text-amber-600" : "text-amber-400"} />
+              <h3 className={cn("text-lg font-bold", printMode ? "text-slate-900" : "text-white")}>Equipment Register</h3>
+            </div>
+            <p className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-500")}>
+              {reg.count} included item{reg.count === 1 ? "" : "s"} · second-hand value vs. replacement (new) cost
+            </p>
+          </div>
+        </div>
+
+        <p className={cn("text-[15px] leading-relaxed mb-6", printMode ? "text-slate-700" : "text-slate-300")}>
+          The equipment included in the sale is listed below. Our valuation is based on the{" "}
+          <strong>second-hand value</strong> — what each item is realistically worth today. The{" "}
+          <strong>replacement cost</strong> shows what it would cost a buyer to purchase the same
+          equipment <em>brand new</em>, which highlights the substantial asset base underpinning the
+          asking price.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className={cn("rounded-xl p-4 border", printMode ? "bg-amber-50 border-amber-100" : "bg-amber-500/10 border-amber-500/20")}>
+            <div className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", printMode ? "text-slate-500" : "text-slate-400")}>Second-hand value (our figure)</div>
+            <div className={cn("text-2xl font-bold", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(reg.totals.secondhand)}</div>
+          </div>
+          <div className={cn("rounded-xl p-4 border", printMode ? "bg-blue-50 border-blue-100" : "bg-blue-500/10 border-blue-500/20")}>
+            <div className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", printMode ? "text-slate-500" : "text-slate-400")}>Replacement (new) cost</div>
+            <div className={cn("text-2xl font-bold", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(reg.totals.replacement)}</div>
+          </div>
+        </div>
+
+        <div className={cn("overflow-x-auto rounded-xl border", printMode ? "border-slate-200" : "border-[#1E3A5C]")}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={printMode ? "bg-slate-100" : "bg-[#0F2040]"}>
+                <th className={cn(th, "text-left")}>Item</th>
+                <th className={cn(th, "text-right whitespace-nowrap")}>Second-hand</th>
+                <th className={cn(th, "text-right whitespace-nowrap")}>Replacement (new)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cats.map((cat) => {
+                const items = groups[cat];
+                const sub = items.reduce((a, i) => ({ s: a.s + i.secondhandValue, r: a.r + i.replacementCost }), { s: 0, r: 0 });
+                return (
+                  <Fragment key={cat}>
+                    <tr className={printMode ? "bg-slate-50" : "bg-[#0F2040]/50"}>
+                      <td colSpan={3} className={cn("px-4 py-2 font-bold text-xs uppercase tracking-wide", printMode ? "text-slate-600" : "text-slate-300")}>{cat}</td>
+                    </tr>
+                    {items.map((it) => (
+                      <tr key={it.id} className={cn("border-t", printMode ? "border-slate-100" : "border-[#1E3A5C]/50")}>
+                        <td className={cn("px-4 py-2.5", printMode ? "text-slate-700" : "text-slate-200")}>
+                          {it.name}
+                          {it.brand ? <span className={printMode ? "text-slate-400" : "text-slate-500"}> · {it.brand}</span> : null}
+                        </td>
+                        <td className={cn("px-4 py-2.5 text-right tabular-nums whitespace-nowrap", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(it.secondhandValue)}</td>
+                        <td className={cn("px-4 py-2.5 text-right tabular-nums whitespace-nowrap", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(it.replacementCost)}</td>
+                      </tr>
+                    ))}
+                    <tr className={cn("border-t", printMode ? "border-slate-200 bg-slate-50" : "border-[#1E3A5C] bg-[#0F2040]/30")}>
+                      <td className={cn("px-4 py-2 text-right font-semibold text-xs", printMode ? "text-slate-500" : "text-slate-400")}>Subtotal · {cat}</td>
+                      <td className={cn("px-4 py-2 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(sub.s)}</td>
+                      <td className={cn("px-4 py-2 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(sub.r)}</td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className={printMode ? "bg-slate-100" : "bg-[#0F2040]"}>
+                <td className={cn("px-4 py-3 text-right font-bold", printMode ? "text-slate-900" : "text-white")}>Total</td>
+                <td className={cn("px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(reg.totals.secondhand)}</td>
+                <td className={cn("px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(reg.totals.replacement)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ── Main Report Page ──────────────────────────────────────────────────────────
 export function ReportPage() {
   // versionId may come from route param (/reports/:listingId/:versionId)
@@ -789,6 +900,7 @@ export function ReportPage() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [openChapter, setOpenChapter] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [equipment, setEquipment] = useState<EquipmentRegister | null>(null);
   // Token obtained by exchanging a one-time previewCode (stored in sessionStorage
   // so re-renders within the same tab don't re-fire the already-consumed code).
   const [previewToken, setPreviewToken] = useState<string | null>(() => {
@@ -877,14 +989,35 @@ export function ReportPage() {
     recordAccessLog(listingId, "report_viewed", versionId ? { versionId } : {});
   }, [listingId, versionId, accessToken, previewToken, previewCode]);
 
+  // Equipment register — included items with second-hand + replacement values.
+  useEffect(() => {
+    if (!listingId) return;
+    fetch(`/api/biz360/public/listing/${listingId}/equipment`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: EquipmentRegister | null) => {
+        if (json && Array.isArray(json.items) && json.items.length > 0) setEquipment(json);
+        else setEquipment(null);
+      })
+      .catch(() => setEquipment(null));
+  }, [listingId]);
+
   function handleDownloadPdf() {
     // Print the CURRENT on-screen report (Save as PDF in the print dialog) so the
     // download always matches this version. The old server-side PDF export was a
     // separate template that didn't reflect report updates.
     recordAccessLog(listingId, "pdf_downloaded", { mode: "print" });
+    // The browser's "Save as PDF" uses document.title for the filename — set it to
+    // a clean, business-named title, then restore it afterwards.
+    const prevTitle = document.title;
+    const safeName = (data?.meta?.businessName ?? businessName ?? "Business").trim();
+    document.title = `EXIT360 — ${safeName} Report`;
     setPrintMode(true);
     setTimeout(() => {
-      const restore = () => { setPrintMode(false); window.removeEventListener("afterprint", restore); };
+      const restore = () => {
+        setPrintMode(false);
+        document.title = prevTitle;
+        window.removeEventListener("afterprint", restore);
+      };
       window.addEventListener("afterprint", restore);
       window.print();
     }, 300);
@@ -943,6 +1076,10 @@ export function ReportPage() {
   const businessName = data?.meta?.businessName ?? "Confidential Business";
   const contactUrl = (intent: string) =>
     `/sign-in?intent=${intent}&listingId=${listingId}&listingName=${encodeURIComponent(businessName)}&return=${encodeURIComponent(`/listings/${listingId}`)}`;
+  // Exit routes so a buyer is never stuck inside the report.
+  const listingUrl = `/listings/${listingId}`;
+  const buyerLoggedIn = typeof window !== "undefined" && !!localStorage.getItem("exit360_buyer_token");
+  const portalUrl = buyerLoggedIn ? "/buyers/portal" : "/buyers";
 
   // Build chapter groups — only include groups that have ≥1 visible section
   const groupedSections = REPORT_GROUPS.map((g) => ({
@@ -1043,15 +1180,46 @@ export function ReportPage() {
                 <Menu size={16} />
               </button>
             )}
+            <button
+              onClick={() => navigate(listingUrl)}
+              title="Back to listing"
+              className={cn(
+                "inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors flex-shrink-0",
+                printMode ? "border-slate-200 text-slate-600 hover:bg-slate-50" : "border-[#1E3A5C] text-slate-300 hover:text-white hover:bg-[#0F2040]"
+              )}
+            >
+              <ArrowLeft size={13} /> <span className="hidden sm:inline">Listing</span>
+            </button>
             <span className={cn("text-xs font-bold tracking-wider", printMode ? "text-slate-400" : "text-blue-500")}>
               EXIT360
             </span>
-            <span className={printMode ? "text-slate-300" : "text-[#1E3A5C]"}>/</span>
-            <span className={cn("text-sm font-semibold truncate", printMode ? "text-slate-700" : "text-white")}>
+            <span className={cn("hidden sm:inline", printMode ? "text-slate-300" : "text-[#1E3A5C]")}>/</span>
+            <span className={cn("text-sm font-semibold truncate hidden sm:inline", printMode ? "text-slate-700" : "text-white")}>
               {businessName}
             </span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => navigate(portalUrl)}
+              title="My Portal"
+              className={cn(
+                "hidden lg:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors",
+                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
+              )}
+            >
+              <User size={12} /> My Portal
+            </button>
+            {equipment && (
+              <a
+                href="#equipment-register"
+                className={cn(
+                  "hidden md:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors",
+                  printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
+                )}
+              >
+                <Wrench size={12} /> Equipment
+              </a>
+            )}
             <button
               onClick={() => setPrintMode((p) => !p)}
               className={cn(
@@ -1123,6 +1291,20 @@ export function ReportPage() {
                 <span>{g.title}</span>
               </a>
             ))}
+            <div className="mt-4 pt-4 mx-5 border-t border-[#1E3A5C]">
+              <span className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Quick Links</span>
+              {equipment && (
+                <a href="#equipment-register" onClick={() => setMobileNavOpen(false)} className="flex items-center gap-2 py-2 text-[15px] text-slate-300 hover:text-white">
+                  <Wrench size={14} className="flex-shrink-0" /> Equipment Register
+                </a>
+              )}
+              <button onClick={() => { setMobileNavOpen(false); navigate(listingUrl); }} className="flex items-center gap-2 py-2 text-[15px] text-slate-300 hover:text-white w-full text-left">
+                <ArrowLeft size={14} className="flex-shrink-0" /> View Listing
+              </button>
+              <button onClick={() => { setMobileNavOpen(false); navigate(portalUrl); }} className="flex items-center gap-2 py-2 text-[15px] text-slate-300 hover:text-white w-full text-left">
+                <User size={14} className="flex-shrink-0" /> My Portal
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1207,6 +1389,24 @@ export function ReportPage() {
               )}
             >
               <Calendar size={15} /> Book Inspection
+            </button>
+            <button
+              onClick={() => navigate(listingUrl)}
+              className={cn(
+                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
+                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040]/70 border-[#1E3A5C] text-slate-200 hover:text-white"
+              )}
+            >
+              <ArrowLeft size={15} /> View Listing
+            </button>
+            <button
+              onClick={() => navigate(portalUrl)}
+              className={cn(
+                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
+                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040]/70 border-[#1E3A5C] text-slate-200 hover:text-white"
+              )}
+            >
+              <User size={15} /> My Portal
             </button>
           </div>
         </div>
@@ -1296,6 +1496,24 @@ export function ReportPage() {
             </div>
           );
           })}
+
+          {/* Quick links — so the buyer can always leave the report */}
+          <div className={cn("mt-5 pt-4 mx-5 border-t", printMode ? "border-slate-200" : "border-[#1E3A5C]")}>
+            <span className={cn("block text-xs font-bold uppercase tracking-widest mb-2", printMode ? "text-slate-400" : "text-slate-500")}>
+              Quick Links
+            </span>
+            {equipment && (
+              <a href="#equipment-register" className={cn("flex items-center gap-2 py-1.5 text-[14px] transition-colors", printMode ? "text-slate-600 hover:text-slate-900" : "text-slate-400 hover:text-white")}>
+                <Wrench size={13} className="flex-shrink-0" /> Equipment Register
+              </a>
+            )}
+            <button onClick={() => navigate(listingUrl)} className={cn("flex items-center gap-2 py-1.5 text-[14px] w-full text-left transition-colors", printMode ? "text-slate-600 hover:text-slate-900" : "text-slate-400 hover:text-white")}>
+              <ArrowLeft size={13} className="flex-shrink-0" /> View Listing
+            </button>
+            <button onClick={() => navigate(portalUrl)} className={cn("flex items-center gap-2 py-1.5 text-[14px] w-full text-left transition-colors", printMode ? "text-slate-600 hover:text-slate-900" : "text-slate-400 hover:text-white")}>
+              <User size={13} className="flex-shrink-0" /> My Portal
+            </button>
+          </div>
         </aside>
       )}
 
@@ -1599,6 +1817,9 @@ export function ReportPage() {
       </main>
       </div>
 
+      {/* ── Equipment register (base of report) ─────────────────────────────── */}
+      {equipment && <EquipmentRegisterSection reg={equipment} printMode={printMode} />}
+
       {/* ── Disclaimer ────────────────────────────────────────────────────────── */}
       <footer className={cn(
         "border-t mt-4 py-10 print:pt-4",
@@ -1634,6 +1855,19 @@ export function ReportPage() {
         }
         .print-mode { color: #1e293b; }
         .print-mode h1, .print-mode h2 { color: #0f172a; }
+        /* Print / PDF readability: the dark-theme body text utilities are far too
+           light on white. Force them to the same dark slate as the side menu. */
+        .print-mode .text-slate-200,
+        .print-mode .text-slate-300 { color: #1e293b !important; }
+        .print-mode .text-slate-400 { color: #334155 !important; }
+        .print-mode .text-slate-500 { color: #475569 !important; }
+        /* Chart/visual cards read on a dark panel — lighten them for print. */
+        .print-mode .report-chart-card { background: #f8fafc !important; border-color: #e2e8f0 !important; }
+        @media print {
+          /* Let long content flow across pages without slicing cards mid-row */
+          section, .report-avoid-break { break-inside: avoid; }
+          .report-bg-anim { display: none !important; }
+        }
 
         /* Animated morphing background — ultra-smooth, no visible rings */
         .report-bg-anim { background: #060B15; }

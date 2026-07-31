@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { SignJWT, jwtVerify } from "jose";
-import { eq, and, desc, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, isNull, sql, inArray } from "drizzle-orm";
 import {
   db, kvStore, cafesTable, valuationSnapshotsTable, cafeEquipmentTable,
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
@@ -260,6 +260,56 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
     res.json({ listing: liveListing, snapshot, snapshotGated, ndaMode, ndaThirdPartyUrl, ndaSigned });
   } catch {
     res.status(500).json({ error: "Failed to fetch listing data" });
+  }
+});
+
+// ─── Public equipment register ────────────────────────────────────────────────
+// GET /public/listing/:listingId/equipment → included (non-suspended) equipment
+// items for the listing, each with its second-hand value (what we price on) and
+// its replacement cost (what a buyer would pay to buy it all new). Excludes
+// suspended items (those turned off / kept by the seller, e.g. a division that
+// isn't part of the sale).
+router.get("/public/listing/:listingId/equipment", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  try {
+    const cafes = await db.select().from(cafesTable).where(eq(cafesTable.listingId, listingId));
+    if (!cafes.length) {
+      res.json({ items: [], totals: { secondhand: 0, replacement: 0 }, count: 0 });
+      return;
+    }
+    const cafeIds = cafes.map((c) => c.id);
+    const rows = await db
+      .select()
+      .from(cafeEquipmentTable)
+      .where(and(inArray(cafeEquipmentTable.cafeId, cafeIds), sql`${cafeEquipmentTable.suspended} IS NOT TRUE`));
+    const items = rows
+      .map((r) => {
+        const secondhand = Number(r.currentValue ?? r.secondhandValue ?? 0) || 0;
+        const replacement = Number(r.replacementCost ?? r.purchasePrice ?? 0) || 0;
+        return {
+          id: r.id,
+          name: r.name,
+          category: (r.category ?? "General").trim() || "General",
+          brand: r.brand ?? null,
+          condition: r.condition ?? null,
+          secondhandValue: secondhand,
+          // Never show a replacement below the second-hand figure (a missing/low
+          // replacement would otherwise understate what it costs to buy new).
+          replacementCost: replacement > 0 ? Math.max(replacement, secondhand) : 0,
+        };
+      })
+      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+    const totals = items.reduce(
+      (acc, it) => {
+        acc.secondhand += it.secondhandValue;
+        acc.replacement += it.replacementCost;
+        return acc;
+      },
+      { secondhand: 0, replacement: 0 },
+    );
+    res.json({ items, totals, count: items.length });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch equipment" });
   }
 });
 
