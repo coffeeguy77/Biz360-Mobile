@@ -253,9 +253,17 @@ router.post("/biz360/img", async (req, res): Promise<void> => {
     });
     res.json({ url: result.secure_url });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Upload failed";
-    console.error("[biz360/img] Cloudinary error:", msg);
-    res.status(500).json({ error: msg });
+    // Cloudinary rejects with a plain object (not an Error), so extract the
+    // real message/http_code rather than masking it as a generic failure.
+    const anyErr = err as any;
+    const detail =
+      anyErr?.message ??
+      anyErr?.error?.message ??
+      (anyErr?.error && typeof anyErr.error === "string" ? anyErr.error : null) ??
+      (anyErr && typeof anyErr === "object" ? JSON.stringify(anyErr) : String(anyErr));
+    const httpCode = anyErr?.http_code ?? anyErr?.error?.http_code;
+    console.error("[biz360/img] Cloudinary error:", httpCode ?? "", detail);
+    res.status(500).json({ error: `Cloudinary: ${detail}${httpCode ? ` (http ${httpCode})` : ""}` });
   }
 });
 
