@@ -255,6 +255,8 @@ export default function CreateListing() {
       // Upload any local (file://) photos to Cloudinary so they show on the
       // website (same endpoint the 360° tour uses). Keep the local path as a
       // fallback if an individual upload fails — never block the save on it.
+      // Any failure reason is captured and surfaced so it's never silent.
+      let photoUploadError: string | null = null;
       try {
         const domain  = process.env.EXPO_PUBLIC_DOMAIN;
         const apiBase = domain ? `https://${domain}/api` : "/api";
@@ -275,17 +277,27 @@ export default function CreateListing() {
                   signal: ctrl.signal,
                 });
                 clearTimeout(timer);
-                if (!res.ok) return uri;
+                if (!res.ok) {
+                  const body = await res.text().catch(() => "");
+                  photoUploadError = `Upload failed (HTTP ${res.status})${body ? `: ${body.slice(0, 140)}` : ""} · ${apiBase}`;
+                  return uri;
+                }
                 const json = (await res.json()) as { url?: string };
-                return json.url ?? uri;
-              } catch { clearTimeout(timer); return uri; }
-            } catch {
+                if (!json.url) { photoUploadError = "Server returned no URL"; return uri; }
+                return json.url;
+              } catch (e) {
+                clearTimeout(timer);
+                photoUploadError = `Network error: ${e instanceof Error ? e.message : String(e)} · ${apiBase}`;
+                return uri;
+              }
+            } catch (e) {
+              photoUploadError = `Could not read photo: ${e instanceof Error ? e.message : String(e)}`;
               return uri; // couldn't read/upload — keep local path
             }
           }),
         );
-      } catch {
-        // non-fatal — keep savedPhotos as-is
+      } catch (e) {
+        photoUploadError = `Photo upload error: ${e instanceof Error ? e.message : String(e)}`;
       }
 
       const fieldData = {
@@ -328,8 +340,10 @@ export default function CreateListing() {
         await savePendingListings(updated);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
-          "Listing Updated!",
-          `"${form.businessName.trim()}" has been saved.`,
+          photoUploadError ? "Saved — photo didn't upload" : "Listing Updated!",
+          photoUploadError
+            ? `"${form.businessName.trim()}" was saved, but the photo could not be uploaded to the website:\n\n${photoUploadError}`
+            : `"${form.businessName.trim()}" has been saved.`,
           [{ text: "Done", onPress: () => router.back() }],
         );
       } else {
@@ -347,8 +361,10 @@ export default function CreateListing() {
         await savePendingListings([...existing, newItem]);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
-          "Listing Submitted!",
-          `"${form.businessName.trim()}" has been submitted for admin review. You'll see it in your listings with a Pending badge. Approval typically takes 1 business day.`,
+          photoUploadError ? "Submitted — photo didn't upload" : "Listing Submitted!",
+          photoUploadError
+            ? `"${form.businessName.trim()}" was submitted, but the photo could not be uploaded:\n\n${photoUploadError}`
+            : `"${form.businessName.trim()}" has been submitted for admin review. You'll see it in your listings with a Pending badge. Approval typically takes 1 business day.`,
           [{ text: "Done", onPress: () => router.back() }],
         );
       }

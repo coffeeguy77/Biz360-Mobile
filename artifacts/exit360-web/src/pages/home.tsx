@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Building, ShieldCheck, ArrowRight, Eye, Play, TrendingUp, Clock, Users, MapPin } from "lucide-react";
-import { formatPrice, formatRevenue, BADGE_LABELS, type Listing } from "@/data/listings";
+import { getPriceStat, getStatSlot, BADGE_LABELS, type Listing } from "@/data/listings";
 import { fetchListings } from "@/lib/listingsApi";
 
 export function Home() {
@@ -17,6 +17,11 @@ export function Home() {
 
   // Feature the first approved listing (prefer one with a 360° tour) — fully live from the API.
   const bc = listings.find((l) => l.hasTour) ?? listings[0] ?? null;
+
+  // Mirror the app/card: seller-configured price (with From/To range) + stat slots.
+  const priceStat = bc ? getPriceStat(bc) : null;
+  const slot2 = bc ? getStatSlot(bc.stat2Display ?? "sde", bc) : null;
+  const slot3 = bc ? getStatSlot(bc.stat3Display ?? "staffCount", bc) : null;
 
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
@@ -156,18 +161,24 @@ export function Home() {
             <Card className="p-6 border-border bg-card">
               <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Key Metrics</div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <div className="text-2xl font-bold text-foreground">{formatPrice(bc.askingPrice)}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Asking Price</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-foreground">{formatRevenue(bc.weeklyRevenue)}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Revenue</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-foreground">{bc.adjustedProfit > 0 ? formatPrice(bc.adjustedProfit) : "—"}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Adj. Profit</div>
-                </div>
+                {priceStat && (
+                  <div className="col-span-2">
+                    <div className="text-2xl font-bold text-foreground">{priceStat.value}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{priceStat.label}</div>
+                  </div>
+                )}
+                {slot2 && (
+                  <div>
+                    <div className={`text-2xl font-bold ${slot2.accent ? "text-green-400" : "text-foreground"}`}>{slot2.value}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{slot2.label}</div>
+                  </div>
+                )}
+                {slot3 && (
+                  <div>
+                    <div className={`text-2xl font-bold ${slot3.accent ? "text-green-400" : "text-foreground"}`}>{slot3.value}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{slot3.label}</div>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <div className="text-2xl font-bold text-foreground">{bc.staffCount} staff · {bc.ownerHours}h/wk</div>
                   <div className="text-xs text-muted-foreground mt-0.5">Operations</div>
