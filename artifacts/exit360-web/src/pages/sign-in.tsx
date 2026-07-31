@@ -38,16 +38,20 @@ async function kvGet<T>(key: string): Promise<T | null> {
   try {
     const res = await fetch(`${API}/kv/${key}`);
     if (!res.ok) return null;
-    return (await res.json()) as T;
+    // API responds { value: <data> } — unwrap it.
+    const json = await res.json();
+    return (json?.value ?? null) as T;
   } catch { return null; }
 }
 
 async function kvSet(key: string, value: unknown): Promise<void> {
-  await fetch(`${API}/kv/${key}`, {
+  // API expects { value: <data> } on PUT.
+  const res = await fetch(`${API}/kv/${key}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(value),
+    body: JSON.stringify({ value }),
   });
+  if (!res.ok) throw new Error(`kv save failed (${res.status})`);
 }
 
 async function registerBuyer(userId: string, name: string, phone: string): Promise<void> {
