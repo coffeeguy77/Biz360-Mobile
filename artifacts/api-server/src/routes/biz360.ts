@@ -592,8 +592,9 @@ router.post("/public/listing/:listingId/nda/send-otp", async (req, res): Promise
 
 router.post("/public/listing/:listingId/nda/sign", async (req, res): Promise<void> => {
   const { listingId } = req.params;
-  const { phone, code } = req.body as { phone?: string; code?: string };
+  const { phone, code, name } = req.body as { phone?: string; code?: string; name?: string };
   if (!phone || !code) { res.status(400).json({ error: "phone and code required" }); return; }
+  if (!name || name.trim().length < 2) { res.status(400).json({ error: "Your full name is required to sign" }); return; }
   try {
     const [ndaSettings] = await db.select().from(ndaSettingsTable)
       .where(eq(ndaSettingsTable.listingId, listingId));
@@ -609,6 +610,7 @@ router.post("/public/listing/:listingId/nda/sign", async (req, res): Promise<voi
     }
     const [signature] = await db.insert(ndaSignaturesTable).values({
       listingId,
+      buyerName: name.trim(),
       buyerPhone: phone.replace(/\s/g, ""),
       buyerIp: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null,
       userAgent: req.headers["user-agent"] ?? null,

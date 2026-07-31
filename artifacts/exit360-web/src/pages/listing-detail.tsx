@@ -440,6 +440,7 @@ export function ListingDetail() {
   const [smsOtpError, setSmsOtpError] = useState<string | null>(null);
   const [viewLogged, setViewLogged] = useState(false);
   // NDA signing state
+  const [ndaName, setNdaName] = useState("");
   const [ndaPhone, setNdaPhone] = useState("");
   const [ndaCode, setNdaCode] = useState("");
   const [ndaStep, setNdaStep] = useState<"phone" | "code" | null>(null);
@@ -545,6 +546,7 @@ export function ListingDetail() {
   useEffect(() => {
     setAccessInfo(null);
     setViewLogged(false);
+    setNdaName("");
     setNdaPhone("");
     setNdaCode("");
     setNdaStep(null);
@@ -728,7 +730,7 @@ export function ListingDetail() {
       const res = await fetch(`/api/public/listing/${lid}/nda/sign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: ndaPhone.trim(), code: ndaCode.trim() }),
+        body: JSON.stringify({ phone: ndaPhone.trim(), code: ndaCode.trim(), name: ndaName.trim() }),
       });
       if (res.ok) {
         const signed = await res.json();
@@ -1147,12 +1149,21 @@ export function ListingDetail() {
                       <p className="text-[11px] text-muted-foreground">This listing requires a Non-Disclosure Agreement before viewing verified financial data.</p>
                       <NdaDocument
                         listingName={listing.businessName}
+                        buyerName={ndaName}
                         buyerPhone={ndaPhone}
                         agreed={ndaAgreed}
                         onAgreeChange={setNdaAgreed}
                       />
                       {ndaStep === null && (
                         <div className="flex flex-col gap-2">
+                          <input
+                            type="text"
+                            autoComplete="name"
+                            placeholder="Your full name"
+                            value={ndaName}
+                            onChange={(e) => { setNdaName(e.target.value); setNdaError(null); }}
+                            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          />
                           <input
                             type="tel"
                             placeholder="+61 400 000 000"
@@ -1163,7 +1174,7 @@ export function ListingDetail() {
                           {ndaError && <p className="text-xs text-red-400">{ndaError}</p>}
                           <button
                             onClick={() => handleNdaSend(lid)}
-                            disabled={ndaLoading || !ndaPhone.trim() || !ndaAgreed}
+                            disabled={ndaLoading || ndaName.trim().length < 2 || !ndaPhone.trim() || !ndaAgreed}
                             className="w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
                           >
                             {ndaLoading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}

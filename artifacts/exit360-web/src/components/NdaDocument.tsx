@@ -1,11 +1,12 @@
 interface NdaDocumentProps {
   listingName: string;
+  buyerName?: string;
   buyerPhone?: string;
   agreed: boolean;
   onAgreeChange: (agreed: boolean) => void;
 }
 
-export function NdaDocument({ listingName, buyerPhone, agreed, onAgreeChange }: NdaDocumentProps) {
+export function NdaDocument({ listingName, buyerName, buyerPhone, agreed, onAgreeChange }: NdaDocumentProps) {
   const today = new Date().toLocaleString("en-AU", {
     day: "numeric",
     month: "long",
@@ -75,6 +76,9 @@ export function NdaDocument({ listingName, buyerPhone, agreed, onAgreeChange }: 
       <div className="border-t border-border pt-2.5 space-y-1">
         <p className="font-semibold text-foreground text-xs">Signature Block</p>
         <p>Listing: <strong>{listingName}</strong></p>
+        {buyerName?.trim()
+          ? <p>Name: <strong>{buyerName.trim()}</strong></p>
+          : <p className="text-muted-foreground/60 italic">Enter your full name below</p>}
         {buyerPhone
           ? <p>Mobile: <strong>{buyerPhone}</strong> — to be verified via SMS OTP</p>
           : <p className="text-muted-foreground/60 italic">Enter your mobile number below to proceed</p>}

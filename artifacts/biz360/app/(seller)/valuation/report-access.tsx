@@ -46,6 +46,7 @@ interface BuyerAnalytic {
 
 interface NdaSignature {
   id: string;
+  buyerName: string | null;
   buyerPhone: string;
   buyerIp: string | null;
   signedAt: string | null;
@@ -567,9 +568,9 @@ export default function ReportAccessScreen() {
                 <View key={sig.id} style={[styles.grantRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Feather name="file-text" size={16} color={colors.primary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.grantPhone, { color: colors.foreground }]}>{sig.buyerPhone}</Text>
+                    <Text style={[styles.grantPhone, { color: colors.foreground }]}>{sig.buyerName || sig.buyerPhone}</Text>
                     <Text style={[styles.grantDate, { color: colors.mutedForeground }]}>
-                      Signed {formatDate(sig.signedAt)} · NDA {sig.ndaVersion}
+                      {sig.buyerName ? `${sig.buyerPhone} · ` : ""}Signed {formatDate(sig.signedAt)} · NDA {sig.ndaVersion}
                       {sig.buyerIp ? `\nIP ${sig.buyerIp}` : ""}
                     </Text>
                   </View>

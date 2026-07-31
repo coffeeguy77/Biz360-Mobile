@@ -22,6 +22,7 @@ export type NdaSettings = typeof ndaSettingsTable.$inferSelect;
 export const ndaSignaturesTable = pgTable("nda_signatures", {
   id: uuid("id").primaryKey().defaultRandom(),
   listingId: text("listing_id").notNull(),
+  buyerName: text("buyer_name"),
   buyerPhone: text("buyer_phone").notNull(),
   buyerIp: text("buyer_ip"),
   userAgent: text("user_agent"),
