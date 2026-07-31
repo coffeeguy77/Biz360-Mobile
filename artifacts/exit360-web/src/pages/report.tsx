@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { InteractiveTour, type TourSpace } from "@/components/InteractiveTour";
 import {
   SECTION_CHART_MAP, sectionHasChartData,
 } from "@/components/report/ChartComponents";
@@ -553,6 +554,40 @@ function SectionContent({
   const hasContent = section.body || (section.bulletPoints?.length ?? 0) > 0 || section.tableData;
   const is360 = section.sectionKey === "360_business_walkthrough";
 
+  // Interactive tour: load the same tour spaces the public listing uses so the
+  // report renders the full walkthrough (clickable hotspots + thumbnail nav).
+  const [tourSpaces, setTourSpaces] = useState<TourSpace[] | null>(null);
+  const [tourAutoPan, setTourAutoPan] = useState(false);
+  useEffect(() => {
+    if (!is360 || !listingId) return;
+    let cancelled = false;
+    Promise.all([
+      fetch(`/api/biz360/kv/biz360_tour_spaces_v2_${listingId}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch(`/api/biz360/kv/biz360_tour_settings_v1_${listingId}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([spacesData, settingsData]) => {
+      if (cancelled) return;
+      const arr = Array.isArray(spacesData?.value) ? spacesData.value : (Array.isArray(spacesData) ? spacesData : []);
+      const mapped: TourSpace[] = arr.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        panoramaUrl: s.panoramaUrl ?? "",
+        isStartScene: !!s.isStartScene,
+        autoPan: !!s.autoPan,
+        audioUrl: s.audioUrl,
+        audioName: s.audioName,
+        groundPitch: s.groundPitch,
+        panoramaStartYaw: s.panoramaStartYaw ?? 0,
+        defaultYaw: typeof s.defaultYaw === "number" ? s.defaultYaw : undefined,
+        pins: Array.isArray(s.pins) ? s.pins : [],
+      }));
+      setTourSpaces(mapped);
+      const sv = settingsData?.value ?? settingsData;
+      setTourAutoPan(!!sv?.autoPanAll);
+    });
+    return () => { cancelled = true; };
+  }, [is360, listingId]);
+  const hasInteractiveTour = !!tourSpaces && tourSpaces.some((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"));
+
   // Resolve 360 tour display from chartData.
   // Priority: explicit URL → raw HTML srcdoc → KV-built tourSrcDoc (from meta prop).
   let tourUrl: string | null = null;
@@ -647,7 +682,11 @@ function SectionContent({
         </div>
       )}
       {is360 && (
-        tourUrl ? (
+        hasInteractiveTour ? (
+          <div className="mt-4">
+            <InteractiveTour spaces={tourSpaces!} autoPanAll={tourAutoPan} />
+          </div>
+        ) : tourUrl ? (
           <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ height: "clamp(360px, 58vw, 580px)" }}>
             <iframe
               src={tourUrl}
