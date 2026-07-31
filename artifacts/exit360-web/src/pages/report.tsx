@@ -256,6 +256,19 @@ function SectionTable({ data }: { data: unknown }) {
 
 
 // ── Section image strip (from report_images) ──────────────────────────────────
+/** Rewrite a Cloudinary delivery URL to request a large, sharp render.
+ *  Strips any existing delivery transform and injects a high-width c_limit. */
+function cldHiRes(url: string | null | undefined, width = 2560): string {
+  if (!url) return url ?? "";
+  if (!url.includes("res.cloudinary.com/") || !url.includes("/upload/")) return url;
+  const [pre, post] = url.split("/upload/");
+  const segs = post.split("/");
+  // A transform segment looks like "w_800,c_fill,q_auto" (comma-joined xx_value tokens).
+  const looksLikeTransform = /^[a-z]{1,3}_[^/]+(?:,[a-z0-9]{1,3}_[^/]+)*$/i.test(segs[0]);
+  const rest = looksLikeTransform ? segs.slice(1).join("/") : post;
+  return `${pre}/upload/w_${width},c_limit,q_auto:good,f_auto/${rest}`;
+}
+
 function SectionImageStrip({
   images,
   printMode,
@@ -538,6 +551,7 @@ function SectionContent({
   printMode,
   tourSrcDoc,
   inlineVisuals,
+  heroImageUrl,
 }: {
   section: ReportSection;
   listingId: string;
@@ -545,6 +559,7 @@ function SectionContent({
   printMode: boolean;
   tourSrcDoc?: string | null;
   inlineVisuals?: ReportVisualEntry[];
+  heroImageUrl?: string | null;
 }) {
   const ChartComponent = SECTION_CHART_MAP[section.sectionKey];
   const chartData = section.chartData
@@ -618,23 +633,29 @@ function SectionContent({
   // Find report_images that belong to this section — match by sectionKey first, then
   // fall back to role-based match for typical roles associated with this section type.
   const SECTION_ROLE_MAP: Record<string, string[]> = {
-    business_overview:          ["interior", "listing_hero"],
+    business_overview:          ["interior"],
     plant_equipment_summary:    ["equipment"],
     lease_premises_summary:     ["exterior"],
     staff_owner_involvement:    ["team"],
     brand_digital_assets:       ["product"],
     "360_business_walkthrough": ["360_preview"],
   };
+  // Don't repeat the hero photo inside a section — it already headlines the cover.
+  const heroPublicId = (heroImageUrl?.match(/\/upload\/(?:[^/]+\/)*(?:v\d+\/)?(.+?)(?:\.\w+)?$/) ?? [])[1] ?? null;
+  const isHeroImage = (img: ReportImageEntry) =>
+    img.imageRole === "listing_hero" ||
+    (!!heroImageUrl && (img.url === heroImageUrl ||
+      (!!img.cloudinaryPublicId && !!heroPublicId && heroPublicId.includes(img.cloudinaryPublicId))));
   const sectionImages: ReportImageEntry[] = reportImages
     ? (() => {
         const bySectionKey = reportImages.filter(
-          (img) => img.sectionKey === section.sectionKey && !img.isPanoramic,
+          (img) => img.sectionKey === section.sectionKey && !img.isPanoramic && !isHeroImage(img),
         );
         if (bySectionKey.length) return bySectionKey.slice(0, 3);
         const roleMatches = SECTION_ROLE_MAP[section.sectionKey] ?? [];
         if (!roleMatches.length) return [];
         return reportImages
-          .filter((img) => roleMatches.includes(img.imageRole))
+          .filter((img) => roleMatches.includes(img.imageRole) && !isHeroImage(img))
           .slice(0, 2);
       })()
     : [];
@@ -649,9 +670,15 @@ function SectionContent({
         <SectionImageStrip images={sectionImages} printMode={printMode} />
       )}
       {section.body && <SectionBodyText body={section.body} />}
-      {/* inline visuals — embedded in section flow after body text, before bullets */}
+      {section.bulletPoints && section.bulletPoints.length > 0 && (
+        <SectionBullets bullets={section.bulletPoints} />
+      )}
+      {/* inline visuals — sit directly under the section text/bullets, flowing into
+          the vacant gap beside the floated image (no clearing gap above them).
+          flow-root establishes a BFC so the chart tucks beside the float instead
+          of rendering full-width behind it. */}
       {inlineVisuals && inlineVisuals.length > 0 && (
-        <div className="space-y-3">
+        <div className="flow-root space-y-3">
           {inlineVisuals.map((v) =>
             v.status === "ready"
               ? <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />
@@ -669,9 +696,6 @@ function SectionContent({
               )
           )}
         </div>
-      )}
-      {section.bulletPoints && section.bulletPoints.length > 0 && (
-        <SectionBullets bullets={section.bulletPoints} />
       )}
       {/* Clear the floated images before any full-width chart/table */}
       <div className="clear-both" />
@@ -900,18 +924,21 @@ export function ReportPage() {
     "division breakdown",
     "divisions breakdown",
   ];
+  // The equipment "by category" chart should tuck directly under the section
+  // paragraph, in the vacant gap beside the floated image (inline, no gap).
+  const isNarrowChart = (v: ReportVisualEntry) => {
+    const t = (v.title ?? "").trim().toLowerCase();
+    return t.includes("by category") || t.includes("equipment by") || t.includes("by segment");
+  };
   const asSidePlacement = (v: ReportVisualEntry): ReportVisualEntry => {
     const t = (v.title ?? "").trim().toLowerCase();
     if (SIDE_PLACEMENT_TITLE_HINTS.some((h) => t.includes(h))) {
       return { ...v, sectionPlacement: "sidebar" };
     }
+    if (isNarrowChart(v)) {
+      return { ...v, sectionPlacement: "inline" };
+    }
     return v;
-  };
-  // The equipment "by category" chart is too wide full-width. Cap its width so
-  // it tucks into the vacant gap beside the floated section image.
-  const isNarrowChart = (v: ReportVisualEntry) => {
-    const t = (v.title ?? "").trim().toLowerCase();
-    return t.includes("by category") || t.includes("equipment by") || t.includes("by segment");
   };
   const businessName = data?.meta?.businessName ?? "Confidential Business";
   const contactUrl = (intent: string) =>
@@ -993,6 +1020,7 @@ export function ReportPage() {
           <span className="report-blob report-blob--b" />
           <span className="report-blob report-blob--c" />
           <span className="report-blob report-blob--d" />
+          <span className="report-bg-noise" />
         </div>
       )}
 
@@ -1099,45 +1127,23 @@ export function ReportPage() {
         </div>
       )}
 
-      {/* ── Cover Section — full-screen hero image ─────────────────────────── */}
+      {/* ── Cover Section — title block above, clean hero image banner below ── */}
       <section id="cover" className={cn(
-        "relative overflow-hidden flex flex-col justify-end",
-        printMode ? "bg-slate-50 border-b border-slate-200 pt-14 min-h-[60vh]" : "pt-14 min-h-screen"
+        "relative pt-14",
+        printMode ? "bg-slate-50 border-b border-slate-200" : ""
       )}>
-        {/* Full-bleed hero image (screen mode) */}
-        {!printMode && data?.meta?.heroImageUrl && (
-          <>
-            <img
-              src={data.meta.heroImageUrl}
-              alt={`${businessName} — cover photo`}
-              className="absolute inset-0 w-full h-full object-cover"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-            />
-            {/* Scrims for text legibility */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#060B15] via-[#060B15]/75 to-[#060B15]/25" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#060B15]/80 via-[#060B15]/20 to-transparent" />
-          </>
-        )}
-        {/* Fallback background when there's no hero image */}
-        {!printMode && !data?.meta?.heroImageUrl && (
-          <>
-            <div className="absolute inset-0 bg-gradient-to-br from-[#02060E] via-[#070F1C] to-[#0A1A30]" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(59,130,246,0.12),transparent_60%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(139,92,246,0.08),transparent_60%)]" />
-          </>
-        )}
-
-        <div className="relative z-10 w-full max-w-[1440px] mx-auto px-6 pt-16 pb-16">
+        {/* Title block (sits on the animated background, not over the image) */}
+        <div className="relative z-10 w-full max-w-[1440px] mx-auto px-6 pt-14 pb-8">
           <div className="flex flex-wrap items-center gap-2 mb-6">
             <span className={cn(
               "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border",
-              printMode ? "bg-red-50 border-red-200 text-red-700" : "bg-red-500/15 border-red-500/30 text-red-300 backdrop-blur-sm"
+              printMode ? "bg-red-50 border-red-200 text-red-700" : "bg-red-500/15 border-red-500/30 text-red-300"
             )}>
               <Shield size={11} /> CONFIDENTIAL
             </span>
             <span className={cn(
               "inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border",
-              printMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/15 border-blue-500/30 text-blue-200 backdrop-blur-sm"
+              printMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/15 border-blue-500/30 text-blue-200"
             )}>
               <CheckCircle2 size={11} /> Exit360 Verified
             </span>
@@ -1147,7 +1153,7 @@ export function ReportPage() {
             Information Memorandum
           </p>
           <h1
-            className={cn("text-5xl md:text-7xl xl:text-8xl font-extrabold mb-4 leading-[1.02] tracking-tight", printMode ? "text-slate-900" : "drop-shadow-2xl")}
+            className={cn("text-5xl md:text-7xl xl:text-8xl font-extrabold mb-4 leading-[1.02] tracking-tight", printMode ? "text-slate-900" : "")}
             style={printMode ? undefined : {
               backgroundImage: "linear-gradient(120deg, #ffffff 0%, #dbeafe 40%, #c4b5fd 75%, #99f6e4 100%)",
               WebkitBackgroundClip: "text",
@@ -1161,12 +1167,12 @@ export function ReportPage() {
           {/* Business metadata row: category · location · asking price */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-4">
             {data?.meta?.category && (
-              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-200")}>
+              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-300")}>
                 <Tag size={13} /> {data.meta.category}
               </span>
             )}
             {data?.meta?.location && (
-              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-200")}>
+              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-300")}>
                 <MapPin size={13} /> {data.meta.location}
               </span>
             )}
@@ -1181,7 +1187,7 @@ export function ReportPage() {
             )}
           </div>
 
-          <p className={cn("text-sm mb-8", printMode ? "text-slate-500" : "text-slate-300")}>
+          <p className={cn("text-sm mb-8", printMode ? "text-slate-500" : "text-slate-400")}>
             Confidential Business Profile · Prepared by Exit360 · {new Date().toLocaleDateString("en-AU", { month: "short", year: "numeric" })}
           </p>
 
@@ -1196,7 +1202,7 @@ export function ReportPage() {
             <button
               onClick={() => { recordAccessLog(listingId, "inspection_booked"); navigate(contactUrl("call")); }}
               className={cn(
-                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors backdrop-blur-sm",
+                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
                 printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040]/70 border-[#1E3A5C] text-slate-200 hover:text-white"
               )}
             >
@@ -1204,6 +1210,23 @@ export function ReportPage() {
             </button>
           </div>
         </div>
+
+        {/* Clean, high-resolution hero image banner (no overlay) */}
+        {data?.meta?.heroImageUrl && (
+          <div className="relative z-10 w-full max-w-[1440px] mx-auto px-6 pb-14">
+            <div className={cn(
+              "rounded-2xl overflow-hidden border shadow-2xl",
+              printMode ? "border-slate-200" : "border-[#1E3A5C]"
+            )}>
+              <img
+                src={cldHiRes(data.meta.heroImageUrl, 2560)}
+                alt={`${businessName} — cover photo`}
+                className="w-full object-cover h-[46vh] md:h-[64vh] xl:h-[72vh]"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            </div>
+          </div>
+        )}
       </section>
 
 
@@ -1436,7 +1459,7 @@ export function ReportPage() {
                         };
                         const mainContent = section.isLocked
                           ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                          : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} inlineVisuals={inlineVisuals} />;
+                          : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} inlineVisuals={inlineVisuals} heroImageUrl={data?.meta?.heroImageUrl} />;
                         return (
                           <>
                             {/* above_body: render before section body */}
@@ -1519,7 +1542,7 @@ export function ReportPage() {
                 };
                 const mainContent = section.isLocked
                   ? <LockedSection title={section.title} subtitle={section.subtitle ?? null} listingId={listingId} sectionKey={section.sectionKey} />
-                  : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} inlineVisuals={inlineVisuals} />;
+                  : <SectionContent section={section} listingId={listingId} reportImages={data?.meta?.reportImages} printMode={printMode} tourSrcDoc={data?.meta?.tourSrcDoc} inlineVisuals={inlineVisuals} heroImageUrl={data?.meta?.heroImageUrl} />;
                 return (
                   <>
                     {aboveVisuals.map(renderVisual)}
@@ -1612,51 +1635,66 @@ export function ReportPage() {
         .print-mode { color: #1e293b; }
         .print-mode h1, .print-mode h2 { color: #0f172a; }
 
-        /* Animated morphing background */
+        /* Animated morphing background — ultra-smooth, no visible rings */
         .report-bg-anim { background: #060B15; }
         .report-blob {
           position: absolute;
           display: block;
           border-radius: 50%;
-          filter: blur(90px);
-          opacity: 0.55;
+          filter: blur(140px);
+          mix-blend-mode: screen;
           will-change: transform;
         }
+        /* Many gentle stops + heavy blur => no banding/rings on the dark canvas */
         .report-blob--a {
-          width: 46vw; height: 46vw; left: -6vw; top: -10vw;
-          background: radial-gradient(circle at 50% 50%, rgba(59,130,246,0.55), rgba(59,130,246,0) 70%);
+          width: 62vw; height: 62vw; left: -14vw; top: -18vw;
+          background: radial-gradient(circle at 50% 50%,
+            rgba(59,130,246,0.42) 0%, rgba(59,130,246,0.34) 14%, rgba(59,130,246,0.24) 28%,
+            rgba(59,130,246,0.15) 42%, rgba(59,130,246,0.08) 58%, rgba(59,130,246,0.03) 74%, rgba(59,130,246,0) 90%);
           animation: blobMoveA 16s ease-in-out infinite alternate;
         }
         .report-blob--b {
-          width: 42vw; height: 42vw; right: -8vw; top: -4vw;
-          background: radial-gradient(circle at 50% 50%, rgba(139,92,246,0.50), rgba(139,92,246,0) 70%);
+          width: 58vw; height: 58vw; right: -16vw; top: -10vw;
+          background: radial-gradient(circle at 50% 50%,
+            rgba(139,92,246,0.40) 0%, rgba(139,92,246,0.32) 14%, rgba(139,92,246,0.22) 28%,
+            rgba(139,92,246,0.14) 42%, rgba(139,92,246,0.07) 58%, rgba(139,92,246,0.03) 74%, rgba(139,92,246,0) 90%);
           animation: blobMoveB 19s ease-in-out infinite alternate;
         }
         .report-blob--c {
-          width: 50vw; height: 50vw; right: 6vw; top: 42vh;
-          background: radial-gradient(circle at 50% 50%, rgba(236,72,153,0.38), rgba(236,72,153,0) 70%);
+          width: 66vw; height: 66vw; right: -4vw; top: 38vh;
+          background: radial-gradient(circle at 50% 50%,
+            rgba(236,72,153,0.30) 0%, rgba(236,72,153,0.23) 14%, rgba(236,72,153,0.16) 28%,
+            rgba(236,72,153,0.10) 42%, rgba(236,72,153,0.05) 58%, rgba(236,72,153,0.02) 74%, rgba(236,72,153,0) 90%);
           animation: blobMoveC 22s ease-in-out infinite alternate;
         }
         .report-blob--d {
-          width: 48vw; height: 48vw; left: 8vw; bottom: -14vw;
-          background: radial-gradient(circle at 50% 50%, rgba(20,184,166,0.40), rgba(20,184,166,0) 70%);
+          width: 64vw; height: 64vw; left: 2vw; bottom: -22vw;
+          background: radial-gradient(circle at 50% 50%,
+            rgba(20,184,166,0.32) 0%, rgba(20,184,166,0.25) 14%, rgba(20,184,166,0.17) 28%,
+            rgba(20,184,166,0.10) 42%, rgba(20,184,166,0.05) 58%, rgba(20,184,166,0.02) 74%, rgba(20,184,166,0) 90%);
           animation: blobMoveD 18s ease-in-out infinite alternate;
+        }
+        /* Fine noise overlay dithers away 8-bit colour banding on the gradients */
+        .report-bg-noise {
+          position: absolute; inset: 0; pointer-events: none;
+          opacity: 0.05; mix-blend-mode: overlay;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
         }
         @keyframes blobMoveA {
           0%   { transform: translate3d(0,0,0) scale(1); }
-          100% { transform: translate3d(22vw, 16vh, 0) scale(1.25); }
+          100% { transform: translate3d(20vw, 14vh, 0) scale(1.2); }
         }
         @keyframes blobMoveB {
           0%   { transform: translate3d(0,0,0) scale(1.1); }
-          100% { transform: translate3d(-20vw, 20vh, 0) scale(0.85); }
+          100% { transform: translate3d(-18vw, 18vh, 0) scale(0.9); }
         }
         @keyframes blobMoveC {
-          0%   { transform: translate3d(0,0,0) scale(0.9); }
-          100% { transform: translate3d(-18vw, -22vh, 0) scale(1.2); }
+          0%   { transform: translate3d(0,0,0) scale(0.95); }
+          100% { transform: translate3d(-16vw, -20vh, 0) scale(1.15); }
         }
         @keyframes blobMoveD {
-          0%   { transform: translate3d(0,0,0) scale(1.15); }
-          100% { transform: translate3d(20vw, -18vh, 0) scale(0.9); }
+          0%   { transform: translate3d(0,0,0) scale(1.12); }
+          100% { transform: translate3d(18vw, -16vh, 0) scale(0.92); }
         }
         @media (prefers-reduced-motion: reduce) {
           .report-blob { animation: none !important; }
