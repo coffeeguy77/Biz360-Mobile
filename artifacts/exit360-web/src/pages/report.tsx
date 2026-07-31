@@ -267,11 +267,11 @@ function SectionImageStrip({
   // Float to the right so section text wraps beside the images. Larger, aspect-
   // preserved (c_limit, not cropped), with a tight border hugging the image shape.
   return (
-    <div className="sm:float-right sm:w-72 lg:w-80 sm:ml-6 mb-4 w-full flex flex-col gap-4">
+    <div className="sm:float-right sm:w-80 lg:w-96 xl:w-[30rem] sm:ml-6 mb-4 w-full flex flex-col gap-4">
       {images.map((img) => {
         const cloud = (img.url.match(/cloudinary\.com\/([^/]+)/) ?? [])[1] ?? "biz360";
         const url = img.cloudinaryPublicId
-          ? `https://res.cloudinary.com/${cloud}/image/upload/w_800,c_limit,q_auto,f_auto/${img.cloudinaryPublicId}`
+          ? `https://res.cloudinary.com/${cloud}/image/upload/w_1200,c_limit,q_auto,f_auto/${img.cloudinaryPublicId}`
           : img.url;
         return (
           <figure key={img.id} className="m-0">
@@ -880,6 +880,15 @@ export function ReportPage() {
   const sections = (data?.sections ?? []).filter(
     (s) => s.includeInHtml && !REMOVED_SECTION_KEYS.has(s.sectionKey),
   );
+  // Visuals (charts) removed from the report — these are reportVisuals, not
+  // sections, so they need filtering separately from REMOVED_SECTION_KEYS.
+  const REMOVED_VISUAL_TITLES = new Set([
+    "business health score",
+    "buyer engagement funnel",
+    "lease risk breakdown",
+  ]);
+  const isRemovedVisual = (v: ReportVisualEntry) =>
+    REMOVED_VISUAL_TITLES.has((v.title ?? "").trim().toLowerCase());
   const businessName = data?.meta?.businessName ?? "Confidential Business";
   const contactUrl = (intent: string) =>
     `/sign-in?intent=${intent}&listingId=${listingId}&listingName=${encodeURIComponent(businessName)}&return=${encodeURIComponent(`/listings/${listingId}`)}`;
@@ -1336,7 +1345,7 @@ export function ReportPage() {
                       {(() => {
                         const allVisuals = !section.isLocked
                           ? (data?.meta?.reportVisuals ?? [])
-                              .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
+                              .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && !isRemovedVisual(v))
                               .sort((a, b) => a.sortOrder - b.sortOrder)
                           : [];
                         const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
@@ -1421,7 +1430,7 @@ export function ReportPage() {
               {(() => {
                 const allVisuals = !section.isLocked
                   ? (data?.meta?.reportVisuals ?? [])
-                      .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml)
+                      .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && !isRemovedVisual(v))
                       .sort((a, b) => a.sortOrder - b.sortOrder)
                   : [];
                 const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
@@ -1476,7 +1485,7 @@ export function ReportPage() {
         {/* Global report visuals — no specific section, rendered as a standalone block */}
         {(() => {
           const globalVisuals = (data?.meta?.reportVisuals ?? [])
-            .filter((v) => !v.sectionKey && v.includeInHtml)
+            .filter((v) => !v.sectionKey && v.includeInHtml && !isRemovedVisual(v))
             .sort((a, b) => a.sortOrder - b.sortOrder);
           if (!globalVisuals.length) return null;
           return (

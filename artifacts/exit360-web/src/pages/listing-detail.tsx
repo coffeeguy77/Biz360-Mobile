@@ -109,7 +109,7 @@ function createNavPin(container,args){
   /* Arrow-in-circle nav pin: 44×44 circle centred on hotspot coordinate */
   container.style.cssText='width:44px;height:44px;overflow:visible;position:relative;cursor:pointer';
   container.innerHTML=
-    '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" style="display:block;animation:kfNavFloat 2.5s ease-in-out infinite">'+
+    '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" style="display:block">'+
       '<circle cx="22" cy="22" r="20" fill="white" stroke="#94a3b8" stroke-width="1.5"/>'+
       '<path d="M22 29V17M15 24l7-8 7 8" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'+
     '</svg>';
@@ -118,14 +118,14 @@ function createNavPin(container,args){
   label.className='nav-pin-label';
   label.textContent=args.label;
   container.appendChild(label);
-  /* Click handler */
+  /* Click handler — reset pitch/hfov and face the target's default orientation,
+     matching thumbnail navigation (fixes the zoomed / brown-screen jump). */
   container.addEventListener('click',function(e){
     e.stopPropagation();
     try{
-      /* Use pin's targetYaw if explicitly set; otherwise pass null so Pannellum
-         falls through to the scene's own configured yaw (defaultYaw → panoramaStartYaw). */
-      var resolvedYaw=typeof args.targetYaw==='number'?args.targetYaw:null;
-      viewer.loadScene(args.sceneId,null,resolvedYaw,null);
+      var navSp=SPACES.find(function(s){return s.id===args.sceneId});
+      var navYaw=typeof args.targetYaw==='number'?args.targetYaw:(navSp&&typeof navSp.defaultYaw==='number'?navSp.defaultYaw:(navSp&&typeof navSp.panoramaStartYaw==='number'?navSp.panoramaStartYaw:0));
+      viewer.loadScene(args.sceneId,0,navYaw,100);
     }catch(err){}
   });
 }
@@ -150,7 +150,7 @@ SPACES.forEach(function(s){
   var hotSpots=[];
   (s.pins||[]).forEach(function(pin){
     if(pin.type==='navigation'&&validIds.has(pin.targetSpaceId)){
-      hotSpots.push({pitch:40,yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title,targetYaw:typeof pin.targetYaw==='number'?pin.targetYaw:null}});
+      hotSpots.push({pitch:yToPitch(pin.position.y),yaw:xToYaw(pin.position.x),type:'custom',cssClass:'pnlm-nav-pin-wrap',createTooltipFunc:createNavPin,createTooltipArgs:{sceneId:pin.targetSpaceId,label:pin.title,targetYaw:typeof pin.targetYaw==='number'?pin.targetYaw:null}});
     } else if(pin.type==='audio'&&pin.audioUrl){
       hotSpots.push({pitch:Math.max(10,yToPitch(pin.position.y)),yaw:xToYaw(pin.position.x),type:'custom',text:pin.title,cssClass:'pnlm-audio-hs-wrap',createTooltipFunc:createAudioHotspot,createTooltipArgs:{url:pin.audioUrl,name:pin.audioName||pin.title}});
     }
