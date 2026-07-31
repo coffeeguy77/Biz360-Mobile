@@ -329,12 +329,15 @@ export function SignIn() {
   const intentLabel =
     intent === "call" ? "Request a Call" :
     intent === "signup" ? "Create Buyer Profile" :
+    intent === "info" ? "Request Info" :
     "Send Enquiry";
   const intentDesc =
     intent === "call"
       ? "We'll pass your number to the seller so they can call you directly."
       : intent === "signup"
       ? "Verify your number to create your free buyer profile and get access to exclusive listings."
+      : intent === "info"
+      ? "Verify your number and we'll ask the seller to share more information with you."
       : "We'll send your enquiry to the seller on your behalf.";
 
   return (
@@ -511,9 +514,9 @@ export function SignIn() {
                 className="w-full h-12 text-base font-semibold gap-2"
               >
                 {loading ? (
-                  <><Loader2 size={16} className="animate-spin" /> {intent === "call" ? "Requesting call…" : "Sending enquiry…"}</>
+                  <><Loader2 size={16} className="animate-spin" /> {intent === "call" ? "Requesting call…" : intent === "info" ? "Sending request…" : "Sending enquiry…"}</>
                 ) : (
-                  <>{intent === "call" ? "Request Call" : "Send Enquiry"} <ChevronRight size={16} /></>
+                  <>{intent === "call" ? "Request Call" : intent === "info" ? "Send Request" : "Send Enquiry"} <ChevronRight size={16} /></>
                 )}
               </Button>
             </div>
@@ -527,7 +530,7 @@ export function SignIn() {
                   <CheckCircle2 size={32} className="text-green-400" />
                 </div>
                 <h1 className="text-2xl font-bold mb-3">
-                  {intent === "call" ? "Call Requested!" : intent === "signup" ? "Profile Created!" : "Enquiry Sent!"}
+                  {intent === "call" ? "Call Requested!" : intent === "signup" ? "Profile Created!" : intent === "info" ? "Request Sent!" : "Enquiry Sent!"}
                 </h1>
                 <p className="text-muted-foreground text-sm leading-relaxed">
                   {intent === "call"

@@ -935,7 +935,9 @@ export function ListingDetail() {
               <span className="font-bold">EXIT360</span>
             </div>
           </div>
-          <Button size="sm">Request Info</Button>
+          <Link href={`/sign-in?intent=info&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
+            <Button size="sm">Request Info</Button>
+          </Link>
         </div>
       </nav>
 
@@ -1104,11 +1106,11 @@ export function ListingDetail() {
                   ))}
                 </div>
                 <div className="flex flex-col gap-2 pt-2">
-                  <Link href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
-                    <Button className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
+                  <Link href={`/sign-in?intent=info&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
+                    <Button className="w-full gap-2"><Mail size={15} /> Request Info</Button>
                   </Link>
-                  <Link href={`/sign-in?intent=enquiry&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
-                    <Button variant="outline" className="w-full gap-2"><Mail size={15} /> Send Enquiry</Button>
+                  <Link href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
+                    <Button variant="outline" className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
                   </Link>
                 </div>
               </div>
