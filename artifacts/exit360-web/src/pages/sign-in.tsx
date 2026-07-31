@@ -189,6 +189,7 @@ export function SignIn() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const [userId, setUserId] = useState("");
+  const [authToken, setAuthToken] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -257,6 +258,7 @@ export function SignIn() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || data.error || "Invalid code — please try again");
       setUserId(data.userId ?? "");
+      setAuthToken(data.token ?? "");
       try {
         const stored = localStorage.getItem("biz360_web_user");
         if (stored) {
@@ -281,6 +283,22 @@ export function SignIn() {
       const trimmed = name.trim();
       await registerBuyer(userId, trimmed, e164);
       await createEnquiryThread(userId, trimmed, e164, listingId, listingName, intent);
+      // Unify identities: link this phone-verified enquirer to the canonical
+      // buyer record and mint a portal token, so they're recognised in the
+      // buyer portal (and for any document access a seller grants) — no 2nd SMS.
+      if (authToken) {
+        try {
+          const linkRes = await fetch("/api/buyer-portal/link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ name: trimmed }),
+          });
+          const linkData = await linkRes.json().catch(() => ({}));
+          if (linkRes.ok && linkData.token) {
+            localStorage.setItem("exit360_buyer_token", linkData.token);
+          }
+        } catch { /* non-fatal — enquiry already succeeded */ }
+      }
       setStep("done");
     } catch {
       setError("Something went wrong saving your details. Please try again.");

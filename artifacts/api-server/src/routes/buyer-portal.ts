@@ -23,11 +23,12 @@ import twilio from "twilio";
 import {
   db,
   cafesTable,
+  buyersTable,
   buyerPortalGroupsTable,
   buyerPortalGroupMembersTable,
   buyerPortalGroupPermissionsTable,
 } from "@workspace/db";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, verifyToken } from "../middlewares/auth";
 
 const router = Router();
 
@@ -46,6 +47,29 @@ async function signBuyerToken(phone: string): Promise<string> {
     .setIssuedAt()
     .setExpirationTime("30d")
     .sign(getJwtSecret());
+}
+
+/** Normalise a phone to E.164-ish "+<digits>" so both flows key identically. */
+function normalisePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  return digits ? `+${digits}` : "";
+}
+
+/**
+ * Upsert the canonical buyer record, keyed by phone. Sets the name only when a
+ * non-empty one is supplied (so a portal login never wipes a name captured at
+ * enquiry). Non-fatal by design — callers wrap this so auth never fails on it.
+ */
+async function upsertBuyer(phone: string, name?: string): Promise<{ phone: string; name: string | null } | null> {
+  const trimmed = name?.trim();
+  const [row] = await db.insert(buyersTable)
+    .values({ phone, name: trimmed || null })
+    .onConflictDoUpdate({
+      target: buyersTable.phone,
+      set: { ...(trimmed ? { name: trimmed } : {}), updatedAt: new Date() },
+    })
+    .returning();
+  return row ? { phone: row.phone, name: row.name } : null;
 }
 
 /** Verify a buyer portal JWT — returns phone or null. */
@@ -104,7 +128,7 @@ async function requireGroupOwner(groupId: string, ownerId: string) {
  * Returns: { token } — a buyer JWT stored client-side as exit360_buyer_token
  */
 router.post("/buyer-portal/auth/verify", async (req, res): Promise<void> => {
-  const { phone, code } = req.body as { phone?: string; code?: string };
+  const { phone, code, name } = req.body as { phone?: string; code?: string; name?: string };
   if (!phone || !code) {
     res.status(400).json({ error: "phone and code are required" });
     return;
@@ -118,12 +142,51 @@ router.post("/buyer-portal/auth/verify", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Incorrect or expired code" });
       return;
     }
-    const token = await signBuyerToken(phone);
-    res.json({ ok: true, token, phone });
+    const canonical = normalisePhone(phone);
+    let buyerName: string | null = null;
+    try { buyerName = (await upsertBuyer(canonical, name))?.name ?? null; } catch { /* non-fatal */ }
+    const token = await signBuyerToken(canonical);
+    res.json({ ok: true, token, phone: canonical, name: buyerName });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Verification failed";
     res.status(400).json({ error: msg });
   }
+});
+
+/**
+ * POST /api/buyer-portal/link
+ * Authorization: Bearer <biz360 auth JWT from /biz360/auth/verify-otp>
+ * Body: { name? }
+ * Links an already phone-verified enquiry user to the unified buyer identity:
+ * upserts the canonical buyer (name + phone) and issues a buyer portal token,
+ * so an enquiring buyer becomes a portal buyer without a second SMS step.
+ */
+router.post("/buyer-portal/link", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  if (!bearer) { res.status(401).json({ error: "Auth token required" }); return; }
+  const userId = await verifyToken(bearer).catch(() => null);
+  if (!userId) { res.status(401).json({ error: "Invalid or expired token" }); return; }
+  const phone = normalisePhone(userId.replace(/^u-/, ""));
+  if (!phone) { res.status(400).json({ error: "Token has no phone identity" }); return; }
+  const { name } = req.body as { name?: string };
+  let buyerName: string | null = null;
+  try { buyerName = (await upsertBuyer(phone, name))?.name ?? null; } catch { /* non-fatal */ }
+  const token = await signBuyerToken(phone);
+  res.json({ ok: true, token, phone, name: buyerName });
+});
+
+/**
+ * GET /api/buyer-portal/me
+ * Authorization: Bearer <buyer JWT>
+ * Returns the canonical buyer identity (phone + name).
+ */
+router.get("/buyer-portal/me", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  if (!bearer) { res.status(401).json({ error: "Buyer token required" }); return; }
+  const phone = await verifyBuyerToken(bearer);
+  if (!phone) { res.status(401).json({ error: "Invalid or expired buyer token" }); return; }
+  const [buyer] = await db.select().from(buyersTable).where(eq(buyersTable.phone, phone));
+  res.json({ phone, name: buyer?.name ?? null });
 });
 
 // ─── Buyer portal: my listings ────────────────────────────────────────────────
