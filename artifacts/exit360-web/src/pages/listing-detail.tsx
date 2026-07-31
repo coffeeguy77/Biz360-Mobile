@@ -22,6 +22,7 @@ import {
   Loader2,
   FileText,
   ExternalLink,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatPrice, getPriceStat, getStatSlot, type Listing } from "@/data/listings";
@@ -412,6 +413,10 @@ export function ListingDetail() {
   const listingId = params?.id ?? "";
   const [listing, setListing] = useState<Listing | null>(null);
   const [listingLoading, setListingLoading] = useState(true);
+  const [buyerSignedIn, setBuyerSignedIn] = useState(false);
+  useEffect(() => {
+    try { setBuyerSignedIn(!!localStorage.getItem("exit360_buyer_token")); } catch { /* ignore */ }
+  }, []);
 
   const [spaces, setSpaces] = useState<TourSpace[]>([]);
   const [spacesLoading, setSpacesLoading] = useState(false);
@@ -935,9 +940,11 @@ export function ListingDetail() {
               <span className="font-bold">EXIT360</span>
             </div>
           </div>
-          <Link href={`/sign-in?intent=info&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
-            <Button size="sm">Request Info</Button>
-          </Link>
+          {buyerSignedIn && (
+            <Link href="/buyers/portal">
+              <Button size="sm" variant="outline" className="gap-2"><User size={14} /> My Portal</Button>
+            </Link>
+          )}
         </div>
       </nav>
 

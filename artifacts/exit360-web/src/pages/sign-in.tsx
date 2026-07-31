@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { ArrowLeft, Eye, Phone, ShieldCheck, ChevronRight, Loader2, CheckCircle2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type Step = "phone" | "otp" | "name" | "done";
+type Step = "phone" | "otp" | "name" | "signedin" | "done";
 
 function toE164(raw: string): string {
   const digits = raw.replace(/\D/g, "");
@@ -215,6 +215,22 @@ export function SignIn() {
   }, [step]);
 
   useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
+
+  // Returning buyer — already verified this browser. Skip phone/OTP/name.
+  useEffect(() => {
+    if (intent === "signup") return;
+    try {
+      const raw = localStorage.getItem("biz360_web_user");
+      if (!raw) return;
+      const u = JSON.parse(raw);
+      if (u?.userId && u?.phone && (u?.name?.trim?.().length ?? 0) >= 2) {
+        setUserId(u.userId);
+        setName(u.name);
+        setPhone(String(u.phone).replace(/^\+/, ""));
+        setStep("signedin");
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   function startCooldown() {
     setResendCooldown(30);
@@ -526,6 +542,40 @@ export function SignIn() {
             </div>
           )}
 
+          {/* ── Step: Signed-in (returning buyer) ── */}
+          {step === "signedin" && (
+            <div className="flex flex-col gap-7">
+              <div className="text-center">
+                <div className="w-14 h-14 bg-green-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ShieldCheck size={24} className="text-green-400" />
+                </div>
+                <h1 className="text-2xl font-bold mb-2">Welcome back{name ? `, ${name.trim().split(" ")[0]}` : ""}</h1>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  You're verified as <span className="text-foreground font-medium">{toLocalFormat(e164)}</span>.<br />
+                  {intent === "call" ? "Request a call about" : "Request info for"} {listingName}?
+                </p>
+              </div>
+              {error && <p className="text-center text-sm text-red-400">{error}</p>}
+              <Button onClick={handleComplete} disabled={loading} className="w-full h-12 text-base font-semibold gap-2">
+                {loading ? <><Loader2 size={16} className="animate-spin" /> Sending…</> : <>{intent === "call" ? "Request Call" : "Send Request"} <ChevronRight size={16} /></>}
+              </Button>
+              <div className="flex items-center justify-between text-sm">
+                <Link href="/buyers/portal">
+                  <button className="text-primary hover:text-primary/80 transition-colors">Go to my portal</button>
+                </Link>
+                <button
+                  onClick={() => {
+                    try { localStorage.removeItem("biz360_web_user"); localStorage.removeItem("exit360_buyer_token"); } catch { /* ignore */ }
+                    setStep("phone"); setPhone(""); setOtp(Array(6).fill("")); setName(""); setUserId(""); setAuthToken(""); setError("");
+                  }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Use a different number
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Step: Done ── */}
           {step === "done" && (
             <div className="flex flex-col gap-7 text-center">
@@ -565,18 +615,16 @@ export function SignIn() {
                 )}
               </div>
 
+              <Link href="/buyers/portal">
+                <Button className="w-full h-12 gap-2">
+                  <User size={16} /> Go to My Portal
+                </Button>
+              </Link>
               <Link href={intent === "signup" ? "/listings" : returnPath}>
                 <Button variant="outline" className="w-full h-12">
                   {intent === "signup" ? "Browse Listings" : "Back to Listing"}
                 </Button>
               </Link>
-              {intent !== "signup" && (
-                <Link href="/listings">
-                  <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    Browse other listings
-                  </button>
-                </Link>
-              )}
             </div>
           )}
 

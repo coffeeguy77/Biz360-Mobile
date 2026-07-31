@@ -10,7 +10,7 @@ import { Link, useLocation } from "wouter";
 import {
   Eye, LogOut, Building2, MapPin, FileText, Video,
   BarChart2, Wrench, ChevronRight, Lock, Loader2,
-  Shield, CheckCircle2, Phone,
+  Shield, CheckCircle2, Phone, MessageSquare, Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -158,11 +158,107 @@ function ListingCard({ item }: { item: ListingAccess }) {
   );
 }
 
+interface ThreadMsg { id: string; from: string; text: string; timestamp: number; }
+interface Thread {
+  id: string; listingId: string; listingName: string;
+  sellerName?: string; buyerName?: string; buyerId: string;
+  messages: ThreadMsg[]; updatedAt: number;
+}
+
+function fmtTime(ts: number): string {
+  try { return new Date(ts).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
+  catch { return ""; }
+}
+
+function ThreadCard({ thread, onReply }: { thread: Thread; onReply: (id: string, text: string) => Promise<void> }) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  async function submit() {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    try { await onReply(thread.id, text.trim()); setText(""); } finally { setSending(false); }
+  }
+  return (
+    <div className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 overflow-hidden">
+      <div className="px-5 py-4 border-b border-[#1E3A5C]/60 flex items-center gap-2">
+        <MessageSquare size={15} className="text-blue-400" />
+        <span className="text-white font-semibold text-sm">{thread.listingName || "Enquiry"}</span>
+      </div>
+      <div className="px-5 py-4 flex flex-col gap-3 max-h-72 overflow-y-auto">
+        {(thread.messages ?? []).length === 0 && (
+          <p className="text-slate-500 text-sm text-center py-4">No messages yet.</p>
+        )}
+        {(thread.messages ?? []).map((m) => {
+          const mine = m.from === "buyer";
+          return (
+            <div key={m.id} className={cn("flex flex-col max-w-[80%]", mine ? "self-end items-end" : "self-start items-start")}>
+              <div className={cn("rounded-2xl px-3.5 py-2 text-sm", mine ? "bg-blue-600 text-white" : "bg-[#0F2040] border border-[#1E3A5C] text-slate-200")}>
+                {m.text}
+              </div>
+              <span className="text-[10px] text-slate-500 mt-1">{mine ? "You" : (thread.sellerName || "Seller")} · {fmtTime(m.timestamp)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="px-5 py-3 border-t border-[#1E3A5C]/60 flex items-center gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Write a reply…"
+          className="flex-1 bg-[#070F1C] border border-[#1E3A5C] rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
+        />
+        <button onClick={submit} disabled={sending || !text.trim()} className="w-10 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center flex-shrink-0">
+          {sending ? <Loader2 size={15} className="animate-spin text-white" /> : <Send size={15} className="text-white" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function BuyersPortal() {
   const [, navigate] = useLocation();
   const [data, setData] = useState<PortalData | null>(null);
+  const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Load the buyer's enquiry threads (public KV), filtered to this buyer.
+  useEffect(() => {
+    if (!data?.phone) return;
+    const myId = "u-" + data.phone.replace(/\D/g, "");
+    fetch("/api/biz360/kv/biz360_threads_v3")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const all = (j?.value ?? {}) as Record<string, Thread>;
+        const mine = Object.values(all)
+          .filter((t) => t?.buyerId === myId)
+          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+        setThreads(mine);
+      })
+      .catch(() => { /* ignore */ });
+  }, [data?.phone]);
+
+  async function sendReply(threadId: string, text: string) {
+    try {
+      const r = await fetch("/api/biz360/kv/biz360_threads_v3");
+      const j = await r.json();
+      const all = (j?.value ?? {}) as Record<string, any>;
+      if (!all[threadId]) return;
+      all[threadId].messages = [
+        ...(all[threadId].messages ?? []),
+        { id: `msg-${Date.now()}-web`, from: "buyer", text, timestamp: Date.now() },
+      ];
+      all[threadId].updatedAt = Date.now();
+      all[threadId].unreadSeller = (all[threadId].unreadSeller ?? 0) + 1;
+      await fetch("/api/biz360/kv/biz360_threads_v3", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: all }),
+      });
+      setThreads((prev) => prev.map((t) => (t.id === threadId ? { ...all[threadId] } : t)));
+    } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     const token = localStorage.getItem("exit360_buyer_token");
@@ -296,6 +392,22 @@ export function BuyersPortal() {
               ))}
             </div>
           </>
+        )}
+
+        {/* Messages — the buyer's enquiry threads */}
+        {!loading && !error && threads.length > 0 && (
+          <div className="mt-12">
+            <div className="flex items-center gap-2 mb-5">
+              <MessageSquare size={16} className="text-blue-400" />
+              <h2 className="text-white font-bold text-lg">Messages</h2>
+              <span className="text-xs text-slate-500">({threads.length})</span>
+            </div>
+            <div className="grid gap-5">
+              {threads.map((t) => (
+                <ThreadCard key={t.id} thread={t} onReply={sendReply} />
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

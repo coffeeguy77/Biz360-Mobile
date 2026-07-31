@@ -101,6 +101,11 @@ export function BuyersLogin() {
 
   useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
+  // Already signed in on this browser → straight to the portal.
+  useEffect(() => {
+    try { if (localStorage.getItem("exit360_buyer_token")) navigate("/buyers/portal"); } catch { /* ignore */ }
+  }, []);
+
   function startCooldown() {
     setResendCooldown(30);
     cooldownRef.current = setInterval(() => {
