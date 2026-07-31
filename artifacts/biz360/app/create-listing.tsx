@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -264,9 +265,19 @@ export default function CreateListing() {
           savedPhotos.map(async (uri, index) => {
             if (typeof uri !== "string" || /^https?:\/\//.test(uri)) return uri; // already remote
             try {
-              const base64   = await FileSystem.readAsStringAsync(uri, { encoding: "base64" });
-              const ext      = uri.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "jpg";
-              const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+              // Cloudinary's free tier caps images at 10MB; phone photos are
+              // often 12MB+. Resize + compress to JPEG first so they upload.
+              let uploadUri = uri;
+              try {
+                const manip = await ImageManipulator.manipulateAsync(
+                  uri,
+                  [{ resize: { width: 1920 } }],
+                  { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG },
+                );
+                if (manip?.uri) uploadUri = manip.uri;
+              } catch { /* fall back to the original if manipulation fails */ }
+              const base64   = await FileSystem.readAsStringAsync(uploadUri, { encoding: "base64" });
+              const mimeType = "image/jpeg";
               const ctrl     = new AbortController();
               const timer    = setTimeout(() => ctrl.abort(), 120_000);
               try {
