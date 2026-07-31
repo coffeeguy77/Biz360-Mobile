@@ -138,7 +138,7 @@ function ListingCard({ listing }: { listing: Listing }) {
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Users size={12} /> {listing.staffCount} staff</span>
             <span className="flex items-center gap-1"><Clock size={12} /> {listing.ownerHours}h/wk owner</span>
-            {listing.hasTour && (
+            {listing.hasTour && listing.tourStarts > 0 && (
               <span className="flex items-center gap-1 text-primary"><TrendingUp size={12} /> {listing.tourStarts} tours</span>
             )}
           </div>

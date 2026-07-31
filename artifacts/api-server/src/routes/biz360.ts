@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { SignJWT, jwtVerify } from "jose";
-import { eq, and, desc, isNull } from "drizzle-orm";
+import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import {
-  db, kvStore, cafesTable, valuationSnapshotsTable,
+  db, kvStore, cafesTable, valuationSnapshotsTable, cafeEquipmentTable,
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
   ndaSettingsTable, ndaSignaturesTable,
 } from "@workspace/db";
@@ -122,6 +122,34 @@ async function hasListingAccess(
   return false;
 }
 
+// ─── Live equipment value ─────────────────────────────────────────────────────
+// Sum of each listing's cafe equipment, updated live as items are added in the
+// valuation module. Uses each item's Current Value (falling back to secondhand →
+// replacement → purchase), and excludes suspended (removed/excluded) items.
+// Returns a map of listingId → total equipment value.
+async function getEquipmentValueByListing(listingIds?: string[]): Promise<Record<string, number>> {
+  try {
+    const rows = await db
+      .select({
+        listingId: cafesTable.listingId,
+        total: sql<string>`COALESCE(SUM(COALESCE(${cafeEquipmentTable.currentValue}, ${cafeEquipmentTable.secondhandValue}, ${cafeEquipmentTable.replacementCost}, ${cafeEquipmentTable.purchasePrice}, 0)), 0)`,
+      })
+      .from(cafeEquipmentTable)
+      .innerJoin(cafesTable, eq(cafeEquipmentTable.cafeId, cafesTable.id))
+      .where(sql`${cafeEquipmentTable.suspended} IS NOT TRUE`)
+      .groupBy(cafesTable.listingId);
+    const map: Record<string, number> = {};
+    for (const r of rows) {
+      if (!r.listingId) continue;
+      if (listingIds && !listingIds.includes(r.listingId)) continue;
+      map[r.listingId] = Number(r.total ?? 0);
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 // ─── Public listings index ────────────────────────────────────────────────────
 // GET /public/listings → every approved (non-suspended) listing, public-safe fields.
 // This is what makes the website data-driven: any approved listing shows up here
@@ -130,6 +158,7 @@ router.get("/public/listings", async (_req, res): Promise<void> => {
   try {
     const rows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
     const all = Array.isArray(rows[0]?.value) ? (rows[0]!.value as any[]) : [];
+    const equipMap = await getEquipmentValueByListing();
     const listings = all
       .filter((l) => l && l.status === "approved" && !l.suspended && l.listingId)
       .map((l) => ({
@@ -145,6 +174,7 @@ router.get("/public/listings", async (_req, res): Promise<void> => {
         askingPriceMax: l.askingPriceMax != null ? Number(l.askingPriceMax) : null,
         weeklyRevenue:  Number(l.weeklyRevenue ?? 0),
         adjustedProfit: Number(l.adjustedProfit ?? 0),
+        equipmentValue: equipMap[l.listingId] ?? 0,
         rent:           Number(l.rent ?? 0),
         staffCount:     Number(l.staffCount ?? 0),
         ownerHours:     Number(l.ownerHours ?? 0),
@@ -174,7 +204,11 @@ router.get("/public/listing/:listingId", async (req, res): Promise<void> => {
     const rows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
     const kvValue = rows[0]?.value;
     const allListings = Array.isArray(kvValue) ? kvValue : [];
-    const liveListing = allListings.find((l: any) => l.listingId === listingId) ?? null;
+    const rawListing = allListings.find((l: any) => l.listingId === listingId) ?? null;
+    const equipMap = await getEquipmentValueByListing([listingId]);
+    const liveListing = rawListing
+      ? { ...rawListing, equipmentValue: equipMap[listingId] ?? 0 }
+      : rawListing;
 
     const [ndaRow] = await db.select().from(ndaSettingsTable)
       .where(eq(ndaSettingsTable.listingId, listingId));

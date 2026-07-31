@@ -6,7 +6,8 @@ export type StatSlotOption =
   | "weeklyRevenue"
   | "rent"
   | "ownerHours"
-  | "leaseExpiry";
+  | "leaseExpiry"
+  | "equipmentValue";
 
 /** How the seller wants the headline price slot rendered (mirrors the mobile app). */
 export type PriceDisplayOption = "askingPrice" | "weeklyRevenue" | "poa";
@@ -24,6 +25,8 @@ export interface Listing {
   askingPriceMax?: number;
   weeklyRevenue: number;
   adjustedProfit: number;
+  /** Live total value of equipment included in the sale (from the valuation module). */
+  equipmentValue?: number;
   /** Seller's chosen display config, mirrored from the app's listing card. */
   priceDisplay?: PriceDisplayOption;
   stat2Display?: StatSlotOption;
@@ -111,6 +114,7 @@ export function getStatSlot(opt: StatSlotOption | undefined, listing: Listing): 
     case "rent":          return listing.rent > 0 ? { value: formatMoney(listing.rent), label: "Rent / month" } : null;
     case "ownerHours":    return listing.ownerHours > 0 ? { value: `${listing.ownerHours}h`, label: "Owner hrs / wk" } : null;
     case "leaseExpiry":   return listing.leaseExpiry ? { value: listing.leaseExpiry, label: "Lease Expiry" } : null;
+    case "equipmentValue": return listing.equipmentValue && listing.equipmentValue > 0 ? { value: formatMoney(listing.equipmentValue), label: "Equipment Value", accent: true } : null;
     default:              return null;
   }
 }

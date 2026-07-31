@@ -545,13 +545,14 @@ export default function CreateListing() {
             {/* Stat slot 2 selector */}
             {(() => {
               const STAT_OPTS = [
-                { value: "sde",           label: "SDE p.a." },
-                { value: "staffCount",    label: "Staff" },
-                { value: "weeklyRevenue", label: "Weekly Rev." },
-                { value: "rent",          label: "Monthly Rent" },
-                { value: "ownerHours",    label: "Owner Hrs" },
-                { value: "leaseExpiry",   label: "Lease Expiry" },
-                { value: "none",          label: "None" },
+                { value: "sde",            label: "SDE p.a." },
+                { value: "staffCount",     label: "Staff" },
+                { value: "weeklyRevenue",  label: "Weekly Rev." },
+                { value: "rent",           label: "Monthly Rent" },
+                { value: "equipmentValue", label: "Equipment $" },
+                { value: "ownerHours",     label: "Owner Hrs" },
+                { value: "leaseExpiry",    label: "Lease Expiry" },
+                { value: "none",           label: "None" },
               ];
               return (
                 <>

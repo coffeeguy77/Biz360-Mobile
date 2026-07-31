@@ -25,6 +25,7 @@ export function mapApiListing(l: any): Listing {
     askingPriceMax: l?.askingPriceMax != null ? Number(l.askingPriceMax) : undefined,
     weeklyRevenue:  Number(l?.weeklyRevenue ?? 0),
     adjustedProfit: Number(l?.adjustedProfit ?? 0),
+    equipmentValue: Number(l?.equipmentValue ?? 0),
     priceDisplay:   l?.priceDisplay ?? "askingPrice",
     stat2Display:   l?.stat2Display ?? undefined,
     stat3Display:   l?.stat3Display ?? undefined,

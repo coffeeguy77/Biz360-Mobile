@@ -909,11 +909,9 @@ export function ListingDetail() {
   const priceStat = getPriceStat(listing);
   const slot2 = getStatSlot(listing.stat2Display ?? "sde", listing);
   const slot3 = getStatSlot(listing.stat3Display ?? "staffCount", listing);
-  const sidebarStats = [
-    slot2,
-    slot3,
-    { value: String(listing.tourStarts), label: "Tour Starts" },
-  ].filter(Boolean) as { value: string; label: string; accent?: boolean }[];
+  const equipStat = getStatSlot("equipmentValue", listing);
+  const sidebarStats = [slot2, slot3, equipStat]
+    .filter(Boolean) as { value: string; label: string; accent?: boolean }[];
 
   const audioGroups = spaces
     .filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"))
