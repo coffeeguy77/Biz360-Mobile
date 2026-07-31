@@ -763,7 +763,7 @@ export function ReportPage() {
   const [error, setError]             = useState<string | null>(null);
   const [printMode, setPrintMode]     = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [openChapter, setOpenChapter] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   // Token obtained by exchanging a one-time previewCode (stored in sessionStorage
   // so re-renders within the same tab don't re-fire the already-consumed code).
@@ -983,18 +983,18 @@ export function ReportPage() {
   return (
     <div
       ref={rootRef}
-      className={cn("min-h-screen font-sans", printMode ? "bg-white text-slate-900 print-mode" : "text-white")}
-      style={printMode ? undefined : {
-        backgroundColor: "#060B15",
-        backgroundImage:
-          "radial-gradient(1100px 820px at 10% -8%, rgba(59,130,246,0.18), transparent 60%)," +
-          "radial-gradient(1000px 720px at 94% 4%, rgba(139,92,246,0.16), transparent 55%)," +
-          "radial-gradient(1200px 900px at 78% 55%, rgba(236,72,153,0.10), transparent 55%)," +
-          "radial-gradient(1200px 1000px at 30% 108%, rgba(20,184,166,0.12), transparent 60%)",
-        backgroundAttachment: "fixed",
-        backgroundRepeat: "no-repeat",
-      }}
+      className={cn("min-h-screen font-sans relative", printMode ? "bg-white text-slate-900 print-mode" : "text-white")}
     >
+
+      {/* ── Animated morphing background ───────────────────────────────────── */}
+      {!printMode && (
+        <div className="report-bg-anim fixed inset-0 -z-10 pointer-events-none overflow-hidden" aria-hidden="true">
+          <span className="report-blob report-blob--a" />
+          <span className="report-blob report-blob--b" />
+          <span className="report-blob report-blob--c" />
+          <span className="report-blob report-blob--d" />
+        </div>
+      )}
 
       {/* ── Sticky Nav ─────────────────────────────────────────────────────── */}
       <nav className={cn(
@@ -1037,6 +1037,28 @@ export function ReportPage() {
               {printMode ? "Dark Mode" : "Print Mode"}
             </button>
             <button
+              onClick={() => { recordAccessLog(listingId, "inspection_booked"); navigate(contactUrl("call")); }}
+              className={cn(
+                "hidden md:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors",
+                printMode
+                  ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                  : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
+              )}
+            >
+              <Calendar size={12} /> Book Inspection
+            </button>
+            <button
+              onClick={() => { recordAccessLog(listingId, "contact_clicked"); navigate(contactUrl("info")); }}
+              className={cn(
+                "hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors",
+                printMode
+                  ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                  : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
+              )}
+            >
+              <Phone size={12} /> Contact Seller
+            </button>
+            <button
               onClick={() => handleDownloadPdf()}
               disabled={downloading}
               className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
@@ -1077,38 +1099,55 @@ export function ReportPage() {
         </div>
       )}
 
-      {/* ── Cover Section ──────────────────────────────────────────────────── */}
+      {/* ── Cover Section — full-screen hero image ─────────────────────────── */}
       <section id="cover" className={cn(
-        "pt-14 min-h-[72vh] flex flex-col justify-center relative overflow-hidden",
-        printMode ? "bg-slate-50 border-b border-slate-200" : "bg-gradient-to-br from-[#02060E] via-[#070F1C] to-[#0A1A30]"
+        "relative overflow-hidden flex flex-col justify-end",
+        printMode ? "bg-slate-50 border-b border-slate-200 pt-14 min-h-[60vh]" : "pt-14 min-h-screen"
       )}>
-        {!printMode && (
+        {/* Full-bleed hero image (screen mode) */}
+        {!printMode && data?.meta?.heroImageUrl && (
           <>
+            <img
+              src={data.meta.heroImageUrl}
+              alt={`${businessName} — cover photo`}
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
+            {/* Scrims for text legibility */}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#060B15] via-[#060B15]/75 to-[#060B15]/25" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#060B15]/80 via-[#060B15]/20 to-transparent" />
+          </>
+        )}
+        {/* Fallback background when there's no hero image */}
+        {!printMode && !data?.meta?.heroImageUrl && (
+          <>
+            <div className="absolute inset-0 bg-gradient-to-br from-[#02060E] via-[#070F1C] to-[#0A1A30]" />
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(59,130,246,0.12),transparent_60%)]" />
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(139,92,246,0.08),transparent_60%)]" />
           </>
         )}
-        <div className="relative max-w-[1440px] mx-auto px-6 py-16">
+
+        <div className="relative z-10 w-full max-w-[1440px] mx-auto px-6 pt-16 pb-16">
           <div className="flex flex-wrap items-center gap-2 mb-6">
             <span className={cn(
               "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border",
-              printMode ? "bg-red-50 border-red-200 text-red-700" : "bg-red-500/10 border-red-500/20 text-red-400"
+              printMode ? "bg-red-50 border-red-200 text-red-700" : "bg-red-500/15 border-red-500/30 text-red-300 backdrop-blur-sm"
             )}>
               <Shield size={11} /> CONFIDENTIAL
             </span>
             <span className={cn(
               "inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border",
-              printMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/10 border-blue-500/20 text-blue-400"
+              printMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/15 border-blue-500/30 text-blue-200 backdrop-blur-sm"
             )}>
               <CheckCircle2 size={11} /> Exit360 Verified
             </span>
           </div>
 
-          <p className={cn("text-sm font-semibold uppercase tracking-[0.25em] mb-3", printMode ? "text-slate-400" : "text-blue-400")}>
+          <p className={cn("text-sm font-semibold uppercase tracking-[0.25em] mb-3", printMode ? "text-slate-400" : "text-blue-300")}>
             Information Memorandum
           </p>
           <h1
-            className={cn("text-5xl md:text-7xl xl:text-8xl font-extrabold mb-4 leading-[1.02] tracking-tight", printMode ? "text-slate-900" : "")}
+            className={cn("text-5xl md:text-7xl xl:text-8xl font-extrabold mb-4 leading-[1.02] tracking-tight", printMode ? "text-slate-900" : "drop-shadow-2xl")}
             style={printMode ? undefined : {
               backgroundImage: "linear-gradient(120deg, #ffffff 0%, #dbeafe 40%, #c4b5fd 75%, #99f6e4 100%)",
               WebkitBackgroundClip: "text",
@@ -1120,19 +1159,19 @@ export function ReportPage() {
           </h1>
 
           {/* Business metadata row: category · location · asking price */}
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-6">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-4">
             {data?.meta?.category && (
-              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
+              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-200")}>
                 <Tag size={13} /> {data.meta.category}
               </span>
             )}
             {data?.meta?.location && (
-              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
+              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-200")}>
                 <MapPin size={13} /> {data.meta.location}
               </span>
             )}
             {data?.meta?.askingPrice != null && data.meta.askingPrice > 0 && (
-              <span className={cn("inline-flex items-center gap-1.5 text-sm font-semibold", printMode ? "text-emerald-700" : "text-emerald-400")}>
+              <span className={cn("inline-flex items-center gap-1.5 text-sm font-semibold", printMode ? "text-emerald-700" : "text-emerald-300")}>
                 <DollarSign size={13} /> {data.meta.askingPrice >= 1_000_000
                   ? `$${(data.meta.askingPrice / 1_000_000).toFixed(2)}M`
                   : data.meta.askingPrice >= 1_000
@@ -1142,172 +1181,58 @@ export function ReportPage() {
             )}
           </div>
 
-          {/* Hero image — full image, not cropped */}
-          {data?.meta?.heroImageUrl && (
-            <div className={cn(
-              "mb-6 rounded-2xl overflow-hidden border",
-              printMode ? "border-slate-200 bg-slate-50" : "border-[#1E3A5C] bg-[#070F1C]"
-            )}>
-              <img
-                src={data.meta.heroImageUrl}
-                alt={`${businessName} — cover photo`}
-                className="w-full h-auto object-contain max-h-[32rem] mx-auto"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-              />
-            </div>
-          )}
-
-          <p className={cn("text-base mb-8", printMode ? "text-slate-500" : "text-slate-400")}>
-            Confidential Business Profile · Prepared by Exit360
+          <p className={cn("text-sm mb-8", printMode ? "text-slate-500" : "text-slate-300")}>
+            Confidential Business Profile · Prepared by Exit360 · {new Date().toLocaleDateString("en-AU", { month: "short", year: "numeric" })}
           </p>
-
-          {/* Metric cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
-            {[
-              { label: "Sections", value: `${sections.length} Sections`, icon: Eye },
-              { label: "Access Level", value: data?.accessLevel === "seller" ? "Seller View" : "Buyer View", icon: Shield },
-              { label: "Report Date", value: new Date().toLocaleDateString("en-AU", { month: "short", year: "numeric" }), icon: Calendar },
-            ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className={cn(
-                "rounded-xl p-3 border",
-                printMode ? "bg-white border-slate-200" : "bg-[#0F2040]/80 border-[#1E3A5C]"
-              )}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Icon size={11} className={printMode ? "text-slate-400" : "text-slate-500"} />
-                  <span className={cn("text-[10px] font-semibold uppercase tracking-wider", printMode ? "text-slate-400" : "text-slate-500")}>{label}</span>
-                </div>
-                <p className={cn("text-sm font-bold", printMode ? "text-slate-900" : "text-white")}>{value}</p>
-              </div>
-            ))}
-          </div>
 
           {/* CTA Buttons */}
           <div className="flex flex-wrap gap-3 print:hidden">
             <button
-              onClick={() => handleDownloadPdf()}
-              disabled={downloading}
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-60"
-            >
-              <Download size={15} /> Download PDF
-            </button>
-            <button
               onClick={() => { recordAccessLog(listingId, "contact_clicked"); navigate(contactUrl("info")); }}
-              className={cn(
-                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
-                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
-              )}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
             >
               <Phone size={15} /> Contact Seller
             </button>
             <button
               onClick={() => { recordAccessLog(listingId, "inspection_booked"); navigate(contactUrl("call")); }}
               className={cn(
-                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
-                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
+                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors backdrop-blur-sm",
+                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040]/70 border-[#1E3A5C] text-slate-200 hover:text-white"
               )}
             >
               <Calendar size={15} /> Book Inspection
-            </button>
-            <button
-              onClick={() => { recordAccessLog(listingId, "document_requested"); navigate(contactUrl("enquiry")); }}
-              className={cn(
-                "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
-                printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
-              )}
-            >
-              <FileText size={15} /> Request Docs
             </button>
           </div>
         </div>
       </section>
 
 
-      {/* Top horizontal chapter strip removed — the left sidebar is the nav. */}
-
-      {/* ── Table of Contents ───────────────────────────────────────────────── */}
-      {groupedSections.length > 0 && (
-        <nav className={cn(
-          "border-b py-8 print:hidden",
-          printMode ? "bg-slate-50 border-slate-200" : "bg-[#0F2040]/60 border-[#1E3A5C]"
-        )}>
-          <div className="max-w-[1440px] mx-auto px-6">
-            <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-5", printMode ? "text-slate-400" : "text-slate-500")}>
-              Contents
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-0">
-              {groupedSections.map((g, i) => (
-                <div key={g.key} className="mb-4">
-                  <a
-                    href={`#chapter-${g.key}`}
-                    className={cn(
-                      "flex items-center gap-2 py-1 text-sm font-semibold transition-colors",
-                      printMode ? "text-slate-700 hover:text-slate-900" : "text-white hover:text-blue-400"
-                    )}
-                  >
-                    <span className={cn(
-                      "text-[10px] font-bold px-1.5 py-0.5 rounded",
-                      printMode ? "bg-blue-50 text-blue-600" : "bg-blue-500/20 text-blue-400"
-                    )}>
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    {g.title}
-                  </a>
-                  <div className="pl-7 space-y-0.5 mt-0.5">
-                    {g.sections.slice(0, 4).map((s) => (
-                      <a
-                        key={s.id}
-                        href={`#${s.sectionKey}`}
-                        className={cn(
-                          "flex items-center gap-1.5 py-0.5 text-xs transition-colors",
-                          printMode ? "text-slate-500 hover:text-slate-700" : "text-slate-500 hover:text-slate-300"
-                        )}
-                      >
-                        <ChevronRight size={10} className="flex-shrink-0" />
-                        {s.title}
-                        {s.isLocked && <Lock size={9} className="text-amber-400 flex-shrink-0" />}
-                      </a>
-                    ))}
-                    {g.sections.length > 4 && (
-                      <p className={cn("text-[10px] pl-4", printMode ? "text-slate-400" : "text-slate-600")}>
-                        +{g.sections.length - 4} more
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </nav>
-      )}
+      {/* Top horizontal chapter strip + Contents block removed — the left sidebar is the nav. */}
 
       {/* ── Sidebar + content — centred together, capped at 1440px ──────────────── */}
       <div className="max-w-[1440px] mx-auto xl:flex xl:items-start">
       {/* ── Desktop sidebar ───────────────────────────────────────────────────── */}
       {groupedSections.length > 0 && (
         <aside className={cn(
-          "hidden xl:flex flex-col sticky top-14 self-start w-56 flex-shrink-0 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-r z-30 py-6 print:hidden",
+          "hidden xl:flex flex-col sticky top-14 self-start w-72 flex-shrink-0 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-r z-30 py-6 print:hidden",
           printMode ? "bg-white border-slate-200" : "border-[#1E3A5C]"
         )}>
-          <div className="flex items-center justify-between px-5 mb-4">
+          <div className="px-5 mb-4">
             <span className={cn("text-xs font-bold uppercase tracking-widest", printMode ? "text-slate-400" : "text-slate-500")}>
               Chapters
             </span>
-            <button
-              onClick={() => setSidebarExpanded((e) => !e)}
-              className={cn(
-                "inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full border transition-colors",
-                printMode ? "border-slate-200 text-slate-500 hover:bg-slate-50" : "border-[#1E3A5C] text-slate-400 hover:text-white hover:bg-[#1E3A5C]/50"
-              )}
-            >
-              <ChevronDown size={11} className={cn("transition-transform", sidebarExpanded ? "rotate-180" : "")} />
-              {sidebarExpanded ? "Collapse" : "Expand"}
-            </button>
           </div>
-          {groupedSections.map((g, i) => (
+          {groupedSections.map((g, i) => {
+            const isOpen = openChapter === g.key;
+            return (
             <div key={g.key}>
               <a
                 href={`#chapter-${g.key}`}
-                onClick={() => setActiveChapter(g.key)}
+                onClick={() => {
+                  setActiveChapter(g.key);
+                  // Accordion: open the touched chapter, close the previously open one.
+                  setOpenChapter((prev) => (prev === g.key ? null : g.key));
+                }}
                 className={cn(
                   "flex items-center gap-2.5 px-5 py-2.5 text-[15px] leading-snug transition-colors border-l-2",
                   activeChapter === g.key
@@ -1323,9 +1248,12 @@ export function ReportPage() {
                 )}>
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <span className="truncate">{g.title}</span>
+                <span className="flex-1">{g.title}</span>
+                {g.sections.length > 0 && (
+                  <ChevronDown size={13} className={cn("flex-shrink-0 transition-transform opacity-70", isOpen ? "rotate-180" : "")} />
+                )}
               </a>
-              {sidebarExpanded && g.sections.length > 0 && (
+              {isOpen && g.sections.length > 0 && (
                 <div className="pb-1">
                   {g.sections.map((s) => (
                     <a
@@ -1337,13 +1265,14 @@ export function ReportPage() {
                       )}
                     >
                       <ChevronRight size={11} className="flex-shrink-0 opacity-60" />
-                      <span className="truncate">{s.title}</span>
+                      <span>{s.title}</span>
                     </a>
                   ))}
                 </div>
               )}
             </div>
-          ))}
+          );
+          })}
         </aside>
       )}
 
@@ -1682,6 +1611,56 @@ export function ReportPage() {
         }
         .print-mode { color: #1e293b; }
         .print-mode h1, .print-mode h2 { color: #0f172a; }
+
+        /* Animated morphing background */
+        .report-bg-anim { background: #060B15; }
+        .report-blob {
+          position: absolute;
+          display: block;
+          border-radius: 50%;
+          filter: blur(90px);
+          opacity: 0.55;
+          will-change: transform;
+        }
+        .report-blob--a {
+          width: 46vw; height: 46vw; left: -6vw; top: -10vw;
+          background: radial-gradient(circle at 50% 50%, rgba(59,130,246,0.55), rgba(59,130,246,0) 70%);
+          animation: blobMoveA 16s ease-in-out infinite alternate;
+        }
+        .report-blob--b {
+          width: 42vw; height: 42vw; right: -8vw; top: -4vw;
+          background: radial-gradient(circle at 50% 50%, rgba(139,92,246,0.50), rgba(139,92,246,0) 70%);
+          animation: blobMoveB 19s ease-in-out infinite alternate;
+        }
+        .report-blob--c {
+          width: 50vw; height: 50vw; right: 6vw; top: 42vh;
+          background: radial-gradient(circle at 50% 50%, rgba(236,72,153,0.38), rgba(236,72,153,0) 70%);
+          animation: blobMoveC 22s ease-in-out infinite alternate;
+        }
+        .report-blob--d {
+          width: 48vw; height: 48vw; left: 8vw; bottom: -14vw;
+          background: radial-gradient(circle at 50% 50%, rgba(20,184,166,0.40), rgba(20,184,166,0) 70%);
+          animation: blobMoveD 18s ease-in-out infinite alternate;
+        }
+        @keyframes blobMoveA {
+          0%   { transform: translate3d(0,0,0) scale(1); }
+          100% { transform: translate3d(22vw, 16vh, 0) scale(1.25); }
+        }
+        @keyframes blobMoveB {
+          0%   { transform: translate3d(0,0,0) scale(1.1); }
+          100% { transform: translate3d(-20vw, 20vh, 0) scale(0.85); }
+        }
+        @keyframes blobMoveC {
+          0%   { transform: translate3d(0,0,0) scale(0.9); }
+          100% { transform: translate3d(-18vw, -22vh, 0) scale(1.2); }
+        }
+        @keyframes blobMoveD {
+          0%   { transform: translate3d(0,0,0) scale(1.15); }
+          100% { transform: translate3d(20vw, -18vh, 0) scale(0.9); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .report-blob { animation: none !important; }
+        }
       `}</style>
     </div>
   );
