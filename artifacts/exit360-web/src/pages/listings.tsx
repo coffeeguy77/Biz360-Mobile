@@ -16,7 +16,7 @@ import {
   Clock,
   Loader2,
 } from "lucide-react";
-import { formatPrice, formatRevenue, type Listing } from "@/data/listings";
+import { getPriceStat, getStatSlot, type Listing } from "@/data/listings";
 import { fetchListings } from "@/lib/listingsApi";
 
 const CATEGORIES = ["All", "Food & Beverage", "Health & Beauty", "Health & Fitness", "Services"];
@@ -33,8 +33,12 @@ const BADGE_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 function ListingCard({ listing }: { listing: Listing }) {
-  const hasProfit = listing.adjustedProfit > 0;
-  const multiple = hasProfit ? (listing.askingPrice / listing.adjustedProfit).toFixed(1) + "×" : "—";
+  // Mirror the mobile app's card: a headline price slot the seller configures,
+  // plus two seller-chosen stat slots (default SDE p.a. + staff count).
+  const priceStat = getPriceStat(listing);
+  const slot2 = getStatSlot(listing.stat2Display ?? "sde", listing);
+  const slot3 = getStatSlot(listing.stat3Display ?? "staffCount", listing);
+  const stats = [priceStat, slot2, slot3].filter(Boolean) as { value: string; label: string; accent?: boolean }[];
 
   return (
     <Link href={`/listings/${listing.id}`}>
@@ -100,20 +104,14 @@ function ListingCard({ listing }: { listing: Listing }) {
           </div>
         </div>
 
-        {/* Key metrics */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-background rounded-xl p-3 text-center border border-border">
-            <div className="text-lg font-bold text-foreground">{formatPrice(listing.askingPrice)}</div>
-            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">Asking Price</div>
-          </div>
-          <div className="bg-background rounded-xl p-3 text-center border border-border">
-            <div className="text-lg font-bold text-green-400">{formatRevenue(listing.weeklyRevenue)}</div>
-            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">Revenue p.a.</div>
-          </div>
-          <div className="bg-background rounded-xl p-3 text-center border border-border">
-            <div className={`text-lg font-bold ${hasProfit ? "text-foreground" : "text-muted-foreground"}`}>{multiple}</div>
-            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">Profit Multiple</div>
-          </div>
+        {/* Key metrics — driven by the seller's app config (price + 2 stat slots) */}
+        <div className={`grid gap-2 ${stats.length === 3 ? "grid-cols-3" : stats.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+          {stats.map((s, i) => (
+            <div key={i} className="bg-background rounded-xl p-3 text-center border border-border">
+              <div className={`text-lg font-bold ${s.accent ? "text-green-400" : "text-foreground"}`}>{s.value}</div>
+              <div className="text-[11px] text-muted-foreground font-medium mt-0.5">{s.label}</div>
+            </div>
+          ))}
         </div>
 
         {/* Description */}
