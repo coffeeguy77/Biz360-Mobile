@@ -891,6 +891,28 @@ export function ReportPage() {
   ]);
   const isRemovedVisual = (v: ReportVisualEntry) =>
     REMOVED_VISUAL_TITLES.has((v.title ?? "").trim().toLowerCase());
+  // The revenue "by division" donut reads best 50/50 beside the divisions
+  // breakdown table, so force it into the section's sidebar column.
+  const SIDE_PLACEMENT_TITLE_HINTS = [
+    "by division",
+    "revenue by division",
+    "revenue by",
+    "division breakdown",
+    "divisions breakdown",
+  ];
+  const asSidePlacement = (v: ReportVisualEntry): ReportVisualEntry => {
+    const t = (v.title ?? "").trim().toLowerCase();
+    if (SIDE_PLACEMENT_TITLE_HINTS.some((h) => t.includes(h))) {
+      return { ...v, sectionPlacement: "sidebar" };
+    }
+    return v;
+  };
+  // The equipment "by category" chart is too wide full-width. Cap its width so
+  // it tucks into the vacant gap beside the floated section image.
+  const isNarrowChart = (v: ReportVisualEntry) => {
+    const t = (v.title ?? "").trim().toLowerCase();
+    return t.includes("by category") || t.includes("equipment by") || t.includes("by segment");
+  };
   const businessName = data?.meta?.businessName ?? "Confidential Business";
   const contactUrl = (intent: string) =>
     `/sign-in?intent=${intent}&listingId=${listingId}&listingName=${encodeURIComponent(businessName)}&return=${encodeURIComponent(`/listings/${listingId}`)}`;
@@ -1442,6 +1464,7 @@ export function ReportPage() {
                         const allVisuals = !section.isLocked
                           ? (data?.meta?.reportVisuals ?? [])
                               .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && !isRemovedVisual(v))
+                              .map(asSidePlacement)
                               .sort((a, b) => a.sortOrder - b.sortOrder)
                           : [];
                         const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
@@ -1455,7 +1478,15 @@ export function ReportPage() {
                         // renderVisual applies placement-aware layout to BOTH ready and pending states
                         const renderVisual = (v: ReportVisualEntry) => {
                           const isFullWidth = v.sectionPlacement === "full_width";
+                          const narrow = isNarrowChart(v);
                           if (v.status === "ready") {
+                            if (narrow) {
+                              return (
+                                <div key={v.id} className="w-full sm:max-w-md">
+                                  <ReportVisualBlock visual={v} printMode={printMode} />
+                                </div>
+                              );
+                            }
                             return isFullWidth
                               ? <div key={v.id} className="w-full"><ReportVisualBlock visual={v} printMode={printMode} /></div>
                               : <ReportVisualBlock key={v.id} visual={v} printMode={printMode} />;
@@ -1485,7 +1516,7 @@ export function ReportPage() {
                             {sidebarVisuals.length > 0 ? (
                               <div className="flex gap-6 items-start">
                                 <div className="flex-1 min-w-0">{mainContent}</div>
-                                <div className="w-56 flex-shrink-0 hidden sm:block space-y-3">
+                                <div className="w-full sm:w-[42%] lg:w-[44%] flex-shrink-0 space-y-3">
                                   {sidebarVisuals.map(renderVisual)}
                                 </div>
                               </div>
@@ -1527,6 +1558,7 @@ export function ReportPage() {
                 const allVisuals = !section.isLocked
                   ? (data?.meta?.reportVisuals ?? [])
                       .filter((v) => v.sectionKey === section.sectionKey && v.includeInHtml && !isRemovedVisual(v))
+                      .map(asSidePlacement)
                       .sort((a, b) => a.sortOrder - b.sortOrder)
                   : [];
                 const aboveVisuals   = allVisuals.filter((v) => v.sectionPlacement === "above_body");
@@ -1565,7 +1597,7 @@ export function ReportPage() {
                     {sidebarVisuals.length > 0 ? (
                       <div className="flex gap-6 items-start">
                         <div className="flex-1 min-w-0">{mainContent}</div>
-                        <div className="w-56 flex-shrink-0 hidden sm:block space-y-3">
+                        <div className="w-full sm:w-[42%] lg:w-[44%] flex-shrink-0 space-y-3">
                           {sidebarVisuals.map(renderVisual)}
                         </div>
                       </div>
