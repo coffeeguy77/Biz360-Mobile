@@ -1,9 +1,9 @@
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useEffect, useState, useRef, useMemo } from "react";
 import {
   Lock, Download, Phone, Calendar, Shield,
   CheckCircle2, FileText, MapPin, Printer, ChevronRight, Eye,
-  AlertTriangle,
+  AlertTriangle, Tag, DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -709,6 +709,7 @@ export function ReportPage() {
   // versionId may come from route param (/reports/:listingId/:versionId)
   // or from query string (?v=...) for legacy links.
   const params = useParams<{ listingId: string; versionId?: string }>();
+  const [, navigate] = useLocation();
   const listingId = params.listingId ?? "";
   const urlParams = new URLSearchParams(window.location.search);
   const versionId    = params.versionId ?? urlParams.get("v") ?? undefined;
@@ -811,25 +812,17 @@ export function ReportPage() {
     recordAccessLog(listingId, "report_viewed", versionId ? { versionId } : {});
   }, [listingId, versionId, accessToken, previewToken, previewCode]);
 
-  async function handleDownloadPdf() {
-    setDownloading(true);
-    try {
-      // If the buyer has a verified accessToken, include approved_buyers sections.
-      // Otherwise fall back to the teaser-only public PDF.
-      const endpoint = accessToken
-        ? `/api/report-exports/pdf-public/${listingId}?accessToken=${encodeURIComponent(accessToken)}`
-        : `/api/report-exports/pdf-public/${listingId}`;
-      const res = await fetch(endpoint);
-      if (!res.ok) throw new Error("PDF generation failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `im-report-${listingId}.pdf`; a.click();
-      URL.revokeObjectURL(url);
-      recordAccessLog(listingId, "pdf_downloaded", { mode: accessToken ? "buyer_approved" : "buyer_public" });
-    } catch {
-      alert("Could not generate PDF. Please try again.");
-    } finally { setDownloading(false); }
+  function handleDownloadPdf() {
+    // Print the CURRENT on-screen report (Save as PDF in the print dialog) so the
+    // download always matches this version. The old server-side PDF export was a
+    // separate template that didn't reflect report updates.
+    recordAccessLog(listingId, "pdf_downloaded", { mode: "print" });
+    setPrintMode(true);
+    setTimeout(() => {
+      const restore = () => { setPrintMode(false); window.removeEventListener("afterprint", restore); };
+      window.addEventListener("afterprint", restore);
+      window.print();
+    }, 300);
   }
 
   function handlePrint() {
@@ -838,8 +831,19 @@ export function ReportPage() {
   }
 
   // ── SECTIONS ──────────────────────────────────────────────────────────────
-  const sections = (data?.sections ?? []).filter((s) => s.includeInHtml);
+  // Sections removed from the report entirely (they also fall through to the
+  // "ungrouped" renderer, so they must be filtered here, not just from groups).
+  const REMOVED_SECTION_KEYS = new Set([
+    "business_health_score",       // app-based section-completeness score, not a real valuation
+    "lease_risk_valuation_impact", // empty / low-value risk breakdown
+    "swot_analysis",
+  ]);
+  const sections = (data?.sections ?? []).filter(
+    (s) => s.includeInHtml && !REMOVED_SECTION_KEYS.has(s.sectionKey),
+  );
   const businessName = data?.meta?.businessName ?? "Confidential Business";
+  const contactUrl = (intent: string) =>
+    `/sign-in?intent=${intent}&listingId=${listingId}&listingName=${encodeURIComponent(businessName)}&return=${encodeURIComponent(`/listings/${listingId}`)}`;
 
   // Build chapter groups — only include groups that have ≥1 visible section
   const groupedSections = REPORT_GROUPS.map((g) => ({
@@ -981,21 +985,21 @@ export function ReportPage() {
             {businessName}
           </h1>
 
-          {/* Business metadata row: location · category · asking price */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
+          {/* Business metadata row: category · location · asking price */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-6">
             {data?.meta?.category && (
-              <span className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
-                🏷️ {data.meta.category}
+              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
+                <Tag size={13} /> {data.meta.category}
               </span>
             )}
             {data?.meta?.location && (
-              <span className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
-                📍 {data.meta.location}
+              <span className={cn("inline-flex items-center gap-1.5 text-sm", printMode ? "text-slate-500" : "text-slate-400")}>
+                <MapPin size={13} /> {data.meta.location}
               </span>
             )}
-            {data?.meta?.askingPrice != null && (
-              <span className={cn("text-sm font-semibold", printMode ? "text-emerald-700" : "text-emerald-400")}>
-                💰 {data.meta.askingPrice >= 1_000_000
+            {data?.meta?.askingPrice != null && data.meta.askingPrice > 0 && (
+              <span className={cn("inline-flex items-center gap-1.5 text-sm font-semibold", printMode ? "text-emerald-700" : "text-emerald-400")}>
+                <DollarSign size={13} /> {data.meta.askingPrice >= 1_000_000
                   ? `$${(data.meta.askingPrice / 1_000_000).toFixed(2)}M`
                   : data.meta.askingPrice >= 1_000
                   ? `$${(data.meta.askingPrice / 1_000).toFixed(0)}K`
@@ -1004,30 +1008,16 @@ export function ReportPage() {
             )}
           </div>
 
-          {/* Extra badges from listing data */}
-          {(data?.meta?.badges ?? []).length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {(data!.meta!.badges!).map((badge) => (
-                <span key={badge} className={cn(
-                  "inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border",
-                  printMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/10 border-blue-500/20 text-blue-400"
-                )}>
-                  <CheckCircle2 size={10} /> {badge}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Hero image — rendered when the listing has a cover photo set */}
+          {/* Hero image — full image, not cropped */}
           {data?.meta?.heroImageUrl && (
             <div className={cn(
-              "mb-6 rounded-2xl overflow-hidden border max-h-72",
-              printMode ? "border-slate-200" : "border-[#1E3A5C]"
+              "mb-6 rounded-2xl overflow-hidden border",
+              printMode ? "border-slate-200 bg-slate-50" : "border-[#1E3A5C] bg-[#070F1C]"
             )}>
               <img
                 src={data.meta.heroImageUrl}
                 alt={`${businessName} — cover photo`}
-                className="w-full h-72 object-cover"
+                className="w-full h-auto object-contain max-h-[32rem] mx-auto"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
               />
             </div>
@@ -1040,7 +1030,6 @@ export function ReportPage() {
           {/* Metric cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
             {[
-              { label: "Listing Ref.", value: listingId.slice(0, 8).toUpperCase(), icon: FileText },
               { label: "Sections", value: `${sections.length} Sections`, icon: Eye },
               { label: "Access Level", value: data?.accessLevel === "seller" ? "Seller View" : "Buyer View", icon: Shield },
               { label: "Report Date", value: new Date().toLocaleDateString("en-AU", { month: "short", year: "numeric" }), icon: Calendar },
@@ -1068,7 +1057,7 @@ export function ReportPage() {
               <Download size={15} /> Download PDF
             </button>
             <button
-              onClick={() => recordAccessLog(listingId, "contact_clicked")}
+              onClick={() => { recordAccessLog(listingId, "contact_clicked"); navigate(contactUrl("info")); }}
               className={cn(
                 "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
                 printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
@@ -1077,7 +1066,7 @@ export function ReportPage() {
               <Phone size={15} /> Contact Seller
             </button>
             <button
-              onClick={() => recordAccessLog(listingId, "inspection_booked")}
+              onClick={() => { recordAccessLog(listingId, "inspection_booked"); navigate(contactUrl("call")); }}
               className={cn(
                 "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
                 printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
@@ -1086,7 +1075,7 @@ export function ReportPage() {
               <Calendar size={15} /> Book Inspection
             </button>
             <button
-              onClick={() => recordAccessLog(listingId, "document_requested")}
+              onClick={() => { recordAccessLog(listingId, "document_requested"); navigate(contactUrl("enquiry")); }}
               className={cn(
                 "inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors",
                 printMode ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-50" : "bg-[#0F2040] border-[#1E3A5C] text-slate-300 hover:text-white"
