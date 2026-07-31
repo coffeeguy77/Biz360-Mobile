@@ -263,37 +263,34 @@ function SectionImageStrip({
   printMode: boolean;
 }) {
   if (!images.length) return null;
+  // Float to the right so section text wraps beside the images. Larger, aspect-
+  // preserved (c_limit, not cropped), with a tight border hugging the image shape.
   return (
-    <div className={cn("mt-5 rounded-xl overflow-hidden border", printMode ? "border-slate-200" : "border-[#1E3A5C]")}>
-      <div className={cn(
-        "flex gap-2 overflow-x-auto p-3",
-        images.length === 1 ? "justify-center" : "",
-      )}>
-        {images.map((img) => {
-          // Build 400w crop/fill Cloudinary thumbnail (spec: section card thumbnails)
-          const thumbUrl = img.cloudinaryPublicId
-            ? `https://res.cloudinary.com/${(img.url.match(/cloudinary\.com\/([^/]+)/) ?? [])[1] ?? "biz360"}/image/upload/w_400,c_fill,q_auto,f_auto/${img.cloudinaryPublicId}`
-            : img.url;
-          return (
-            <div key={img.id} className="flex-shrink-0" style={{ maxWidth: images.length === 1 ? "100%" : "48%" }}>
-              <img
-                src={thumbUrl}
-                alt={img.altText ?? img.displayName ?? "Section image"}
-                className={cn(
-                  "rounded-lg object-cover w-full",
-                  images.length === 1 ? "max-h-64" : "h-40",
-                )}
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-              />
-              {img.caption && (
-                <p className={cn("text-xs mt-1.5 text-center px-1", printMode ? "text-slate-500" : "text-slate-400")}>
-                  {img.caption}
-                </p>
+    <div className="sm:float-right sm:w-72 lg:w-80 sm:ml-6 mb-4 w-full flex flex-col gap-4">
+      {images.map((img) => {
+        const cloud = (img.url.match(/cloudinary\.com\/([^/]+)/) ?? [])[1] ?? "biz360";
+        const url = img.cloudinaryPublicId
+          ? `https://res.cloudinary.com/${cloud}/image/upload/w_800,c_limit,q_auto,f_auto/${img.cloudinaryPublicId}`
+          : img.url;
+        return (
+          <figure key={img.id} className="m-0">
+            <img
+              src={url}
+              alt={img.altText ?? img.displayName ?? "Section image"}
+              className={cn(
+                "block w-full rounded-xl border-2",
+                printMode ? "border-slate-300" : "border-[#2A4A72]",
               )}
-            </div>
-          );
-        })}
-      </div>
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
+            {img.caption && (
+              <figcaption className={cn("text-xs mt-1.5 text-center px-1", printMode ? "text-slate-500" : "text-slate-400")}>
+                {img.caption}
+              </figcaption>
+            )}
+          </figure>
+        );
+      })}
     </div>
   );
 }
@@ -378,8 +375,16 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
                 <YAxis tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
               </>
             )}
-            <Tooltip contentStyle={VIZ_TIP} />
-            <Bar dataKey={bars[0]?.raw != null ? "raw" : "value"} radius={isHoriz ? [0, 4, 4, 0] : [4, 4, 0, 0]}>
+            <Tooltip
+              contentStyle={VIZ_TIP}
+              cursor={{ fill: "rgba(30,58,92,0.35)" }}
+              formatter={(value: any) => {
+                const n = Number(value);
+                const isMoney = bars[0]?.raw != null;
+                return [isMoney ? `$${n.toLocaleString()}` : n.toLocaleString(), ""];
+              }}
+            />
+            <Bar name="Value" dataKey={bars[0]?.raw != null ? "raw" : "value"} radius={isHoriz ? [0, 4, 4, 0] : [4, 4, 0, 0]}>
               {bars.map((_, i) => <Cell key={i} fill={VIZ_PALETTE[i % VIZ_PALETTE.length]} />)}
             </Bar>
           </BarChart>
@@ -433,8 +438,12 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
             <CartesianGrid vertical={false} stroke="#1E3A5C" />
             <XAxis dataKey="name" tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={VIZ_TIP} />
-            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+            <Tooltip
+              contentStyle={VIZ_TIP}
+              cursor={{ fill: "rgba(30,58,92,0.35)" }}
+              formatter={(value: any) => [`$${Number(value).toLocaleString()}`, ""]}
+            />
+            <Bar name="Value" dataKey="value" radius={[4, 4, 0, 0]}>
               {bridgeData.map((e, i) => (
                 <Cell key={i} fill={e.type === "total" ? "#10B981" : e.type === "add" ? "#8B5CF6" : "#3B82F6"} />
               ))}
@@ -600,6 +609,10 @@ function SectionContent({
       {!hasAnything && (
         <p className="text-slate-500 italic text-sm">This section has not yet been completed.</p>
       )}
+      {/* Section images float right so the body text + bullets wrap beside them */}
+      {sectionImages.length > 0 && !is360 && (
+        <SectionImageStrip images={sectionImages} printMode={printMode} />
+      )}
       {section.body && <SectionBodyText body={section.body} />}
       {/* inline visuals — embedded in section flow after body text, before bullets */}
       {inlineVisuals && inlineVisuals.length > 0 && (
@@ -625,19 +638,17 @@ function SectionContent({
       {section.bulletPoints && section.bulletPoints.length > 0 && (
         <SectionBullets bullets={section.bulletPoints} />
       )}
+      {/* Clear the floated images before any full-width chart/table */}
+      <div className="clear-both" />
       {!!section.tableData && <SectionTable data={section.tableData} />}
       {chartWillRender && (
         <div className="mt-6 p-4 rounded-xl bg-[#070F1C]/60 border border-[#1E3A5C]/60">
           <ChartComponent data={chartData} />
         </div>
       )}
-      {/* Section images from report_images — rendered below charts/text */}
-      {sectionImages.length > 0 && (
-        <SectionImageStrip images={sectionImages} printMode={printMode} />
-      )}
       {is360 && (
         tourUrl ? (
-          <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ aspectRatio: "16/9" }}>
+          <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ height: "clamp(360px, 58vw, 580px)" }}>
             <iframe
               src={tourUrl}
               className="w-full h-full"
@@ -647,7 +658,7 @@ function SectionContent({
             />
           </div>
         ) : resolvedSrcDoc ? (
-          <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ aspectRatio: "16/9" }}>
+          <div className="mt-4 rounded-xl overflow-hidden border border-[#1E3A5C] bg-black" style={{ height: "clamp(360px, 58vw, 580px)" }}>
             <iframe
               srcDoc={resolvedSrcDoc}
               sandbox="allow-scripts allow-same-origin"
@@ -675,13 +686,13 @@ const REPORT_GROUPS: ReportGroup[] = [
   { key: "executive_summary",   title: "Executive Summary",               sectionKeys: ["executive_summary","key_selling_points","reason_for_sale"] },
   { key: "business_overview",   title: "Business Overview",               sectionKeys: ["business_overview","buyer_suitability","training_handover"] },
   { key: "financial_performance", title: "Financial Performance",          sectionKeys: ["financial_performance_summary","verified_revenue_sources","division_breakdown","revenue_stream_breakdown"] },
-  { key: "valuation",           title: "Valuation & Pricing",             sectionKeys: ["app_valuation_summary","valuation_methodology","valuation_range_explanation","business_health_score"] },
+  { key: "valuation",           title: "Valuation & Pricing",             sectionKeys: ["app_valuation_summary","valuation_methodology","valuation_range_explanation"] },
   { key: "earnings_adjustments", title: "Earnings & Adjustments",         sectionKeys: ["cogs_mapping_summary","addbacks_adjusted_ebitda"] },
   { key: "assets_equipment",    title: "Assets & Equipment",              sectionKeys: ["plant_equipment_summary","sale_inclusions","sale_exclusions","stock_working_capital"] },
-  { key: "lease_premises",      title: "Lease & Premises",                sectionKeys: ["lease_premises_summary","lease_risk_valuation_impact","business_location_market_context","canberra_location_explainer"] },
+  { key: "lease_premises",      title: "Lease & Premises",                sectionKeys: ["lease_premises_summary","business_location_market_context","canberra_location_explainer"] },
   { key: "staff_operations",    title: "Staff & Operations",              sectionKeys: ["staff_owner_involvement","operations_systems"] },
   { key: "brand_customers",     title: "Brand, Customers & Suppliers",    sectionKeys: ["supplier_summary","customer_base","brand_digital_assets","reviews_reputation"] },
-  { key: "growth_risk",         title: "Growth & Risk",                   sectionKeys: ["growth_opportunities","risks_mitigations","swot_analysis"] },
+  { key: "growth_risk",         title: "Growth & Risk",                   sectionKeys: ["growth_opportunities","risks_mitigations"] },
   { key: "virtual_tour",        title: "Virtual Tour & Property",         sectionKeys: ["360_business_walkthrough","key_tour_highlights"] },
   { key: "due_diligence",       title: "Due Diligence",                   sectionKeys: ["due_diligence_documents_available","verified_information","buyer_access_confidentiality"] },
   { key: "buyer_pack",          title: "Buyer Pack & Next Steps",         sectionKeys: ["next_steps","disclaimer"] },
@@ -1088,37 +1099,7 @@ export function ReportPage() {
       </section>
 
 
-      {/* ── Chapter Nav (sticky horizontal tab strip) ───────────────────────── */}
-      {groupedSections.length > 0 && (
-        <div className={cn(
-          "sticky top-12 z-40 border-b overflow-x-auto print:hidden",
-          printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/95 backdrop-blur border-[#1E3A5C]"
-        )}>
-          <div className="max-w-5xl mx-auto px-4 flex items-center gap-1 py-1.5 min-w-max">
-            {groupedSections.map((g, i) => (
-              <a
-                key={g.key}
-                href={`#chapter-${g.key}`}
-                onClick={() => setActiveChapter(g.key)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors",
-                  activeChapter === g.key
-                    ? "bg-blue-600 text-white"
-                    : printMode
-                    ? "text-slate-600 hover:bg-slate-100"
-                    : "text-slate-400 hover:text-white hover:bg-[#1E3A5C]/60"
-                )}
-              >
-                <span className={cn(
-                  "text-[9px] font-bold",
-                  activeChapter === g.key ? "text-blue-200" : "text-blue-500"
-                )}>{String(i + 1).padStart(2, "0")}</span>
-                {g.title}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Top horizontal chapter strip removed — the left sidebar is the nav. */}
 
       {/* ── Table of Contents ───────────────────────────────────────────────── */}
       {groupedSections.length > 0 && (
