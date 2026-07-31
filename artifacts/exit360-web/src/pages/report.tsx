@@ -367,13 +367,13 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
             <CartesianGrid stroke="#1E3A5C" {...(isHoriz ? { horizontal: false } : { vertical: false })} />
             {isHoriz ? (
               <>
-                <XAxis type="number" tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="label" tick={{ fill: "#8B9CB8", fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
+                <XAxis type="number" tick={{ fill: "#E2E8F0", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="label" tick={{ fill: "#E2E8F0", fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
               </>
             ) : (
               <>
-                <XAxis dataKey="label" tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="label" tick={{ fill: "#E2E8F0", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#E2E8F0", fontSize: 10 }} axisLine={false} tickLine={false} />
               </>
             )}
             <Tooltip
@@ -409,7 +409,7 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
                 const y2 = pcy + r * Math.sin(-midAngle * RADIAN);
                 const pct = Math.round((Number(value) / total) * 100);
                 return (
-                  <text x={x} y={y2} fill="#8B9CB8" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="600">
+                  <text x={x} y={y2} fill="#E2E8F0" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="600">
                     {`${pct}%`}
                   </text>
                 );
@@ -419,7 +419,7 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
             </Pie>
             <Tooltip contentStyle={VIZ_TIP} formatter={(v: number) => [`${v.toFixed(1)}%`, ""]} />
             <Legend iconType="circle" iconSize={8}
-              formatter={(n) => <span style={{ color: "#8B9CB8", fontSize: 11 }}>{n}</span>} />
+              formatter={(n) => <span style={{ color: "#E2E8F0", fontSize: 11 }}>{n}</span>} />
           </PieChart>
         </ResponsiveContainer>
       );
@@ -437,8 +437,8 @@ function ReportVisualBlock({ visual, printMode }: { visual: ReportVisualEntry; p
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={bridgeData} margin={{ left: 40, right: 20, top: 5, bottom: 5 }}>
             <CartesianGrid vertical={false} stroke="#1E3A5C" />
-            <XAxis dataKey="name" tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "#8B9CB8", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="name" tick={{ fill: "#E2E8F0", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "#E2E8F0", fontSize: 10 }} axisLine={false} tickLine={false} />
             <Tooltip
               contentStyle={VIZ_TIP}
               cursor={{ fill: "rgba(30,58,92,0.35)" }}
@@ -957,14 +957,27 @@ export function ReportPage() {
   }
 
   return (
-    <div ref={rootRef} className={cn("min-h-screen font-sans", printMode ? "bg-white text-slate-900 print-mode" : "bg-[#070F1C] text-white")}>
+    <div
+      ref={rootRef}
+      className={cn("min-h-screen font-sans", printMode ? "bg-white text-slate-900 print-mode" : "text-white")}
+      style={printMode ? undefined : {
+        backgroundColor: "#060B15",
+        backgroundImage:
+          "radial-gradient(1100px 820px at 10% -8%, rgba(59,130,246,0.18), transparent 60%)," +
+          "radial-gradient(1000px 720px at 94% 4%, rgba(139,92,246,0.16), transparent 55%)," +
+          "radial-gradient(1200px 900px at 78% 55%, rgba(236,72,153,0.10), transparent 55%)," +
+          "radial-gradient(1200px 1000px at 30% 108%, rgba(20,184,166,0.12), transparent 60%)",
+        backgroundAttachment: "fixed",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
 
       {/* ── Sticky Nav ─────────────────────────────────────────────────────── */}
       <nav className={cn(
         "fixed top-0 left-0 right-0 z-50 border-b print:hidden transition-colors",
         printMode ? "bg-white border-slate-200" : "bg-[#070F1C]/95 backdrop-blur border-[#1E3A5C]"
       )}>
-        <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+        <div className="max-w-[1440px] mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <span className={cn("text-xs font-bold tracking-wider", printMode ? "text-slate-400" : "text-blue-500")}>
               EXIT360
@@ -1010,7 +1023,7 @@ export function ReportPage() {
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(139,92,246,0.08),transparent_60%)]" />
           </>
         )}
-        <div className="relative max-w-5xl mx-auto px-6 py-16">
+        <div className="relative max-w-[1440px] mx-auto px-6 py-16">
           <div className="flex flex-wrap items-center gap-2 mb-6">
             <span className={cn(
               "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border",
@@ -1144,7 +1157,7 @@ export function ReportPage() {
           "border-b py-8 print:hidden",
           printMode ? "bg-slate-50 border-slate-200" : "bg-[#0F2040]/60 border-[#1E3A5C]"
         )}>
-          <div className="max-w-5xl mx-auto px-6">
+          <div className="max-w-[1440px] mx-auto px-6">
             <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-5", printMode ? "text-slate-400" : "text-slate-500")}>
               Contents
             </p>
@@ -1194,13 +1207,15 @@ export function ReportPage() {
         </nav>
       )}
 
+      {/* ── Sidebar + content — centred together, capped at 1440px ──────────────── */}
+      <div className="max-w-[1440px] mx-auto xl:flex xl:items-start">
       {/* ── Desktop sidebar ───────────────────────────────────────────────────── */}
       {groupedSections.length > 0 && (
         <aside className={cn(
-          "hidden xl:flex flex-col fixed left-0 top-14 bottom-0 w-52 overflow-y-auto border-r z-30 py-5 print:hidden",
-          printMode ? "bg-white border-slate-200" : "bg-[#070F1C]/98 border-[#1E3A5C]"
+          "hidden xl:flex flex-col sticky top-14 self-start w-56 flex-shrink-0 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-r z-30 py-6 print:hidden",
+          printMode ? "bg-white border-slate-200" : "border-[#1E3A5C]"
         )}>
-          <p className={cn("text-[9px] font-bold uppercase tracking-widest px-4 mb-3", printMode ? "text-slate-400" : "text-slate-600")}>
+          <p className={cn("text-xs font-bold uppercase tracking-widest px-5 mb-4", printMode ? "text-slate-400" : "text-slate-500")}>
             Chapters
           </p>
           {groupedSections.map((g, i) => (
@@ -1209,16 +1224,16 @@ export function ReportPage() {
               href={`#chapter-${g.key}`}
               onClick={() => setActiveChapter(g.key)}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 text-xs transition-colors border-l-2",
+                "flex items-center gap-2.5 px-5 py-2.5 text-[15px] leading-snug transition-colors border-l-2",
                 activeChapter === g.key
                   ? "border-blue-500 bg-blue-500/10 text-blue-300 font-semibold"
                   : printMode
                   ? "border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  : "border-transparent text-slate-500 hover:bg-[#1E3A5C]/40 hover:text-white"
+                  : "border-transparent text-slate-400 hover:bg-[#1E3A5C]/40 hover:text-white"
               )}
             >
               <span className={cn(
-                "text-[9px] font-bold flex-shrink-0 w-5",
+                "text-xs font-bold flex-shrink-0 w-5",
                 activeChapter === g.key ? "text-blue-400" : "text-blue-600"
               )}>
                 {String(i + 1).padStart(2, "0")}
@@ -1230,7 +1245,7 @@ export function ReportPage() {
       )}
 
       {/* ── Chapter Groups ────────────────────────────────────────────────────── */}
-      <main className={cn("px-6 py-10 space-y-14", groupedSections.length > 0 ? "xl:pl-56 max-w-5xl xl:max-w-none xl:ml-52 xl:mr-auto xl:pr-8" : "max-w-5xl mx-auto")}>
+      <main className="flex-1 min-w-0 px-6 py-10 space-y-14">
         {groupedSections.map((group, gIdx) => {
           const chapterAccent = ACCENT_COLORS[gIdx % ACCENT_COLORS.length];
           let sectionCounter = 0;
@@ -1517,13 +1532,14 @@ export function ReportPage() {
           );
         })()}
       </main>
+      </div>
 
       {/* ── Disclaimer ────────────────────────────────────────────────────────── */}
       <footer className={cn(
         "border-t mt-4 py-10 print:pt-4",
         printMode ? "bg-slate-50 border-slate-200" : "bg-[#070F1C] border-[#1E3A5C]"
       )}>
-        <div className="max-w-5xl mx-auto px-6 space-y-4">
+        <div className="max-w-[1440px] mx-auto px-6 space-y-4">
           <p className={cn("text-xs font-bold uppercase tracking-wider", printMode ? "text-slate-400" : "text-slate-600")}>
             Disclaimer
           </p>
