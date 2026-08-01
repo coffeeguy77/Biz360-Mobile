@@ -246,8 +246,33 @@ export function ValuationProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useValuation() {
-  const ctx = useContext(ValuationContext);
-  if (!ctx) throw new Error("useValuation must be used inside ValuationProvider");
-  return ctx;
+// Safe no-op fallback so calling useValuation() OUTSIDE a ValuationProvider can
+// never crash a screen (e.g. the message thread, which lives outside the seller
+// tab group). Screens that need live data are always mounted under the provider;
+// screens that only read selectedCafe opportunistically just get null here.
+const VALUATION_FALLBACK: ValuationContextType = {
+  cafes: [],
+  selectedCafe: null,
+  loadingCafes: false,
+  fetchCafes: async () => [],
+  selectCafe: async () => {},
+  createCafe: async () => null,
+  equipment: [],
+  fetchEquipment: async () => {},
+  adjustments: [],
+  fetchAdjustments: async () => {},
+  latestSnapshot: { combined: null, units: [] },
+  fetchSnapshot: async () => {},
+  refresh: async () => {},
+  businessUnits: [],
+  fetchUnits: async () => {},
+  createUnit: async () => null,
+  updateUnit: async () => {},
+  deleteUnit: async () => {},
+  recalculateSnapshot: async () => {},
+  authToken: null,
+};
+
+export function useValuation(): ValuationContextType {
+  return useContext(ValuationContext) ?? VALUATION_FALLBACK;
 }
