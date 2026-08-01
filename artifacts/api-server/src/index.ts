@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { runBootMigrations } from "./lib/boot-migrations";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,6 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  // Apply additive schema tweaks against the live DB (idempotent, non-blocking).
+  void runBootMigrations();
 });
