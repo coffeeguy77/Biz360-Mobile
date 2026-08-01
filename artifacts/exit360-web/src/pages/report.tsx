@@ -785,7 +785,7 @@ interface EquipmentRegister {
 }
 
 // ── Equipment register section ────────────────────────────────────────────────
-function EquipmentRegisterSection({ reg, printMode }: { reg: EquipmentRegister; printMode: boolean }) {
+function EquipmentRegisterSection({ reg, printMode, inline }: { reg: EquipmentRegister; printMode: boolean; inline?: boolean }) {
   const fmt = (n: number) =>
     n > 0 ? `$${n.toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
   const groups: Record<string, EquipmentItem[]> = {};
@@ -793,7 +793,7 @@ function EquipmentRegisterSection({ reg, printMode }: { reg: EquipmentRegister; 
   const cats = Object.keys(groups).sort();
   const th = cn("px-4 py-2.5 font-semibold text-xs uppercase tracking-wider", printMode ? "text-slate-500" : "text-slate-400");
   return (
-    <section id="equipment-register" className="max-w-[1440px] mx-auto px-6 mt-14 scroll-mt-24">
+    <section id="equipment-register" className={inline ? "mt-8 scroll-mt-24" : "max-w-[1440px] mx-auto px-6 mt-14 scroll-mt-24"}>
       <div className={cn("rounded-2xl border p-6 sm:p-8 report-avoid-break", printMode ? "bg-white border-slate-200" : "bg-[#0A1828]/50 border-[#1E3A5C]/60")}>
         <div className="flex items-start gap-4 mb-5">
           <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: "#F59E0B", minHeight: 40 }} />
@@ -1700,6 +1700,11 @@ export function ReportPage() {
                     </section>
                   );
                 })}
+
+                {/* Full equipment register lives under the Assets & Equipment chapter */}
+                {group.key === "assets_equipment" && equipment && (
+                  <EquipmentRegisterSection reg={equipment} printMode={printMode} inline />
+                )}
               </div>
             </div>
           );
@@ -1817,8 +1822,11 @@ export function ReportPage() {
       </main>
       </div>
 
-      {/* ── Equipment register (base of report) ─────────────────────────────── */}
-      {equipment && <EquipmentRegisterSection reg={equipment} printMode={printMode} />}
+      {/* Equipment register now renders inside the Assets & Equipment chapter above.
+          Fallback: if that chapter isn't present but equipment exists, show it here. */}
+      {equipment && !groupedSections.some((g) => g.key === "assets_equipment") && (
+        <EquipmentRegisterSection reg={equipment} printMode={printMode} />
+      )}
 
       {/* ── Disclaimer ────────────────────────────────────────────────────────── */}
       <footer className={cn(
