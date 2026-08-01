@@ -243,21 +243,36 @@ function fmtTime(ts: number): string {
   catch { return ""; }
 }
 
-// Shared chat styling: themed scrollbar + iMessage-style bubble tails.
+// Shared chat styling: themed scrollbar + classic iMessage bubble tails.
+// The ::after mask uses the chat background colour (CHAT_BG) to carve the curve.
+const CHAT_BG = "#0b1a2e";
 const CHAT_STYLE = `
 .exit-chat::-webkit-scrollbar { width: 8px; }
 .exit-chat::-webkit-scrollbar-track { background: rgba(30,58,92,0.12); border-radius: 8px; margin: 6px 0; }
 .exit-chat::-webkit-scrollbar-thumb { background: #24466e; border-radius: 8px; }
 .exit-chat::-webkit-scrollbar-thumb:hover { background: #2f5a8c; }
-.exit-chat { scrollbar-width: thin; scrollbar-color: #24466e transparent; }
+.exit-chat { scrollbar-width: thin; scrollbar-color: #24466e transparent; background: ${CHAT_BG}; }
 .exit-bubble { position: relative; }
+.exit-bubble::before, .exit-bubble::after { content:""; position:absolute; bottom:-0.1rem; height:1rem; }
+.exit-bubble-mine::before {
+  border-bottom-left-radius: 0.8rem 0.7rem;
+  border-right: 1rem solid #2563eb;
+  right: -0.35rem; transform: translate(0, -0.1rem);
+}
 .exit-bubble-mine::after {
-  content:""; position:absolute; bottom:1px; right:-5px;
-  width:0; height:0; border-top:9px solid #2563eb; border-right:8px solid transparent;
+  background: ${CHAT_BG};
+  border-bottom-left-radius: 0.5rem;
+  right: -40px; width: 10px; transform: translate(-30px, -2px);
+}
+.exit-bubble-them::before {
+  border-bottom-right-radius: 0.8rem 0.7rem;
+  border-left: 1rem solid #22304a;
+  left: -0.35rem; transform: translate(0, -0.1rem);
 }
 .exit-bubble-them::after {
-  content:""; position:absolute; bottom:1px; left:-5px;
-  width:0; height:0; border-top:9px solid #16233a; border-left:8px solid transparent;
+  background: ${CHAT_BG};
+  border-bottom-right-radius: 0.5rem;
+  left: 20px; width: 10px; transform: translate(-30px, -2px);
 }
 `;
 
@@ -315,10 +330,10 @@ function ThreadCard({ thread, onReply }: { thread: Thread; onReply: (id: string,
             <div key={m.id} className={cn("flex flex-col max-w-[78%]", mine ? "self-end items-end" : "self-start items-start")}>
               <div
                 className={cn(
-                  "exit-bubble px-3.5 py-2 text-sm leading-snug shadow-sm",
+                  "exit-bubble px-3.5 py-2 text-sm leading-snug",
                   mine
-                    ? "exit-bubble-mine bg-blue-600 text-white rounded-2xl rounded-br-md"
-                    : "exit-bubble-them bg-[#16233a] text-slate-100 rounded-2xl rounded-bl-md",
+                    ? "exit-bubble-mine bg-[#2563eb] text-white rounded-[1.15rem]"
+                    : "exit-bubble-them bg-[#22304a] text-slate-100 rounded-[1.15rem]",
                 )}
               >
                 {m.text}
