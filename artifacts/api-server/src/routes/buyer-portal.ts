@@ -28,6 +28,8 @@ import {
   buyerPortalGroupsTable,
   buyerPortalGroupMembersTable,
   buyerPortalGroupPermissionsTable,
+  ndaSettingsTable,
+  ndaSignaturesTable,
 } from "@workspace/db";
 import { requireAuth, verifyToken } from "../middlewares/auth";
 import { sendEmail, emailShell, isValidEmail, PUBLIC_WEB_URL } from "../lib/email";
@@ -92,6 +94,58 @@ async function signReportAccessToken(listingId: string, phone: string): Promise<
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("24h")
     .sign(getJwtSecret());
+}
+
+// ─── NDA (per-listing, tick-to-accept) ────────────────────────────────────────
+// Buyers must accept a per-listing NDA before the confidential report unlocks.
+// Backed by the existing nda_settings (mode) + nda_signatures (audit) tables.
+// Policy: NDA is REQUIRED by default; a seller can disable it per listing by
+// setting nda_settings.ndaMode = 'none'.
+
+/**
+ * Resolve the buyer's phone from whichever token the report page holds — the
+ * per-listing report-access token (preferred) or a buyer_portal token. Returns
+ * null if the token is invalid or (for a report-access token) is for a different
+ * listing, so a token for listing A can never sign the NDA for listing B.
+ */
+async function resolveNdaPhone(token: string | undefined, listingId: string): Promise<string | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    const p = payload as { phone?: string; type?: string; role?: string; listingId?: string };
+    if (p.type === "buyer-report-access" && p.phone) {
+      if (p.listingId && p.listingId !== listingId) return null;
+      return p.phone;
+    }
+    if (p.role === "buyer_portal" && p.phone) return p.phone;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Is an NDA required for this listing? Default true unless seller set 'none'. */
+async function ndaRequiredForListing(listingId: string): Promise<boolean> {
+  try {
+    const [settings] = await db.select().from(ndaSettingsTable)
+      .where(eq(ndaSettingsTable.listingId, listingId));
+    if (!settings) return true;            // no explicit setting → required by default
+    return settings.ndaMode !== "none";
+  } catch {
+    return true;
+  }
+}
+
+/** Has this buyer (phone) already signed the NDA for this listing? */
+async function ndaSigned(listingId: string, phone: string): Promise<boolean> {
+  try {
+    const [row] = await db.select().from(ndaSignaturesTable)
+      .where(and(eq(ndaSignaturesTable.listingId, listingId), eq(ndaSignaturesTable.buyerPhone, phone)))
+      .limit(1);
+    return !!row;
+  } catch {
+    return false;
+  }
 }
 
 function getTwilioClient() {
@@ -378,6 +432,63 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
   );
 
   res.json({ listings: listings.filter(Boolean), phone, ...emailInfo });
+});
+
+// ─── Buyer NDA gate ───────────────────────────────────────────────────────────
+
+/**
+ * POST /api/buyer-portal/nda/status
+ * Body: { listingId, accessToken }
+ * Returns whether an NDA is required for this listing and whether THIS buyer has
+ * already signed it. Called by the report page before revealing confidential
+ * content. Identity comes from the token (never trust a client-supplied phone).
+ */
+router.post("/buyer-portal/nda/status", async (req, res): Promise<void> => {
+  const { listingId, accessToken } = req.body as { listingId?: string; accessToken?: string };
+  if (!listingId) { res.status(400).json({ error: "listingId required" }); return; }
+  const phone = await resolveNdaPhone(accessToken, listingId);
+  const required = await ndaRequiredForListing(listingId);
+  // Without a resolvable identity we can't record a signature, so treat as
+  // "not required" rather than trapping the viewer behind an unusable gate.
+  if (!phone) { res.json({ required: false, accepted: false }); return; }
+  const accepted = required ? await ndaSigned(listingId, phone) : true;
+  res.json({ required, accepted });
+});
+
+/**
+ * POST /api/buyer-portal/nda/accept
+ * Body: { listingId, accessToken, fullName }
+ * Records the buyer's tick-to-accept NDA signature for this listing.
+ */
+router.post("/buyer-portal/nda/accept", async (req, res): Promise<void> => {
+  const { listingId, accessToken, fullName } = req.body as {
+    listingId?: string; accessToken?: string; fullName?: string;
+  };
+  if (!listingId) { res.status(400).json({ error: "listingId required" }); return; }
+  const name = (fullName ?? "").trim();
+  if (name.length < 2) { res.status(400).json({ error: "Please enter your full name" }); return; }
+  const phone = await resolveNdaPhone(accessToken, listingId);
+  if (!phone) { res.status(401).json({ error: "Could not verify your access" }); return; }
+  try {
+    // Idempotent: if they've already signed, don't stack duplicate rows.
+    if (!(await ndaSigned(listingId, phone))) {
+      const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+        || req.socket?.remoteAddress || null;
+      const ua = (req.headers["user-agent"] as string | undefined) ?? null;
+      await db.insert(ndaSignaturesTable).values({
+        listingId,
+        buyerName: name,
+        buyerPhone: phone,
+        buyerIp: ip,
+        userAgent: ua,
+        otpVerified: true,
+      });
+    }
+    res.json({ accepted: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Could not record your NDA";
+    res.status(500).json({ error: msg });
+  }
 });
 
 // ─── Seller: group CRUD ───────────────────────────────────────────────────────

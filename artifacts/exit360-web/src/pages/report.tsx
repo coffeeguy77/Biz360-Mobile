@@ -901,6 +901,15 @@ export function ReportPage() {
   const [openChapter, setOpenChapter] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [equipment, setEquipment] = useState<EquipmentRegister | null>(null);
+  // NDA gate — buyers accessing via a report-access token must accept the
+  // per-listing NDA before any confidential content is shown.
+  const [ndaRequired, setNdaRequired]   = useState(false);
+  const [ndaAccepted, setNdaAccepted]   = useState(false);
+  const [ndaChecked, setNdaChecked]     = useState(false);
+  const [ndaName, setNdaName]           = useState("");
+  const [ndaAgree, setNdaAgree]         = useState(false);
+  const [ndaSubmitting, setNdaSubmitting] = useState(false);
+  const [ndaError, setNdaError]         = useState<string | null>(null);
   // Token obtained by exchanging a one-time previewCode (stored in sessionStorage
   // so re-renders within the same tab don't re-fire the already-consumed code).
   const [previewToken, setPreviewToken] = useState<string | null>(() => {
@@ -1000,6 +1009,48 @@ export function ReportPage() {
       })
       .catch(() => setEquipment(null));
   }, [listingId]);
+
+  // Check the NDA gate for buyers arriving with a report-access token.
+  useEffect(() => {
+    if (!listingId || !accessToken) { setNdaChecked(true); return; }
+    let active = true;
+    fetch("/api/buyer-portal/nda/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId, accessToken }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { required?: boolean; accepted?: boolean } | null) => {
+        if (!active) return;
+        setNdaRequired(!!d?.required);
+        setNdaAccepted(!!d?.accepted);
+        setNdaChecked(true);
+      })
+      .catch(() => { if (active) setNdaChecked(true); });
+    return () => { active = false; };
+  }, [listingId, accessToken]);
+
+  async function acceptNda() {
+    const name = ndaName.trim();
+    if (name.length < 2) { setNdaError("Please enter your full name."); return; }
+    if (!ndaAgree) { setNdaError("Please tick the box to agree to the NDA."); return; }
+    setNdaSubmitting(true); setNdaError(null);
+    try {
+      const r = await fetch("/api/buyer-portal/nda/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, accessToken, fullName: name }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.accepted) { setNdaError(d.error ?? "Could not record your NDA. Please try again."); return; }
+      recordAccessLog(listingId, "nda_signed");
+      setNdaAccepted(true);
+    } catch {
+      setNdaError("Network error. Please try again.");
+    } finally {
+      setNdaSubmitting(false);
+    }
+  }
 
   function handleDownloadPdf() {
     // Print the CURRENT on-screen report (Save as PDF in the print dialog) so the
@@ -1139,6 +1190,62 @@ export function ReportPage() {
           <FileText className="mx-auto text-slate-500" size={40} />
           <p className="text-white font-semibold">Report not available</p>
           <p className="text-slate-400 text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── NDA GATE ────────────────────────────────────────────────────────────────
+  // Buyers arriving with a report-access token must accept the per-listing NDA
+  // before any confidential content renders.
+  if (accessToken && ndaChecked && ndaRequired && !ndaAccepted) {
+    const bizName = (data?.meta?.businessName ?? businessName ?? "this business").trim();
+    return (
+      <div className="min-h-screen bg-[#070F1C] text-white flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md bg-[#0A1828] border border-[#1E3A5C] rounded-2xl p-7">
+          <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mb-4">
+            <FileText className="text-blue-400" size={22} />
+          </div>
+          <h1 className="text-xl font-bold mb-2">Non-Disclosure Agreement</h1>
+          <p className="text-slate-400 text-sm leading-relaxed mb-4">
+            The information memorandum for <span className="text-white font-medium">{bizName}</span> is
+            strictly confidential. Before viewing it you must agree to keep all financials, documents and
+            business details confidential and use them solely to evaluate this opportunity.
+          </p>
+          <div className="max-h-40 overflow-y-auto rounded-lg border border-[#1E3A5C] bg-[#070F1C] p-3 text-xs text-slate-400 leading-relaxed mb-4">
+            <p className="mb-2">By signing, you agree that you will not disclose, copy, or distribute any
+              information contained in this report to any third party without the seller's written consent;
+              you will not use the information to compete with or solicit the business; and you will return
+              or destroy all materials on request. This agreement is legally binding.</p>
+            <p>Your name, verified mobile number and the date and time of acceptance are recorded.</p>
+          </div>
+          <label className="block text-xs font-medium text-slate-400 mb-1.5">Your full name</label>
+          <input
+            type="text"
+            value={ndaName}
+            onChange={(e) => setNdaName(e.target.value)}
+            placeholder="e.g. Cara Matthews"
+            className="w-full px-3.5 py-2.5 rounded-lg border-2 border-[#1E3A5C] bg-[#070F1C] text-white text-sm outline-none focus:border-blue-500/60 transition-colors mb-3"
+          />
+          <label className="flex items-start gap-2.5 cursor-pointer mb-4">
+            <input
+              type="checkbox"
+              checked={ndaAgree}
+              onChange={(e) => setNdaAgree(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-blue-500 flex-shrink-0"
+            />
+            <span className="text-xs text-slate-300 leading-relaxed">
+              I have read and agree to the Non-Disclosure Agreement for {bizName}.
+            </span>
+          </label>
+          {ndaError && <p className="text-sm text-red-400 mb-3">{ndaError}</p>}
+          <button
+            onClick={acceptNda}
+            disabled={ndaSubmitting}
+            className="w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+          >
+            {ndaSubmitting ? "Recording…" : "Agree & View Report"}
+          </button>
         </div>
       </div>
     );
