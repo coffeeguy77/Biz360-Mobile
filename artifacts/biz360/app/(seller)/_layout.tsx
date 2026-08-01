@@ -107,9 +107,10 @@ function ClassicLayout() {
       <Tabs.Screen name="leases"     options={{ title: "Leases",     tabBarIcon: ({ color }) => isIOS ? <SymbolView name="doc.text"                        tintColor={color} size={24} /> : <Feather name="file-text"     size={22} color={color} /> }} />
       <Tabs.Screen name="more"       options={{ title: "More",       tabBarIcon: ({ color }) => isIOS ? <SymbolView name="ellipsis"                        tintColor={color} size={24} /> : <Feather name="more-horizontal" size={22} color={color} /> }} />
       {/* Hidden tabs — accessible via router.push from More screen */}
-      <Tabs.Screen name="listings"   options={{ href: null }} />
-      <Tabs.Screen name="leads"      options={{ href: null }} />
-      <Tabs.Screen name="help"       options={{ href: null }} />
+      <Tabs.Screen name="listings"       options={{ href: null }} />
+      <Tabs.Screen name="leads"          options={{ href: null }} />
+      <Tabs.Screen name="help"           options={{ href: null }} />
+      <Tabs.Screen name="seller-profile" options={{ href: null }} />
     </Tabs>
   );
 }

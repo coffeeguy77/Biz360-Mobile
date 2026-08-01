@@ -23,6 +23,14 @@ const MORE_ITEMS = [
     bg:      "#431407",
   },
   {
+    icon:    "user",
+    label:   "Seller Details",
+    desc:    "Your public profile & phone visibility",
+    route:   "/(seller)/seller-profile",
+    color:   "#3B82F6",
+    bg:      "#1E3A5C",
+  },
+  {
     icon:    "book-open",
     label:   "Help & Guides",
     desc:    "Resources and support",

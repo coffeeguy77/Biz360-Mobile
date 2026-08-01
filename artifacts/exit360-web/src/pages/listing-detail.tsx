@@ -465,6 +465,35 @@ export function ListingDetail() {
     return () => { active = false; clearInterval(iv); };
   }, [listingId]);
 
+  // Seller card (name/company/bio + whether a phone can be revealed).
+  const [sellerCard, setSellerCard] = useState<{ displayName: string; company?: string | null; bio?: string | null; anonymous?: boolean; phoneAvailable?: boolean } | null>(null);
+  const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
+  const [revealMsg, setRevealMsg] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  useEffect(() => {
+    if (!listingId) return;
+    fetch(`/api/biz360/public/listing/${listingId}/seller`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setSellerCard(d); })
+      .catch(() => {});
+  }, [listingId]);
+
+  async function revealSellerPhone() {
+    setRevealing(true); setRevealMsg(null);
+    try {
+      const token = localStorage.getItem("biz360_web_auth_token");
+      const r = await fetch(`/api/biz360/public/listing/${listingId}/seller/reveal-phone`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.phone) { setRevealedPhone(d.phone); }
+      else if (d.error === "verify_phone") { setRevealMsg("Verify your phone number first (tap Request Info or Request a Call), then you can see the seller's number."); }
+      else { setRevealMsg(d.message ?? "The seller's number isn't available."); }
+    } catch { setRevealMsg("Something went wrong — please try again."); }
+    finally { setRevealing(false); }
+  }
+
   const [spaces, setSpaces] = useState<TourSpace[]>([]);
   const [spacesLoading, setSpacesLoading] = useState(false);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -1196,6 +1225,39 @@ export function ListingDetail() {
                   )}
                 </div>
               </div>
+
+              {/* About the seller */}
+              {sellerCard && (
+                <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <User size={14} className="text-blue-400" />
+                    <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">About the Seller</span>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">{sellerCard.displayName}</div>
+                    {sellerCard.company && <div className="text-xs text-muted-foreground mt-0.5">{sellerCard.company}</div>}
+                  </div>
+                  {sellerCard.bio && <p className="text-xs text-muted-foreground leading-relaxed">{sellerCard.bio}</p>}
+                  {sellerCard.anonymous ? (
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                      <Lock size={11} /> This seller is contactable via secure messages only.
+                    </p>
+                  ) : revealedPhone ? (
+                    <a href={`tel:${revealedPhone}`} className="inline-flex items-center gap-2 text-sm font-semibold text-green-400">
+                      <Phone size={14} /> {revealedPhone}
+                    </a>
+                  ) : sellerCard.phoneAvailable ? (
+                    <>
+                      <Button variant="outline" className="w-full gap-2" onClick={revealSellerPhone} disabled={revealing}>
+                        <Phone size={14} /> {revealing ? "Revealing…" : "Show phone number"}
+                      </Button>
+                      {revealMsg && <p className="text-[11px] text-muted-foreground">{revealMsg}</p>}
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">Contact this seller through the message system.</p>
+                  )}
+                </div>
+              )}
 
               {/* Valuation report — access-gated */}
               {listing.isRealListing && (() => {

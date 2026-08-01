@@ -325,6 +325,143 @@ router.get("/public/listing/:listingId/equipment", async (req, res): Promise<voi
   }
 });
 
+// ─── Seller profile + phone-reveal gating ─────────────────────────────────────
+// The seller controls what's shown on their listing and whether their phone is
+// revealed. Profile is stored per-owner in KV; the phone is hidden until a buyer
+// has verified their own phone (and only if the seller allows it).
+const SELLER_PROFILE_PREFIX = "biz360_seller_profile_v1_";
+function ownerBase(id?: string | null): string {
+  if (!id) return "";
+  const m = id.match(/^u-\d+/);
+  return m ? m[0] : id;
+}
+async function loadListing(listingId: string): Promise<any | null> {
+  const [row] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+  const all = Array.isArray(row?.value) ? (row!.value as any[]) : [];
+  return all.find((l) => l?.listingId === listingId) ?? null;
+}
+async function loadSellerProfile(ownerId: string): Promise<any> {
+  const key = SELLER_PROFILE_PREFIX + ownerBase(ownerId);
+  const [row] = await db.select().from(kvStore).where(eq(kvStore.key, key));
+  return (row?.value ?? {}) as any;
+}
+// Merge stored profile with sensible defaults from the listing.
+function resolveSellerCard(listing: any, profile: any) {
+  const anonymous = profile?.anonymous === true;
+  const showPhone = profile?.showPhone !== false; // default: reveal to verified buyers
+  const phone = (profile?.phone && String(profile.phone).trim()) || listing?.sellerPhone || null;
+  const displayName = anonymous
+    ? "Private Seller"
+    : (profile?.displayName || listing?.sellerName || listing?.submittedByName || "The Seller");
+  return {
+    displayName,
+    company: anonymous ? null : (profile?.company || null),
+    bio: anonymous ? null : (profile?.bio || null),
+    anonymous,
+    phone,
+    phoneAvailable: !!phone && showPhone && !anonymous,
+  };
+}
+
+// Public seller card — never includes the phone number.
+router.get("/public/listing/:listingId/seller", async (req, res): Promise<void> => {
+  try {
+    const listing = await loadListing(req.params.listingId);
+    if (!listing) { res.json({ displayName: "The Seller", anonymous: false, phoneAvailable: false }); return; }
+    const profile = await loadSellerProfile(listing.submittedBy);
+    const card = resolveSellerCard(listing, profile);
+    res.json({
+      displayName: card.displayName,
+      company: card.company,
+      bio: card.bio,
+      anonymous: card.anonymous,
+      phoneAvailable: card.phoneAvailable,
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to load seller" });
+  }
+});
+
+// Reveal the seller's phone — only to a buyer who has verified their own phone
+// (a valid biz360 auth token) and only if the seller allows it. Logs show_phone.
+router.post("/public/listing/:listingId/seller/reveal-phone", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const buyerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!buyerId) { res.status(401).json({ error: "verify_phone", message: "Verify your phone number to see the seller's number." }); return; }
+  try {
+    const listing = await loadListing(req.params.listingId);
+    if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+    const profile = await loadSellerProfile(listing.submittedBy);
+    const card = resolveSellerCard(listing, profile);
+    if (!card.phoneAvailable) { res.status(403).json({ error: "unavailable", message: "This seller prefers to be contacted via messages." }); return; }
+    // Record the reveal for the seller's dashboard.
+    try {
+      await db.insert(reportAccessLogsTable).values({
+        listingId: req.params.listingId,
+        eventType: "show_phone",
+        buyerId,
+        buyerPhone: null,
+        buyerIp: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null,
+        userAgent: req.headers["user-agent"] ?? null,
+        metadata: null,
+      });
+    } catch { /* non-fatal */ }
+    res.json({ phone: card.phone });
+  } catch {
+    res.status(500).json({ error: "Failed to reveal phone" });
+  }
+});
+
+// Seller: read own profile (for the app backend editor).
+router.get("/biz360/seller/profile", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const ownerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!ownerId) { res.status(401).json({ error: "Auth required" }); return; }
+  try {
+    const profile = await loadSellerProfile(ownerId);
+    // Seed a phone default from any of the seller's listings.
+    const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
+    const mine = listings.find((l) => ownerBase(l?.submittedBy) === ownerBase(ownerId));
+    res.json({
+      displayName: profile.displayName ?? mine?.sellerName ?? mine?.submittedByName ?? "",
+      company: profile.company ?? "",
+      bio: profile.bio ?? "",
+      phone: profile.phone ?? mine?.sellerPhone ?? "",
+      email: profile.email ?? "",
+      showPhone: profile.showPhone !== false,
+      anonymous: profile.anonymous === true,
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to load profile" });
+  }
+});
+
+// Seller: save own profile.
+router.put("/biz360/seller/profile", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const ownerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!ownerId) { res.status(401).json({ error: "Auth required" }); return; }
+  const body = req.body as Record<string, unknown>;
+  const clean = {
+    displayName: String(body.displayName ?? "").slice(0, 120),
+    company: String(body.company ?? "").slice(0, 120),
+    bio: String(body.bio ?? "").slice(0, 1000),
+    phone: String(body.phone ?? "").slice(0, 32),
+    email: String(body.email ?? "").slice(0, 160),
+    showPhone: body.showPhone !== false,
+    anonymous: body.anonymous === true,
+  };
+  try {
+    const key = SELLER_PROFILE_PREFIX + ownerBase(ownerId);
+    await db.insert(kvStore).values({ key, value: clean as any })
+      .onConflictDoUpdate({ target: kvStore.key, set: { value: clean as any } });
+    res.json({ ok: true, profile: clean });
+  } catch {
+    res.status(500).json({ error: "Failed to save profile" });
+  }
+});
+
 // ─── New-message email alerts ─────────────────────────────────────────────────
 // POST /biz360/notify-message  { threadId, from }
 // Best-effort email to the OTHER party when a message is sent. The seller is

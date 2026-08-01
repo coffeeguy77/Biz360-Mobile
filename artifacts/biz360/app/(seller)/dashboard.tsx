@@ -248,6 +248,7 @@ export default function SellerDashboard() {
   const [analyticsLoading,  setAnalyticsLoading]  = useState(true);
   const [upgradeVisible,    setUpgradeVisible]    = useState(false);
   const [unreadMsgs,        setUnreadMsgs]        = useState(0);
+  const [actions,           setActions]           = useState({ info: 0, call: 0, phone: 0 });
 
   const { selectedCafe, latestSnapshot, fetchCafes, fetchSnapshot, authToken } = useValuation();
   const valMidpoint = latestSnapshot.combined?.valuationMidpoint;
@@ -276,6 +277,7 @@ export default function SellerDashboard() {
         const map = await getMultiAnalytics(ids);
 
         setAnalytics(aggregateAnalytics(Object.values(map)));
+        void refreshActions(ids);
 
         const featured = mine.find((l) => l.status === "approved") ?? mine[0];
         setFeaturedAnalytics(map[featured.listingId] ?? null);
@@ -299,6 +301,28 @@ export default function SellerDashboard() {
       const threads = await getThreads();
       const relevant = myIds.size > 0 ? threads.filter((t) => myIds.has(t.listingId)) : threads;
       setUnreadMsgs(relevant.reduce((n, t) => n + (t.unreadSeller ?? 0), 0));
+    } catch { /* non-critical */ }
+  }
+
+  // Count buyer actions (Request Info / Call / Show Phone) across my listings.
+  async function refreshActions(ids: string[]) {
+    if (!authToken || ids.length === 0) return;
+    try {
+      const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+      const counts = { info: 0, call: 0, phone: 0 };
+      await Promise.all(ids.map(async (lid) => {
+        const res = await fetch(`${API_BASE}/api/report-access-logs/listing/${lid}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) return;
+        const { events } = await res.json();
+        for (const e of (events ?? [])) {
+          if (e.eventType === "request_info") counts.info++;
+          else if (e.eventType === "request_call") counts.call++;
+          else if (e.eventType === "show_phone") counts.phone++;
+        }
+      }));
+      setActions(counts);
     } catch { /* non-critical */ }
   }
 
@@ -508,6 +532,30 @@ export default function SellerDashboard() {
           })}
         </View>
 
+        {/* ── Buyer actions (CRM) ── */}
+        {(actions.info + actions.call + actions.phone) > 0 && (
+          <View style={[styles.actionsCard, { backgroundColor: "#0F1F35", borderColor: "#1E3A5C" }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 4 }]}>Buyer Interest</Text>
+            <View style={styles.actionsRow}>
+              <View style={styles.actionItem}>
+                <Feather name="mail" size={16} color="#3B82F6" />
+                <Text style={styles.actionVal}>{actions.info}</Text>
+                <Text style={styles.actionLbl}>Info requests</Text>
+              </View>
+              <View style={styles.actionItem}>
+                <Feather name="phone" size={16} color="#EC4899" />
+                <Text style={styles.actionVal}>{actions.call}</Text>
+                <Text style={styles.actionLbl}>Call requests</Text>
+              </View>
+              <View style={styles.actionItem}>
+                <Feather name="eye" size={16} color="#16A34A" />
+                <Text style={styles.actionVal}>{actions.phone}</Text>
+                <Text style={styles.actionLbl}>Phone reveals</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* ── Valuation card ── */}
         <TouchableOpacity
           style={[styles.valuationCard, { backgroundColor: "#0F1F35", borderColor: "#1E3A5C" }]}
@@ -587,6 +635,11 @@ const styles = StyleSheet.create({
   msgBannerDot:     { position: "absolute", top: 6, right: 6, width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#2563EB" },
   msgBannerTitle:   { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
   msgBannerSub:     { color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  actionsCard:      { borderRadius: 16, padding: 16, borderWidth: 1, gap: 8 },
+  actionsRow:       { flexDirection: "row", justifyContent: "space-between" },
+  actionItem:       { flex: 1, alignItems: "center", gap: 3 },
+  actionVal:        { color: "#fff", fontSize: 20, fontFamily: "Inter_700Bold" },
+  actionLbl:        { color: "#8B9CB8", fontSize: 11, fontFamily: "Inter_400Regular" },
   upgradePill:      { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
   upgradeText:      { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   tourCard:         { borderRadius: 16, padding: 18, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
