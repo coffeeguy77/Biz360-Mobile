@@ -277,3 +277,194 @@
     inset: -1px;
   }
 }
+
+/* ============================================================================
+   THEME ENGINE — 8 distinct "wow" palettes.
+   Applied by adding one of the theme-* classes to <html>. No class = default
+   blue. Each theme overrides the core design tokens (so every bg-background /
+   bg-primary / text-muted-foreground restyles automatically) plus a set of
+   gradient/glow tokens used for hero backgrounds, text gradients and glows.
+   ========================================================================== */
+
+:root {
+  /* Default (blue) gradient/glow tokens so themed utilities work out of the box */
+  --grad-from: 213 94% 68%;
+  --grad-via:  200 90% 60%;
+  --grad-to:   142 72% 45%;
+  --glow:      213 94% 60%;
+}
+
+:root.theme-sunset {
+  --background: 20 32% 6%;   --foreground: 30 40% 96%;
+  --card: 18 34% 12%;        --card-foreground: 30 40% 96%;
+  --border: 18 30% 22%;      --input: 18 30% 22%;
+  --muted: 18 26% 16%;       --muted-foreground: 26 22% 64%;
+  --popover: 18 34% 11%;     --popover-foreground: 30 40% 96%;
+  --primary: 20 95% 57%;     --primary-foreground: 20 45% 8%;
+  --secondary: 18 40% 20%;   --secondary-foreground: 30 40% 92%;
+  --accent: 334 86% 60%;     --accent-foreground: 0 0% 100%;
+  --ring: 20 95% 57%;
+  --sidebar: 20 32% 6%;      --sidebar-foreground: 30 40% 96%; --sidebar-border: 18 30% 22%;
+  --sidebar-primary: 20 95% 57%; --sidebar-primary-foreground: 20 45% 8%;
+  --sidebar-accent: 18 40% 20%;  --sidebar-accent-foreground: 30 40% 92%; --sidebar-ring: 20 95% 57%;
+  --chart-1: 20 95% 57%; --chart-2: 334 86% 60%; --chart-3: 40 95% 58%; --chart-4: 26 22% 64%; --chart-5: 30 40% 92%;
+  --grad-from: 24 96% 56%; --grad-via: 340 90% 60%; --grad-to: 285 80% 62%; --glow: 22 95% 55%;
+}
+
+:root.theme-amethyst {
+  --background: 270 36% 7%;  --foreground: 280 40% 96%;
+  --card: 270 34% 13%;       --card-foreground: 280 40% 96%;
+  --border: 270 30% 24%;     --input: 270 30% 24%;
+  --muted: 270 28% 17%;      --muted-foreground: 276 22% 66%;
+  --popover: 270 34% 12%;    --popover-foreground: 280 40% 96%;
+  --primary: 270 90% 66%;    --primary-foreground: 270 45% 9%;
+  --secondary: 270 40% 22%;  --secondary-foreground: 280 40% 92%;
+  --accent: 322 86% 62%;     --accent-foreground: 0 0% 100%;
+  --ring: 270 90% 66%;
+  --sidebar: 270 36% 7%;     --sidebar-foreground: 280 40% 96%; --sidebar-border: 270 30% 24%;
+  --sidebar-primary: 270 90% 66%; --sidebar-primary-foreground: 270 45% 9%;
+  --sidebar-accent: 270 40% 22%;  --sidebar-accent-foreground: 280 40% 92%; --sidebar-ring: 270 90% 66%;
+  --chart-1: 270 90% 66%; --chart-2: 322 86% 62%; --chart-3: 245 85% 68%; --chart-4: 276 22% 66%; --chart-5: 280 40% 92%;
+  --grad-from: 262 90% 64%; --grad-via: 290 85% 62%; --grad-to: 326 86% 62%; --glow: 276 90% 62%;
+}
+
+:root.theme-magenta {
+  --background: 300 30% 6%;  --foreground: 300 28% 97%;
+  --card: 300 30% 12%;       --card-foreground: 300 28% 97%;
+  --border: 300 26% 24%;     --input: 300 26% 24%;
+  --muted: 300 22% 16%;      --muted-foreground: 300 16% 66%;
+  --popover: 300 30% 11%;    --popover-foreground: 300 28% 97%;
+  --primary: 322 96% 60%;    --primary-foreground: 320 50% 8%;
+  --secondary: 300 34% 20%;  --secondary-foreground: 300 28% 92%;
+  --accent: 184 90% 50%;     --accent-foreground: 190 60% 8%;
+  --ring: 322 96% 60%;
+  --sidebar: 300 30% 6%;     --sidebar-foreground: 300 28% 97%; --sidebar-border: 300 26% 24%;
+  --sidebar-primary: 322 96% 60%; --sidebar-primary-foreground: 320 50% 8%;
+  --sidebar-accent: 300 34% 20%;  --sidebar-accent-foreground: 300 28% 92%; --sidebar-ring: 322 96% 60%;
+  --chart-1: 322 96% 60%; --chart-2: 184 90% 50%; --chart-3: 285 90% 62%; --chart-4: 300 16% 66%; --chart-5: 300 28% 92%;
+  --grad-from: 322 96% 60%; --grad-via: 286 90% 60%; --grad-to: 188 90% 52%; --glow: 320 96% 58%;
+}
+
+:root.theme-crimson {
+  --background: 0 30% 6%;    --foreground: 20 32% 96%;
+  --card: 0 30% 12%;         --card-foreground: 20 32% 96%;
+  --border: 0 28% 23%;       --input: 0 28% 23%;
+  --muted: 0 24% 16%;        --muted-foreground: 12 20% 64%;
+  --popover: 0 30% 11%;      --popover-foreground: 20 32% 96%;
+  --primary: 352 85% 55%;    --primary-foreground: 0 40% 8%;
+  --secondary: 0 36% 20%;    --secondary-foreground: 20 32% 92%;
+  --accent: 38 95% 55%;      --accent-foreground: 40 60% 8%;
+  --ring: 352 85% 55%;
+  --sidebar: 0 30% 6%;       --sidebar-foreground: 20 32% 96%; --sidebar-border: 0 28% 23%;
+  --sidebar-primary: 352 85% 55%; --sidebar-primary-foreground: 0 40% 8%;
+  --sidebar-accent: 0 36% 20%;    --sidebar-accent-foreground: 20 32% 92%; --sidebar-ring: 352 85% 55%;
+  --chart-1: 352 85% 55%; --chart-2: 38 95% 55%; --chart-3: 12 85% 56%; --chart-4: 12 20% 64%; --chart-5: 20 32% 92%;
+  --grad-from: 352 86% 55%; --grad-via: 12 86% 55%; --grad-to: 38 95% 58%; --glow: 352 86% 54%;
+}
+
+:root.theme-rose {
+  --background: 338 26% 8%;  --foreground: 340 34% 97%;
+  --card: 338 26% 14%;       --card-foreground: 340 34% 97%;
+  --border: 338 22% 26%;     --input: 338 22% 26%;
+  --muted: 338 20% 18%;      --muted-foreground: 340 16% 68%;
+  --popover: 338 26% 13%;    --popover-foreground: 340 34% 97%;
+  --primary: 340 82% 66%;    --primary-foreground: 340 45% 10%;
+  --secondary: 338 32% 22%;  --secondary-foreground: 340 34% 92%;
+  --accent: 42 92% 62%;      --accent-foreground: 42 60% 10%;
+  --ring: 340 82% 66%;
+  --sidebar: 338 26% 8%;     --sidebar-foreground: 340 34% 97%; --sidebar-border: 338 22% 26%;
+  --sidebar-primary: 340 82% 66%; --sidebar-primary-foreground: 340 45% 10%;
+  --sidebar-accent: 338 32% 22%;  --sidebar-accent-foreground: 340 34% 92%; --sidebar-ring: 340 82% 66%;
+  --chart-1: 340 82% 66%; --chart-2: 42 92% 62%; --chart-3: 356 80% 70%; --chart-4: 340 16% 68%; --chart-5: 340 34% 92%;
+  --grad-from: 340 84% 66%; --grad-via: 356 82% 68%; --grad-to: 42 92% 66%; --glow: 340 82% 64%;
+}
+
+:root.theme-gold {
+  --background: 40 16% 5%;   --foreground: 45 38% 95%;
+  --card: 40 16% 11%;        --card-foreground: 45 38% 95%;
+  --border: 42 20% 22%;      --input: 42 20% 22%;
+  --muted: 40 16% 15%;       --muted-foreground: 42 20% 64%;
+  --popover: 40 16% 10%;     --popover-foreground: 45 38% 95%;
+  --primary: 42 92% 58%;     --primary-foreground: 40 50% 8%;
+  --secondary: 40 24% 20%;   --secondary-foreground: 45 38% 90%;
+  --accent: 28 74% 50%;      --accent-foreground: 30 60% 8%;
+  --ring: 42 92% 58%;
+  --sidebar: 40 16% 5%;      --sidebar-foreground: 45 38% 95%; --sidebar-border: 42 20% 22%;
+  --sidebar-primary: 42 92% 58%; --sidebar-primary-foreground: 40 50% 8%;
+  --sidebar-accent: 40 24% 20%;  --sidebar-accent-foreground: 45 38% 90%; --sidebar-ring: 42 92% 58%;
+  --chart-1: 42 92% 58%; --chart-2: 28 74% 50%; --chart-3: 48 90% 62%; --chart-4: 42 20% 64%; --chart-5: 45 38% 90%;
+  --grad-from: 46 96% 60%; --grad-via: 38 90% 54%; --grad-to: 28 78% 48%; --glow: 44 96% 55%;
+}
+
+:root.theme-teal {
+  --background: 190 42% 6%;  --foreground: 180 30% 96%;
+  --card: 190 40% 12%;       --card-foreground: 180 30% 96%;
+  --border: 188 32% 23%;     --input: 188 32% 23%;
+  --muted: 190 30% 16%;      --muted-foreground: 188 20% 64%;
+  --popover: 190 40% 11%;    --popover-foreground: 180 30% 96%;
+  --primary: 174 80% 45%;    --primary-foreground: 180 60% 6%;
+  --secondary: 190 36% 20%;  --secondary-foreground: 180 30% 92%;
+  --accent: 12 90% 62%;      --accent-foreground: 0 0% 100%;
+  --ring: 174 80% 45%;
+  --sidebar: 190 42% 6%;     --sidebar-foreground: 180 30% 96%; --sidebar-border: 188 32% 23%;
+  --sidebar-primary: 174 80% 45%; --sidebar-primary-foreground: 180 60% 6%;
+  --sidebar-accent: 190 36% 20%;  --sidebar-accent-foreground: 180 30% 92%; --sidebar-ring: 174 80% 45%;
+  --chart-1: 174 80% 45%; --chart-2: 12 90% 62%; --chart-3: 190 85% 52%; --chart-4: 188 20% 64%; --chart-5: 180 30% 92%;
+  --grad-from: 174 82% 48%; --grad-via: 190 85% 50%; --grad-to: 12 88% 60%; --glow: 176 85% 46%;
+}
+
+:root.theme-ultraviolet {
+  --background: 250 42% 7%;  --foreground: 250 40% 97%;
+  --card: 250 38% 13%;       --card-foreground: 250 40% 97%;
+  --border: 250 32% 26%;     --input: 250 32% 26%;
+  --muted: 250 28% 17%;      --muted-foreground: 252 22% 68%;
+  --popover: 250 38% 12%;    --popover-foreground: 250 40% 97%;
+  --primary: 256 90% 68%;    --primary-foreground: 255 45% 9%;
+  --secondary: 250 34% 22%;  --secondary-foreground: 250 40% 92%;
+  --accent: 330 90% 62%;     --accent-foreground: 0 0% 100%;
+  --ring: 256 90% 68%;
+  --sidebar: 250 42% 7%;     --sidebar-foreground: 250 40% 97%; --sidebar-border: 250 32% 26%;
+  --sidebar-primary: 256 90% 68%; --sidebar-primary-foreground: 255 45% 9%;
+  --sidebar-accent: 250 34% 22%;  --sidebar-accent-foreground: 250 40% 92%; --sidebar-ring: 256 90% 68%;
+  --chart-1: 256 90% 68%; --chart-2: 330 90% 62%; --chart-3: 288 85% 66%; --chart-4: 252 22% 68%; --chart-5: 250 40% 92%;
+  --grad-from: 252 90% 66%; --grad-via: 288 86% 64%; --grad-to: 330 90% 64%; --glow: 258 90% 64%;
+}
+
+/* ---- Theme-driven utilities (work in every theme incl. default) ---------- */
+.theme-hero-gradient {
+  background-image:
+    radial-gradient(60% 90% at 15% 10%, hsl(var(--grad-from) / 0.28), transparent 60%),
+    radial-gradient(55% 80% at 90% 25%, hsl(var(--grad-to) / 0.22), transparent 60%),
+    radial-gradient(50% 60% at 60% 100%, hsl(var(--grad-via) / 0.18), transparent 65%);
+}
+.theme-text-gradient {
+  background-image: linear-gradient(100deg, hsl(var(--grad-from)), hsl(var(--grad-via)), hsl(var(--grad-to)));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.theme-btn-gradient {
+  background-image: linear-gradient(100deg, hsl(var(--grad-from)), hsl(var(--grad-to)));
+  color: hsl(var(--primary-foreground));
+}
+.theme-glow { box-shadow: 0 0 60px -12px hsl(var(--glow) / 0.7); }
+.theme-ring-card { border-color: hsl(var(--primary) / 0.28); }
+
+/* Animated aurora mesh used behind heroes/sections for "wow" */
+.theme-aurora-bg { position: relative; overflow: hidden; }
+.theme-aurora-bg::before,
+.theme-aurora-bg::after {
+  content: ""; position: absolute; inset: -30%; z-index: 0; pointer-events: none;
+  background-image:
+    radial-gradient(35% 45% at 25% 30%, hsl(var(--grad-from) / 0.35), transparent 60%),
+    radial-gradient(30% 40% at 80% 20%, hsl(var(--grad-to) / 0.30), transparent 60%),
+    radial-gradient(40% 45% at 60% 85%, hsl(var(--grad-via) / 0.28), transparent 60%);
+  filter: blur(40px); animation: themeAurora 22s ease-in-out infinite alternate;
+}
+.theme-aurora-bg::after { animation-duration: 30s; animation-direction: alternate-reverse; opacity: 0.7; }
+@keyframes themeAurora {
+  0%   { transform: translate3d(0,0,0) scale(1) rotate(0deg); }
+  50%  { transform: translate3d(2%, -3%, 0) scale(1.12) rotate(8deg); }
+  100% { transform: translate3d(-2%, 2%, 0) scale(1.05) rotate(-6deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-aurora-bg::before, .theme-aurora-bg::after { animation: none; }
+}

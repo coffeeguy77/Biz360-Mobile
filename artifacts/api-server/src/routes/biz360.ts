@@ -5,6 +5,7 @@ import {
   db, kvStore, cafesTable, valuationSnapshotsTable, cafeEquipmentTable,
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
   ndaSettingsTable, ndaSignaturesTable, buyersTable, businessUnitsTable,
+  reportAccessLogsTable,
 } from "@workspace/db";
 import { sendEmail, emailShell, isValidEmail, PUBLIC_WEB_URL } from "../lib/email";
 import twilio from "twilio";
@@ -337,6 +338,112 @@ router.get("/public/listing/:listingId/equipment", async (req, res): Promise<voi
     res.json({ items, totals, count: items.length });
   } catch {
     res.status(500).json({ error: "Failed to fetch equipment" });
+  }
+});
+
+// ─── Listing analytics (seller + broker-shared client view) ───────────────────
+// Aggregate stats for one listing. Visible to the listing owner OR any phone the
+// owner has authorised (analyticsViewers) — this powers the seller dashboard and
+// the shareable broker→client analytics page. Auth is a phone-verified biz360
+// token; identity/authorisation are derived server-side, never trusted from body.
+router.get("/public/listing/:listingId/analytics", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const callerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!callerId) { res.status(401).json({ error: "Sign in to view analytics" }); return; }
+  try {
+    const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
+    const listing = listings.find((l) => l?.listingId === listingId);
+    if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+
+    const callerBase = ownerBase(callerId);
+    const isOwner = ownerBase(listing.submittedBy) === callerBase;
+    const viewers = Array.isArray(listing.analyticsViewers) ? listing.analyticsViewers.map((v: string) => ownerBase(v)) : [];
+    if (!isOwner && !viewers.includes(callerBase)) {
+      res.status(403).json({ error: "You're not authorised to view these analytics" });
+      return;
+    }
+
+    const logs = await db.select().from(reportAccessLogsTable).where(eq(reportAccessLogsTable.listingId, listingId));
+    const c = (type: string) => logs.filter((l) => l.eventType === type).length;
+    const uniqueBuyers = new Set(logs.map((l) => l.buyerPhone || l.buyerId).filter(Boolean)).size;
+    let ndaSigned = 0;
+    try {
+      const sigs = await db.select().from(ndaSignaturesTable).where(eq(ndaSignaturesTable.listingId, listingId));
+      ndaSigned = sigs.length;
+    } catch { /* table may be empty */ }
+
+    const stats = {
+      reportViews:  c("report_viewed"),
+      tourClicks:   c("tour_clicked") + c("tour_start"),
+      pdfDownloads: c("pdf_downloaded"),
+      requestInfo:  c("request_info") + c("access_requested"),
+      requestCall:  c("request_call"),
+      requestVisit: c("request_visit") + c("inspection_booked"),
+      showPhone:    c("show_phone") + c("contact_clicked"),
+      ndaSigned,
+      uniqueBuyers,
+      totalEvents:  logs.length,
+    };
+    // Last 14 days activity sparkline (report views + requests per day).
+    const dayMs = 86400000;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const timeline = Array.from({ length: 14 }, (_, i) => {
+      const start = today.getTime() - (13 - i) * dayMs;
+      const end = start + dayMs;
+      const n = logs.filter((l) => { const t = l.createdAt ? new Date(l.createdAt).getTime() : 0; return t >= start && t < end; }).length;
+      return { date: new Date(start).toISOString().slice(0, 10), count: n };
+    });
+
+    res.json({
+      listingId,
+      businessName: listing.businessName ?? listing.sellerName ?? "Your listing",
+      city: listing.city ?? null,
+      role: isOwner ? "owner" : "viewer",
+      stats,
+      timeline,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to load analytics" });
+  }
+});
+
+// POST /public/listing/:listingId/analytics-viewers  (owner only)
+// Body: { phone, action?: "add" | "remove" } — authorise a client's phone to see
+// this listing's analytics via the shareable broker page.
+router.post("/public/listing/:listingId/analytics-viewers", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const callerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!callerId) { res.status(401).json({ error: "Sign in required" }); return; }
+  const { phone, action } = req.body as { phone?: string; action?: string };
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  if (digits.length < 8) { res.status(400).json({ error: "A valid phone number is required" }); return; }
+  const normalised = `+${digits.startsWith("61") ? digits : digits.replace(/^0/, "61")}`;
+  try {
+    const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
+    const idx = listings.findIndex((l) => l?.listingId === listingId);
+    if (idx < 0) { res.status(404).json({ error: "Listing not found" }); return; }
+    if (ownerBase(listings[idx].submittedBy) !== ownerBase(callerId)) {
+      res.status(403).json({ error: "Only the listing owner can manage viewers" });
+      return;
+    }
+    const current: string[] = Array.isArray(listings[idx].analyticsViewers) ? listings[idx].analyticsViewers : [];
+    let next: string[];
+    if (action === "remove") {
+      next = current.filter((v) => ownerBase(v) !== ownerBase(normalised));
+    } else {
+      next = current.some((v) => ownerBase(v) === ownerBase(normalised)) ? current : [...current, normalised];
+    }
+    listings[idx] = { ...listings[idx], analyticsViewers: next };
+    await db.insert(kvStore).values({ key: "biz360_admin_pending_v2", value: listings })
+      .onConflictDoUpdate({ target: kvStore.key, set: { value: listings } });
+    res.json({ ok: true, analyticsViewers: next });
+  } catch {
+    res.status(500).json({ error: "Failed to update viewers" });
   }
 });
 

@@ -10,6 +10,16 @@ import { SignIn } from "@/pages/sign-in";
 import { ReportPage } from "@/pages/report";
 import { BuyersLogin } from "@/pages/buyers-login";
 import { BuyersPortal } from "@/pages/buyers-portal";
+import { ThemePicker } from "@/components/ThemePicker";
+import { Selling } from "@/pages/marketing/Selling";
+import { Buying } from "@/pages/marketing/Buying";
+import { Brokers } from "@/pages/marketing/Brokers";
+import { Walkthroughs } from "@/pages/marketing/Walkthroughs";
+import { HowItWorks } from "@/pages/marketing/HowItWorks";
+import { Compare } from "@/pages/marketing/Compare";
+import { ListYourBusiness } from "@/pages/marketing/ListYourBusiness";
+import { SellerDashboard } from "@/pages/seller-dashboard";
+import { BrokerAnalytics } from "@/pages/broker-analytics";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +34,17 @@ function Router() {
       <Route path="/sign-in" component={SignIn} />
       <Route path="/buyers" component={BuyersLogin} />
       <Route path="/buyers/portal" component={BuyersPortal} />
+      {/* Marketing / SEO */}
+      <Route path="/buying" component={Buying} />
+      <Route path="/selling" component={Selling} />
+      <Route path="/brokers" component={Brokers} />
+      <Route path="/walkthroughs" component={Walkthroughs} />
+      <Route path="/how-it-works" component={HowItWorks} />
+      <Route path="/compare" component={Compare} />
+      <Route path="/list-your-business" component={ListYourBusiness} />
+      {/* Seller & broker */}
+      <Route path="/seller" component={SellerDashboard} />
+      <Route path="/broker/analytics/:listingId" component={BrokerAnalytics} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -36,6 +57,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
+        <ThemePicker />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

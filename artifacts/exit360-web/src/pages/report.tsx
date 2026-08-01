@@ -2024,7 +2024,8 @@ export function ReportPage() {
         }
 
         /* Animated morphing background — ultra-smooth, no visible rings */
-        .report-bg-anim { background: #060B15; }
+        /* Canvas + blobs follow the active colour theme (grad-from/via/to/glow) */
+        .report-bg-anim { background: hsl(var(--background)); }
         .report-blob {
           position: absolute;
           display: block;
@@ -2037,29 +2038,29 @@ export function ReportPage() {
         .report-blob--a {
           width: 62vw; height: 62vw; left: -14vw; top: -18vw;
           background: radial-gradient(circle at 50% 50%,
-            rgba(59,130,246,0.42) 0%, rgba(59,130,246,0.34) 14%, rgba(59,130,246,0.24) 28%,
-            rgba(59,130,246,0.15) 42%, rgba(59,130,246,0.08) 58%, rgba(59,130,246,0.03) 74%, rgba(59,130,246,0) 90%);
+            hsl(var(--grad-from) / 0.42) 0%, hsl(var(--grad-from) / 0.34) 14%, hsl(var(--grad-from) / 0.24) 28%,
+            hsl(var(--grad-from) / 0.15) 42%, hsl(var(--grad-from) / 0.08) 58%, hsl(var(--grad-from) / 0.03) 74%, hsl(var(--grad-from) / 0) 90%);
           animation: blobMoveA 16s ease-in-out infinite alternate;
         }
         .report-blob--b {
           width: 58vw; height: 58vw; right: -16vw; top: -10vw;
           background: radial-gradient(circle at 50% 50%,
-            rgba(139,92,246,0.40) 0%, rgba(139,92,246,0.32) 14%, rgba(139,92,246,0.22) 28%,
-            rgba(139,92,246,0.14) 42%, rgba(139,92,246,0.07) 58%, rgba(139,92,246,0.03) 74%, rgba(139,92,246,0) 90%);
+            hsl(var(--grad-via) / 0.40) 0%, hsl(var(--grad-via) / 0.32) 14%, hsl(var(--grad-via) / 0.22) 28%,
+            hsl(var(--grad-via) / 0.14) 42%, hsl(var(--grad-via) / 0.07) 58%, hsl(var(--grad-via) / 0.03) 74%, hsl(var(--grad-via) / 0) 90%);
           animation: blobMoveB 19s ease-in-out infinite alternate;
         }
         .report-blob--c {
           width: 66vw; height: 66vw; right: -4vw; top: 38vh;
           background: radial-gradient(circle at 50% 50%,
-            rgba(236,72,153,0.30) 0%, rgba(236,72,153,0.23) 14%, rgba(236,72,153,0.16) 28%,
-            rgba(236,72,153,0.10) 42%, rgba(236,72,153,0.05) 58%, rgba(236,72,153,0.02) 74%, rgba(236,72,153,0) 90%);
+            hsl(var(--grad-to) / 0.30) 0%, hsl(var(--grad-to) / 0.23) 14%, hsl(var(--grad-to) / 0.16) 28%,
+            hsl(var(--grad-to) / 0.10) 42%, hsl(var(--grad-to) / 0.05) 58%, hsl(var(--grad-to) / 0.02) 74%, hsl(var(--grad-to) / 0) 90%);
           animation: blobMoveC 22s ease-in-out infinite alternate;
         }
         .report-blob--d {
           width: 64vw; height: 64vw; left: 2vw; bottom: -22vw;
           background: radial-gradient(circle at 50% 50%,
-            rgba(20,184,166,0.32) 0%, rgba(20,184,166,0.25) 14%, rgba(20,184,166,0.17) 28%,
-            rgba(20,184,166,0.10) 42%, rgba(20,184,166,0.05) 58%, rgba(20,184,166,0.02) 74%, rgba(20,184,166,0) 90%);
+            hsl(var(--glow) / 0.32) 0%, hsl(var(--glow) / 0.25) 14%, hsl(var(--glow) / 0.17) 28%,
+            hsl(var(--glow) / 0.10) 42%, hsl(var(--glow) / 0.05) 58%, hsl(var(--glow) / 0.02) 74%, hsl(var(--glow) / 0) 90%);
           animation: blobMoveD 18s ease-in-out infinite alternate;
         }
         /* Fine noise overlay dithers away 8-bit colour banding on the gradients */

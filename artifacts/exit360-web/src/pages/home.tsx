@@ -37,11 +37,12 @@ export function Home() {
           </div>
           <div className="flex items-center gap-6">
             <div className="hidden md:flex items-center gap-6 text-sm font-medium text-muted-foreground">
-              <a href="#" className="hover:text-foreground transition-colors">For Buyers</a>
-              <a href="#" className="hover:text-foreground transition-colors">For Sellers</a>
-              <a href="#" className="hover:text-foreground transition-colors">Broker Network</a>
+              <Link href="/buying"><span className="hover:text-foreground transition-colors cursor-pointer">For Buyers</span></Link>
+              <Link href="/selling"><span className="hover:text-foreground transition-colors cursor-pointer">For Sellers</span></Link>
+              <Link href="/brokers"><span className="hover:text-foreground transition-colors cursor-pointer">Broker Network</span></Link>
+              <Link href="/how-it-works"><span className="hover:text-foreground transition-colors cursor-pointer">How It Works</span></Link>
             </div>
-            <Button>List a Business</Button>
+            <Link href="/list-your-business"><Button className="theme-btn-gradient border-0">List a Business</Button></Link>
           </div>
         </div>
       </nav>
