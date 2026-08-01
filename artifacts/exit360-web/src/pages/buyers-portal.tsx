@@ -28,6 +28,7 @@ interface ListingAccess {
   businessName: string;
   city: string | null;
   businessType: string;
+  heroImageUrl?: string | null;
   permissions: Permissions;
   accessToken: string | null;
 }
@@ -161,15 +162,14 @@ function ListingCard({ item }: { item: ListingAccess }) {
 
   return (
     <div className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 overflow-hidden">
-      {/* Card header */}
-      <div className="px-6 py-5 border-b border-[#1E3A5C]/60">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400">
-                <Shield size={10} /> CONFIDENTIAL
-              </span>
-            </div>
+      <div className="flex flex-col sm:flex-row">
+        {/* ── Left: info + actions ── */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Card header */}
+          <div className="px-6 py-5">
+            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 mb-2">
+              <Shield size={10} /> CONFIDENTIAL
+            </span>
             <h3 className="text-white font-bold text-lg leading-snug">{item.businessName}</h3>
             {item.city && (
               <div className="flex items-center gap-1.5 mt-1 text-slate-400 text-sm">
@@ -178,27 +178,22 @@ function ListingCard({ item }: { item: ListingAccess }) {
               </div>
             )}
           </div>
-          <div className="w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
-            <Building2 size={20} className="text-blue-400" />
+
+          {/* Access summary */}
+          <div className="px-6 py-4 border-t border-[#1E3A5C]/40">
+            <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-3">Your Access</p>
+            <div className="flex flex-wrap gap-2">
+              <AccessBadge granted={item.permissions.canViewImReport}    label="Report"        icon={FileText}  />
+              <AccessBadge granted={item.permissions.canViewWalkthrough} label="360° Walkthrough" icon={Video}  />
+              <AccessBadge granted={item.permissions.canViewFinancials}  label="Financials"    icon={BarChart2} />
+              <AccessBadge granted={item.permissions.canViewEquipment}   label="Equipment"     icon={Wrench}    />
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Access summary */}
-      <div className="px-6 py-4 border-b border-[#1E3A5C]/40">
-        <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-3">Your Access</p>
-        <div className="flex flex-wrap gap-2">
-          <AccessBadge granted={item.permissions.canViewImReport}    label="Report"        icon={FileText}  />
-          <AccessBadge granted={item.permissions.canViewWalkthrough} label="360° Walkthrough" icon={Video}  />
-          <AccessBadge granted={item.permissions.canViewFinancials}  label="Financials"    icon={BarChart2} />
-          <AccessBadge granted={item.permissions.canViewEquipment}   label="Equipment"     icon={Wrench}    />
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="px-6 py-4">
-        {hasAnyAccess ? (
-          <div className="flex flex-col gap-2.5">
+          {/* Actions */}
+          <div className="px-6 py-4 border-t border-[#1E3A5C]/40 mt-auto">
+            {hasAnyAccess ? (
+              <div className="flex flex-col gap-2.5">
             {item.permissions.canViewImReport && reportHref && (
               <Link href={reportHref}>
                 <a className="flex items-center justify-between px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors group">
@@ -238,12 +233,25 @@ function ListingCard({ item }: { item: ListingAccess }) {
             </div>
             {callNote && <p className="text-[11px] text-slate-500 text-center">{callNote}</p>}
           </div>
-        ) : (
-          <div className="flex items-center gap-3 py-2 text-slate-400 text-sm">
-            <Lock size={14} />
-            <span>No content has been shared with you yet. Contact the seller.</span>
+            ) : (
+              <div className="flex items-center gap-3 py-2 text-slate-400 text-sm">
+                <Lock size={14} />
+                <span>No content has been shared with you yet. Contact the seller.</span>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* ── Right: hero image, full height ── */}
+        <div className="relative sm:w-2/5 lg:w-[40%] min-h-[190px] sm:min-h-0 bg-[#0F2040] flex-shrink-0">
+          {item.heroImageUrl ? (
+            <img src={item.heroImageUrl} alt={item.businessName} className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Building2 size={40} className="text-blue-400/30" />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -411,6 +419,8 @@ export function BuyersPortal() {
   }, [data?.phone]);
 
   const unreadTotal = threads.reduce((n, t) => n + (t.unreadBuyer ?? 0), 0);
+  const accessListingIds = new Set((data?.listings ?? []).map((l) => l.listingId));
+  const orphanThreads = threads.filter((t) => !accessListingIds.has(t.listingId));
 
   async function sendReply(threadId: string, text: string) {
     // Optimistic: show the message instantly, then persist.
@@ -568,37 +578,49 @@ export function BuyersPortal() {
                 Verified access
               </div>
             </div>
-            <div className="grid gap-5 sm:grid-cols-2">
-              {data.listings.map((item) => (
-                <ListingCard key={item.cafeId} item={item} />
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Messages — the buyer's enquiry threads */}
-        {!loading && !error && threads.length > 0 && (
-          <div className="mt-12">
             <style>{CHAT_STYLE}</style>
-            <div className="flex items-center gap-2 mb-5">
-              <MessageSquare size={16} className="text-blue-400" />
-              <h2 className="text-white font-bold text-lg">Messages</h2>
-              {unreadTotal > 0 ? (
-                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
-                  {unreadTotal > 9 ? "9+" : unreadTotal}
-                </span>
-              ) : (
-                <span className="text-xs text-slate-500">({threads.length})</span>
-              )}
-            </div>
-            {data && (
+            {threads.length > 0 && (
               <EmailAlertsCard
                 data={data}
                 onSaved={(email) => setData((d) => (d ? { ...d, email, emailVerified: false } : d))}
               />
             )}
-            <div className="grid gap-5">
-              {threads.map((t) => (
+            {/* Each business: card (info left, hero right) + its conversation full-width below */}
+            <div className="flex flex-col gap-8">
+              {data.listings.map((item) => {
+                const thread = threads.find((t) => t.listingId === item.listingId);
+                return (
+                  <div key={item.cafeId} className="flex flex-col gap-3">
+                    <ListingCard item={item} />
+                    {thread && <ThreadCard thread={thread} onReply={sendReply} />}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Conversations not tied to a shared listing */}
+        {!loading && !error && orphanThreads.length > 0 && (
+          <div className="mt-12">
+            <style>{CHAT_STYLE}</style>
+            <div className="flex items-center gap-2 mb-5">
+              <MessageSquare size={16} className="text-blue-400" />
+              <h2 className="text-white font-bold text-lg">Messages</h2>
+              {unreadTotal > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
+                  {unreadTotal > 9 ? "9+" : unreadTotal}
+                </span>
+              )}
+            </div>
+            {data && data.listings.length === 0 && threads.length > 0 && (
+              <EmailAlertsCard
+                data={data}
+                onSaved={(email) => setData((d) => (d ? { ...d, email, emailVerified: false } : d))}
+              />
+            )}
+            <div className="flex flex-col gap-5">
+              {orphanThreads.map((t) => (
                 <ThreadCard key={t.id} thread={t} onReply={sendReply} />
               ))}
             </div>

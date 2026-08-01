@@ -341,11 +341,15 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
   // Resolve the public listing name (e.g. "Bean Culture Coffee Roastery") from the
   // admin listings KV — the cafe row often carries a placeholder name like "My Business".
   const listingNameById: Record<string, string> = {};
+  const listingHeroById: Record<string, string> = {};
   try {
     const kvRows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
     const allListings = Array.isArray(kvRows[0]?.value) ? (kvRows[0]!.value as any[]) : [];
     for (const l of allListings) {
-      if (l?.listingId && l?.businessName) listingNameById[l.listingId] = l.businessName;
+      if (!l?.listingId) continue;
+      if (l?.businessName) listingNameById[l.listingId] = l.businessName;
+      const hero = l?.heroImageUrl ?? (Array.isArray(l?.photos) ? l.photos[0] : null);
+      if (hero) listingHeroById[l.listingId] = hero;
     }
   } catch { /* fall back to cafe name */ }
 
@@ -366,6 +370,7 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
         businessName: displayName,
         city: cafe.city ?? null,
         businessType: cafe.businessType ?? "business",
+        heroImageUrl: cafe.listingId ? (listingHeroById[cafe.listingId] ?? null) : null,
         permissions: perms,
         accessToken,
       };
