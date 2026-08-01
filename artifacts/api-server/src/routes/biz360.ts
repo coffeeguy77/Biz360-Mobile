@@ -6,7 +6,7 @@ import {
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
   ndaSettingsTable, ndaSignaturesTable, buyersTable,
 } from "@workspace/db";
-import { sendEmail, emailShell, PUBLIC_WEB_URL } from "../lib/email";
+import { sendEmail, emailShell, isValidEmail, PUBLIC_WEB_URL } from "../lib/email";
 import twilio from "twilio";
 import { v2 as cloudinary } from "cloudinary";
 import {
@@ -345,6 +345,40 @@ async function loadSellerProfile(ownerId: string): Promise<any> {
   const [row] = await db.select().from(kvStore).where(eq(kvStore.key, key));
   return (row?.value ?? {}) as any;
 }
+async function saveSellerProfile(ownerId: string, value: any): Promise<void> {
+  const key = SELLER_PROFILE_PREFIX + ownerBase(ownerId);
+  await db.insert(kvStore).values({ key, value })
+    .onConflictDoUpdate({ target: kvStore.key, set: { value } });
+}
+// Seller email verification token (self-contained JWT so verify needs no lookup).
+async function signSellerEmailToken(owner: string, email: string): Promise<string> {
+  return new SignJWT({ owner: ownerBase(owner), email, kind: "seller_email" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(getNdaSecret());
+}
+async function verifySellerEmailToken(token: string): Promise<{ owner: string; email: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, getNdaSecret());
+    const p = payload as { owner?: string; email?: string; kind?: string };
+    if (p.kind !== "seller_email" || !p.owner || !p.email) return null;
+    return { owner: p.owner, email: p.email };
+  } catch { return null; }
+}
+async function sendSellerVerifyEmail(owner: string, email: string): Promise<void> {
+  const token = await signSellerEmailToken(owner, email);
+  const link = `${PUBLIC_WEB_URL}/api/biz360/seller/email/verify?token=${encodeURIComponent(token)}`;
+  await sendEmail({
+    to: email,
+    subject: "Verify your email for EXIT360 lead alerts",
+    html: emailShell(
+      "Confirm your email",
+      "<p>Confirm this address to receive an email whenever a buyer messages you on EXIT360 — building your buyer CRM.</p>",
+      { label: "Verify my email", url: link },
+    ),
+  });
+}
 // Merge stored profile with sensible defaults from the listing.
 function resolveSellerCard(listing: any, profile: any) {
   const anonymous = profile?.anonymous === true;
@@ -429,6 +463,7 @@ router.get("/biz360/seller/profile", async (req, res): Promise<void> => {
       bio: profile.bio ?? "",
       phone: profile.phone ?? mine?.sellerPhone ?? "",
       email: profile.email ?? "",
+      emailVerified: profile.emailVerified === true,
       showPhone: profile.showPhone !== false,
       anonymous: profile.anonymous === true,
     });
@@ -437,28 +472,55 @@ router.get("/biz360/seller/profile", async (req, res): Promise<void> => {
   }
 });
 
-// Seller: save own profile.
+// Seller: save own profile. Changing the email (re)triggers verification.
 router.put("/biz360/seller/profile", async (req, res): Promise<void> => {
   const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
   const ownerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
   if (!ownerId) { res.status(401).json({ error: "Auth required" }); return; }
   const body = req.body as Record<string, unknown>;
-  const clean = {
-    displayName: String(body.displayName ?? "").slice(0, 120),
-    company: String(body.company ?? "").slice(0, 120),
-    bio: String(body.bio ?? "").slice(0, 1000),
-    phone: String(body.phone ?? "").slice(0, 32),
-    email: String(body.email ?? "").slice(0, 160),
-    showPhone: body.showPhone !== false,
-    anonymous: body.anonymous === true,
-  };
+  const email = String(body.email ?? "").trim().toLowerCase().slice(0, 160);
   try {
-    const key = SELLER_PROFILE_PREFIX + ownerBase(ownerId);
-    await db.insert(kvStore).values({ key, value: clean as any })
-      .onConflictDoUpdate({ target: kvStore.key, set: { value: clean as any } });
-    res.json({ ok: true, profile: clean });
+    const existing = await loadSellerProfile(ownerId);
+    // Preserve verification only if the email is unchanged and was already verified.
+    const emailUnchanged = email && existing?.email === email;
+    let emailVerified = emailUnchanged ? existing?.emailVerified === true : false;
+    const clean = {
+      displayName: String(body.displayName ?? "").slice(0, 120),
+      company: String(body.company ?? "").slice(0, 120),
+      bio: String(body.bio ?? "").slice(0, 1000),
+      phone: String(body.phone ?? "").slice(0, 32),
+      email,
+      emailVerified,
+      showPhone: body.showPhone !== false,
+      anonymous: body.anonymous === true,
+    };
+    await saveSellerProfile(ownerId, clean);
+    // Send a verification email when a (new) unverified email is set.
+    let verificationSent = false;
+    if (email && !emailVerified && isValidEmail(email)) {
+      await sendSellerVerifyEmail(ownerId, email);
+      verificationSent = true;
+    }
+    res.json({ ok: true, profile: clean, verificationSent });
   } catch {
     res.status(500).json({ error: "Failed to save profile" });
+  }
+});
+
+// Seller email verification link target.
+router.get("/biz360/seller/email/verify", async (req, res): Promise<void> => {
+  const token = String(req.query.token ?? "");
+  const decoded = token ? await verifySellerEmailToken(token) : null;
+  if (!decoded) { res.status(400).send("This verification link is invalid or has expired."); return; }
+  try {
+    const profile = await loadSellerProfile(decoded.owner);
+    if (profile?.email === decoded.email) {
+      await saveSellerProfile(decoded.owner, { ...profile, emailVerified: true });
+    }
+    res.setHeader("Content-Type", "text/html");
+    res.send(`<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;background:#0a1120;color:#fff;text-align:center;padding:60px 20px;"><h2 style="color:#3b82f6;">EXIT360</h2><p style="font-size:18px;">✅ Your email is verified.</p><p style="color:#8b9cb8;">You'll now get an alert whenever a buyer messages you. You can close this tab.</p></body></html>`);
+  } catch {
+    res.status(500).send("Something went wrong verifying your email.");
   }
 });
 
@@ -483,10 +545,15 @@ router.post("/biz360/notify-message", async (req, res): Promise<void> => {
       const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
       const listing = listings.find((l) => l?.listingId === thread.listingId);
       const ownerId = listing?.submittedBy ?? null;
-      const [urow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_users"));
-      const users = Array.isArray(urow?.value) ? (urow!.value as any[]) : [];
-      const owner = users.find((u) => u?.id === ownerId || u?.email === ownerId);
-      const email = owner?.email;
+      // Prefer the seller's verified notification email (CRM), else account email.
+      const sellerProfile = ownerId ? await loadSellerProfile(ownerId) : {};
+      let email: string | null = (sellerProfile?.emailVerified && sellerProfile?.email) ? sellerProfile.email : null;
+      if (!email) {
+        const [urow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_users"));
+        const users = Array.isArray(urow?.value) ? (urow!.value as any[]) : [];
+        const owner = users.find((u) => u?.id === ownerId || u?.email === ownerId);
+        email = owner?.email ?? null;
+      }
       const buyerName = thread.buyerName && !/^u-\d/.test(thread.buyerName) ? thread.buyerName : "A buyer";
       if (email && /@/.test(email)) {
         await sendEmail({

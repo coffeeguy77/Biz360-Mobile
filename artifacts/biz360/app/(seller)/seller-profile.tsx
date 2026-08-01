@@ -13,10 +13,10 @@ const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PU
 
 interface Profile {
   displayName: string; company: string; bio: string; phone: string;
-  email: string; showPhone: boolean; anonymous: boolean;
+  email: string; emailVerified: boolean; showPhone: boolean; anonymous: boolean;
 }
 
-const EMPTY: Profile = { displayName: "", company: "", bio: "", phone: "", email: "", showPhone: true, anonymous: false };
+const EMPTY: Profile = { displayName: "", company: "", bio: "", phone: "", email: "", emailVerified: false, showPhone: true, anonymous: false };
 
 export default function SellerProfileScreen() {
   const colors = useColors();
@@ -25,6 +25,7 @@ export default function SellerProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [verifyNote, setVerifyNote] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -53,7 +54,11 @@ export default function SellerProfileScreen() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(profile),
       });
-      if (res.ok) { setSaved(true); }
+      if (res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaved(true);
+        if (d.verificationSent) { setVerifyNote("Verification email sent — check your inbox to confirm."); set("emailVerified", false); }
+      }
     } catch { /* ignore */ }
     setSaving(false);
   }
@@ -95,7 +100,34 @@ export default function SellerProfileScreen() {
           {field("Company / agency", "company", { placeholder: "Optional" })}
           {field("About you", "bio", { multiline: true, placeholder: "A short note buyers will see (optional)" })}
           {field("Contact phone", "phone", { placeholder: "04xx xxx xxx", keyboardType: "phone-pad" })}
-          {field("Notification email", "email", { placeholder: "you@email.com", keyboardType: "email-address" })}
+
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Notification email</Text>
+              {profile.email ? (
+                profile.emailVerified ? (
+                  <View style={[styles.pill, { backgroundColor: "#16A34A22" }]}>
+                    <Feather name="check-circle" size={11} color="#16A34A" />
+                    <Text style={[styles.pillText, { color: "#16A34A" }]}>Verified</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.pill, { backgroundColor: "#F59E0B22" }]}>
+                    <Text style={[styles.pillText, { color: "#F59E0B" }]}>Pending verification</Text>
+                  </View>
+                )
+              ) : null}
+            </View>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+              value={profile.email}
+              onChangeText={(t) => { set("email", t); }}
+              placeholder="you@email.com"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            {verifyNote && <Text style={[styles.toggleSub, { color: "#F59E0B" }]}>{verifyNote}</Text>}
+          </View>
 
           <View style={[styles.toggleRow, { borderColor: colors.border, backgroundColor: colors.card }]}>
             <View style={{ flex: 1 }}>
@@ -140,4 +172,6 @@ const styles = StyleSheet.create({
   toggleSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2, lineHeight: 16 },
   saveBtn: { borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 4 },
   saveText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  pill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  pillText: { fontSize: 11, fontFamily: "Inter_700Bold" },
 });
