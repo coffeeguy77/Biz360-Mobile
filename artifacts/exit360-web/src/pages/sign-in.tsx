@@ -228,6 +228,18 @@ export function SignIn() {
   useEffect(() => {
     if (intent === "signup") return;
     try {
+      // Only recognise them if they STILL hold a login token. A signed-out
+      // buyer (token cleared) must re-verify — a lingering biz360_web_user
+      // profile alone must NOT count as being signed in.
+      // The buyer-portal token is THE signed-in-buyer signal. (biz360_web_auth_token
+      // can linger from an old listing-detail verify, so it is deliberately not
+      // trusted here.)
+      const hasToken = !!localStorage.getItem("exit360_buyer_token");
+      if (!hasToken) {
+        // Stale profile with no token — clear it so nothing else trusts it.
+        localStorage.removeItem("biz360_web_user");
+        return;
+      }
       const raw = localStorage.getItem("biz360_web_user");
       if (!raw) return;
       const u = JSON.parse(raw);
