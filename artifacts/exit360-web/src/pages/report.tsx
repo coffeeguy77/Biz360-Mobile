@@ -773,6 +773,7 @@ interface EquipmentItem {
   id: string;
   name: string;
   category: string;
+  division?: string;
   brand?: string | null;
   condition?: string | null;
   secondhandValue: number;
@@ -788,8 +789,24 @@ interface EquipmentRegister {
 function EquipmentRegisterSection({ reg, printMode, inline }: { reg: EquipmentRegister; printMode: boolean; inline?: boolean }) {
   const fmt = (n: number) =>
     n > 0 ? `$${n.toLocaleString("en-AU", { maximumFractionDigits: 0 })}` : "—";
+
+  // Division filter tabs (e.g. Espresso Bar, Coffee Roastery, Coffee Carts).
+  const divisions = Array.from(new Set(reg.items.map((i) => (i.division || "General").trim() || "General"))).sort();
+  const showTabs = divisions.length > 1;
+  const [activeDivision, setActiveDivision] = useState<string>("All");
+  // When printing, always show everything regardless of the on-screen filter.
+  const effectiveDivision = printMode ? "All" : activeDivision;
+  const viewItems = effectiveDivision === "All"
+    ? reg.items
+    : reg.items.filter((i) => ((i.division || "General").trim() || "General") === effectiveDivision);
+  const totals = viewItems.reduce(
+    (a, i) => ({ secondhand: a.secondhand + i.secondhandValue, replacement: a.replacement + i.replacementCost }),
+    { secondhand: 0, replacement: 0 },
+  );
+  const count = viewItems.length;
+
   const groups: Record<string, EquipmentItem[]> = {};
-  for (const it of reg.items) (groups[it.category] ||= []).push(it);
+  for (const it of viewItems) (groups[it.category] ||= []).push(it);
   const cats = Object.keys(groups).sort();
   const th = cn("px-4 py-2.5 font-semibold text-xs uppercase tracking-wider", printMode ? "text-slate-500" : "text-slate-400");
   return (
@@ -803,10 +820,32 @@ function EquipmentRegisterSection({ reg, printMode, inline }: { reg: EquipmentRe
               <h3 className={cn("text-lg font-bold", printMode ? "text-slate-900" : "text-white")}>Equipment Register</h3>
             </div>
             <p className={cn("text-sm", printMode ? "text-slate-500" : "text-slate-500")}>
-              {reg.count} included item{reg.count === 1 ? "" : "s"} · second-hand value vs. replacement (new) cost
+              {count} included item{count === 1 ? "" : "s"}{effectiveDivision !== "All" ? ` in ${effectiveDivision}` : ""} · second-hand value vs. replacement (new) cost
             </p>
           </div>
         </div>
+
+        {showTabs && !printMode && (
+          <div className="flex flex-wrap gap-2 mb-5">
+            {["All", ...divisions].map((d) => {
+              const active = activeDivision === d;
+              return (
+                <button
+                  key={d}
+                  onClick={() => setActiveDivision(d)}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors",
+                    active
+                      ? "bg-amber-500 border-amber-500 text-[#0A1828]"
+                      : "bg-transparent border-[#1E3A5C] text-slate-300 hover:border-amber-500/50",
+                  )}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <p className={cn("text-[15px] leading-relaxed mb-6", printMode ? "text-slate-700" : "text-slate-300")}>
           The equipment included in the sale is listed below. Our valuation is based on the{" "}
@@ -819,11 +858,11 @@ function EquipmentRegisterSection({ reg, printMode, inline }: { reg: EquipmentRe
         <div className="grid grid-cols-2 gap-3 mb-6">
           <div className={cn("rounded-xl p-4 border", printMode ? "bg-amber-50 border-amber-100" : "bg-amber-500/10 border-amber-500/20")}>
             <div className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", printMode ? "text-slate-500" : "text-slate-400")}>Second-hand value (our figure)</div>
-            <div className={cn("text-2xl font-bold", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(reg.totals.secondhand)}</div>
+            <div className={cn("text-2xl font-bold", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(totals.secondhand)}</div>
           </div>
           <div className={cn("rounded-xl p-4 border", printMode ? "bg-blue-50 border-blue-100" : "bg-blue-500/10 border-blue-500/20")}>
             <div className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", printMode ? "text-slate-500" : "text-slate-400")}>Replacement (new) cost</div>
-            <div className={cn("text-2xl font-bold", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(reg.totals.replacement)}</div>
+            <div className={cn("text-2xl font-bold", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(totals.replacement)}</div>
           </div>
         </div>
 
@@ -867,8 +906,8 @@ function EquipmentRegisterSection({ reg, printMode, inline }: { reg: EquipmentRe
             <tfoot>
               <tr className={printMode ? "bg-slate-100" : "bg-[#0F2040]"}>
                 <td className={cn("px-4 py-3 text-right font-bold", printMode ? "text-slate-900" : "text-white")}>Total</td>
-                <td className={cn("px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(reg.totals.secondhand)}</td>
-                <td className={cn("px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(reg.totals.replacement)}</td>
+                <td className={cn("px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-amber-700" : "text-amber-300")}>{fmt(totals.secondhand)}</td>
+                <td className={cn("px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap", printMode ? "text-blue-700" : "text-blue-300")}>{fmt(totals.replacement)}</td>
               </tr>
             </tfoot>
           </table>

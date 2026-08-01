@@ -1,4 +1,5 @@
 import { useRoute, Link, useLocation } from "wouter";
+import { sendEnquiry, enquiryLabel } from "@/lib/enquiry";
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   ArrowLeft,
@@ -11,6 +12,7 @@ import {
   DollarSign,
   Phone,
   Mail,
+  Calendar,
   Play,
   Pause,
   Volume2,
@@ -438,6 +440,45 @@ export function ListingDetail() {
   useEffect(() => {
     try { setBuyerSignedIn(!!localStorage.getItem("exit360_buyer_token")); } catch { /* ignore */ }
   }, []);
+  const [, navigate] = useLocation();
+  const [enquirySent, setEnquirySent] = useState<string | null>(null);
+  const [enquirySending, setEnquirySending] = useState<string | null>(null);
+
+  // Request Info / Call / Site Visit. Already-verified buyers send straight to
+  // the seller (no sign-in screen) and see an inline confirmation; unverified
+  // buyers go through the sign-in (OTP) flow, which sends the same enquiry.
+  async function handleRequest(intent: "info" | "call" | "visit") {
+    recordAccessLog(listingId, intent === "call" ? "request_call" : intent === "visit" ? "request_visit" : "request_info");
+    const signInUrl =
+      `/sign-in?intent=${intent}&listingId=${listingId}` +
+      `&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listingId}`;
+    let profile: { userId?: string; name?: string; phone?: string } | null = null;
+    try {
+      const token = localStorage.getItem("exit360_buyer_token");
+      const raw = localStorage.getItem("biz360_web_user");
+      if (token && raw) profile = JSON.parse(raw);
+    } catch { profile = null; }
+    if (profile?.userId && profile?.phone && (profile?.name?.trim?.().length ?? 0) >= 2) {
+      setEnquirySending(intent); setEnquirySent(null);
+      try {
+        await sendEnquiry({
+          userId: profile.userId,
+          name: profile.name!.trim(),
+          phone: profile.phone!,
+          listingId,
+          listingName: listing?.businessName ?? "this listing",
+          intent,
+        });
+        setEnquirySent(intent);
+      } catch {
+        navigate(signInUrl);
+      } finally {
+        setEnquirySending(null);
+      }
+      return;
+    }
+    navigate(signInUrl);
+  }
 
   // Buyer engagement: has this buyer already started a conversation on this
   // listing, and do they have unread replies? Drives the sidebar CTAs.
@@ -1208,20 +1249,27 @@ export function ListingDetail() {
                     </Link>
                   )}
                   {!accessInfo?.hasAccess && (
-                    <>
-                      <Link
-                        href={`/sign-in?intent=info&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}
-                        onClick={() => recordAccessLog(listing?.id ?? "", "request_info")}
-                      >
-                        <Button className="w-full gap-2"><Mail size={15} /> Request Info</Button>
-                      </Link>
-                      <Link
-                        href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}
-                        onClick={() => recordAccessLog(listing?.id ?? "", "request_call")}
-                      >
-                        <Button variant="outline" className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
-                      </Link>
-                    </>
+                    enquirySent ? (
+                      <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                        <ShieldCheck size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm">
+                          <p className="text-foreground font-medium">Your {enquiryLabel(enquirySent)} request has been sent.</p>
+                          <p className="text-muted-foreground text-xs mt-0.5">The seller has been notified and will be in touch.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Button className="w-full gap-2" disabled={!!enquirySending} onClick={() => handleRequest("info")}>
+                          <Mail size={15} /> {enquirySending === "info" ? "Sending…" : "Request Info"}
+                        </Button>
+                        <Button variant="outline" className="w-full gap-2" disabled={!!enquirySending} onClick={() => handleRequest("call")}>
+                          <Phone size={15} /> {enquirySending === "call" ? "Sending…" : "Request a Call"}
+                        </Button>
+                        <Button variant="outline" className="w-full gap-2" disabled={!!enquirySending} onClick={() => handleRequest("visit")}>
+                          <Calendar size={15} /> {enquirySending === "visit" ? "Sending…" : "Request a Site Visit"}
+                        </Button>
+                      </>
+                    )
                   )}
                 </div>
               </div>

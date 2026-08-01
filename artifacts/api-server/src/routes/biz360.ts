@@ -4,7 +4,7 @@ import { eq, and, desc, isNull, sql, inArray } from "drizzle-orm";
 import {
   db, kvStore, cafesTable, valuationSnapshotsTable, cafeEquipmentTable,
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
-  ndaSettingsTable, ndaSignaturesTable, buyersTable,
+  ndaSettingsTable, ndaSignaturesTable, buyersTable, businessUnitsTable,
 } from "@workspace/db";
 import { sendEmail, emailShell, isValidEmail, PUBLIC_WEB_URL } from "../lib/email";
 import twilio from "twilio";
@@ -290,18 +290,33 @@ router.get("/public/listing/:listingId/equipment", async (req, res): Promise<voi
       return;
     }
     const cafeIds = cafes.map((c) => c.id);
+    // Business units = divisions (e.g. Espresso Bar, Coffee Roastery, Coffee
+    // Carts). A unit with is_included_in_sale = false (e.g. "Keeping") is NOT
+    // part of the sale, so its equipment must be excluded from the register.
+    const units = await db.select().from(businessUnitsTable)
+      .where(inArray(businessUnitsTable.cafeId, cafeIds));
+    const unitById = new Map(units.map((u) => [u.id, u]));
     const rows = await db
       .select()
       .from(cafeEquipmentTable)
       .where(and(inArray(cafeEquipmentTable.cafeId, cafeIds), sql`${cafeEquipmentTable.suspended} IS NOT TRUE`));
     const items = rows
+      .filter((r) => {
+        // Drop equipment belonging to a division that isn't included in the sale.
+        if (!r.unitId) return true;
+        const unit = unitById.get(r.unitId);
+        return !unit || unit.isIncludedInSale !== false;
+      })
       .map((r) => {
         const secondhand = Number(r.currentValue ?? r.secondhandValue ?? 0) || 0;
         const replacement = Number(r.replacementCost ?? r.purchasePrice ?? 0) || 0;
+        const unit = r.unitId ? unitById.get(r.unitId) : null;
         return {
           id: r.id,
           name: r.name,
           category: (r.category ?? "General").trim() || "General",
+          // The division this item belongs to — drives the register's filter tabs.
+          division: (unit?.name ?? "General").trim() || "General",
           brand: r.brand ?? null,
           condition: r.condition ?? null,
           secondhandValue: secondhand,
@@ -310,7 +325,7 @@ router.get("/public/listing/:listingId/equipment", async (req, res): Promise<voi
           replacementCost: replacement > 0 ? Math.max(replacement, secondhand) : 0,
         };
       })
-      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+      .sort((a, b) => a.division.localeCompare(b.division) || a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
     const totals = items.reduce(
       (acc, it) => {
         acc.secondhand += it.secondhandValue;

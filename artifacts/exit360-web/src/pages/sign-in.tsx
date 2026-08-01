@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, Eye, Phone, ShieldCheck, ChevronRight, Loader2, CheckCircle2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { sendEnquiry } from "@/lib/enquiry";
 
 type Step = "phone" | "otp" | "name" | "signedin" | "done";
 
@@ -78,59 +79,6 @@ async function registerBuyer(userId: string, name: string, phone: string): Promi
   try {
     localStorage.setItem("biz360_web_user", JSON.stringify({ userId, name, phone }));
   } catch {}
-}
-
-async function createEnquiryThread(
-  userId: string,
-  name: string,
-  phone: string,
-  listingId: string,
-  listingName: string,
-  intent: string,
-): Promise<void> {
-  if (!listingId) return;
-  const threads: Record<string, any> =
-    (await kvGet<Record<string, any>>("biz360_threads_v3")) ?? {};
-  // Canonical thread id — MUST match the app's format (`${listingId}_${userId}`)
-  // so a buyer has ONE conversation per listing across web + app, not two.
-  const threadId = `${listingId}_${userId}`;
-  const localPhone = toLocalFormat(phone);
-  const text =
-    intent === "call"
-      ? `Hi, I'd like to arrange a call about ${listingName}. You can reach me at ${localPhone}. — ${name}`
-      : `Hi, I'm interested in ${listingName} and would love more details. My number is ${localPhone}. — ${name}`;
-
-  if (!threads[threadId]) {
-    threads[threadId] = {
-      id: threadId,
-      listingId,
-      listingName,
-      sellerName: "Seller",
-      buyerName: name,
-      buyerId: userId,
-      messages: [],
-      updatedAt: Date.now(),
-      unreadBuyer: 0,
-      unreadSeller: 0,
-    };
-  } else {
-    threads[threadId] = { ...threads[threadId], buyerName: name, buyerId: userId };
-  }
-
-  threads[threadId].messages = [
-    ...(threads[threadId].messages ?? []),
-    { id: `msg-${Date.now()}-web`, from: "buyer", text, timestamp: Date.now() },
-  ];
-  threads[threadId].updatedAt = Date.now();
-  threads[threadId].unreadSeller = (threads[threadId].unreadSeller ?? 0) + 1;
-
-  await kvSet("biz360_threads_v3", threads);
-  // Email the seller about this new enquiry (best-effort).
-  fetch("/api/biz360/notify-message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ threadId, from: "buyer" }),
-  }).catch(() => {});
 }
 
 function OtpBoxes({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
@@ -348,7 +296,7 @@ export function SignIn() {
     try {
       const trimmed = name.trim();
       await registerBuyer(userId, trimmed, e164);
-      await createEnquiryThread(userId, trimmed, e164, listingId, listingName, intent);
+      await sendEnquiry({ userId, name: trimmed, phone: e164, listingId, listingName, intent });
       // Unify identities: link this phone-verified enquirer to the canonical
       // buyer record and mint a portal token, so they're recognised in the
       // buyer portal (and for any document access a seller grants) — no 2nd SMS.
@@ -394,12 +342,15 @@ export function SignIn() {
 
   const intentLabel =
     intent === "call" ? "Request a Call" :
+    intent === "visit" ? "Request a Site Visit" :
     intent === "signup" ? "Create Buyer Profile" :
     intent === "info" ? "Request Info" :
     "Send Enquiry";
   const intentDesc =
     intent === "call"
       ? "We'll pass your number to the seller so they can call you directly."
+      : intent === "visit"
+      ? "We'll ask the seller to arrange a site visit / inspection with you."
       : intent === "signup"
       ? "Verify your number to create your free buyer profile and get access to exclusive listings."
       : intent === "info"
