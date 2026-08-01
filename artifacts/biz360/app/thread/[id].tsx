@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { useValuation } from "@/context/ValuationContext";
+import { useValuation, ValuationProvider } from "@/context/ValuationContext";
 import {
   formatMessageTime,
   markRead,
@@ -30,7 +30,18 @@ import {
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
 
+// This route lives outside the (seller) group, so it isn't wrapped by that
+// layout's ValuationProvider. Wrap it here so the seller "grant access" flow can
+// read the selected cafe (restored from storage) without crashing the screen.
 export default function ThreadScreen() {
+  return (
+    <ValuationProvider>
+      <ThreadScreenInner />
+    </ValuationProvider>
+  );
+}
+
+function ThreadScreenInner() {
   const { id, listingName, sellerName, buyerName, listingId: listingIdParam, buyerId: buyerIdParam } = useLocalSearchParams<{
     id: string;
     listingName?: string;

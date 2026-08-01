@@ -11,6 +11,7 @@ import { useColors } from "@/hooks/useColors";
 import { getUsers, isMySubmission, PendingListing, getPendingListings, saveUsers } from "@/lib/adminStore";
 import { aggregateAnalytics, getMultiAnalytics, ListingAnalytics } from "@/lib/analyticsStore";
 import { useValuation } from "@/context/ValuationContext";
+import { getThreads } from "@/lib/messageStore";
 
 function formatValuation(val: string | number | null | undefined): string {
   const n = Number(val ?? 0);
@@ -246,6 +247,7 @@ export default function SellerDashboard() {
   const [featuredAnalytics, setFeaturedAnalytics] = useState<ListingAnalytics | null>(null);
   const [analyticsLoading,  setAnalyticsLoading]  = useState(true);
   const [upgradeVisible,    setUpgradeVisible]    = useState(false);
+  const [unreadMsgs,        setUnreadMsgs]        = useState(0);
 
   const { selectedCafe, latestSnapshot, fetchCafes, fetchSnapshot, authToken } = useValuation();
   const valMidpoint = latestSnapshot.combined?.valuationMidpoint;
@@ -254,10 +256,14 @@ export default function SellerDashboard() {
     useCallback(() => {
       if (!user?.id) return;
       setAnalyticsLoading(true);
+      let myIds = new Set<string>();
 
       getPendingListings().then(async (all) => {
         const mine = all.filter((p) => isMySubmission(p.submittedBy, user.id));
         setListings(mine);
+        myIds = new Set(mine.map((p) => p.listingId));
+        // Compute unread seller messages across my listings' threads.
+        void refreshUnread(myIds);
 
         if (mine.length === 0) {
           setAnalytics(aggregateAnalytics([]));
@@ -281,8 +287,20 @@ export default function SellerDashboard() {
       if (authToken) {
         fetchCafes().then((cafes) => { if (cafes.length > 0) fetchSnapshot(); });
       }
+
+      // Poll for new messages while the dashboard is focused.
+      const interval = setInterval(() => { void refreshUnread(myIds); }, 8000);
+      return () => clearInterval(interval);
     }, [user?.id, authToken]),
   );
+
+  async function refreshUnread(myIds: Set<string>) {
+    try {
+      const threads = await getThreads();
+      const relevant = myIds.size > 0 ? threads.filter((t) => myIds.has(t.listingId)) : threads;
+      setUnreadMsgs(relevant.reduce((n, t) => n + (t.unreadSeller ?? 0), 0));
+    } catch { /* non-critical */ }
+  }
 
   const featuredListing = listings.find((l) => l.status === "approved") ?? listings[0];
 
@@ -369,12 +387,45 @@ export default function SellerDashboard() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push("/(seller)/leads" as any)}
+              activeOpacity={0.75}
+            >
+              <Feather name="bell" size={17} color={unreadMsgs > 0 ? "#3B82F6" : colors.foreground} />
+              {unreadMsgs > 0 && (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{unreadMsgs > 9 ? "9+" : unreadMsgs}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={showAccountMenu}
             >
               <Text style={[styles.avatarText, { color: colors.foreground }]}>{user?.name?.charAt(0) ?? "S"}</Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ── New messages banner ── */}
+        {unreadMsgs > 0 && (
+          <TouchableOpacity
+            style={styles.msgBanner}
+            onPress={() => router.push("/(seller)/leads" as any)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.msgBannerIcon}>
+              <Feather name="message-circle" size={20} color="#fff" />
+              <View style={styles.msgBannerDot} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.msgBannerTitle}>
+                {unreadMsgs} new message{unreadMsgs !== 1 ? "s" : ""}
+              </Text>
+              <Text style={styles.msgBannerSub}>Tap to view your leads and reply</Text>
+            </View>
+            <Feather name="chevron-right" size={20} color="#fff" />
+          </TouchableOpacity>
+        )}
 
         {/* ── Featured listing card ── */}
         {featuredListing ? (
@@ -529,6 +580,13 @@ const styles = StyleSheet.create({
   name:             { fontSize: 24, fontFamily: "Inter_700Bold" },
   avatarBtn:        { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   avatarText:       { fontSize: 15, fontFamily: "Inter_700Bold" },
+  bellBadge:        { position: "absolute", top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  bellBadgeText:    { color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold" },
+  msgBanner:        { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 16, padding: 16, backgroundColor: "#2563EB", borderWidth: 1, borderColor: "#3B82F6" },
+  msgBannerIcon:    { width: 42, height: 42, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+  msgBannerDot:     { position: "absolute", top: 6, right: 6, width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#2563EB" },
+  msgBannerTitle:   { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
+  msgBannerSub:     { color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
   upgradePill:      { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
   upgradeText:      { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   tourCard:         { borderRadius: 16, padding: 18, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
