@@ -24,10 +24,6 @@ function NativeTabLayout() {
           <Label>Saved</Label>
         </NativeTabs.Trigger>
       )}
-      <NativeTabs.Trigger name="compare">
-        <Icon sf={{ default: "square.split.2x1", selected: "square.split.2x1.fill" }} />
-        <Label>Compare</Label>
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="messages">
         <Icon sf={{ default: "message", selected: "message.fill" }} />
         <Label>Messages</Label>
@@ -87,14 +83,6 @@ function ClassicTabLayout() {
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="bookmark" tintColor={color} size={24} /> : <Feather name="bookmark" size={22} color={color} />,
           tabBarButton: user ? undefined : () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="compare"
-        options={{
-          title: "Compare",
-          tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="square.split.2x1" tintColor={color} size={24} /> : <Feather name="columns" size={22} color={color} />,
         }}
       />
       <Tabs.Screen

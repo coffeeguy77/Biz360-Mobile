@@ -30,6 +30,14 @@ import {
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
 const AUTH_TOKEN_KEY = "biz360_auth_token";
 
+// Chat palette — matched to the website portal (buyers-portal.tsx CHAT_STYLE)
+// so the app and web message bubbles look identical: classic iMessage bubbles
+// on a dark chat canvas, with a curved tail carved by a background-coloured mask.
+const CHAT_BG     = "#0b1a2e";
+const BUBBLE_MINE = "#2563eb";
+const BUBBLE_THEM = "#22304a";
+const TEXT_THEM   = "#E2E8F0";
+
 interface SellerCafe { id: string; name: string; listingId?: string | null; listing_id?: string | null }
 
 // Self-contained: the thread screen no longer depends on ValuationProvider (it
@@ -262,16 +270,16 @@ export default function ThreadScreen() {
         </View>
       </Modal>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: CHAT_BG }} behavior="padding" keyboardVerticalOffset={0}>
         {loading ? (
           <View style={styles.center}>
-            <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Loading messages…</Text>
+            <Text style={[styles.loadingText, { color: "#8B9CB8" }]}>Loading messages…</Text>
           </View>
         ) : messages.length === 0 ? (
           <View style={styles.center}>
-            <Feather name="message-circle" size={36} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Start the conversation</Text>
-            <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
+            <Feather name="message-circle" size={36} color="#8B9CB8" />
+            <Text style={[styles.emptyTitle, { color: "#fff" }]}>Start the conversation</Text>
+            <Text style={[styles.emptyHint, { color: "#8B9CB8" }]}>
               Send a message to {counterName} about {listingLabel}
             </Text>
           </View>
@@ -302,13 +310,23 @@ export default function ThreadScreen() {
                   <View style={[styles.msgRow, isMe ? styles.msgRowMe : styles.msgRowThem]}>
                     <View style={[
                       styles.bubble,
-                      isMe ? { borderBottomRightRadius: 5 } : { borderBottomLeftRadius: 5 },
-                      { backgroundColor: isMe ? colors.primary : colors.card, borderColor: colors.border },
+                      { backgroundColor: isMe ? BUBBLE_MINE : BUBBLE_THEM },
                     ]}>
-                      <Text style={[styles.bubbleText, { color: isMe ? "#fff" : colors.foreground }]}>{item.text}</Text>
-                      <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.55)" : colors.mutedForeground }]}>
+                      <Text style={[styles.bubbleText, { color: isMe ? "#fff" : TEXT_THEM }]}>{item.text}</Text>
+                      <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.55)" : "rgba(226,232,240,0.5)" }]}>
                         {formatMessageTime(item.timestamp)}
                       </Text>
+                      {isMe ? (
+                        <>
+                          <View style={styles.tailMine} pointerEvents="none" />
+                          <View style={styles.tailMineCover} pointerEvents="none" />
+                        </>
+                      ) : (
+                        <>
+                          <View style={styles.tailThem} pointerEvents="none" />
+                          <View style={styles.tailThemCover} pointerEvents="none" />
+                        </>
+                      )}
                     </View>
                   </View>
                 </>
@@ -360,9 +378,14 @@ const styles = StyleSheet.create({
   msgRow: { maxWidth: "78%" },
   msgRowMe: { alignSelf: "flex-end" },
   msgRowThem: { alignSelf: "flex-start" },
-  bubble: { padding: 12, borderRadius: 16, borderWidth: 1, gap: 4 },
+  bubble: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, gap: 3, position: "relative" },
   bubbleText: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
   bubbleTime: { fontSize: 10, fontFamily: "Inter_400Regular", alignSelf: "flex-end" },
+  // Curved iMessage tail (colour wedge + background-coloured mask), matching web.
+  tailMine:      { position: "absolute", bottom: 0, right: -6, width: 18, height: 18, backgroundColor: BUBBLE_MINE, borderBottomLeftRadius: 16 },
+  tailMineCover: { position: "absolute", bottom: -2, right: -15, width: 20, height: 22, backgroundColor: CHAT_BG, borderBottomLeftRadius: 16 },
+  tailThem:      { position: "absolute", bottom: 0, left: -6, width: 18, height: 18, backgroundColor: BUBBLE_THEM, borderBottomRightRadius: 16 },
+  tailThemCover: { position: "absolute", bottom: -2, left: -15, width: 20, height: 22, backgroundColor: CHAT_BG, borderBottomRightRadius: 16 },
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1 },
   input: { flex: 1, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1, fontSize: 14, fontFamily: "Inter_400Regular", maxHeight: 100 },
   sendBtn: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
