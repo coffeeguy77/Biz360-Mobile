@@ -6,7 +6,7 @@ import {
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
   ndaSettingsTable, ndaSignaturesTable, buyersTable,
 } from "@workspace/db";
-import { sendEmail, emailShell, emailConfigured, PUBLIC_WEB_URL } from "../lib/email";
+import { sendEmail, emailShell, PUBLIC_WEB_URL } from "../lib/email";
 import twilio from "twilio";
 import { v2 as cloudinary } from "cloudinary";
 import {
@@ -323,26 +323,6 @@ router.get("/public/listing/:listingId/equipment", async (req, res): Promise<voi
   } catch {
     res.status(500).json({ error: "Failed to fetch equipment" });
   }
-});
-
-// ─── TEMPORARY email self-test ────────────────────────────────────────────────
-// GET /biz360/email-selftest — sends a test email to the account owner only, so a
-// real send can be verified end-to-end. Fixed recipient = no abuse. Remove after.
-router.get("/biz360/email-selftest", async (_req, res): Promise<void> => {
-  const to = "info@beanculture.com.au";
-  const configured = emailConfigured();
-  let sent = false;
-  if (configured) {
-    sent = await sendEmail({
-      to,
-      subject: "EXIT360 email test ✅",
-      html: emailShell(
-        "Email is working",
-        "<p>This confirms EXIT360 can send emails through Resend. You can ignore this message.</p>",
-      ),
-    });
-  }
-  res.json({ configured, sent, to, from: process.env.EMAIL_FROM ?? null });
 });
 
 // ─── New-message email alerts ─────────────────────────────────────────────────
