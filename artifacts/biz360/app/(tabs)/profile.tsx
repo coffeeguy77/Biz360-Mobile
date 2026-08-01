@@ -4,6 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -465,6 +466,11 @@ export default function ProfileScreen() {
       {/* ── Edit Profile Modal ── */}
       <Modal visible={editVisible} animationType="slide" transparent onRequestClose={() => setEditVisible(false)}>
         <Pressable style={styles.editBackdrop} onPress={() => setEditVisible(false)} />
+        <KeyboardAvoidingView
+          style={styles.editKav}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          pointerEvents="box-none"
+        >
         <View style={[styles.editSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.editHandle} />
           <View style={styles.editHeader}>
@@ -525,6 +531,7 @@ export default function ProfileScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -602,7 +609,8 @@ const styles = StyleSheet.create({
 
   // ── Edit Profile Modal ──
   editBackdrop:          { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)" },
-  editSheet:             { position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, borderTopWidth: 1, borderColor: "#1E3A5C" },
+  editKav:               { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "flex-end" },
+  editSheet:             { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, borderTopWidth: 1, borderColor: "#1E3A5C" },
   editHandle:            { width: 36, height: 4, borderRadius: 2, backgroundColor: "#2D4A6A", alignSelf: "center", marginBottom: 16 },
   editHeader:            { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 20 },
   editTitle:             { fontSize: 18, fontFamily: "Inter_700Bold" },

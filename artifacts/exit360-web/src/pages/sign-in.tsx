@@ -91,7 +91,9 @@ async function createEnquiryThread(
   if (!listingId) return;
   const threads: Record<string, any> =
     (await kvGet<Record<string, any>>("biz360_threads_v3")) ?? {};
-  const threadId = `thread-${listingId}-${userId}`;
+  // Canonical thread id — MUST match the app's format (`${listingId}_${userId}`)
+  // so a buyer has ONE conversation per listing across web + app, not two.
+  const threadId = `${listingId}_${userId}`;
   const localPhone = toLocalFormat(phone);
   const text =
     intent === "call"
@@ -285,14 +287,40 @@ export function SignIn() {
       if (!res.ok) throw new Error(data.message || data.error || "Invalid code — please try again");
       setUserId(data.userId ?? "");
       setAuthToken(data.token ?? "");
-      try {
-        const stored = localStorage.getItem("biz360_web_user");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed.name && parsed.name !== "User") setName(parsed.name);
-        }
-      } catch {}
-      setStep("name");
+
+      // Do we already know this buyer's name? Check the server (canonical buyer
+      // record) first, then this browser's cache. If we do, skip the name step
+      // entirely — we already have their phone AND name, no need to ask again.
+      let knownName = "";
+      if (data.token) {
+        try {
+          const r = await fetch("/api/buyer-portal/link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.token}` },
+            body: JSON.stringify({}),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok && d.token) { try { localStorage.setItem("exit360_buyer_token", d.token); } catch {} }
+          if (r.ok && typeof d.name === "string" && d.name.trim().length >= 2) knownName = d.name.trim();
+        } catch { /* fall back to cache / manual entry */ }
+      }
+      if (!knownName) {
+        try {
+          const stored = localStorage.getItem("biz360_web_user");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed.name && parsed.name !== "User" && String(parsed.name).trim().length >= 2) {
+              knownName = String(parsed.name).trim();
+            }
+          }
+        } catch {}
+      }
+      if (knownName) {
+        setName(knownName);
+        setStep("signedin");   // recognised — go straight to the one-tap confirm
+      } else {
+        setStep("name");       // genuinely new buyer — ask once
+      }
     } catch (err: any) {
       setError(err.message ?? "Verification failed. Try again.");
       setOtp(Array(6).fill(""));
@@ -571,7 +599,7 @@ export function SignIn() {
                 </Link>
                 <button
                   onClick={() => {
-                    try { localStorage.removeItem("biz360_web_user"); localStorage.removeItem("exit360_buyer_token"); } catch { /* ignore */ }
+                    try { localStorage.removeItem("biz360_web_user"); localStorage.removeItem("exit360_buyer_token"); localStorage.removeItem("biz360_web_auth_token"); } catch { /* ignore */ }
                     setStep("phone"); setPhone(""); setOtp(Array(6).fill("")); setName(""); setUserId(""); setAuthToken(""); setError("");
                   }}
                   className="text-muted-foreground hover:text-foreground transition-colors"

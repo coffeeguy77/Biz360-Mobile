@@ -477,7 +477,13 @@ export function BuyersPortal() {
   }, []);
 
   function handleSignOut() {
-    localStorage.removeItem("exit360_buyer_token");
+    // Clear EVERY identity key, otherwise the sign-in page's "returning buyer"
+    // check still recognises them from biz360_web_user after signing out.
+    try {
+      localStorage.removeItem("exit360_buyer_token");
+      localStorage.removeItem("biz360_web_user");
+      localStorage.removeItem("biz360_web_auth_token");
+    } catch { /* ignore */ }
     navigate("/buyers");
   }
 
