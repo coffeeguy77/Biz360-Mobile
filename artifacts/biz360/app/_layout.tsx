@@ -33,6 +33,7 @@ function RootLayoutNav() {
       <Stack.Screen name="listing/[id]" />
       <Stack.Screen name="tour/[id]" />
       <Stack.Screen name="thread/[id]" />
+      <Stack.Screen name="buyer-portal" />
       <Stack.Screen name="create-listing" />
       <Stack.Screen name="packages" />
       <Stack.Screen name="wiki" />

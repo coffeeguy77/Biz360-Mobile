@@ -186,6 +186,21 @@ export default function ProfileScreen() {
           ))}
         </View>
 
+        {/* ── My Portal (buyer access to granted reports) ── */}
+        <TouchableOpacity
+          style={[styles.portalCard, { backgroundColor: colors.primary }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/buyer-portal" as any); }}
+        >
+          <View style={styles.portalIcon}>
+            <Feather name="folder" size={18} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.portalTitle}>My Portal</Text>
+            <Text style={styles.portalSub}>Reports &amp; walkthroughs shared with you</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color="#fff" />
+        </TouchableOpacity>
+
         {/* ── Dev role switcher (owner only) ── */}
         {realUser?.email === "+61414631463" && (
           <View style={[styles.devCard, { backgroundColor: "#130A2A", borderColor: "#6B21A8" }]}>
@@ -546,6 +561,10 @@ const styles = StyleSheet.create({
   statBox:          { flex: 1, padding: 14, borderRadius: 12, alignItems: "center", borderWidth: 1 },
   statVal:          { fontSize: 22, fontFamily: "Inter_700Bold" },
   statLbl:          { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  portalCard:       { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, padding: 14, marginTop: 14 },
+  portalIcon:       { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+  portalTitle:      { color: "#fff", fontSize: 15, fontWeight: "700" },
+  portalSub:        { color: "rgba(255,255,255,0.85)", fontSize: 12, marginTop: 2 },
   menuCard:         { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
   devCard:          { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
   devHeader:        { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
