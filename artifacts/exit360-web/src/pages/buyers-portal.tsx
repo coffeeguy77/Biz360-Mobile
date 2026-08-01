@@ -100,7 +100,7 @@ function ListingCard({ item }: { item: ListingAccess }) {
       <div className="px-6 py-4 border-b border-[#1E3A5C]/40">
         <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-3">Your Access</p>
         <div className="flex flex-wrap gap-2">
-          <AccessBadge granted={item.permissions.canViewImReport}    label="IM Report"     icon={FileText}  />
+          <AccessBadge granted={item.permissions.canViewImReport}    label="Report"        icon={FileText}  />
           <AccessBadge granted={item.permissions.canViewWalkthrough} label="360° Walkthrough" icon={Video}  />
           <AccessBadge granted={item.permissions.canViewFinancials}  label="Financials"    icon={BarChart2} />
           <AccessBadge granted={item.permissions.canViewEquipment}   label="Equipment"     icon={Wrench}    />
@@ -122,12 +122,12 @@ function ListingCard({ item }: { item: ListingAccess }) {
                 </a>
               </Link>
             )}
-            {item.permissions.canViewWalkthrough && reportHref && (
-              <Link href={`${reportHref}#chapter-virtual_tour`}>
+            {item.permissions.canViewWalkthrough && item.listingId && (
+              <Link href={`/listings/${item.listingId}`}>
                 <a className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#0F2040] hover:bg-[#142950] border border-[#1E3A5C] text-white font-semibold text-sm transition-colors group">
                   <span className="flex items-center gap-2">
                     <Video size={15} className="text-purple-400" />
-                    360° Business Walkthrough
+                    360° Business Listing
                   </span>
                   <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
                 </a>

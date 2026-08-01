@@ -22,6 +22,7 @@ import { SignJWT, jwtVerify } from "jose";
 import twilio from "twilio";
 import {
   db,
+  kvStore,
   cafesTable,
   buyersTable,
   buyerPortalGroupsTable,
@@ -266,6 +267,17 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
     if (p.canViewEquipment)   mergedPerms[p.cafeId].canViewEquipment   = true;
   }
 
+  // Resolve the public listing name (e.g. "Bean Culture Coffee Roastery") from the
+  // admin listings KV — the cafe row often carries a placeholder name like "My Business".
+  const listingNameById: Record<string, string> = {};
+  try {
+    const kvRows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const allListings = Array.isArray(kvRows[0]?.value) ? (kvRows[0]!.value as any[]) : [];
+    for (const l of allListings) {
+      if (l?.listingId && l?.businessName) listingNameById[l.listingId] = l.businessName;
+    }
+  } catch { /* fall back to cafe name */ }
+
   // Build response — one entry per cafe
   const listings = await Promise.all(
     Object.entries(mergedPerms).map(async ([cafeId, perms]) => {
@@ -275,10 +287,12 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
       const accessToken = perms.canViewImReport && cafe.listingId
         ? await signReportAccessToken(cafe.listingId, phone)
         : null;
+      const displayName =
+        (cafe.listingId ? listingNameById[cafe.listingId] : null) ?? cafe.businessName ?? cafe.name;
       return {
         cafeId,
         listingId: cafe.listingId ?? null,
-        businessName: cafe.businessName ?? cafe.name,
+        businessName: displayName,
         city: cafe.city ?? null,
         businessType: cafe.businessType ?? "business",
         permissions: perms,

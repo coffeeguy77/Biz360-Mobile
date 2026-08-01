@@ -23,6 +23,7 @@ import {
   FileText,
   ExternalLink,
   User,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatPrice, getPriceStat, getStatSlot, type Listing } from "@/data/listings";
@@ -408,6 +409,26 @@ function DemoHero({ listing }: { listing: Listing }) {
   );
 }
 
+// Record a buyer action against a listing (Request Info / Call / phone reveal, …)
+// so the seller can see engagement in their dashboard.
+function recordAccessLog(listingId: string, eventType: string, extra?: Record<string, string>) {
+  fetch("/api/report-access-logs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ listingId, eventType, ...extra, userAgent: navigator.userAgent }),
+  }).catch(() => {});
+}
+
+// The signed-in buyer's canonical id ("u-<digits>"), read from their auth JWT.
+function currentBuyerId(): string | null {
+  try {
+    const t = localStorage.getItem("biz360_web_auth_token");
+    if (!t) return null;
+    const payload = JSON.parse(atob(t.split(".")[1] || ""));
+    return typeof payload?.sub === "string" ? payload.sub : null;
+  } catch { return null; }
+}
+
 export function ListingDetail() {
   const [, params] = useRoute("/listings/:id");
   const listingId = params?.id ?? "";
@@ -417,6 +438,32 @@ export function ListingDetail() {
   useEffect(() => {
     try { setBuyerSignedIn(!!localStorage.getItem("exit360_buyer_token")); } catch { /* ignore */ }
   }, []);
+
+  // Buyer engagement: has this buyer already started a conversation on this
+  // listing, and do they have unread replies? Drives the sidebar CTAs.
+  const [hasEngaged, setHasEngaged] = useState(false);
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  useEffect(() => {
+    const myId = currentBuyerId();
+    if (!myId || !listingId) { setHasEngaged(false); setUnreadMsgs(0); return; }
+    let active = true;
+    const load = () =>
+      fetch("/api/biz360/kv/biz360_threads_v3")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!active) return;
+          const all = (j?.value ?? {}) as Record<string, any>;
+          const mine = Object.values(all).find(
+            (t: any) => t?.listingId === listingId && t?.buyerId === myId,
+          ) as any;
+          setHasEngaged(!!mine);
+          setUnreadMsgs(mine?.unreadBuyer ?? 0);
+        })
+        .catch(() => {});
+    load();
+    const iv = setInterval(load, 5000);
+    return () => { active = false; clearInterval(iv); };
+  }, [listingId]);
 
   const [spaces, setSpaces] = useState<TourSpace[]>([]);
   const [spacesLoading, setSpacesLoading] = useState(false);
@@ -1113,12 +1160,40 @@ export function ListingDetail() {
                   ))}
                 </div>
                 <div className="flex flex-col gap-2 pt-2">
-                  <Link href={`/sign-in?intent=info&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
-                    <Button className="w-full gap-2"><Mail size={15} /> Request Info</Button>
-                  </Link>
-                  <Link href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}>
-                    <Button variant="outline" className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
-                  </Link>
+                  {/* Granted access → View Report; engaged → Messages; else the two CTAs */}
+                  {accessInfo?.hasAccess && (
+                    <Link href={`/reports/${listing?.id ?? ""}`}>
+                      <Button className="w-full gap-2"><FileText size={15} /> View Report</Button>
+                    </Link>
+                  )}
+                  {(hasEngaged || accessInfo?.hasAccess) && (
+                    <Link href="/buyers/portal">
+                      <Button variant={accessInfo?.hasAccess ? "outline" : "default"} className="w-full gap-2 relative">
+                        <MessageSquare size={15} /> Messages
+                        {unreadMsgs > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                            {unreadMsgs > 9 ? "9+" : unreadMsgs}
+                          </span>
+                        )}
+                      </Button>
+                    </Link>
+                  )}
+                  {!accessInfo?.hasAccess && (
+                    <>
+                      <Link
+                        href={`/sign-in?intent=info&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}
+                        onClick={() => recordAccessLog(listing?.id ?? "", "request_info")}
+                      >
+                        <Button className="w-full gap-2"><Mail size={15} /> Request Info</Button>
+                      </Link>
+                      <Link
+                        href={`/sign-in?intent=call&listingId=${listing?.id ?? ""}&listingName=${encodeURIComponent(listing?.businessName ?? "")}&return=/listings/${listing?.id ?? ""}`}
+                        onClick={() => recordAccessLog(listing?.id ?? "", "request_call")}
+                      >
+                        <Button variant="outline" className="w-full gap-2"><Phone size={15} /> Request a Call</Button>
+                      </Link>
+                    </>
+                  )}
                 </div>
               </div>
 
