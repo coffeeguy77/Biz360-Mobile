@@ -118,7 +118,11 @@ export default function ThreadScreen() {
   };
 
   useEffect(() => {
-    if (messages.length > 0) scrollToEnd();
+    if (messages.length > 0) {
+      scrollToEnd();
+      // Viewing the thread clears its unread badge, even as new messages poll in.
+      if (id) markRead(id, role).catch(() => {});
+    }
   }, [messages.length]);
 
   const send = async () => {
@@ -298,6 +302,7 @@ export default function ThreadScreen() {
                   <View style={[styles.msgRow, isMe ? styles.msgRowMe : styles.msgRowThem]}>
                     <View style={[
                       styles.bubble,
+                      isMe ? { borderBottomRightRadius: 5 } : { borderBottomLeftRadius: 5 },
                       { backgroundColor: isMe ? colors.primary : colors.card, borderColor: colors.border },
                     ]}>
                       <Text style={[styles.bubbleText, { color: isMe ? "#fff" : colors.foreground }]}>{item.text}</Text>

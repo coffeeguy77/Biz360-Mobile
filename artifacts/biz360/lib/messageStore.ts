@@ -166,17 +166,22 @@ export function useThreadDetail(id: string) {
   const [thread, setThread] = useState<Thread | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const reload = () => {
+  const reload = useCallback(() => {
     getThread(id).then(setThread).catch(() => {});
-  };
+  }, [id]);
 
   useEffect(() => {
+    if (!id) return;
     let active = true;
     setLoading(true);
-    getThread(id)
-      .then((t) => { if (active) { setThread(t); setLoading(false); } })
-      .catch(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    const load = () =>
+      getThread(id)
+        .then((t) => { if (active) { setThread(t); setLoading(false); } })
+        .catch(() => { if (active) setLoading(false); });
+    load();
+    // Poll so the other party's new messages appear live without leaving the screen.
+    const iv = setInterval(load, 4000);
+    return () => { active = false; clearInterval(iv); };
   }, [id]);
 
   return { thread, loading, reload };

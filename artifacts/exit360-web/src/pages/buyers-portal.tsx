@@ -5,7 +5,7 @@
  * Shows all listings the verified buyer has been granted access to,
  * with per-listing content cards and direct report links.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Eye, LogOut, Building2, MapPin, FileText, Video,
@@ -163,6 +163,7 @@ interface Thread {
   id: string; listingId: string; listingName: string;
   sellerName?: string; buyerName?: string; buyerId: string;
   messages: ThreadMsg[]; updatedAt: number;
+  unreadBuyer?: number; unreadSeller?: number;
 }
 
 function fmtTime(ts: number): string {
@@ -170,43 +171,100 @@ function fmtTime(ts: number): string {
   catch { return ""; }
 }
 
+// Shared chat styling: themed scrollbar + iMessage-style bubble tails.
+const CHAT_STYLE = `
+.exit-chat::-webkit-scrollbar { width: 8px; }
+.exit-chat::-webkit-scrollbar-track { background: rgba(30,58,92,0.12); border-radius: 8px; margin: 6px 0; }
+.exit-chat::-webkit-scrollbar-thumb { background: #24466e; border-radius: 8px; }
+.exit-chat::-webkit-scrollbar-thumb:hover { background: #2f5a8c; }
+.exit-chat { scrollbar-width: thin; scrollbar-color: #24466e transparent; }
+.exit-bubble { position: relative; }
+.exit-bubble-mine::after {
+  content:""; position:absolute; bottom:1px; right:-5px;
+  width:0; height:0; border-top:9px solid #2563eb; border-right:8px solid transparent;
+}
+.exit-bubble-them::after {
+  content:""; position:absolute; bottom:1px; left:-5px;
+  width:0; height:0; border-top:9px solid #16233a; border-left:8px solid transparent;
+}
+`;
+
 function ThreadCard({ thread, onReply }: { thread: Thread; onReply: (id: string, text: string) => Promise<void> }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevCount = useRef(0);
+  const msgs = thread.messages ?? [];
+  const unread = thread.unreadBuyer ?? 0;
+
+  // Auto-scroll to newest: on first render, and whenever a new message arrives.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const grew = msgs.length > prevCount.current;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (grew || prevCount.current === 0) {
+      // Jump on first paint, smooth for subsequent messages.
+      el.scrollTo({ top: el.scrollHeight, behavior: prevCount.current === 0 ? "auto" : "smooth" });
+    } else if (nearBottom) {
+      el.scrollTop = el.scrollHeight;
+    }
+    prevCount.current = msgs.length;
+  }, [msgs.length]);
+
   async function submit() {
     if (!text.trim() || sending) return;
     setSending(true);
     try { await onReply(thread.id, text.trim()); setText(""); } finally { setSending(false); }
   }
+
   return (
-    <div className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 overflow-hidden">
-      <div className="px-5 py-4 border-b border-[#1E3A5C]/60 flex items-center gap-2">
+    <div className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 overflow-hidden flex flex-col">
+      <div className="px-5 py-3.5 border-b border-[#1E3A5C]/60 flex items-center gap-2">
         <MessageSquare size={15} className="text-blue-400" />
-        <span className="text-white font-semibold text-sm">{thread.listingName || "Enquiry"}</span>
-      </div>
-      <div className="px-5 py-4 flex flex-col gap-3 max-h-72 overflow-y-auto">
-        {(thread.messages ?? []).length === 0 && (
-          <p className="text-slate-500 text-sm text-center py-4">No messages yet.</p>
+        <span className="text-white font-semibold text-sm flex-1 truncate">{thread.listingName || "Enquiry"}</span>
+        {unread > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
+            {unread > 9 ? "9+" : unread}
+          </span>
         )}
-        {(thread.messages ?? []).map((m) => {
+      </div>
+      <div ref={scrollRef} className="exit-chat px-4 py-4 flex flex-col gap-2.5 h-[24rem] overflow-y-auto">
+        {msgs.length === 0 && (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-slate-500 text-sm text-center">No messages yet — say hello.</p>
+          </div>
+        )}
+        {msgs.map((m, i) => {
           const mine = m.from === "buyer";
+          const prev = msgs[i - 1];
+          const showName = !prev || prev.from !== m.from;
           return (
-            <div key={m.id} className={cn("flex flex-col max-w-[80%]", mine ? "self-end items-end" : "self-start items-start")}>
-              <div className={cn("rounded-2xl px-3.5 py-2 text-sm", mine ? "bg-blue-600 text-white" : "bg-[#0F2040] border border-[#1E3A5C] text-slate-200")}>
+            <div key={m.id} className={cn("flex flex-col max-w-[78%]", mine ? "self-end items-end" : "self-start items-start")}>
+              <div
+                className={cn(
+                  "exit-bubble px-3.5 py-2 text-sm leading-snug shadow-sm",
+                  mine
+                    ? "exit-bubble-mine bg-blue-600 text-white rounded-2xl rounded-br-md"
+                    : "exit-bubble-them bg-[#16233a] text-slate-100 rounded-2xl rounded-bl-md",
+                )}
+              >
                 {m.text}
               </div>
-              <span className="text-[10px] text-slate-500 mt-1">{mine ? "You" : (thread.sellerName || "Seller")} · {fmtTime(m.timestamp)}</span>
+              <span className="text-[10px] text-slate-500 mt-1 px-1">
+                {(showName ? (mine ? "You" : (thread.sellerName || "Seller")) + " · " : "")}{fmtTime(m.timestamp)}
+              </span>
             </div>
           );
         })}
       </div>
-      <div className="px-5 py-3 border-t border-[#1E3A5C]/60 flex items-center gap-2">
+      <div className="px-4 py-3 border-t border-[#1E3A5C]/60 flex items-center gap-2">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
           placeholder="Write a reply…"
-          className="flex-1 bg-[#070F1C] border border-[#1E3A5C] rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
+          className="flex-1 bg-[#070F1C] border border-[#1E3A5C] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
         />
         <button onClick={submit} disabled={sending || !text.trim()} className="w-10 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center flex-shrink-0">
           {sending ? <Loader2 size={15} className="animate-spin text-white" /> : <Send size={15} className="text-white" />}
@@ -223,34 +281,46 @@ export function BuyersPortal() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load the buyer's enquiry threads (public KV), filtered to this buyer.
+  // Load the buyer's enquiry threads (public KV), filtered to this buyer, and
+  // keep them live so seller replies appear without a manual refresh.
   useEffect(() => {
     if (!data?.phone) return;
     const myId = "u-" + data.phone.replace(/\D/g, "");
-    fetch("/api/biz360/kv/biz360_threads_v3")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        const all = (j?.value ?? {}) as Record<string, Thread>;
-        const mine = Object.values(all)
-          .filter((t) => t?.buyerId === myId)
-          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-        setThreads(mine);
-      })
-      .catch(() => { /* ignore */ });
+    let active = true;
+    const load = () =>
+      fetch("/api/biz360/kv/biz360_threads_v3")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!active) return;
+          const all = (j?.value ?? {}) as Record<string, Thread>;
+          const mine = Object.values(all)
+            .filter((t) => t?.buyerId === myId)
+            .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+          setThreads(mine);
+        })
+        .catch(() => { /* ignore */ });
+    load();
+    const iv = setInterval(load, 4000);
+    return () => { active = false; clearInterval(iv); };
   }, [data?.phone]);
 
+  const unreadTotal = threads.reduce((n, t) => n + (t.unreadBuyer ?? 0), 0);
+
   async function sendReply(threadId: string, text: string) {
+    // Optimistic: show the message instantly, then persist.
+    const optimistic: ThreadMsg = { id: `msg-${Date.now()}-web`, from: "buyer", text, timestamp: Date.now() };
+    setThreads((prev) => prev.map((t) => (t.id === threadId
+      ? { ...t, messages: [...(t.messages ?? []), optimistic], updatedAt: optimistic.timestamp, unreadBuyer: 0 }
+      : t)));
     try {
       const r = await fetch("/api/biz360/kv/biz360_threads_v3");
       const j = await r.json();
       const all = (j?.value ?? {}) as Record<string, any>;
       if (!all[threadId]) return;
-      all[threadId].messages = [
-        ...(all[threadId].messages ?? []),
-        { id: `msg-${Date.now()}-web`, from: "buyer", text, timestamp: Date.now() },
-      ];
-      all[threadId].updatedAt = Date.now();
+      all[threadId].messages = [...(all[threadId].messages ?? []), optimistic];
+      all[threadId].updatedAt = optimistic.timestamp;
       all[threadId].unreadSeller = (all[threadId].unreadSeller ?? 0) + 1;
+      all[threadId].unreadBuyer = 0; // buyer has engaged with this thread
       await fetch("/api/biz360/kv/biz360_threads_v3", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -397,10 +467,17 @@ export function BuyersPortal() {
         {/* Messages — the buyer's enquiry threads */}
         {!loading && !error && threads.length > 0 && (
           <div className="mt-12">
+            <style>{CHAT_STYLE}</style>
             <div className="flex items-center gap-2 mb-5">
               <MessageSquare size={16} className="text-blue-400" />
               <h2 className="text-white font-bold text-lg">Messages</h2>
-              <span className="text-xs text-slate-500">({threads.length})</span>
+              {unreadTotal > 0 ? (
+                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
+                  {unreadTotal > 9 ? "9+" : unreadTotal}
+                </span>
+              ) : (
+                <span className="text-xs text-slate-500">({threads.length})</span>
+              )}
             </div>
             <div className="grid gap-5">
               {threads.map((t) => (
