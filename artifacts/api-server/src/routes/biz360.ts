@@ -22,6 +22,17 @@ cloudinary.config({
 
 const router = Router();
 
+// ─── Test sign-in bypass ──────────────────────────────────────────────────────
+// These AU mobile numbers skip real SMS OTP for QA/testing: no SMS is sent, and
+// any code is accepted at the verify step. Matched on the trailing 9 digits so
+// any format works (0414 631 463, +61414631463, 61414631463, …).
+const TEST_OTP_NUMBERS = ["414631463", "412708337"];
+export function isTestOtpPhone(phone?: string | null): boolean {
+  if (!phone) return false;
+  const digits = phone.replace(/\D/g, "");
+  return TEST_OTP_NUMBERS.some((n) => digits.endsWith(n));
+}
+
 // ─── NDA token helpers ────────────────────────────────────────────────────────
 
 function getNdaSecret(): Uint8Array {
@@ -603,6 +614,7 @@ router.post("/public/listing/:listingId/sms-unlock/send", async (req, res): Prom
     if (!settings?.smsUnlockEnabled) {
       res.status(403).json({ error: "SMS unlock not enabled for this listing" }); return;
     }
+    if (isTestOtpPhone(phone)) { res.json({ ok: true, test: true }); return; }
     const client = getTwilioClient();
     await client.verify.v2
       .services(getVerifyServiceSid())
@@ -625,12 +637,14 @@ router.post("/public/listing/:listingId/sms-unlock/verify", async (req, res): Pr
     if (!settings?.smsUnlockEnabled) {
       res.status(403).json({ error: "SMS unlock not enabled" }); return;
     }
-    const client = getTwilioClient();
-    const check = await client.verify.v2
-      .services(getVerifyServiceSid())
-      .verificationChecks.create({ to: phone, code });
-    if (check.status !== "approved") {
-      res.status(400).json({ error: "Incorrect or expired code" }); return;
+    if (!isTestOtpPhone(phone)) {
+      const client = getTwilioClient();
+      const check = await client.verify.v2
+        .services(getVerifyServiceSid())
+        .verificationChecks.create({ to: phone, code });
+      if (check.status !== "approved") {
+        res.status(400).json({ error: "Incorrect or expired code" }); return;
+      }
     }
     const token = await signReportAccessToken(listingId);
     res.json({ ok: true, token });
@@ -671,6 +685,7 @@ router.post("/public/listing/:listingId/nda/send-otp", async (req, res): Promise
     if (!ndaSettings || ndaSettings.ndaMode !== "required") {
       res.status(403).json({ error: "NDA signing not required for this listing" }); return;
     }
+    if (isTestOtpPhone(phone)) { res.json({ ok: true, test: true }); return; }
     const client = getTwilioClient();
     await client.verify.v2
       .services(getVerifyServiceSid())
@@ -693,12 +708,14 @@ router.post("/public/listing/:listingId/nda/sign", async (req, res): Promise<voi
     if (!ndaSettings || ndaSettings.ndaMode !== "required") {
       res.status(403).json({ error: "NDA signing not required for this listing" }); return;
     }
-    const client = getTwilioClient();
-    const check = await client.verify.v2
-      .services(getVerifyServiceSid())
-      .verificationChecks.create({ to: phone, code });
-    if (check.status !== "approved") {
-      res.status(400).json({ error: "Incorrect or expired code" }); return;
+    if (!isTestOtpPhone(phone)) {
+      const client = getTwilioClient();
+      const check = await client.verify.v2
+        .services(getVerifyServiceSid())
+        .verificationChecks.create({ to: phone, code });
+      if (check.status !== "approved") {
+        res.status(400).json({ error: "Incorrect or expired code" }); return;
+      }
     }
     const [signature] = await db.insert(ndaSignaturesTable).values({
       listingId,
@@ -760,6 +777,7 @@ router.post("/biz360/auth/send-otp", async (req, res): Promise<void> => {
     return;
   }
   try {
+    if (isTestOtpPhone(phone)) { res.json({ ok: true, test: true }); return; }
     const client = getTwilioClient();
     await client.verify.v2
       .services(getVerifyServiceSid())
@@ -778,11 +796,12 @@ router.post("/biz360/auth/verify-otp", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const client = getTwilioClient();
-    const check  = await client.verify.v2
-      .services(getVerifyServiceSid())
-      .verificationChecks.create({ to: phone, code });
-    if (check.status === "approved") {
+    const approved = isTestOtpPhone(phone)
+      ? true
+      : (await getTwilioClient().verify.v2
+          .services(getVerifyServiceSid())
+          .verificationChecks.create({ to: phone, code })).status === "approved";
+    if (approved) {
       const userId = `u-${phone.replace(/\D/g, "")}`;
       let token: string | null = null;
       const jwtSecret = process.env.JWT_SECRET;
@@ -831,19 +850,22 @@ router.post("/biz360/report-access-tokens/issue", async (req, res): Promise<void
     const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
     const jwtSecret  = process.env.JWT_SECRET;
 
-    if (!accountSid || !authToken || !serviceSid || !jwtSecret) {
+    const testPhone = isTestOtpPhone(phone);
+    if (!jwtSecret || (!testPhone && (!accountSid || !authToken || !serviceSid))) {
       res.status(503).json({ error: "OTP service not configured" });
       return;
     }
 
-    const twilioClient = twilio(accountSid, authToken);
-    const check = await twilioClient.verify.v2
-      .services(serviceSid)
-      .verificationChecks.create({ to: phone, code: otpCode });
+    if (!testPhone) {
+      const twilioClient = twilio(accountSid!, authToken!);
+      const check = await twilioClient.verify.v2
+        .services(serviceSid!)
+        .verificationChecks.create({ to: phone, code: otpCode });
 
-    if (check.status !== "approved") {
-      res.status(400).json({ error: "Incorrect or expired OTP" });
-      return;
+      if (check.status !== "approved") {
+        res.status(400).json({ error: "Incorrect or expired OTP" });
+        return;
+      }
     }
 
     // Verify the phone has been explicitly granted access for this listing

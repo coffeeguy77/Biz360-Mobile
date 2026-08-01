@@ -98,6 +98,14 @@ function getTwilioClient() {
   if (!sid || !auth) throw new Error("Twilio credentials not configured");
   return twilio(sid, auth);
 }
+// Test sign-in numbers that skip real SMS OTP (any code accepted). Matched on the
+// trailing 9 digits so any format works (0414 631 463, +61414631463, …).
+const TEST_OTP_NUMBERS = ["414631463", "412708337"];
+function isTestOtpPhone(phone?: string | null): boolean {
+  if (!phone) return false;
+  const digits = phone.replace(/\D/g, "");
+  return TEST_OTP_NUMBERS.some((n) => digits.endsWith(n));
+}
 function getVerifyServiceSid(): string {
   const sid = process.env.TWILIO_VERIFY_SERVICE_SID;
   if (!sid) throw new Error("TWILIO_VERIFY_SERVICE_SID not configured");
@@ -134,13 +142,15 @@ router.post("/buyer-portal/auth/verify", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const client = getTwilioClient();
-    const check = await client.verify.v2
-      .services(getVerifyServiceSid())
-      .verificationChecks.create({ to: phone, code });
-    if (check.status !== "approved") {
-      res.status(400).json({ error: "Incorrect or expired code" });
-      return;
+    if (!isTestOtpPhone(phone)) {
+      const client = getTwilioClient();
+      const check = await client.verify.v2
+        .services(getVerifyServiceSid())
+        .verificationChecks.create({ to: phone, code });
+      if (check.status !== "approved") {
+        res.status(400).json({ error: "Incorrect or expired code" });
+        return;
+      }
     }
     const canonical = normalisePhone(phone);
     let buyerName: string | null = null;
