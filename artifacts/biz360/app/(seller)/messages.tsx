@@ -93,9 +93,11 @@ export default function SellerMessages() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 10 }}>
-          <Feather name="arrow-left" size={22} color={colors.foreground} />
-        </TouchableOpacity>
+        {router.canGoBack() && (
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 10 }}>
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </TouchableOpacity>
+        )}
         <Text style={[styles.title, { color: colors.foreground }]}>Messages</Text>
         {totalUnread > 0 && (
           <View style={styles.badge}>

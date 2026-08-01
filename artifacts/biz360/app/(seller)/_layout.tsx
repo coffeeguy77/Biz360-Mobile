@@ -4,11 +4,35 @@ import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { Feather } from "@expo/vector-icons";
 import { SymbolView } from "expo-symbols";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ValuationProvider } from "@/context/ValuationContext";
+import { useAuth } from "@/context/AuthContext";
+import { getThreads } from "@/lib/messageStore";
+import { getPendingListings, isMySubmission } from "@/lib/adminStore";
+
+// Live unread-message count across the seller's own listings, for the tab badge.
+function useSellerUnread(userId?: string): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!userId) { setCount(0); return; }
+    let active = true;
+    const load = async () => {
+      try {
+        const [all, threads] = await Promise.all([getPendingListings(), getThreads()]);
+        const myIds = new Set(all.filter((p) => isMySubmission(p.submittedBy, userId)).map((p) => p.listingId));
+        const c = threads.filter((t) => myIds.has(t.listingId)).reduce((n, t) => n + (t.unreadSeller ?? 0), 0);
+        if (active) setCount(c);
+      } catch { /* non-critical */ }
+    };
+    load();
+    const iv = setInterval(load, 8000);
+    return () => { active = false; clearInterval(iv); };
+  }, [userId]);
+  return count;
+}
 
 function NativeLayout() {
   return (
@@ -24,6 +48,10 @@ function NativeLayout() {
       <NativeTabs.Trigger name="valuation">
         <Icon sf={{ default: "chart.line.uptrend.xyaxis", selected: "chart.line.uptrend.xyaxis.circle.fill" }} />
         <Label>Valuation</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="messages">
+        <Icon sf={{ default: "message", selected: "message.fill" }} />
+        <Label>Messages</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="leases">
         <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
@@ -44,6 +72,8 @@ function ClassicLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const unread = useSellerUnread(user?.id);
 
   return (
     <Tabs
@@ -68,12 +98,17 @@ function ClassicLayout() {
       <Tabs.Screen name="dashboard"  options={{ title: "Dashboard",  tabBarIcon: ({ color }) => isIOS ? <SymbolView name="chart.bar"                     tintColor={color} size={24} /> : <Feather name="bar-chart-2"    size={22} color={color} /> }} />
       <Tabs.Screen name="tours"      options={{ title: "Tours",      tabBarIcon: ({ color }) => isIOS ? <SymbolView name="rotate.3d"                      tintColor={color} size={24} /> : <Feather name="rotate-ccw"    size={22} color={color} /> }} />
       <Tabs.Screen name="valuation"  options={{ title: "Valuation",  tabBarIcon: ({ color }) => isIOS ? <SymbolView name="chart.line.uptrend.xyaxis"      tintColor={color} size={24} /> : <Feather name="trending-up"   size={22} color={color} /> }} />
+      <Tabs.Screen name="messages"   options={{
+        title: "Messages",
+        tabBarBadge: unread > 0 ? (unread > 9 ? "9+" : unread) : undefined,
+        tabBarBadgeStyle: { backgroundColor: "#EF4444", fontSize: 10 },
+        tabBarIcon: ({ color }) => isIOS ? <SymbolView name="message.fill" tintColor={color} size={24} /> : <Feather name="message-circle" size={22} color={color} />,
+      }} />
       <Tabs.Screen name="leases"     options={{ title: "Leases",     tabBarIcon: ({ color }) => isIOS ? <SymbolView name="doc.text"                        tintColor={color} size={24} /> : <Feather name="file-text"     size={22} color={color} /> }} />
       <Tabs.Screen name="more"       options={{ title: "More",       tabBarIcon: ({ color }) => isIOS ? <SymbolView name="ellipsis"                        tintColor={color} size={24} /> : <Feather name="more-horizontal" size={22} color={color} /> }} />
       {/* Hidden tabs — accessible via router.push from More screen */}
       <Tabs.Screen name="listings"   options={{ href: null }} />
       <Tabs.Screen name="leads"      options={{ href: null }} />
-      <Tabs.Screen name="messages"   options={{ href: null }} />
       <Tabs.Screen name="help"       options={{ href: null }} />
     </Tabs>
   );

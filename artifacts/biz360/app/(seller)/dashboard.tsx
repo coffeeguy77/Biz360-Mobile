@@ -387,7 +387,7 @@ export default function SellerDashboard() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.avatarBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => router.push("/(seller)/leads" as any)}
+              onPress={() => router.push("/(seller)/messages" as any)}
               activeOpacity={0.75}
             >
               <Feather name="bell" size={17} color={unreadMsgs > 0 ? "#3B82F6" : colors.foreground} />
@@ -410,7 +410,7 @@ export default function SellerDashboard() {
         {unreadMsgs > 0 && (
           <TouchableOpacity
             style={styles.msgBanner}
-            onPress={() => router.push("/(seller)/leads" as any)}
+            onPress={() => router.push("/(seller)/messages" as any)}
             activeOpacity={0.85}
           >
             <View style={styles.msgBannerIcon}>
@@ -421,7 +421,7 @@ export default function SellerDashboard() {
               <Text style={styles.msgBannerTitle}>
                 {unreadMsgs} new message{unreadMsgs !== 1 ? "s" : ""}
               </Text>
-              <Text style={styles.msgBannerSub}>Tap to view your leads and reply</Text>
+              <Text style={styles.msgBannerSub}>Tap to open Messages and reply</Text>
             </View>
             <Feather name="chevron-right" size={20} color="#fff" />
           </TouchableOpacity>

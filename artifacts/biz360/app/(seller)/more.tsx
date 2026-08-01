@@ -23,14 +23,6 @@ const MORE_ITEMS = [
     bg:      "#431407",
   },
   {
-    icon:    "message-circle",
-    label:   "Messages",
-    desc:    "Conversations with buyers",
-    route:   "/(seller)/messages",
-    color:   "#16A34A",
-    bg:      "#052E16",
-  },
-  {
     icon:    "book-open",
     label:   "Help & Guides",
     desc:    "Resources and support",

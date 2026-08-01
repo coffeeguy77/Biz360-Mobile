@@ -18,7 +18,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { useValuation, ValuationProvider } from "@/context/ValuationContext";
 import {
   formatMessageTime,
   markRead,
@@ -29,19 +28,14 @@ import {
 } from "@/lib/messageStore";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+const AUTH_TOKEN_KEY = "biz360_auth_token";
 
-// This route lives outside the (seller) group, so it isn't wrapped by that
-// layout's ValuationProvider. Wrap it here so the seller "grant access" flow can
-// read the selected cafe (restored from storage) without crashing the screen.
+interface SellerCafe { id: string; name: string; listingId?: string | null; listing_id?: string | null }
+
+// Self-contained: the thread screen no longer depends on ValuationProvider (it
+// lives outside the seller tab group, so that context isn't available here).
+// The seller "grant access" flow fetches the seller's businesses directly.
 export default function ThreadScreen() {
-  return (
-    <ValuationProvider>
-      <ThreadScreenInner />
-    </ValuationProvider>
-  );
-}
-
-function ThreadScreenInner() {
   const { id, listingName, sellerName, buyerName, listingId: listingIdParam, buyerId: buyerIdParam } = useLocalSearchParams<{
     id: string;
     listingName?: string;
@@ -53,12 +47,12 @@ function ThreadScreenInner() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { selectedCafe } = useValuation();
   const flatRef = useRef<FlatList>(null);
 
   const { thread, loading, reload } = useThreadDetail(id);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [cafes, setCafes] = useState<SellerCafe[]>([]);
 
   // Grant report access modal (seller view only)
   const [showGrant, setShowGrant] = useState(false);
@@ -89,6 +83,28 @@ function ThreadScreenInner() {
   const isRawId     = /^u-\d|^\+?61\d{7,}/.test(rawCounter ?? "");
   const counterName = isRawId || !rawCounter ? "Agent" : rawCounter;
   const listingLabel = meta.listingName;
+
+  // The cafe (business) tied to this conversation — used only by the seller
+  // "grant access" flow. Match by listing, else fall back to the first business.
+  const selectedCafe: SellerCafe | null =
+    cafes.find((c) => (c.listingId ?? c.listing_id) === meta.listingId) ?? cafes[0] ?? null;
+
+  // Fetch the seller's businesses directly (no ValuationProvider dependency).
+  useEffect(() => {
+    if (role !== "seller") return;
+    let active = true;
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+        if (!token) return;
+        const res = await fetch(`${API_BASE}/api/valuation/cafes`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok && active) setCafes(await res.json());
+      } catch { /* non-critical — grant flow will prompt if unavailable */ }
+    })();
+    return () => { active = false; };
+  }, [role]);
 
   useEffect(() => {
     if (!id) return;
@@ -122,7 +138,7 @@ function ThreadScreenInner() {
 
   async function handleGrantAccess() {
     if (!selectedCafe) {
-      Alert.alert("No business selected", "Please select a business from the Valuation tab first.");
+      Alert.alert("No business found", "Set up your business in the Valuation tab first, then you can grant buyers portal access.");
       return;
     }
     // Derive buyer phone from buyerId (which is stored as E.164 or u-<phone digits>)
