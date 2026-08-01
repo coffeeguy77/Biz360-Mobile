@@ -992,7 +992,7 @@ export function ReportPage() {
   // Equipment register — included items with second-hand + replacement values.
   useEffect(() => {
     if (!listingId) return;
-    fetch(`/api/biz360/public/listing/${listingId}/equipment`)
+    fetch(`/api/public/listing/${listingId}/equipment`)
       .then((r) => (r.ok ? r.json() : null))
       .then((json: EquipmentRegister | null) => {
         if (json && Array.isArray(json.items) && json.items.length > 0) setEquipment(json);

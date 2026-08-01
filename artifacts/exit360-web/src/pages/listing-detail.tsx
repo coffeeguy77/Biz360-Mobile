@@ -472,7 +472,7 @@ export function ListingDetail() {
   const [revealing, setRevealing] = useState(false);
   useEffect(() => {
     if (!listingId) return;
-    fetch(`/api/biz360/public/listing/${listingId}/seller`)
+    fetch(`/api/public/listing/${listingId}/seller`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setSellerCard(d); })
       .catch(() => {});
@@ -482,7 +482,7 @@ export function ListingDetail() {
     setRevealing(true); setRevealMsg(null);
     try {
       const token = localStorage.getItem("biz360_web_auth_token");
-      const r = await fetch(`/api/biz360/public/listing/${listingId}/seller/reveal-phone`, {
+      const r = await fetch(`/api/public/listing/${listingId}/seller/reveal-phone`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
