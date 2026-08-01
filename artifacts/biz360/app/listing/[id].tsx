@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VerificationBadges } from "@/components/VerificationBadge";
-import { DEMO_LISTINGS, formatPrice } from "@/data/listings";
+import { DEMO_LISTINGS, formatPrice, getPriceStat } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 import { getPendingListings, PendingListing } from "@/lib/adminStore";
 import { trackEvent } from "@/lib/analyticsStore";
@@ -342,7 +342,7 @@ export default function ListingDetailScreen() {
   if (demoListing) {
     const listing = demoListing;
     const DETAIL_ROWS = [
-      { label: "Asking Price",         value: formatPrice(listing.askingPrice),                    highlight: true  },
+      { label: "Asking Price",         value: getPriceStat(listing).value,                         highlight: true  },
       { label: "Weekly Revenue",       value: `$${listing.weeklyRevenue.toLocaleString()}`                          },
       { label: "SDE / Adjusted Profit",value: `$${listing.adjustedProfit.toLocaleString()} p.a.`, highlight: true  },
       { label: "Monthly Rent",         value: `$${listing.rent.toLocaleString()}`                                   },
@@ -374,16 +374,15 @@ export default function ListingDetailScreen() {
                 <Text style={styles.confText}>Confidential Listing</Text>
               </View>
             )}
-            {listing.priceDisplay === "poa" ? (
-              <View>
-                <Text style={[styles.infoPrice, { color: colors.foreground }]}>POA</Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
-              </View>
-            ) : listing.priceDisplay === "weeklyRevenue" ? (
-              <Text style={[styles.infoPrice, { color: colors.foreground }]}>${listing.weeklyRevenue.toLocaleString()}/wk</Text>
-            ) : (
-              <Text style={[styles.infoPrice, { color: colors.foreground }]}>{formatPrice(listing.askingPrice)}</Text>
-            )}
+            {(() => {
+              const ps = getPriceStat(listing);
+              return (
+                <View>
+                  <Text style={[styles.infoPrice, { color: colors.foreground }]}>{ps.value}</Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" }}>{ps.label}</Text>
+                </View>
+              );
+            })()}
             <Text style={[styles.infoName, { color: colors.foreground }]}>{listing.businessName}</Text>
             <Text style={[styles.infoMeta, { color: colors.mutedForeground }]}>{listing.suburb}, {listing.state} · {listing.category}</Text>
           </View>
@@ -481,7 +480,9 @@ export default function ListingDetailScreen() {
   const topOffset    = insets.top + (Platform.OS === "web" ? 67 : 0) + 8;
 
   const financialRows = [
-    price    && price    > 0 ? { label: "Asking Price",          value: safeFormatPrice(price),                       highlight: true  } : null,
+    (item.priceDisplay !== "weeklyRevenue" && item.priceDisplay !== "poa" &&
+      (price > 0 || (item.askingPriceMin ?? 0) > 0 || (item.askingPriceMax ?? 0) > 0))
+      ? { label: "Asking Price", value: getPriceStat(item as any).value, highlight: true } : null,
     revenue  && revenue  > 0 ? { label: "Weekly Revenue",        value: `$${revenue.toLocaleString()}`                                 } : null,
     item.adjustedProfit && item.adjustedProfit > 0 ? { label: "Adj. Profit / SDE", value: `$${item.adjustedProfit.toLocaleString()} p.a.`, highlight: true } : null,
     item.rent           && item.rent > 0           ? { label: "Monthly Rent",       value: `$${item.rent.toLocaleString()}`             } : null,
@@ -535,16 +536,15 @@ export default function ListingDetailScreen() {
               <Text style={styles.confText}>Confidential Listing</Text>
             </View>
           )}
-          {item.priceDisplay === "poa" ? (
-            <View>
-              <Text style={[styles.infoPrice, { color: colors.foreground }]}>POA</Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" }}>Contact Seller</Text>
-            </View>
-          ) : item.priceDisplay === "weeklyRevenue" ? (
-            <Text style={[styles.infoPrice, { color: colors.foreground }]}>{revenue && revenue > 0 ? `$${revenue.toLocaleString()}/wk` : safeFormatPrice(price)}</Text>
-          ) : (
-            <Text style={[styles.infoPrice, { color: colors.foreground }]}>{safeFormatPrice(price)}</Text>
-          )}
+          {(() => {
+            const ps = getPriceStat(item as any);
+            return (
+              <View>
+                <Text style={[styles.infoPrice, { color: colors.foreground }]}>{ps.value}</Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" }}>{ps.label}</Text>
+              </View>
+            );
+          })()}
           <Text style={[styles.infoName, { color: colors.foreground }]}>{businessName}</Text>
           {(locationMeta || item.category) && (
             <Text style={[styles.infoMeta, { color: colors.mutedForeground }]}>

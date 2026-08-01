@@ -165,6 +165,9 @@ export interface Listing {
   state: string;
   suburb: string;
   askingPrice: number;
+  askingPriceMin?: number;
+  askingPriceMax?: number;
+  equipmentValue?: number;
   weeklyRevenue: number;
   priceDisplay?: "askingPrice" | "weeklyRevenue" | "poa";
   stat2Display?: StatSlotOption;
@@ -612,6 +615,27 @@ export function getListingById(id: string): Listing | undefined {
 
 export function formatPrice(price: number): string {
   return `$${(price / 1000).toFixed(0)}K`;
+}
+
+/** Compact currency, e.g. 558000 → "$558K", 2100000 → "$2.1M". Matches the website. */
+export function formatMoney(n: number): string {
+  if (n >= 1000000) return `$${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}M`;
+  if (n >= 1000) return `$${Math.round(n / 1000)}K`;
+  return `$${n.toLocaleString()}`;
+}
+
+export interface PriceStat { value: string; label: string; }
+
+/** Headline price slot — mirrors the website's getPriceStat (range-aware). */
+export function getPriceStat(listing: Listing): PriceStat {
+  if (listing.priceDisplay === "poa") return { value: "POA", label: "Contact Seller" };
+  if (listing.priceDisplay === "weeklyRevenue") return { value: formatMoney(listing.weeklyRevenue), label: "Revenue / week" };
+  const min = listing.askingPriceMin ?? 0;
+  const max = listing.askingPriceMax ?? 0;
+  if (min > 0 && max > 0 && max !== min) return { value: `${formatMoney(min)} – ${formatMoney(max)}`, label: "Asking Price" };
+  if (max > 0 && min === 0) return { value: `Up to ${formatMoney(max)}`, label: "Asking Price" };
+  if (min > 0 && max === 0) return { value: `From ${formatMoney(min)}`, label: "Asking Price" };
+  return { value: formatPrice(listing.askingPrice), label: "Asking Price" };
 }
 
 export function formatRevenue(weekly: number): string {

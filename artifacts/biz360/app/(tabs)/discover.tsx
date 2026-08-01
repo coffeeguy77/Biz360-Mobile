@@ -45,9 +45,21 @@ export default function DiscoverScreen() {
       (async () => {
         const [all, ids] = await Promise.all([getPendingListings(), getSavedIds()]);
         if (!active) return;
+        // Server-computed fields (live equipment value) for parity with the website.
+        const equipMap: Record<string, number> = {};
+        try {
+          const res = await fetch(`${API_BASE}/public/listings`);
+          if (res.ok) {
+            const { listings: pub } = await res.json();
+            for (const l of (Array.isArray(pub) ? pub : [])) {
+              if (l?.listingId) equipMap[l.listingId] = Number(l.equipmentValue ?? 0);
+            }
+          }
+        } catch { /* non-fatal — fall back to KV fields */ }
         const approved = all
           .filter((p) => p.status === "approved")
-          .map(pendingToListing);
+          .map(pendingToListing)
+          .map((l) => ({ ...l, equipmentValue: equipMap[l.id] ?? l.equipmentValue }));
         setSavedIds(ids);
         // Resolve cover photo with a 3-level fallback per listing:
         // 1. photos[0] from PendingListing (set at submission time)

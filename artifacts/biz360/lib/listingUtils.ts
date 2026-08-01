@@ -10,6 +10,8 @@ export function pendingToListing(p: PendingListing): Listing {
     state:               p.state               ?? "",
     suburb:              p.suburb              ?? "",
     askingPrice:         p.askingPrice         ?? 0,
+    askingPriceMin:      p.askingPriceMin,
+    askingPriceMax:      p.askingPriceMax,
     weeklyRevenue:       p.weeklyRevenue       ?? 0,
     priceDisplay:        p.priceDisplay        ?? "askingPrice",
     stat2Display:        p.stat2Display        as StatSlotOption | undefined,

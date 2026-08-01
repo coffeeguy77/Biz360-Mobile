@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BADGE_LABELS, Listing, StatSlotOption, formatPrice } from "@/data/listings";
+import { BADGE_LABELS, Listing, StatSlotOption, formatMoney, getPriceStat } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
 
 interface Props {
@@ -22,14 +22,16 @@ function getStatSlot(
   opt: string | undefined,
   listing: Listing,
 ): { value: string; label: string; accent?: boolean } | null {
+  // Mirrors the website's getStatSlot exactly so app + web show identical stats.
   switch (opt) {
     case "none":          return null;
-    case "sde":           return listing.adjustedProfit > 0 ? { value: `$${listing.adjustedProfit.toLocaleString()}`, label: "SDE p.a.", accent: true } : null;
-    case "staffCount":    return { value: String(listing.staffCount), label: "staff" };
-    case "weeklyRevenue": return listing.weeklyRevenue > 0 ? { value: `$${listing.weeklyRevenue.toLocaleString()}`, label: "/week revenue" } : null;
-    case "rent":          return listing.rent > 0 ? { value: `$${listing.rent.toLocaleString()}`, label: "/month rent" } : null;
-    case "ownerHours":    return listing.ownerHours > 0 ? { value: `${listing.ownerHours}h`, label: "owner hrs/wk" } : null;
-    case "leaseExpiry":   return listing.leaseExpiry ? { value: listing.leaseExpiry, label: "lease expiry" } : null;
+    case "sde":           return listing.adjustedProfit > 0 ? { value: formatMoney(listing.adjustedProfit), label: "SDE p.a.", accent: true } : null;
+    case "staffCount":    return { value: String(listing.staffCount), label: "Staff" };
+    case "weeklyRevenue": return listing.weeklyRevenue > 0 ? { value: formatMoney(listing.weeklyRevenue), label: "Revenue / week" } : null;
+    case "rent":          return listing.rent > 0 ? { value: formatMoney(listing.rent), label: "Rent / month" } : null;
+    case "ownerHours":    return listing.ownerHours > 0 ? { value: `${listing.ownerHours}h`, label: "Owner hrs / wk" } : null;
+    case "leaseExpiry":   return listing.leaseExpiry ? { value: listing.leaseExpiry, label: "Lease Expiry" } : null;
+    case "equipmentValue": return listing.equipmentValue && listing.equipmentValue > 0 ? { value: formatMoney(listing.equipmentValue), label: "Equipment Value", accent: true } : null;
     default:              return null;
   }
 }
@@ -107,26 +109,17 @@ export function ListingCard({ listing, onSave, isSaved, onLongPress }: Props) {
 
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            {listing.priceDisplay === "poa" ? (
-              <>
-                <Text style={[styles.statValue, { color: colors.foreground }]}>POA</Text>
-                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Contact Seller</Text>
-              </>
-            ) : listing.priceDisplay === "weeklyRevenue" ? (
-              <>
-                <Text style={[styles.statValue, { color: colors.foreground }]}>
-                  ${listing.weeklyRevenue.toLocaleString()}
-                </Text>
-                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>/week revenue</Text>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.statValue, { color: colors.foreground }]}>
-                  {formatPrice(listing.askingPrice)}
-                </Text>
-                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>asking price</Text>
-              </>
-            )}
+            {(() => {
+              const price = getPriceStat(listing);
+              return (
+                <>
+                  <Text style={[styles.statValue, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit>
+                    {price.value}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{price.label}</Text>
+                </>
+              );
+            })()}
           </View>
           {slot2 && <View style={[styles.statDivider, { backgroundColor: colors.border }]} />}
           {slot2 && (
