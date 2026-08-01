@@ -143,6 +143,22 @@ function ListingCard({ item }: { item: ListingAccess }) {
     ? `/reports/${item.listingId}?accessToken=${encodeURIComponent(item.accessToken)}`
     : null;
 
+  const [callNote, setCallNote] = useState<string | null>(null);
+  async function callSeller() {
+    if (!item.listingId) return;
+    setCallNote(null);
+    try {
+      const token = localStorage.getItem("exit360_buyer_token");
+      const r = await fetch(`/api/public/listing/${item.listingId}/seller/reveal-phone`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.phone) { window.location.href = `tel:${d.phone}`; }
+      else { setCallNote(d.message ?? "This seller prefers messages."); }
+    } catch { setCallNote("Couldn't place the call — try again."); }
+  }
+
   return (
     <div className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 overflow-hidden">
       {/* Card header */}
@@ -205,19 +221,22 @@ function ListingCard({ item }: { item: ListingAccess }) {
                 </a>
               </Link>
             )}
-            {(item.permissions.canViewFinancials || item.permissions.canViewEquipment) && reportHref && (
-              <Link href={`${reportHref}#chapter-${item.permissions.canViewFinancials ? "financial_performance" : "assets_equipment"}`}>
-                <a className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#0F2040] hover:bg-[#142950] border border-[#1E3A5C] text-white font-semibold text-sm transition-colors group">
-                  <span className="flex items-center gap-2">
-                    <BarChart2 size={15} className="text-emerald-400" />
-                    {item.permissions.canViewFinancials && item.permissions.canViewEquipment
-                      ? "Financials & Equipment"
-                      : item.permissions.canViewFinancials ? "Financial Data" : "Equipment List"}
-                  </span>
-                  <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-                </a>
-              </Link>
-            )}
+            {/* Call the seller (silently tracked) + open the conversation */}
+            <div className="flex gap-2.5">
+              <button
+                onClick={callSeller}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0F2040] hover:bg-[#142950] border border-[#1E3A5C] text-white font-semibold text-sm transition-colors"
+              >
+                <Phone size={15} className="text-green-400" /> Call
+              </button>
+              <a
+                href={`#thread-${item.listingId}`}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0F2040] hover:bg-[#142950] border border-[#1E3A5C] text-white font-semibold text-sm transition-colors"
+              >
+                <MessageSquare size={15} className="text-blue-400" /> Message Seller
+              </a>
+            </div>
+            {callNote && <p className="text-[11px] text-slate-500 text-center">{callNote}</p>}
           </div>
         ) : (
           <div className="flex items-center gap-3 py-2 text-slate-400 text-sm">
@@ -306,7 +325,7 @@ function ThreadCard({ thread, onReply }: { thread: Thread; onReply: (id: string,
   }
 
   return (
-    <div className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 overflow-hidden flex flex-col">
+    <div id={`thread-${thread.listingId}`} className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 overflow-hidden flex flex-col scroll-mt-20">
       <div className="px-5 py-3.5 border-b border-[#1E3A5C]/60 flex items-center gap-2">
         <MessageSquare size={15} className="text-blue-400" />
         <span className="text-white font-semibold text-sm flex-1 truncate">{thread.listingName || "Enquiry"}</span>

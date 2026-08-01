@@ -416,11 +416,25 @@ router.get("/public/listing/:listingId/seller", async (req, res): Promise<void> 
   }
 });
 
-// Reveal the seller's phone — only to a buyer who has verified their own phone
-// (a valid biz360 auth token) and only if the seller allows it. Logs show_phone.
+// Accept either a biz360 auth token (sub=u-<phone>) or a buyer-portal token
+// (role=buyer_portal, phone) — both prove the buyer verified their own phone.
+async function verifyAnyBuyerToken(bearer?: string): Promise<string | null> {
+  if (!bearer) return null;
+  const sub = await verifyToken(bearer).catch(() => null);
+  if (sub) return sub;
+  try {
+    const { payload } = await jwtVerify(bearer, getNdaSecret());
+    const p = payload as { role?: string; phone?: string };
+    if (p.role === "buyer_portal" && p.phone) return "u-" + p.phone.replace(/\D/g, "");
+  } catch { /* ignore */ }
+  return null;
+}
+
+// Reveal the seller's phone — only to a buyer who has verified their own phone,
+// and only if the seller allows it. Logs show_phone for analytics.
 router.post("/public/listing/:listingId/seller/reveal-phone", async (req, res): Promise<void> => {
   const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
-  const buyerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  const buyerId = await verifyAnyBuyerToken(bearer);
   if (!buyerId) { res.status(401).json({ error: "verify_phone", message: "Verify your phone number to see the seller's number." }); return; }
   try {
     const listing = await loadListing(req.params.listingId);

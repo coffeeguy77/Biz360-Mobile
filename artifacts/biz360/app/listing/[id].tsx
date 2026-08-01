@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { VerificationBadges } from "@/components/VerificationBadge";
 import { DEMO_LISTINGS, formatPrice, getPriceStat } from "@/data/listings";
 import { useColors } from "@/hooks/useColors";
@@ -274,13 +275,32 @@ export default function ListingDetailScreen() {
     });
   };
 
-  const handleCall = () => {
+  const handleCall = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (id) trackEvent(id, "call", buyerId);
-    Alert.alert("Click-to-Call", "This call will be tracked as a lead. Proceed?", [
-      { text: "Cancel" },
-      { text: "Call Now", onPress: () => Linking.openURL("tel:+61400000000") },
-    ]);
+    if (id) trackEvent(id, "call", buyerId); // silent analytics — count every press
+    // Not signed in → prompt account creation (no mention of tracking).
+    if (!user) {
+      Alert.alert(
+        "Create a free account",
+        "Sign up to see the seller's phone number and call them directly.",
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Create account", onPress: () => router.push("/(auth)/login" as any) },
+        ],
+      );
+      return;
+    }
+    // Signed in → reveal the seller's number and call. Silent.
+    try {
+      const token = await AsyncStorage.getItem("biz360_auth_token");
+      const res = await fetch(`${LISTING_API_BASE}/api/public/listing/${id}/seller/reveal-phone`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.phone) { Linking.openURL(`tel:${d.phone}`); }
+      else { Alert.alert("Phone unavailable", d.message ?? "This seller prefers to be contacted via messages."); }
+    } catch { Alert.alert("Couldn't place the call", "Please try again in a moment."); }
   };
 
   const handleMessage = (threadId: string, listingName: string, sellerName: string, listingId?: string) => {
