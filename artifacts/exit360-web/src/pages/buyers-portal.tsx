@@ -10,7 +10,7 @@ import { Link, useLocation } from "wouter";
 import {
   Eye, LogOut, Building2, MapPin, FileText, Video,
   BarChart2, Wrench, ChevronRight, Lock, Loader2,
-  Shield, CheckCircle2, Phone, MessageSquare, Send,
+  Shield, CheckCircle2, Phone, MessageSquare, Send, Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,6 +35,78 @@ interface ListingAccess {
 interface PortalData {
   listings: ListingAccess[];
   phone: string;
+  email?: string | null;
+  emailVerified?: boolean;
+  name?: string | null;
+}
+
+function EmailAlertsCard({ data, onSaved }: { data: PortalData; onSaved: (email: string) => void }) {
+  const [email, setEmail] = useState(data.email ?? "");
+  const [editing, setEditing] = useState(!data.email);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const verified = !!data.emailVerified && !!data.email;
+
+  async function save() {
+    const clean = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) { setMsg("Enter a valid email address."); return; }
+    setSaving(true); setMsg(null);
+    try {
+      const token = localStorage.getItem("exit360_buyer_token");
+      const r = await fetch("/api/buyer-portal/email/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email: clean }),
+      });
+      if (r.ok) { setMsg("Check your inbox to confirm your address."); setEditing(false); onSaved(clean); }
+      else { const e = await r.json().catch(() => ({})); setMsg(e.error ?? "Could not save email."); }
+    } catch { setMsg("Network error — please try again."); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#1E3A5C] bg-[#0A1828]/60 px-5 py-4 mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Mail size={15} className="text-blue-400" />
+        <span className="text-white font-semibold text-sm">Email alerts</span>
+        {verified && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">
+            <CheckCircle2 size={11} /> Verified
+          </span>
+        )}
+        {!verified && data.email && (
+          <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+            Pending verification
+          </span>
+        )}
+      </div>
+      <p className="text-slate-400 text-xs mb-3">
+        {verified
+          ? "You'll get an email whenever a seller replies to you."
+          : "Add your email to get notified the moment a seller replies."}
+      </p>
+      {editing || !data.email ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@email.com"
+            className="flex-1 bg-[#070F1C] border border-[#1E3A5C] rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
+          />
+          <button onClick={save} disabled={saving} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold">
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm text-slate-200">{data.email}</span>
+          <button onClick={() => setEditing(true)} className="text-xs text-blue-400 hover:text-blue-300 font-semibold">Change</button>
+        </div>
+      )}
+      {msg && <p className="text-xs text-slate-400 mt-2">{msg}</p>}
+    </div>
+  );
 }
 
 function toLocalPhone(e164: string): string {
@@ -327,6 +399,12 @@ export function BuyersPortal() {
         body: JSON.stringify({ value: all }),
       });
       setThreads((prev) => prev.map((t) => (t.id === threadId ? { ...all[threadId] } : t)));
+      // Email the seller about the new message (best-effort).
+      fetch("/api/biz360/notify-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId, from: "buyer" }),
+      }).catch(() => {});
     } catch { /* ignore */ }
   }
 
@@ -479,6 +557,12 @@ export function BuyersPortal() {
                 <span className="text-xs text-slate-500">({threads.length})</span>
               )}
             </div>
+            {data && (
+              <EmailAlertsCard
+                data={data}
+                onSaved={(email) => setData((d) => (d ? { ...d, email, emailVerified: false } : d))}
+              />
+            )}
             <div className="grid gap-5">
               {threads.map((t) => (
                 <ThreadCard key={t.id} thread={t} onReply={sendReply} />

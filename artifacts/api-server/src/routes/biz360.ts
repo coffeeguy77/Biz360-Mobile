@@ -4,8 +4,9 @@ import { eq, and, desc, isNull, sql, inArray } from "drizzle-orm";
 import {
   db, kvStore, cafesTable, valuationSnapshotsTable, cafeEquipmentTable,
   reportAccessSettingsTable, reportAccessGrantsTable, reportViewEventsTable,
-  ndaSettingsTable, ndaSignaturesTable,
+  ndaSettingsTable, ndaSignaturesTable, buyersTable,
 } from "@workspace/db";
+import { sendEmail, emailShell, PUBLIC_WEB_URL } from "../lib/email";
 import twilio from "twilio";
 import { v2 as cloudinary } from "cloudinary";
 import {
@@ -321,6 +322,71 @@ router.get("/public/listing/:listingId/equipment", async (req, res): Promise<voi
     res.json({ items, totals, count: items.length });
   } catch {
     res.status(500).json({ error: "Failed to fetch equipment" });
+  }
+});
+
+// ─── New-message email alerts ─────────────────────────────────────────────────
+// POST /biz360/notify-message  { threadId, from }
+// Best-effort email to the OTHER party when a message is sent. The seller is
+// notified at their account email; the buyer at their verified email (if set).
+// Always resolves 200 — notification failure must never block messaging.
+router.post("/biz360/notify-message", async (req, res): Promise<void> => {
+  const { threadId, from } = req.body as { threadId?: string; from?: string };
+  if (!threadId || !from) { res.status(400).json({ error: "threadId and from required" }); return; }
+  try {
+    const [trow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_threads_v3"));
+    const threads = (trow?.value ?? {}) as Record<string, any>;
+    const thread = threads[threadId];
+    if (!thread) { res.json({ ok: false, reason: "no_thread" }); return; }
+    const listingName = thread.listingName || "your listing";
+
+    if (from === "buyer") {
+      // Notify the seller (listing owner) at their account email.
+      const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+      const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
+      const listing = listings.find((l) => l?.listingId === thread.listingId);
+      const ownerId = listing?.submittedBy ?? null;
+      const [urow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_users"));
+      const users = Array.isArray(urow?.value) ? (urow!.value as any[]) : [];
+      const owner = users.find((u) => u?.id === ownerId || u?.email === ownerId);
+      const email = owner?.email;
+      const buyerName = thread.buyerName && !/^u-\d/.test(thread.buyerName) ? thread.buyerName : "A buyer";
+      if (email && /@/.test(email)) {
+        await sendEmail({
+          to: email,
+          subject: `New message about ${listingName}`,
+          html: emailShell(
+            "You have a new buyer message",
+            `<p><strong>${buyerName}</strong> sent you a message about <strong>${listingName}</strong>.</p><p>Open the EXIT360 app to read and reply.</p>`,
+          ),
+        });
+        res.json({ ok: true });
+        return;
+      }
+      res.json({ ok: false, reason: "no_owner_email" });
+      return;
+    }
+
+    // Seller → notify the buyer at their verified email.
+    const digits = String(thread.buyerId ?? "").replace(/\D/g, "");
+    if (!digits) { res.json({ ok: false, reason: "no_buyer" }); return; }
+    const [buyer] = await db.select().from(buyersTable).where(eq(buyersTable.phone, `+${digits}`));
+    if (buyer?.email && buyer.emailVerified) {
+      await sendEmail({
+        to: buyer.email,
+        subject: `Reply from the seller about ${listingName}`,
+        html: emailShell(
+          "The seller replied",
+          `<p>The seller sent you a reply about <strong>${listingName}</strong>.</p>`,
+          { label: "View in your portal", url: `${PUBLIC_WEB_URL}/buyers/portal` },
+        ),
+      });
+      res.json({ ok: true });
+      return;
+    }
+    res.json({ ok: false, reason: "no_buyer_email" });
+  } catch {
+    res.json({ ok: false });
   }
 });
 

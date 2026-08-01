@@ -30,6 +30,7 @@ import {
   buyerPortalGroupPermissionsTable,
 } from "@workspace/db";
 import { requireAuth, verifyToken } from "../middlewares/auth";
+import { sendEmail, emailShell, isValidEmail, PUBLIC_WEB_URL } from "../lib/email";
 
 const router = Router();
 
@@ -165,6 +166,68 @@ router.post("/buyer-portal/auth/verify", async (req, res): Promise<void> => {
 });
 
 /**
+ * POST /api/buyer-portal/email/set
+ * Authorization: Bearer <buyer portal token>
+ * Body: { email }
+ * Stores the buyer's email (unverified) and sends a verification link. Changing
+ * an existing email re-triggers verification (emailVerified reset to false).
+ */
+router.post("/buyer-portal/email/set", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const phone = bearer ? await verifyBuyerToken(bearer) : null;
+  if (!phone) { res.status(401).json({ error: "Sign in required" }); return; }
+  const { email } = req.body as { email?: string };
+  if (!isValidEmail(email)) { res.status(400).json({ error: "A valid email is required" }); return; }
+  const clean = email!.trim().toLowerCase();
+  try {
+    const [existing] = await db.select().from(buyersTable).where(eq(buyersTable.phone, phone));
+    // Already verified with the same address? Nothing to do.
+    if (existing?.email === clean && existing?.emailVerified) {
+      res.json({ ok: true, email: clean, verified: true });
+      return;
+    }
+    const token = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.round(Math.random() * 1e9)}`);
+    await db.update(buyersTable)
+      .set({ email: clean, emailVerified: false, emailVerifyToken: token, updatedAt: new Date() })
+      .where(eq(buyersTable.phone, phone));
+    const link = `${PUBLIC_WEB_URL}/api/buyer-portal/email/verify?token=${encodeURIComponent(token)}`;
+    await sendEmail({
+      to: clean,
+      subject: "Verify your email for EXIT360 message alerts",
+      html: emailShell(
+        "Confirm your email",
+        "<p>Confirm this address to get an email whenever a seller replies to your enquiry on EXIT360.</p><p>This link expires when you next change your email.</p>",
+        { label: "Verify my email", url: link },
+      ),
+    });
+    res.json({ ok: true, email: clean, verified: false, pending: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Could not save email";
+    res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * GET /api/buyer-portal/email/verify?token=...
+ * Public link target from the verification email. Marks the email verified and
+ * redirects back to the portal with a friendly flag.
+ */
+router.get("/buyer-portal/email/verify", async (req, res): Promise<void> => {
+  const token = String(req.query.token ?? "");
+  if (!token) { res.redirect(`${PUBLIC_WEB_URL}/buyers/portal?verify=missing`); return; }
+  try {
+    const [row] = await db.select().from(buyersTable).where(eq(buyersTable.emailVerifyToken, token));
+    if (!row) { res.redirect(`${PUBLIC_WEB_URL}/buyers/portal?verify=invalid`); return; }
+    await db.update(buyersTable)
+      .set({ emailVerified: true, emailVerifyToken: null, updatedAt: new Date() })
+      .where(eq(buyersTable.id, row.id));
+    res.redirect(`${PUBLIC_WEB_URL}/buyers/portal?verify=success`);
+  } catch {
+    res.redirect(`${PUBLIC_WEB_URL}/buyers/portal?verify=error`);
+  }
+});
+
+/**
  * POST /api/buyer-portal/link
  * Authorization: Bearer <biz360 auth JWT from /biz360/auth/verify-otp>
  * Body: { name? }
@@ -197,7 +260,12 @@ router.get("/buyer-portal/me", async (req, res): Promise<void> => {
   const phone = await verifyBuyerToken(bearer);
   if (!phone) { res.status(401).json({ error: "Invalid or expired buyer token" }); return; }
   const [buyer] = await db.select().from(buyersTable).where(eq(buyersTable.phone, phone));
-  res.json({ phone, name: buyer?.name ?? null });
+  res.json({
+    phone,
+    name: buyer?.name ?? null,
+    email: buyer?.email ?? null,
+    emailVerified: !!buyer?.emailVerified,
+  });
 });
 
 // ─── Buyer portal: my listings ────────────────────────────────────────────────
@@ -220,12 +288,15 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
     return;
   }
 
+  const [me] = await db.select().from(buyersTable).where(eq(buyersTable.phone, phone));
+  const emailInfo = { email: me?.email ?? null, emailVerified: !!me?.emailVerified, name: me?.name ?? null };
+
   // Find all group memberships for this phone number
   const memberships = await db.select().from(buyerPortalGroupMembersTable)
     .where(eq(buyerPortalGroupMembersTable.phone, phone));
 
   if (!memberships.length) {
-    res.json({ listings: [], phone });
+    res.json({ listings: [], phone, ...emailInfo });
     return;
   }
 
@@ -301,7 +372,7 @@ router.get("/buyer-portal/my-access", async (req, res): Promise<void> => {
     })
   );
 
-  res.json({ listings: listings.filter(Boolean), phone });
+  res.json({ listings: listings.filter(Boolean), phone, ...emailInfo });
 });
 
 // ─── Seller: group CRUD ───────────────────────────────────────────────────────

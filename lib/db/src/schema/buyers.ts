@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
 /**
  * Canonical buyer identity, keyed by phone number.
@@ -12,6 +12,10 @@ export const buyersTable = pgTable("buyers", {
   id: uuid("id").primaryKey().defaultRandom(),
   phone: text("phone").notNull().unique(),
   name: text("name"),
+  // Optional email for reply notifications (verified via a one-time token link).
+  email: text("email"),
+  emailVerified: boolean("email_verified").default(false),
+  emailVerifyToken: text("email_verify_token"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

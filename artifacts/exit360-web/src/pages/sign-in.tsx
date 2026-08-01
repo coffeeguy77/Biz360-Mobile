@@ -123,6 +123,12 @@ async function createEnquiryThread(
   threads[threadId].unreadSeller = (threads[threadId].unreadSeller ?? 0) + 1;
 
   await kvSet("biz360_threads_v3", threads);
+  // Email the seller about this new enquiry (best-effort).
+  fetch("/api/biz360/notify-message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ threadId, from: "buyer" }),
+  }).catch(() => {});
 }
 
 function OtpBoxes({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {

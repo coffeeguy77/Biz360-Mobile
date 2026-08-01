@@ -104,6 +104,17 @@ export async function sendMessage(
 
   map[threadId] = thread;
   await writeMap(map);
+  // Email the other party about the new message (best-effort, never blocks).
+  try {
+    const base = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+    if (base) {
+      void fetch(`${base}/api/biz360/notify-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId, from }),
+      }).catch(() => {});
+    }
+  } catch { /* ignore */ }
   return thread;
 }
 
