@@ -447,6 +447,55 @@ router.post("/public/listing/:listingId/analytics-viewers", async (req, res): Pr
   }
 });
 
+// POST /biz360/seller/listings  (create a listing from the web)
+// Lets a phone-verified seller start a listing on the website. Photos, the 360°
+// tour and the financial report are enriched in the app, but the core record is
+// created here and is immediately owned by (and synced to) the seller's account.
+router.post("/biz360/seller/listings", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const ownerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!ownerId) { res.status(401).json({ error: "Sign in required" }); return; }
+  const b = req.body as Record<string, unknown>;
+  const businessName = String(b.businessName ?? "").trim();
+  if (businessName.length < 2) { res.status(400).json({ error: "Business name is required" }); return; }
+  const num = (v: unknown) => parseInt(String(v ?? "").replace(/[^0-9]/g, ""), 10) || 0;
+  try {
+    const profile = await loadSellerProfile(ownerId).catch(() => ({} as any));
+    const now = Date.now();
+    const listingId = `user-listing-${now}`;
+    const item = {
+      id: `p-${now}`,
+      listingId,
+      submittedAt: now,
+      status: "pending",
+      submittedBy: ownerId,
+      submittedByName: profile?.displayName || "Seller",
+      submittedByRole: "seller",
+      businessName,
+      suburb: String(b.suburb ?? "").trim() || "Unknown",
+      state: String(b.state ?? "VIC"),
+      category: String(b.category ?? "Other"),
+      description: String(b.description ?? "").trim().slice(0, 4000),
+      confidential: !!b.confidential,
+      askingPrice: num(b.askingPrice),
+      askingPriceMin: num(b.askingPriceMin),
+      askingPriceMax: num(b.askingPriceMax),
+      priceDisplay: (b.priceDisplay === "weeklyRevenue" || b.priceDisplay === "poa") ? b.priceDisplay : "askingPrice",
+      photos: [] as string[],
+      badges: [] as string[],
+    };
+    const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
+    listings.push(item);
+    await db.insert(kvStore).values({ key: "biz360_admin_pending_v2", value: listings })
+      .onConflictDoUpdate({ target: kvStore.key, set: { value: listings } });
+    res.json({ ok: true, listing: item });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Could not create listing";
+    res.status(500).json({ error: msg });
+  }
+});
+
 // ─── Seller profile + phone-reveal gating ─────────────────────────────────────
 // The seller controls what's shown on their listing and whether their phone is
 // revealed. Profile is stored per-owner in KV; the phone is hidden until a buyer

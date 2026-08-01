@@ -26,6 +26,7 @@ export function SellerDashboard() {
   const [statsById, setStatsById] = useState<Record<string, Stats>>({});
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"listings" | "profile">("listings");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     try {
@@ -107,22 +108,29 @@ export function SellerDashboard() {
         </div>
 
         {tab === "listings" ? (
-          loading ? (
+          creating ? (
+            <NewListingForm token={token} onDone={() => { setCreating(false); load(); }} onCancel={() => setCreating(false)} />
+          ) : loading ? (
             <div className="text-center py-20 text-muted-foreground flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={18} /> Loading your listings…</div>
           ) : listings.length === 0 ? (
             <div className="rounded-2xl border border-border bg-card/50 p-10 text-center">
               <FileText className="mx-auto text-muted-foreground mb-3" size={34} />
               <h2 className="text-xl font-bold mb-2">No listings on this number yet</h2>
-              <p className="text-muted-foreground max-w-md mx-auto mb-5">Create your first listing and 360° walkthrough in the EXIT360 app, then manage and track it here. Everything syncs by your phone number.</p>
+              <p className="text-muted-foreground max-w-md mx-auto mb-5">Start a listing right here on the web, then add your 360° walkthrough, photos and financial report in the EXIT360 app. Everything syncs by your phone number.</p>
               <div className="flex gap-3 justify-center flex-wrap">
-                <Link href="/list-your-business"><Button className="theme-btn-gradient border-0"><Plus size={16} className="mr-1" /> Start a listing</Button></Link>
+                <Button className="theme-btn-gradient border-0" onClick={() => setCreating(true)}><Plus size={16} className="mr-1" /> Create a listing</Button>
                 <a href="#" className="inline-flex items-center gap-2 text-sm px-4 py-2 rounded-xl border border-border text-muted-foreground"><Smartphone size={15} /> Get the app</a>
               </div>
             </div>
           ) : (
-            <div className="space-y-5">
-              {listings.map((l) => <ListingCard key={l.listingId} listing={l} stats={statsById[l.listingId]} token={token} myPhoneDigits={myPhoneDigits} onChange={load} />)}
-            </div>
+            <>
+              <div className="flex justify-end mb-4">
+                <Button className="theme-btn-gradient border-0" onClick={() => setCreating(true)}><Plus size={16} className="mr-1" /> New listing</Button>
+              </div>
+              <div className="space-y-5">
+                {listings.map((l) => <ListingCard key={l.listingId} listing={l} stats={statsById[l.listingId]} token={token} myPhoneDigits={myPhoneDigits} onChange={load} />)}
+              </div>
+            </>
           )
         ) : (
           <ProfileEditor token={token} />
@@ -205,6 +213,52 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function NewListingForm({ token, onDone, onCancel }: { token: string; onDone: () => void; onCancel: () => void }) {
+  const [f, setF] = useState({ businessName: "", suburb: "", state: "VIC", category: "", description: "", askingPrice: "", priceDisplay: "askingPrice" as "askingPrice" | "poa" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const field = "w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60";
+  const STATES = ["VIC", "NSW", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
+
+  async function submit() {
+    if (f.businessName.trim().length < 2) { setError("Please enter a business name."); return; }
+    setSaving(true); setError(null);
+    try {
+      const r = await fetch("/api/biz360/seller/listings", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(f),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) { setError(d.error ?? "Could not create listing."); return; }
+      onDone();
+    } catch { setError("Network error. Please try again."); } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="max-w-2xl rounded-2xl border border-border bg-card/50 p-6">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-lg font-bold">Create a listing</h2>
+        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+      </div>
+      <p className="text-sm text-muted-foreground mb-5">Start here on the web, then open the app to add your 360° tour, photos and financial report — it's the same listing on both.</p>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2"><label className="block text-xs font-medium text-muted-foreground mb-1.5">Business name *</label><input className={field} value={f.businessName} onChange={(e) => setF({ ...f, businessName: e.target.value })} placeholder="e.g. Bean Culture Coffee Roastery" /></div>
+        <div><label className="block text-xs font-medium text-muted-foreground mb-1.5">Suburb</label><input className={field} value={f.suburb} onChange={(e) => setF({ ...f, suburb: e.target.value })} placeholder="e.g. Noosa Heads" /></div>
+        <div><label className="block text-xs font-medium text-muted-foreground mb-1.5">State</label><select className={field} value={f.state} onChange={(e) => setF({ ...f, state: e.target.value })}>{STATES.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
+        <div><label className="block text-xs font-medium text-muted-foreground mb-1.5">Category</label><input className={field} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="e.g. Café / Hospitality" /></div>
+        <div><label className="block text-xs font-medium text-muted-foreground mb-1.5">Asking price ($)</label><input className={field} value={f.askingPrice} onChange={(e) => setF({ ...f, askingPrice: e.target.value })} placeholder="e.g. 185000" /></div>
+        <div className="sm:col-span-2"><label className="block text-xs font-medium text-muted-foreground mb-1.5">Short description</label><textarea className={field} rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="A concise overview buyers see first" /></div>
+      </div>
+      <label className="flex items-center gap-2 mt-3 text-sm cursor-pointer"><input type="checkbox" checked={f.priceDisplay === "poa"} onChange={(e) => setF({ ...f, priceDisplay: e.target.checked ? "poa" : "askingPrice" })} className="w-4 h-4 accent-[hsl(var(--primary))]" /> Show price as "POA" instead of a figure</label>
+      {error && <p className="text-sm text-destructive mt-3">{error}</p>}
+      <div className="flex gap-3 mt-5">
+        <Button onClick={submit} disabled={saving} className="theme-btn-gradient border-0">{saving ? "Creating…" : "Create listing"}</Button>
+        <Button variant="outline" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   );
