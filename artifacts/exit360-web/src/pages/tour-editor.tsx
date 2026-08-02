@@ -110,7 +110,6 @@ export function TourEditor() {
   const [selSpace, setSelSpace] = useState<string | null>(null);
   const [selPin, setSelPin] = useState<string | null>(null);
   const [placeType, setPlaceType] = useState<string | null>(null);
-  const [moveMode, setMoveMode] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
@@ -118,8 +117,8 @@ export function TourEditor() {
 
   const viewerRef = useRef<any>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const placeRef = useRef<{ type: string | null; move: boolean }>({ type: null, move: false });
-  useEffect(() => { placeRef.current = { type: placeType, move: moveMode }; }, [placeType, moveMode]);
+  const placeRef = useRef<{ type: string | null }>({ type: null });
+  useEffect(() => { placeRef.current = { type: placeType }; }, [placeType]);
   const selPinRef = useRef<string | null>(null);
   useEffect(() => { selPinRef.current = selPin; }, [selPin]);
 
@@ -226,12 +225,11 @@ export function TourEditor() {
       const el = stageRef.current;
       const onClick = (e: MouseEvent) => {
         const st = placeRef.current;
-        if (!st.type && !st.move) return;
+        if (!st.type) return; // only place a NEW pin when a type is armed
         try {
           const [pitch, yaw] = v.mouseEventToCoords(e);
           const x = ((yawToX(yaw) % 1) + 1) % 1, y = Math.min(1, Math.max(0, pitchToY(pitch)));
-          if (st.move && selPinRef.current) { updPin(space.id, selPinRef.current, { position: { x, y } }); setMoveMode(false); }
-          else if (st.type) addPinAt(st.type, x, y);
+          addPinAt(st.type, x, y);
         } catch {}
       };
       el.addEventListener("click", onClick);
@@ -249,16 +247,29 @@ export function TourEditor() {
       space.pins.forEach((p) => { try { v.addHotSpot(hotspotConfig(p)); } catch {} });
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [space?.pins]);
+  }, [space?.pins, selPin]);
 
   function hotspotConfig(p: Pin) {
     const col = p.pinColor || pinColor(p.type);
     const isSel = p.id === selPinRef.current;
+    const sid = space?.id;
     return {
       id: p.id, pitch: yToPitch(p.position.y), yaw: xToYaw(p.position.x), cssClass: "edit-hotspot",
+      draggable: true,
+      // Drag the pin directly on the panorama to reposition it (no separate mode).
+      dragHandlerFunc: (e: MouseEvent) => {
+        try {
+          const v = viewerRef.current; if (!v || !sid) return;
+          const [pitch, yaw] = v.mouseEventToCoords(e);
+          const x = ((yawToX(yaw) % 1) + 1) % 1, y = Math.min(1, Math.max(0, pitchToY(pitch)));
+          updPin(sid, p.id, { position: { x, y } });
+        } catch {}
+      },
       createTooltipFunc: (div: HTMLElement) => {
-        div.style.cssText = "cursor:pointer;transform:translate(-50%,-50%)";
-        div.innerHTML = `<div style="width:26px;height:26px;border-radius:50%;background:${col};border:3px solid ${isSel ? "#fff" : "rgba(255,255,255,0.8)"};box-shadow:0 0 0 ${isSel ? 4 : 0}px rgba(255,255,255,0.35),0 2px 8px rgba(0,0,0,0.5)"></div>`;
+        div.style.cssText = "cursor:grab;transform:translate(-50%,-50%)";
+        div.innerHTML = `<div style="width:26px;height:26px;border-radius:50%;background:${col};border:3px solid ${isSel ? "#fff" : "rgba(255,255,255,0.85)"};box-shadow:0 0 0 ${isSel ? 4 : 0}px rgba(255,255,255,0.4),0 2px 8px rgba(0,0,0,0.55)"></div>`;
+        // Select on click; dragging is handled by pannellum's draggable.
+        div.addEventListener("mousedown", () => { setSelPin(p.id); setPlaceType(null); });
         div.addEventListener("click", (ev) => { ev.stopPropagation(); setSelPin(p.id); setPlaceType(null); });
       },
     };
@@ -288,9 +299,9 @@ export function TourEditor() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-[240px_1fr_340px] min-h-[calc(100vh-57px)]">
+      <div className="grid lg:grid-cols-[220px_1fr] min-h-[calc(100vh-57px)]">
         {/* Spaces sidebar */}
-        <div className="border-r border-border p-3 overflow-y-auto themed-scroll">
+        <div className="border-r border-border p-3 overflow-y-auto themed-scroll lg:sticky lg:top-[57px]" style={{ maxHeight: "calc(100vh - 57px)" }}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold uppercase text-muted-foreground">Spaces</span>
             <button onClick={addSpace} className="text-primary" title="Add space"><Plus size={16} /></button>
@@ -317,17 +328,18 @@ export function TourEditor() {
           </div>
         </div>
 
-        {/* Stage */}
-        <div className="p-4 min-w-0">
+        {/* Main: stage on top, editor spread beneath */}
+        <div className="p-4 min-w-0 flex flex-col gap-4">
           {!space ? (
-            <div className="h-full grid place-items-center text-muted-foreground">Select or add a space.</div>
+            <div className="grid place-items-center text-muted-foreground py-32">Select or add a space.</div>
           ) : (
             <>
               {isPano ? (
                 space.panoramaUrl ? (
                   <div className="relative">
-                    <div ref={stageRef} className="w-full rounded-2xl overflow-hidden border border-border" style={{ height: "min(64vh, 560px)", background: "#000" }} />
-                    {(placeType || moveMode) && <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-full">{moveMode ? "Click to move the pin" : `Click on the panorama to place: ${pinLabel(placeType!)}`} <button className="ml-2 underline" onClick={() => { setPlaceType(null); setMoveMode(false); }}>cancel</button></div>}
+                    <div ref={stageRef} className="w-full rounded-2xl overflow-hidden border border-border" style={{ height: "min(56vh, 520px)", background: "#000" }} />
+                    {placeType && <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-full">Click on the panorama to place: {pinLabel(placeType)} <button className="ml-2 underline" onClick={() => setPlaceType(null)}>cancel</button></div>}
+                    <p className="text-[11px] text-muted-foreground mt-1.5">Drag any pin on the panorama to reposition it. Click a pin to edit it below.</p>
                   </div>
                 ) : (
                   <label className="h-64 rounded-2xl border-2 border-dashed border-border grid place-items-center cursor-pointer hover:border-primary/50">
@@ -352,11 +364,11 @@ export function TourEditor() {
 
               {/* Pin palette */}
               {isPano && space.panoramaUrl && (
-                <div className="mt-4">
+                <div>
                   <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Add a pin — pick a type, then click the panorama</p>
                   <div className="flex flex-wrap gap-1.5">
                     {PIN_TYPES.map((pt) => (
-                      <button key={pt.type} onClick={() => { setPlaceType(pt.type); setMoveMode(false); }} className={`text-xs px-2.5 py-1.5 rounded-full border inline-flex items-center gap-1.5 ${placeType === pt.type ? "border-primary" : "border-border hover:border-primary/40"}`}>
+                      <button key={pt.type} onClick={() => setPlaceType(pt.type)} className={`text-xs px-2.5 py-1.5 rounded-full border inline-flex items-center gap-1.5 ${placeType === pt.type ? "border-primary" : "border-border hover:border-primary/40"}`}>
                         <span className="w-2.5 h-2.5 rounded-full" style={{ background: pt.color }} /> {pt.label}
                       </button>
                     ))}
@@ -372,15 +384,15 @@ export function TourEditor() {
                   )}
                 </div>
               )}
+
+              {/* Editor — fills the width under the pano (multi-column, no long scroll) */}
+              <div className="border-t border-border pt-4">
+                {!pin
+                  ? <SpacePanel space={space} spaces={spaces} onChange={(patch) => updSpace(space.id, patch)} uploadAudio={uploadAudio} busy={busy} setBusy={setBusy} />
+                  : <PinPanel key={pin.id} pin={pin} spaces={spaces} onChange={(patch) => updPin(space.id, pin.id, patch)} onDelete={() => delPin(pin.id)} onClose={() => setSelPin(null)} uploadImage={uploadImage} uploadAudio={uploadAudio} />}
+              </div>
             </>
           )}
-        </div>
-
-        {/* Right: space settings + pin editor */}
-        <div className="border-l border-border p-4 overflow-y-auto themed-scroll" style={{ maxHeight: "calc(100vh - 57px)" }}>
-          {space && !pin && <SpacePanel space={space} spaces={spaces} onChange={(patch) => updSpace(space.id, patch)} uploadAudio={uploadAudio} busy={busy} setBusy={setBusy} />}
-          {space && pin && <PinPanel key={pin.id} pin={pin} spaces={spaces} onChange={(patch) => updPin(space.id, pin.id, patch)} onDelete={() => delPin(pin.id)} onClose={() => setSelPin(null)} onMove={() => { setMoveMode(true); }} uploadImage={uploadImage} uploadAudio={uploadAudio} />}
-          {!space && <p className="text-sm text-muted-foreground">Add a space to start building.</p>}
         </div>
       </div>
 
@@ -392,8 +404,8 @@ export function TourEditor() {
 // ── Space settings panel ──
 function SpacePanel({ space, spaces, onChange, uploadAudio, busy, setBusy }: { space: Space; spaces: Space[]; onChange: (p: Partial<Space>) => void; uploadAudio: (f: File, p: string) => Promise<string | null>; busy: string; setBusy: (s: string) => void }) {
   return (
-    <div className="flex flex-col gap-4">
-      <h3 className="font-bold text-sm">Space settings</h3>
+    <div className="grid gap-x-6 gap-y-3 items-start" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
+      <h3 className="font-bold text-sm col-span-full">Space settings</h3>
       <Field label="Name"><input value={space.name} onChange={(e) => onChange({ name: e.target.value })} className={inp} /></Field>
       <Field label="Type">
         <select value={String(space.dirMode ?? "panorama")} onChange={(e) => onChange({ dirMode: (e.target.value === "4" ? 4 : e.target.value === "8" ? 8 : e.target.value) as any })} className={inp}>
@@ -412,23 +424,24 @@ function SpacePanel({ space, spaces, onChange, uploadAudio, busy, setBusy }: { s
           <Toggle label="Auto-pan on load" on={!!space.autoPan} onToggle={() => onChange({ autoPan: !space.autoPan })} />
         </>
       )}
-      <Toggle label="Start scene" on={!!space.isStartScene} onToggle={() => onChange({ isStartScene: !space.isStartScene })} />
-      <div className="border-t border-border pt-3">
+      <div className="col-span-full"><Toggle label="Start scene" on={!!space.isStartScene} onToggle={() => onChange({ isStartScene: !space.isStartScene })} /></div>
+      <div className="col-span-full border-t border-border pt-3">
         <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5"><Mic size={14} /> Scene narration</h4>
-        <Field label="Audio name"><input value={space.audioName ?? ""} onChange={(e) => onChange({ audioName: e.target.value })} placeholder="e.g. Welcome to the roastery" className={inp} /></Field>
-        <label className={`${btnOutline} mb-2`}>{busy === "sceneAudio" ? "Uploading…" : space.audioUrl ? "Replace audio" : "Upload audio"}<input type="file" accept="audio/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; setBusy("sceneAudio"); const url = await uploadAudio(f, "sceneaudio"); if (url) onChange({ audioUrl: url }); setBusy(""); e.currentTarget.value = ""; }} /></label>
-        {space.audioUrl && <audio src={space.audioUrl} controls className="w-full h-8 mb-2" />}
-        <Field label="Trigger"><select value={space.audioTrigger ?? "button"} onChange={(e) => onChange({ audioTrigger: e.target.value })} className={inp}>{AUDIO_TRIGGERS.map((t) => <option key={t.val} value={t.val}>{t.label}</option>)}</select></Field>
-        <Field label="Transcript"><textarea value={space.audioTranscript ?? ""} onChange={(e) => onChange({ audioTranscript: e.target.value })} rows={3} className={inp} /></Field>
+        <div className="grid gap-x-6 gap-y-3 items-start" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
+          <Field label="Audio name"><input value={space.audioName ?? ""} onChange={(e) => onChange({ audioName: e.target.value })} placeholder="e.g. Welcome to the roastery" className={inp} /></Field>
+          <Field label="Trigger"><select value={space.audioTrigger ?? "button"} onChange={(e) => onChange({ audioTrigger: e.target.value })} className={inp}>{AUDIO_TRIGGERS.map((t) => <option key={t.val} value={t.val}>{t.label}</option>)}</select></Field>
+          <div><span className="text-xs font-semibold text-muted-foreground block mb-1">Audio file</span><label className={btnOutline}>{busy === "sceneAudio" ? "Uploading…" : space.audioUrl ? "Replace audio" : "Upload audio"}<input type="file" accept="audio/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; setBusy("sceneAudio"); const url = await uploadAudio(f, "sceneaudio"); if (url) onChange({ audioUrl: url }); setBusy(""); e.currentTarget.value = ""; }} /></label>{space.audioUrl && <audio src={space.audioUrl} controls className="w-full h-8 mt-2" />}</div>
+          <Field label="Transcript"><textarea value={space.audioTranscript ?? ""} onChange={(e) => onChange({ audioTranscript: e.target.value })} rows={2} className={inp} /></Field>
+        </div>
       </div>
-      <p className="text-[11px] text-muted-foreground">Tip: pick a pin type in the centre panel, then click the panorama to drop it. Click any pin to edit it here.</p>
+      <p className="col-span-full text-[11px] text-muted-foreground">Tip: pick a pin type above, then click the panorama to drop it. Drag pins to reposition; click one to edit it here.</p>
     </div>
   );
 }
 
 // ── Pin editor panel ──
-function PinPanel({ pin, spaces, onChange, onDelete, onClose, onMove, uploadImage, uploadAudio }: {
-  pin: Pin; spaces: Space[]; onChange: (p: Partial<Pin>) => void; onDelete: () => void; onClose: () => void; onMove: () => void;
+function PinPanel({ pin, spaces, onChange, onDelete, onClose, uploadImage, uploadAudio }: {
+  pin: Pin; spaces: Space[]; onChange: (p: Partial<Pin>) => void; onDelete: () => void; onClose: () => void;
   uploadImage: (f: File, p: string) => Promise<string | null>; uploadAudio: (f: File, p: string) => Promise<string | null>;
 }) {
   const [busy, setBusy] = useState("");
@@ -437,18 +450,17 @@ function PinPanel({ pin, spaces, onChange, onDelete, onClose, onMove, uploadImag
   const setPC = (patch: any) => onChange({ popupContent: { ...pc, ...patch } });
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-sm inline-flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ background: pin.pinColor || pinColor(pin.type) }} />{pinLabel(pin.type)} pin</h3>
-        <button onClick={onClose} className="text-muted-foreground"><X size={16} /></button>
-      </div>
-      <div className="flex gap-2">
-        <button onClick={onMove} className={btnOutline + " flex-1"}><Move size={13} className="inline mr-1" /> Move on pano</button>
-        <button onClick={onDelete} className="px-3 py-2 rounded-lg border border-red-500/40 text-red-400 text-sm"><Trash2 size={13} /></button>
+    <div className="grid gap-x-6 gap-y-3 items-start" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
+      <div className="col-span-full flex items-center justify-between">
+        <h3 className="font-bold text-sm inline-flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ background: pin.pinColor || pinColor(pin.type) }} />{pinLabel(pin.type)} pin — drag it on the panorama to move</h3>
+        <div className="flex items-center gap-2">
+          <button onClick={onDelete} className="px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 text-sm inline-flex items-center gap-1.5"><Trash2 size={13} /> Delete</button>
+          <button onClick={onClose} className="text-muted-foreground"><X size={16} /></button>
+        </div>
       </div>
       <Field label="Type"><select value={pin.type} onChange={(e) => onChange({ type: e.target.value })} className={inp}>{PIN_TYPES.map((p) => <option key={p.type} value={p.type}>{p.label}</option>)}</select></Field>
       <Field label="Title"><input value={pin.title} onChange={(e) => onChange({ title: e.target.value })} className={inp} /></Field>
-      <Field label="Description"><textarea value={pin.description} onChange={(e) => onChange({ description: e.target.value })} rows={3} className={inp} /></Field>
+      <Field label="Description"><textarea value={pin.description} onChange={(e) => onChange({ description: e.target.value })} rows={2} className={inp} /></Field>
 
       {pin.type === "navigation" && (
         <>
@@ -474,7 +486,7 @@ function PinPanel({ pin, spaces, onChange, onDelete, onClose, onMove, uploadImag
       {pin.type === "external_link" && <Field label="External URL"><input value={pin.externalUrl ?? ""} onChange={(e) => onChange({ externalUrl: e.target.value })} className={inp} placeholder="https://…" /></Field>}
 
       {isInfo && (
-        <div className="border border-border rounded-lg p-3">
+        <div className="col-span-full border border-border rounded-lg p-3">
           <h4 className="font-semibold text-xs mb-2">Rich popup</h4>
           <Field label="Heading"><input value={pc.heading ?? ""} onChange={(e) => setPC({ heading: e.target.value })} className={inp} /></Field>
           <Field label="Body"><textarea value={pc.body ?? ""} onChange={(e) => setPC({ body: e.target.value })} rows={3} className={inp} /></Field>
@@ -494,9 +506,9 @@ function PinPanel({ pin, spaces, onChange, onDelete, onClose, onMove, uploadImag
 
       <Field label="Visibility"><select value={pin.visibility ?? "public"} onChange={(e) => onChange({ visibility: e.target.value, requiresNDA: e.target.value !== "public" })} className={inp}>{VISIBILITY.map((v) => <option key={v.val} value={v.val}>{v.label}</option>)}</select></Field>
 
-      <details className="border-t border-border pt-2">
+      <details className="col-span-full border-t border-border pt-2" open>
         <summary className="text-xs font-semibold cursor-pointer text-muted-foreground">Appearance</summary>
-        <div className="mt-2 flex flex-col gap-2">
+        <div className="mt-2 grid gap-x-6 gap-y-3 items-start" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
           <Field label="Animation"><select value={pin.pinAnimation ?? ""} onChange={(e) => onChange({ pinAnimation: e.target.value || undefined })} className={inp}><option value="">Default</option>{PIN_ANIMATIONS.map((a) => <option key={a} value={a}>{a}</option>)}</select></Field>
           <Field label={`Size: ${(pin.pinSize ?? 1).toFixed(1)}×`}><input type="range" min={0.5} max={2} step={0.1} value={pin.pinSize ?? 1} onChange={(e) => onChange({ pinSize: +e.target.value })} className="w-full" /></Field>
           <Field label={`Opacity: ${Math.round((pin.pinOpacity ?? 1) * 100)}%`}><input type="range" min={0.3} max={1} step={0.05} value={pin.pinOpacity ?? 1} onChange={(e) => onChange({ pinOpacity: +e.target.value })} className="w-full" /></Field>
