@@ -302,21 +302,18 @@ function PortalCard({ item, thread, onSend }: {
                     </a>
                   </Link>
                 )}
-                {item.permissions.canViewWalkthrough && item.listingId && (
-                  <Link href={`/listings/${item.listingId}`}>
-                    <a className="flex items-center justify-between px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-foreground font-semibold text-sm transition-colors group">
-                      <span className="flex items-center gap-2"><Video size={15} className="text-primary" /> 360° Business Listing</span>
-                      <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-                    </a>
-                  </Link>
-                )}
+                {/* 360° listing + Call share one line to keep the header compact */}
                 <div className="flex gap-2.5">
+                  {item.permissions.canViewWalkthrough && item.listingId && (
+                    <Link href={`/listings/${item.listingId}`}>
+                      <a className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-foreground font-semibold text-sm transition-colors">
+                        <Video size={15} className="text-primary" /> 360° Business Listing
+                      </a>
+                    </Link>
+                  )}
                   <button onClick={callSeller} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-foreground font-semibold text-sm transition-colors">
                     <Phone size={15} className="text-green-500" /> Call
                   </button>
-                  <a href={thread ? `#thread-${item.listingId}` : undefined} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-foreground font-semibold text-sm transition-colors">
-                    <MessageSquare size={15} className="text-primary" /> Message Seller
-                  </a>
                 </div>
                 {callNote && <p className="text-[11px] text-muted-foreground text-center">{callNote}</p>}
               </>
