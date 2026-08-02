@@ -595,6 +595,7 @@ function SectionContent({
         groundPitch: s.groundPitch,
         panoramaStartYaw: s.panoramaStartYaw ?? 0,
         defaultYaw: typeof s.defaultYaw === "number" ? s.defaultYaw : undefined,
+        enabled: s.enabled,
         pins: Array.isArray(s.pins) ? s.pins : [],
       }));
       setTourSpaces(mapped);

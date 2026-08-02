@@ -1,5 +1,36 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Camera, Maximize2, Minimize2, LayoutGrid, EyeOff } from "lucide-react";
+
+/**
+ * Cross-platform "immersive" fullscreen. The native Fullscreen API
+ * (element.requestFullscreen) is NOT supported on iOS Safari for anything other
+ * than <video>, so the button silently did nothing on iPhone. Instead we make
+ * the tour fill the viewport with a fixed overlay (position:fixed; inset:0),
+ * which works identically on desktop and mobile. Body scroll is locked while
+ * immersive and Escape exits.
+ */
+export function useImmersive() {
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    if (!isFs) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setIsFs(false); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isFs]);
+  return { isFs, setIsFs, toggle: () => setIsFs((v) => !v) };
+}
+
+/** Wrapper style for a tour frame — a fixed full-viewport overlay when immersive. */
+export function immersiveWrapStyle(isFs: boolean, collapsedHeight: string): CSSProperties {
+  return isFs
+    ? { position: "fixed", inset: 0, zIndex: 9999, borderRadius: 0, touchAction: "none" }
+    : { height: collapsedHeight, touchAction: "none" };
+}
 
 export interface TourPin {
   id: string;
@@ -23,12 +54,17 @@ export interface TourSpace {
   groundPitch?: number;
   panoramaStartYaw?: number;
   defaultYaw?: number;
+  /** When false, the zone is hidden from the tour (not deleted). Undefined = shown. */
+  enabled?: boolean;
   pins: TourPin[];
 }
 
 /** Build the Pannellum multi-scene srcDoc with nav-pin + audio hotspots baked in. */
 export function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): string {
-  const spacesJson = JSON.stringify(spaces);
+  // Disabled zones are hidden from the tour entirely; nav pins that point at
+  // them are dropped automatically because validIds is built from this set.
+  const shown = spaces.filter((s) => s.enabled !== false);
+  const spacesJson = JSON.stringify(shown);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -309,11 +345,10 @@ requestAnimationFrame(tick);
  */
 export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSpace[]; autoPanAll?: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const frameWrapRef = useRef<HTMLDivElement>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(true);
-  const [isFs, setIsFs] = useState(false);
-  const valid = spaces.filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"));
+  const { isFs, toggle: toggleFullscreen } = useImmersive();
+  const valid = spaces.filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://") && s.enabled !== false);
 
   useEffect(() => {
     const start = valid.find((s) => s.isStartScene) ?? valid[0];
@@ -322,9 +357,7 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
       if (e.data?.type === "pano_sceneChange" && e.data.sceneId) setActiveId(e.data.sceneId);
     };
     window.addEventListener("message", onMsg);
-    const onFs = () => setIsFs(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFs);
-    return () => { window.removeEventListener("message", onMsg); document.removeEventListener("fullscreenchange", onFs); };
+    return () => { window.removeEventListener("message", onMsg); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaces]);
 
@@ -333,19 +366,12 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
     iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: isFs, presets: showPresets }, "*");
   }, [isFs, showPresets]);
 
-  function toggleFullscreen() {
-    const el = frameWrapRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) { document.exitFullscreen?.(); }
-    else { (el.requestFullscreen?.() ?? Promise.reject()).catch(() => {}); }
-  }
-
   if (!valid.length) return null;
   const srcdoc = buildMultiSceneSrcdoc(spaces, autoPanAll);
 
   return (
     <div className="flex flex-col gap-3">
-      <div ref={frameWrapRef} className="relative rounded-2xl overflow-hidden bg-black border border-[#1E3A5C]" style={{ height: isFs ? "100vh" : "clamp(360px, 58vw, 580px)", touchAction: "none" }}>
+      <div className="relative rounded-2xl overflow-hidden bg-black border border-[#1E3A5C]" style={immersiveWrapStyle(isFs, "clamp(360px, 58vw, 580px)")}>
         <iframe
           ref={iframeRef}
           srcDoc={srcdoc}

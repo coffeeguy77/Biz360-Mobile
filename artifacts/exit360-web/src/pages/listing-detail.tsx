@@ -3,7 +3,7 @@ import { sendEnquiry, enquiryLabel } from "@/lib/enquiry";
 // Shared 360° tour builder — same Street-View navigation (turn-to-enter reticle,
 // edge arrows, scene chips, click-to-walk) used by the report tour, so the public
 // listing viewer gets the identical movement system instead of at-feet pins.
-import { buildMultiSceneSrcdoc } from "@/components/InteractiveTour";
+import { buildMultiSceneSrcdoc, useImmersive, immersiveWrapStyle } from "@/components/InteractiveTour";
 import { SiteNav } from "@/components/SiteShell";
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
@@ -74,6 +74,7 @@ interface TourSpace {
   groundPitch?: number;
   panoramaStartYaw?: number;
   defaultYaw?: number;
+  enabled?: boolean;
   pins: TourPin[];
 }
 
@@ -99,31 +100,19 @@ function TourViewer({
   onSceneChange: (id: string) => void;
   autoPanAll?: boolean;
 }) {
-  const valid = spaces.filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"));
+  const valid = spaces.filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://") && s.enabled !== false);
   const srcdoc = valid.length > 0 ? buildMultiSceneSrcdoc(spaces, autoPanAll) : "";
-  const frameWrapRef = useRef<HTMLDivElement>(null);
   const [showPresets, setShowPresets] = useState(true);
-  const [isFs, setIsFs] = useState(false);
-  useEffect(() => {
-    const onFs = () => setIsFs(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFs);
-    return () => document.removeEventListener("fullscreenchange", onFs);
-  }, []);
+  const { isFs, toggle: toggleFullscreen } = useImmersive();
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: isFs, presets: showPresets }, "*");
   }, [isFs, showPresets, iframeRef]);
-  function toggleFullscreen() {
-    const el = frameWrapRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) document.exitFullscreen?.();
-    else (el.requestFullscreen?.() ?? Promise.reject()).catch(() => {});
-  }
 
   if (!valid.length) return null;
 
   return (
     <div className="flex flex-col gap-3">
-      <div ref={frameWrapRef} className="relative rounded-2xl overflow-hidden bg-black" style={{ height: isFs ? "100vh" : "clamp(220px, 50vw, 460px)", touchAction: "none" }}>
+      <div className="relative rounded-2xl overflow-hidden bg-black" style={immersiveWrapStyle(isFs, "clamp(220px, 50vw, 460px)")}>
         <iframe
           ref={iframeRef}
           srcDoc={srcdoc}
@@ -825,6 +814,7 @@ export function ListingDetail() {
           groundPitch: s.groundPitch,
           panoramaStartYaw: s.panoramaStartYaw ?? 0,
           defaultYaw: typeof s.defaultYaw === "number" ? s.defaultYaw : undefined,
+          enabled: s.enabled,
           pins: Array.isArray(s.pins) ? s.pins : [],
         }));
         setSpaces(mapped);

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
 import {
   LayoutDashboard, Eye, ShieldCheck, Users, FileText, Compass, Share2, Copy, Check,
-  Settings, LogOut, Smartphone, Plus, BarChart3, Loader2,
+  Settings, LogOut, Smartphone, Plus, BarChart3, Loader2, Layers, Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
@@ -214,8 +214,86 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
               </div>
             </div>
           )}
+          <TourZones listing={listing} token={token} />
         </div>
       </div>
+    </div>
+  );
+}
+
+interface Zone { id: string; name: string; enabled: boolean; isStartScene: boolean; hasPano: boolean; }
+
+function TourZones({ listing, token }: { listing: Listing; token: string }) {
+  const [open, setOpen] = useState(false);
+  const [zones, setZones] = useState<Zone[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function loadZones() {
+    setLoading(true); setErr(null);
+    try {
+      const r = await fetch(`/api/buyer-portal/seller/tour-zones/${listing.listingId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      setZones(Array.isArray(d.zones) ? d.zones : []);
+    } catch { setZones([]); } finally { setLoading(false); }
+  }
+
+  function toggle() { const next = !open; setOpen(next); if (next && zones === null) loadZones(); }
+
+  async function setZone(z: Zone, enabled: boolean) {
+    if (!zones) return;
+    // Block switching off the last remaining zone.
+    if (!enabled && zones.filter((x) => x.enabled).length <= 1) {
+      setErr("At least one zone must stay switched on."); return;
+    }
+    setErr(null); setSavingId(z.id);
+    const prev = zones;
+    setZones(zones.map((x) => (x.id === z.id ? { ...x, enabled } : x)));
+    try {
+      const r = await fetch(`/api/buyer-portal/seller/tour-zones/${listing.listingId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ zones: [{ id: z.id, enabled }] }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) { setZones(prev); setErr(d.error ?? "Could not save."); }
+    } catch { setZones(prev); setErr("Could not save."); } finally { setSavingId(null); }
+  }
+
+  return (
+    <div className="mt-3">
+      <button onClick={toggle} className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold">
+        <Layers size={14} /> Tour zones {zones && `(${zones.filter((z) => z.enabled).length}/${zones.length} on)`}
+      </button>
+      {open && (
+        <div className="mt-3 rounded-xl border border-border bg-background/50 p-4">
+          <p className="text-xs text-muted-foreground mb-3">Switch a zone off to hide it from the public tour and report — it stays saved, so you can switch it back on anytime. Handy for areas not included in the sale.</p>
+          {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading zones…</div>}
+          {!loading && zones && zones.length === 0 && <p className="text-sm text-muted-foreground">No tour zones found for this listing yet. Add them in the EXIT360 app.</p>}
+          {!loading && zones && zones.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {zones.map((z) => (
+                <div key={z.id} className="flex items-center justify-between gap-3 py-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`text-sm truncate ${z.enabled ? "text-foreground" : "text-muted-foreground line-through"}`}>{z.name}</span>
+                    {z.isStartScene && <span title="Start scene" className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary/80"><Star size={10} /> start</span>}
+                    {!z.hasPano && <span className="text-[10px] text-muted-foreground">(no 360)</span>}
+                  </div>
+                  <button
+                    onClick={() => setZone(z, !z.enabled)}
+                    disabled={savingId === z.id}
+                    title={z.enabled ? "Switch off (hide)" : "Switch on (show)"}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${z.enabled ? "theme-btn-gradient" : "bg-muted"}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${z.enabled ? "translate-x-6" : "translate-x-1"}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {err && <p className="text-xs text-red-500 mt-2">{err}</p>}
+        </div>
+      )}
     </div>
   );
 }

@@ -658,6 +658,61 @@ router.post("/buyer-portal/seller/nda/:listingId/grant", requireAuth, async (req
   }
 });
 
+// ─── Seller: tour zones (enable/disable a zone without deleting it) ──────────
+
+const tourSpacesKey = (listingId: string) => `biz360_tour_spaces_v2_${listingId}`;
+
+/** GET the listing's tour zones with their on/off state (owner only). */
+router.get("/buyer-portal/seller/tour-zones/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  if (!(await callerOwnsListing(req.user!.id, listingId))) { res.status(403).json({ error: "Not your listing" }); return; }
+  const rows = await db.select().from(kvStore).where(eq(kvStore.key, tourSpacesKey(listingId)));
+  const spaces = Array.isArray(rows[0]?.value) ? (rows[0]!.value as any[]) : [];
+  res.json({
+    zones: spaces
+      .filter((s) => s?.id)
+      .map((s) => ({
+        id: s.id,
+        name: s.name ?? "Untitled zone",
+        enabled: s.enabled !== false,
+        isStartScene: !!s.isStartScene,
+        hasPano: !!(s.panoramaUrl && String(s.panoramaUrl).indexOf("file://") !== 0),
+      })),
+  });
+});
+
+/** PUT on/off state for one or more zones (owner only). Merges `enabled` into the tour spaces KV. */
+router.put("/buyer-portal/seller/tour-zones/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  if (!(await callerOwnsListing(req.user!.id, listingId))) { res.status(403).json({ error: "Not your listing" }); return; }
+  const { zones } = req.body as { zones?: { id: string; enabled: boolean }[] };
+  if (!Array.isArray(zones)) { res.status(400).json({ error: "zones array required" }); return; }
+  const key = tourSpacesKey(listingId);
+  const rows = await db.select().from(kvStore).where(eq(kvStore.key, key));
+  const spaces = Array.isArray(rows[0]?.value) ? (rows[0]!.value as any[]) : [];
+  const wanted = new Map(zones.map((z) => [String(z.id), !!z.enabled]));
+  const resulting = spaces.map((s) => {
+    const w = wanted.get(String(s?.id));
+    return w === undefined ? s?.enabled !== false : w;
+  });
+  // Guard: never let a seller switch off every zone (that would leave an empty tour).
+  if (spaces.length && !resulting.some(Boolean)) {
+    res.status(400).json({ error: "At least one zone must stay switched on." });
+    return;
+  }
+  let changed = 0;
+  const next = spaces.map((s, i) => {
+    const enabled = resulting[i];
+    if ((s?.enabled !== false) !== enabled) changed++;
+    return { ...s, enabled };
+  });
+  await db.insert(kvStore).values({ key, value: next }).onConflictDoUpdate({
+    target: kvStore.key,
+    set: { value: next, updatedAt: new Date() },
+  });
+  res.json({ ok: true, changed, zones: next.map((s) => ({ id: s.id, name: s.name, enabled: s.enabled !== false })) });
+});
+
 // ─── Seller: group CRUD ───────────────────────────────────────────────────────
 
 /**
