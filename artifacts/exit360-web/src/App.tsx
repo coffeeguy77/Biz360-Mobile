@@ -22,6 +22,7 @@ import { ListYourBusiness } from "@/pages/marketing/ListYourBusiness";
 import { Photographers } from "@/pages/marketing/Photographers";
 import { FindAPartner } from "@/pages/marketing/FindAPartner";
 import { SellerDashboard } from "@/pages/seller-dashboard";
+import { TourEditor } from "@/pages/tour-editor";
 import { BrokerAnalytics } from "@/pages/broker-analytics";
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ function Router() {
       <Route path="/find-a-partner" component={FindAPartner} />
       {/* Seller & broker */}
       <Route path="/seller" component={SellerDashboard} />
+      <Route path="/seller/tour/:listingId" component={TourEditor} />
       <Route path="/broker/analytics/:listingId" component={BrokerAnalytics} />
       <Route component={NotFound} />
     </Switch>
