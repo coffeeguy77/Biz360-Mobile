@@ -273,6 +273,21 @@ function cldHiRes(url: string | null | undefined, width = 2560): string {
   return `${pre}/upload/w_${width},c_limit,q_auto:best,e_improve,e_sharpen:60,f_auto/${rest}`;
 }
 
+/** Hero-only: genuine AI super-resolution. The report cover renders very large
+ *  (up to ~72vh) on hi-DPI/ultrawide screens, well past a typical 1920px source,
+ *  so plain sharpening can't help. This caps the input under the upscaler's
+ *  limit, 2× it with Cloudinary's AI (e_upscale), then delivers a crisp 2560px
+ *  image. Falls back to cldHiRes via the <img> onError if upscaling ever fails. */
+function cldHero(url: string | null | undefined): string {
+  if (!url) return url ?? "";
+  if (!url.includes("res.cloudinary.com/") || !url.includes("/upload/")) return url;
+  const [pre, post] = url.split("/upload/");
+  const segs = post.split("/");
+  const looksLikeTransform = /^[a-z]{1,3}_[^/]+(?:,[a-z0-9]{1,3}_[^/]+)*$/i.test(segs[0]);
+  const rest = looksLikeTransform ? segs.slice(1).join("/") : post;
+  return `${pre}/upload/c_limit,w_1280/e_upscale/c_limit,w_2560,q_auto:best,e_sharpen:40,f_auto/${rest}`;
+}
+
 function SectionImageStrip({
   images,
   printMode,
@@ -1637,10 +1652,19 @@ export function ReportPage() {
               printMode ? "border-slate-200" : "border-[#1E3A5C]"
             )}>
               <img
-                src={cldHiRes(data.meta.heroImageUrl, 2560)}
+                src={cldHero(data.meta.heroImageUrl)}
                 alt={`${businessName} — cover photo`}
                 className="w-full object-cover h-[46vh] md:h-[64vh] xl:h-[72vh]"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement;
+                  const fallback = cldHiRes(data.meta.heroImageUrl, 2560);
+                  if (el.src !== fallback && el.dataset.fallback !== "1") {
+                    el.dataset.fallback = "1";
+                    el.src = fallback;
+                  } else {
+                    el.style.display = "none";
+                  }
+                }}
               />
             </div>
           </div>
