@@ -100,6 +100,53 @@ export async function runPhoneCleanup(): Promise<void> {
     summary["listings"] = -1;
   }
 
+  // ── KV: admin users list (remove this person's account entry) ────────────────
+  try {
+    const r: any = await db.execute(sql`SELECT value FROM kv_store WHERE key = 'biz360_admin_users'`);
+    const val = r?.rows?.[0]?.value;
+    if (Array.isArray(val)) {
+      const before = val.length;
+      const kept = val.filter((u: any) => {
+        const cands = [u?.id, u?.email, u?.phone].map((x) => String(x ?? "").replace(/\D/g, ""));
+        return !cands.some((d) => d.length >= 9 && d.endsWith(tail));
+      });
+      const removed = before - kept.length;
+      if (removed) {
+        await db.execute(sql`UPDATE kv_store SET value = ${JSON.stringify(kept)}::jsonb, updated_at = now() WHERE key = 'biz360_admin_users'`);
+      }
+      summary["admin_users"] = removed;
+    } else {
+      summary["admin_users"] = 0;
+    }
+  } catch (e: any) {
+    logger.error({ err: e?.message }, "[CLEANUP] admin_users failed");
+    summary["admin_users"] = -1;
+  }
+
+  // ── KV: analytics blobs (strip this buyer from uniqueBuyerIds) ───────────────
+  try {
+    const r: any = await db.execute(sql`SELECT key, value FROM kv_store WHERE key LIKE 'biz360_analytics_v1_%'`);
+    let touched = 0;
+    for (const row of r?.rows ?? []) {
+      const v = row.value;
+      if (v && Array.isArray(v.uniqueBuyerIds)) {
+        const before = v.uniqueBuyerIds.length;
+        v.uniqueBuyerIds = v.uniqueBuyerIds.filter((id: any) => {
+          const d = String(id ?? "").replace(/\D/g, "");
+          return !(d.length >= 9 && d.endsWith(tail));
+        });
+        if (v.uniqueBuyerIds.length !== before) {
+          await db.execute(sql`UPDATE kv_store SET value = ${JSON.stringify(v)}::jsonb, updated_at = now() WHERE key = ${row.key}`);
+          touched++;
+        }
+      }
+    }
+    summary["analytics_scrubbed"] = touched;
+  } catch (e: any) {
+    logger.error({ err: e?.message }, "[CLEANUP] analytics failed");
+    summary["analytics_scrubbed"] = -1;
+  }
+
   // ── Report-only: surface any other KV row that still references the number ───
   try {
     const contains = `%${tail}%`;
