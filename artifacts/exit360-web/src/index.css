@@ -470,13 +470,15 @@
 }
 
 /* ── Site background effects (crisp, themed, site-wide) ───────────────────── */
+/* Cursor position (updated by AnimatedBackground on <html>); the CSS effects
+   read it. Declared on :root so it is NOT shadowed for .bg-fx-root's children. */
+:root { --fx-mx: 50%; --fx-my: 40%; }
 .bg-fx-root {
   position: fixed; inset: 0; z-index: -10; pointer-events: none; overflow: hidden;
   background: hsl(var(--background));
-  /* Cursor position (updated by AnimatedBackground); CSS effects follow it. */
-  --fx-mx: 50%; --fx-my: 40%;
 }
 .bg-fx-layer { position: absolute; inset: -2%; }
+.bg-fx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 /* Cursor-following layer — tracks the pointer precisely (no drift transform). */
 .bg-fx-cursor {
   position: absolute; inset: 0;

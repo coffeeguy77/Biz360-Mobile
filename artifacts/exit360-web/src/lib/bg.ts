@@ -3,19 +3,21 @@
 // <AnimatedBackground/> (mounted once at the app root). Effects are drawn either
 // with pure CSS (mesh/halftone/topo) or a canvas loop (dots/orbs).
 
+export type BgKind = "css" | "canvas" | "webgl";
+
 export interface BgEffectDef {
   id: string;
   name: string;
   tagline: string;
-  kind: "css" | "canvas";
+  kind: BgKind;
 }
 
 export const BG_EFFECTS: BgEffectDef[] = [
   { id: "dot-grid-wave", name: "Dot Grid Wave", tagline: "Rippling grid of dots",   kind: "canvas" },
   { id: "halftone",      name: "Halftone",      tagline: "Crisp fading dot field",  kind: "css" },
-  { id: "mesh-gradient", name: "Mesh Gradient", tagline: "Smooth drifting colour",  kind: "css" },
+  { id: "mesh-gradient", name: "Mesh Gradient", tagline: "Silky WebGL colour mesh", kind: "webgl" },
   { id: "glow-orbs",     name: "Glow Orbs",     tagline: "Floating light orbs",     kind: "canvas" },
-  { id: "topo-lines",    name: "Topographic",   tagline: "Contour line map",        kind: "css" },
+  { id: "topo-lines",    name: "Topographic",   tagline: "Morphing contour lines",  kind: "webgl" },
   { id: "none",          name: "None",          tagline: "Solid background",        kind: "css" },
 ];
 
@@ -36,6 +38,6 @@ export function setStoredEffect(id: string): void {
   try { window.dispatchEvent(new CustomEvent(BG_CHANGE_EVENT, { detail: id })); } catch { /* ignore */ }
 }
 
-export function effectKind(id: string): "css" | "canvas" {
+export function effectKind(id: string): BgKind {
   return BG_EFFECTS.find((e) => e.id === id)?.kind ?? "css";
 }
