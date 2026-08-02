@@ -1000,6 +1000,8 @@ export function ReportPage() {
   const [ndaAgree, setNdaAgree]         = useState(false);
   const [ndaSubmitting, setNdaSubmitting] = useState(false);
   const [ndaError, setNdaError]         = useState<string | null>(null);
+  const [ndaText, setNdaText]           = useState<string>("");
+  const [ndaManualOnly, setNdaManualOnly] = useState(false);
   // Token obtained by exchanging a one-time previewCode (stored in sessionStorage
   // so re-renders within the same tab don't re-fire the already-consumed code).
   const [previewToken, setPreviewToken] = useState<string | null>(() => {
@@ -1110,10 +1112,12 @@ export function ReportPage() {
       body: JSON.stringify({ listingId, accessToken }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { required?: boolean; accepted?: boolean } | null) => {
+      .then((d: { required?: boolean; accepted?: boolean; ndaText?: string; manualOnly?: boolean } | null) => {
         if (!active) return;
         setNdaRequired(!!d?.required);
         setNdaAccepted(!!d?.accepted);
+        if (typeof d?.ndaText === "string") setNdaText(d.ndaText);
+        setNdaManualOnly(!!d?.manualOnly);
         setNdaChecked(true);
       })
       .catch(() => { if (active) setNdaChecked(true); });
@@ -1299,43 +1303,52 @@ export function ReportPage() {
           <h1 className="text-xl font-bold mb-2">Non-Disclosure Agreement</h1>
           <p className="text-slate-400 text-sm leading-relaxed mb-4">
             The information memorandum for <span className="text-white font-medium">{bizName}</span> is
-            strictly confidential. Before viewing it you must agree to keep all financials, documents and
-            business details confidential and use them solely to evaluate this opportunity.
+            strictly confidential.
           </p>
-          <div className="max-h-40 overflow-y-auto rounded-lg border border-[#1E3A5C] bg-[#070F1C] p-3 text-xs text-slate-400 leading-relaxed mb-4">
-            <p className="mb-2">By signing, you agree that you will not disclose, copy, or distribute any
-              information contained in this report to any third party without the seller's written consent;
-              you will not use the information to compete with or solicit the business; and you will return
-              or destroy all materials on request. This agreement is legally binding.</p>
-            <p>Your name, verified mobile number and the date and time of acceptance are recorded.</p>
+          <div className="max-h-48 overflow-y-auto rounded-lg border border-[#1E3A5C] bg-[#070F1C] p-3 text-xs text-slate-400 leading-relaxed mb-4 whitespace-pre-wrap">
+            {ndaText || "By signing, you agree that all financials, documents and business details in this report are strictly confidential and used solely to evaluate this opportunity."}
           </div>
-          <label className="block text-xs font-medium text-slate-400 mb-1.5">Your full name</label>
-          <input
-            type="text"
-            value={ndaName}
-            onChange={(e) => setNdaName(e.target.value)}
-            placeholder="e.g. Cara Matthews"
-            className="w-full px-3.5 py-2.5 rounded-lg border-2 border-[#1E3A5C] bg-[#070F1C] text-white text-sm outline-none focus:border-blue-500/60 transition-colors mb-3"
-          />
-          <label className="flex items-start gap-2.5 cursor-pointer mb-4">
-            <input
-              type="checkbox"
-              checked={ndaAgree}
-              onChange={(e) => setNdaAgree(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-blue-500 flex-shrink-0"
-            />
-            <span className="text-xs text-slate-300 leading-relaxed">
-              I have read and agree to the Non-Disclosure Agreement for {bizName}.
-            </span>
-          </label>
-          {ndaError && <p className="text-sm text-red-400 mb-3">{ndaError}</p>}
-          <button
-            onClick={acceptNda}
-            disabled={ndaSubmitting}
-            className="w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
-          >
-            {ndaSubmitting ? "Recording…" : "Agree & View Report"}
-          </button>
+          {ndaManualOnly ? (
+            <>
+              <p className="text-sm text-slate-300 leading-relaxed mb-4">
+                Access to this report is granted directly by the seller or broker. Please contact them to
+                request access — once granted, this report will open automatically for your verified number.
+              </p>
+              <a href={contactUrl("info")} className="block w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold grid place-items-center">
+                Request access
+              </a>
+            </>
+          ) : (
+            <>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Your full name</label>
+              <input
+                type="text"
+                value={ndaName}
+                onChange={(e) => setNdaName(e.target.value)}
+                placeholder="e.g. Cara Matthews"
+                className="w-full px-3.5 py-2.5 rounded-lg border-2 border-[#1E3A5C] bg-[#070F1C] text-white text-sm outline-none focus:border-blue-500/60 transition-colors mb-3"
+              />
+              <label className="flex items-start gap-2.5 cursor-pointer mb-4">
+                <input
+                  type="checkbox"
+                  checked={ndaAgree}
+                  onChange={(e) => setNdaAgree(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-blue-500 flex-shrink-0"
+                />
+                <span className="text-xs text-slate-300 leading-relaxed">
+                  I have read and agree to the Non-Disclosure Agreement for {bizName}.
+                </span>
+              </label>
+              {ndaError && <p className="text-sm text-red-400 mb-3">{ndaError}</p>}
+              <button
+                onClick={acceptNda}
+                disabled={ndaSubmitting}
+                className="w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+              >
+                {ndaSubmitting ? "Recording…" : "Agree & View Report"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     );

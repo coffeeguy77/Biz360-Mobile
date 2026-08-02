@@ -17,7 +17,7 @@
  */
 
 import { Router } from "express";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { SignJWT, jwtVerify } from "jose";
 import twilio from "twilio";
 import {
@@ -146,6 +146,61 @@ async function ndaSigned(listingId: string, phone: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ── NDA template / body / manual-grant (KV-backed, no migration needed) ────────
+const NDA_TPL_KEY    = "biz360_nda_tpl_v1";     // { [ownerBase]: templateText }
+const NDA_BODY_KEY   = "biz360_nda_body_v1";    // { [listingId]: bodyText }  (per-listing override)
+const NDA_MANUAL_KEY = "biz360_nda_manual_v1";  // { [listingId]: true }      (seller-grant-only)
+
+export const DEFAULT_NDA_TEXT =
+  "By signing, you agree that all financials, documents and business details in this report are strictly confidential. " +
+  "You will not disclose, copy or distribute any of this information to any third party without the seller's written consent; " +
+  "you will use it solely to evaluate this opportunity; you will not use it to compete with or solicit the business; and you " +
+  "will return or destroy all materials on request. This agreement is legally binding. Your name, verified mobile number and " +
+  "the date and time of acceptance are recorded.";
+
+/** Normalise an owner id / phone to bare digits for keying (matches biz360 ownerBase). */
+function ndaOwnerBase(id?: string | null): string {
+  return String(id ?? "").replace(/^u-/, "").replace(/\D/g, "");
+}
+
+async function kvMap(key: string): Promise<Record<string, any>> {
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, key));
+    const v = rows[0]?.value;
+    return (v && typeof v === "object" && !Array.isArray(v)) ? (v as Record<string, any>) : {};
+  } catch { return {}; }
+}
+async function kvSaveMap(key: string, map: Record<string, any>): Promise<void> {
+  await db.insert(kvStore).values({ key, value: map }).onConflictDoUpdate({ target: kvStore.key, set: { value: map } });
+}
+
+/** The listing's owner id (submittedBy) from the admin listings KV. */
+async function listingOwner(listingId: string): Promise<string | null> {
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(rows[0]?.value) ? (rows[0]!.value as any[]) : [];
+    return listings.find((l) => l?.listingId === listingId)?.submittedBy ?? null;
+  } catch { return null; }
+}
+
+/** Resolve the NDA body for a listing: per-listing override → owner default → platform default. */
+async function resolveNdaBody(listingId: string): Promise<string> {
+  const perListing = await kvMap(NDA_BODY_KEY);
+  if (typeof perListing[listingId] === "string" && perListing[listingId].trim()) return perListing[listingId];
+  const owner = await listingOwner(listingId);
+  if (owner) {
+    const tpl = await kvMap(NDA_TPL_KEY);
+    const t = tpl[ndaOwnerBase(owner)];
+    if (typeof t === "string" && t.trim()) return t;
+  }
+  return DEFAULT_NDA_TEXT;
+}
+
+async function ndaManualOnly(listingId: string): Promise<boolean> {
+  const m = await kvMap(NDA_MANUAL_KEY);
+  return m[listingId] === true;
 }
 
 function getTwilioClient() {
@@ -448,11 +503,13 @@ router.post("/buyer-portal/nda/status", async (req, res): Promise<void> => {
   if (!listingId) { res.status(400).json({ error: "listingId required" }); return; }
   const phone = await resolveNdaPhone(accessToken, listingId);
   const required = await ndaRequiredForListing(listingId);
+  const ndaText = await resolveNdaBody(listingId);
+  const manualOnly = await ndaManualOnly(listingId);
   // Without a resolvable identity we can't record a signature, so treat as
   // "not required" rather than trapping the viewer behind an unusable gate.
-  if (!phone) { res.json({ required: false, accepted: false }); return; }
+  if (!phone) { res.json({ required: false, accepted: false, ndaText, manualOnly }); return; }
   const accepted = required ? await ndaSigned(listingId, phone) : true;
-  res.json({ required, accepted });
+  res.json({ required, accepted, ndaText, manualOnly });
 });
 
 /**
@@ -469,6 +526,11 @@ router.post("/buyer-portal/nda/accept", async (req, res): Promise<void> => {
   if (name.length < 2) { res.status(400).json({ error: "Please enter your full name" }); return; }
   const phone = await resolveNdaPhone(accessToken, listingId);
   if (!phone) { res.status(401).json({ error: "Could not verify your access" }); return; }
+  // Manual-only listings can't be self-signed — the seller/broker grants access.
+  if (await ndaManualOnly(listingId)) {
+    res.status(403).json({ error: "manual_only", message: "Access to this report is granted directly by the seller or broker." });
+    return;
+  }
   try {
     // Idempotent: if they've already signed, don't stack duplicate rows.
     if (!(await ndaSigned(listingId, phone))) {
@@ -487,6 +549,111 @@ router.post("/buyer-portal/nda/accept", async (req, res): Promise<void> => {
     res.json({ accepted: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Could not record your NDA";
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ─── Seller/broker: NDA template + per-listing settings + manual grant ────────
+
+async function callerOwnsListing(userId: string, listingId: string): Promise<boolean> {
+  const owner = await listingOwner(listingId);
+  return !!owner && ndaOwnerBase(owner) === ndaOwnerBase(userId);
+}
+
+/** GET the caller's default NDA template (used across all their listings). */
+router.get("/buyer-portal/seller/nda-template", requireAuth, async (req, res): Promise<void> => {
+  const tpl = await kvMap(NDA_TPL_KEY);
+  const mine = tpl[ndaOwnerBase(req.user!.id)];
+  res.json({ template: (typeof mine === "string" && mine.trim()) ? mine : "", default: DEFAULT_NDA_TEXT });
+});
+
+/** PUT the caller's default NDA template. Blank clears it (reverts to platform default). */
+router.put("/buyer-portal/seller/nda-template", requireAuth, async (req, res): Promise<void> => {
+  const { template } = req.body as { template?: string };
+  const tpl = await kvMap(NDA_TPL_KEY);
+  const base = ndaOwnerBase(req.user!.id);
+  const clean = String(template ?? "").trim().slice(0, 8000);
+  if (clean) tpl[base] = clean; else delete tpl[base];
+  await kvSaveMap(NDA_TPL_KEY, tpl);
+  res.json({ ok: true, template: clean });
+});
+
+/** GET a listing's NDA settings + signatures (owner only). */
+router.get("/buyer-portal/seller/nda/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  if (!(await callerOwnsListing(req.user!.id, listingId))) { res.status(403).json({ error: "Not your listing" }); return; }
+  const bodyMap = await kvMap(NDA_BODY_KEY);
+  const required = await ndaRequiredForListing(listingId);
+  const manualOnly = await ndaManualOnly(listingId);
+  const resolved = await resolveNdaBody(listingId);
+  let signatures: any[] = [];
+  try {
+    signatures = await db.select().from(ndaSignaturesTable)
+      .where(eq(ndaSignaturesTable.listingId, listingId))
+      .orderBy(desc(ndaSignaturesTable.signedAt)).limit(200);
+  } catch { /* table may be empty */ }
+  res.json({
+    listingId,
+    required,
+    manualOnly,
+    body: (typeof bodyMap[listingId] === "string") ? bodyMap[listingId] : "",
+    resolvedBody: resolved,
+    signatures: signatures.map((s) => ({ name: s.buyerName, phone: s.buyerPhone, signedAt: s.signedAt, version: s.ndaVersion })),
+  });
+});
+
+/** PUT a listing's NDA settings: per-listing body override, required flag, manual-only. */
+router.put("/buyer-portal/seller/nda/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  if (!(await callerOwnsListing(req.user!.id, listingId))) { res.status(403).json({ error: "Not your listing" }); return; }
+  const { body, manualOnly, required } = req.body as { body?: string; manualOnly?: boolean; required?: boolean };
+
+  if (body !== undefined) {
+    const map = await kvMap(NDA_BODY_KEY);
+    const clean = String(body ?? "").trim().slice(0, 8000);
+    if (clean) map[listingId] = clean; else delete map[listingId];
+    await kvSaveMap(NDA_BODY_KEY, map);
+  }
+  if (manualOnly !== undefined) {
+    const map = await kvMap(NDA_MANUAL_KEY);
+    if (manualOnly) map[listingId] = true; else delete map[listingId];
+    await kvSaveMap(NDA_MANUAL_KEY, map);
+  }
+  if (required !== undefined) {
+    // Toggle nda_settings.ndaMode between required/none.
+    try {
+      const [existing] = await db.select().from(ndaSettingsTable).where(eq(ndaSettingsTable.listingId, listingId));
+      const mode = required ? "required" : "none";
+      if (existing) await db.update(ndaSettingsTable).set({ ndaMode: mode as any, updatedAt: new Date() }).where(eq(ndaSettingsTable.listingId, listingId));
+      else await db.insert(ndaSettingsTable).values({ listingId, ndaMode: mode as any });
+    } catch { /* non-fatal */ }
+  }
+  res.json({ ok: true });
+});
+
+/** POST manually grant a buyer access to a listing's report (records an NDA signature). */
+router.post("/buyer-portal/seller/nda/:listingId/grant", requireAuth, async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  if (!(await callerOwnsListing(req.user!.id, listingId))) { res.status(403).json({ error: "Not your listing" }); return; }
+  const { phone, name } = req.body as { phone?: string; name?: string };
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  if (digits.length < 8) { res.status(400).json({ error: "A valid buyer mobile number is required" }); return; }
+  const normalised = `+${digits.startsWith("61") ? digits : digits.replace(/^0/, "61")}`;
+  try {
+    if (!(await ndaSigned(listingId, normalised))) {
+      await db.insert(ndaSignaturesTable).values({
+        listingId,
+        buyerName: (name || "").trim() || "Access granted by seller",
+        buyerPhone: normalised,
+        ndaVersion: "manual-grant",
+        otpVerified: true,
+      });
+    }
+    // Also add them to the buyer-portal so the listing appears in their portal.
+    try { await upsertBuyer(normalised, name); } catch { /* non-fatal */ }
+    res.json({ ok: true, phone: normalised });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Could not grant access";
     res.status(500).json({ error: msg });
   }
 });

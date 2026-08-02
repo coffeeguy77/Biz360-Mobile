@@ -25,7 +25,7 @@ export function SellerDashboard() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [statsById, setStatsById] = useState<Record<string, Stats>>({});
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"listings" | "profile">("listings");
+  const [tab, setTab] = useState<"listings" | "nda" | "profile">("listings");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -99,8 +99,8 @@ export function SellerDashboard() {
           <button onClick={signOut} className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-border bg-card/50 hover:border-primary/50"><LogOut size={14} /> Sign out</button>
         </div>
 
-        <div className="flex gap-2 mb-6">
-          {([["listings", "My Listings", LayoutDashboard], ["profile", "Seller Profile", Settings]] as const).map(([id, label, Icon]) => (
+        <div className="flex gap-2 mb-6 flex-wrap">
+          {([["listings", "My Listings", LayoutDashboard], ["nda", "NDA & Access", ShieldCheck], ["profile", "Seller Profile", Settings]] as const).map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${tab === id ? "theme-btn-gradient border-0 text-primary-foreground" : "border-border bg-card/40 text-muted-foreground hover:text-foreground"}`}>
               <Icon size={15} /> {label}
             </button>
@@ -132,6 +132,8 @@ export function SellerDashboard() {
               </div>
             </>
           )
+        ) : tab === "nda" ? (
+          <NdaManager token={token} listings={listings} />
         ) : (
           <ProfileEditor token={token} />
         )}
@@ -260,6 +262,118 @@ function NewListingForm({ token, onDone, onCancel }: { token: string; onDone: ()
         <Button onClick={submit} disabled={saving} className="theme-btn-gradient border-0">{saving ? "Creating…" : "Create listing"}</Button>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
       </div>
+    </div>
+  );
+}
+
+function NdaManager({ token, listings }: { token: string; listings: Listing[] }) {
+  const [tpl, setTpl] = useState("");
+  const [def, setDef] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [savedTpl, setSavedTpl] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/buyer-portal/seller/nda-template", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) { setTpl(d.template ?? ""); setDef(d.default ?? ""); } })
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  async function saveTpl() {
+    setSavingTpl(true); setSavedTpl(false);
+    try {
+      await fetch("/api/buyer-portal/seller/nda-template", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ template: tpl }) });
+      setSavedTpl(true); setTimeout(() => setSavedTpl(false), 2000);
+    } finally { setSavingTpl(false); }
+  }
+
+  const field = "w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60";
+  return (
+    <div className="space-y-6 max-w-3xl">
+      {/* Default template */}
+      <div className="rounded-2xl border border-border bg-card/50 p-6">
+        <h2 className="text-lg font-bold mb-1">Your default NDA template</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          This wording is shown to every buyer before your reports unlock — across all your listings. Edit it once and
+          it becomes your default for every future listing. Leave blank to use the EXIT360 standard NDA.
+        </p>
+        {loading ? <p className="text-sm text-muted-foreground py-4">Loading…</p> : (
+          <>
+            <textarea className={field} rows={8} value={tpl} onChange={(e) => setTpl(e.target.value)} placeholder={def} />
+            <div className="flex gap-2 mt-3">
+              <Button onClick={saveTpl} disabled={savingTpl} className="theme-btn-gradient border-0">{savingTpl ? "Saving…" : savedTpl ? <><Check size={16} className="mr-1" /> Saved</> : "Save template"}</Button>
+              <Button variant="outline" onClick={() => setTpl(def)}>Reset to standard</Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Per-listing access control */}
+      <div>
+        <h2 className="text-lg font-bold mb-1">Per-listing access</h2>
+        <p className="text-sm text-muted-foreground mb-4">Grant a specific buyer access manually (case-by-case), or make a listing seller-grant-only.</p>
+        {listings.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No listings yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {listings.map((l) => <NdaListingRow key={l.listingId} token={token} listing={l} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NdaListingRow({ token, listing }: { token: string; listing: Listing }) {
+  const [manualOnly, setManualOnly] = useState(false);
+  const [sigs, setSigs] = useState<{ name: string; phone: string; version?: string }[]>([]);
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [granting, setGranting] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch(`/api/buyer-portal/seller/nda/${listing.listingId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) { setManualOnly(!!d.manualOnly); setSigs(d.signatures ?? []); } });
+  }, [token, listing.listingId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function toggleManual(v: boolean) {
+    setManualOnly(v);
+    await fetch(`/api/buyer-portal/seller/nda/${listing.listingId}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ manualOnly: v }) });
+  }
+  async function grant() {
+    if (phone.replace(/\D/g, "").length < 8) { setMsg("Enter a valid mobile number."); return; }
+    setGranting(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/buyer-portal/seller/nda/${listing.listingId}/grant`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ phone, name }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) { setMsg(d.error ?? "Could not grant access."); return; }
+      setPhone(""); setName(""); setMsg("Access granted."); load();
+    } finally { setGranting(false); }
+  }
+
+  const field = "px-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60";
+  return (
+    <div className="rounded-2xl border border-border bg-card/50 p-5">
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <h3 className="font-bold">{listing.businessName || listing.sellerName || "Listing"}</h3>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={manualOnly} onChange={(e) => toggleManual(e.target.checked)} className="w-4 h-4 accent-[hsl(var(--primary))]" />
+          Seller-grant only (buyers can't self-sign)
+        </label>
+      </div>
+      <div className="flex gap-2 flex-wrap items-end">
+        <div><label className="block text-[11px] text-muted-foreground mb-1">Buyer mobile</label><input className={field} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0412 345 678" /></div>
+        <div><label className="block text-[11px] text-muted-foreground mb-1">Buyer name (optional)</label><input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" /></div>
+        <Button size="sm" onClick={grant} disabled={granting} className="theme-btn-gradient border-0">{granting ? "…" : "Grant access"}</Button>
+      </div>
+      {msg && <p className="text-xs text-muted-foreground mt-2">{msg}</p>}
+      <p className="text-xs text-muted-foreground mt-3">
+        {sigs.length} {sigs.length === 1 ? "buyer has" : "buyers have"} access{sigs.length ? `: ${sigs.slice(0, 6).map((s) => s.name || s.phone).join(", ")}${sigs.length > 6 ? "…" : ""}` : "."}
+      </p>
     </div>
   );
 }
