@@ -139,7 +139,10 @@ export function AnimatedBackground() {
       }
     }
 
-    function stops(color: string, a: number) { return color.replace("hsl(", "hsla(").replace(")", `, ${a})`); }
+    // Insert the alpha with the correct slash syntax for space-separated hsl()
+    // (e.g. "hsl(213 94% 68%)" → "hsl(213 94% 68% / 0.42)"). A comma-appended
+    // alpha is invalid here and made addColorStop throw, so orbs never drew.
+    function stops(color: string, a: number) { return color.replace(/\)\s*$/, ` / ${a})`); }
 
     function drawOrbs() {
       ctx!.clearRect(0, 0, w, h);
