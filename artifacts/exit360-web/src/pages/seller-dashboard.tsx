@@ -12,6 +12,20 @@ import { PhoneGate } from "@/components/PhoneGate";
 const TOKEN_KEY = "biz360_web_auth_token";
 
 function digitsOnly(s: string) { return (s || "").replace(/\D/g, "").replace(/^0+/, "").replace(/^61/, ""); }
+/**
+ * Canonical AU mobile (national 9 digits) for owner matching. Handles every
+ * shape the same seller appears as: u-61414631463, u-61414631463-<timestamp>
+ * (app-created listings carry the timestamp), 0414631463, +61414631463, etc.
+ */
+function phoneKey(s: string) {
+  let d = (s || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (d.startsWith("61")) d = d.slice(2);
+  return d.slice(0, 9);
+}
+function listingOwnedBy(l: Listing, mine: string): boolean {
+  return [l.submittedBy, (l as any).sellerPhone, (l as any).ownerPhone, (l as any).phone, (l as any).contactPhone]
+    .some((f) => { const k = phoneKey(String(f ?? "")); return !!k && k === mine; });
+}
 function subFromToken(t: string): string | null {
   try { const p = JSON.parse(atob(t.split(".")[1] || "")); return typeof p?.sub === "string" ? p.sub : null; } catch { return null; }
 }
@@ -42,7 +56,8 @@ export function SellerDashboard() {
       const r = await fetch("/api/biz360/kv/biz360_admin_pending_v2");
       const j = await r.json().catch(() => ({}));
       const all: Listing[] = Array.isArray(j?.value) ? j.value : [];
-      const mine = all.filter((l) => digitsOnly(l.submittedBy || "") && digitsOnly(l.submittedBy || "") === myPhoneDigits);
+      const me = phoneKey(myPhoneDigits);
+      const mine = all.filter((l) => listingOwnedBy(l, me));
       setListings(mine);
       // Fetch analytics per listing
       const entries = await Promise.all(mine.map(async (l) => {

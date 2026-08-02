@@ -160,9 +160,18 @@ export const DEFAULT_NDA_TEXT =
   "will return or destroy all materials on request. This agreement is legally binding. Your name, verified mobile number and " +
   "the date and time of acceptance are recorded.";
 
-/** Normalise an owner id / phone to bare digits for keying (matches biz360 ownerBase). */
+/**
+ * Normalise an owner id / phone to the canonical AU mobile (national 9 digits).
+ * Owner ids come in several shapes for the SAME seller: the login token is
+ * `u-61414631463` while an app-created listing is `u-61414631463-1779893721125`
+ * (phone + timestamp), and phones appear as 0414631463 / +61414631463 / etc.
+ * Collapsing to the leading 9-digit mobile makes ownership match across all of
+ * them (previously the timestamp digits made the two sides never compare equal).
+ */
 function ndaOwnerBase(id?: string | null): string {
-  return String(id ?? "").replace(/^u-/, "").replace(/\D/g, "");
+  let d = String(id ?? "").replace(/^u-/, "").replace(/\D/g, "").replace(/^0+/, "");
+  if (d.startsWith("61")) d = d.slice(2);
+  return d.slice(0, 9);
 }
 
 async function kvMap(key: string): Promise<Record<string, any>> {
@@ -556,8 +565,16 @@ router.post("/buyer-portal/nda/accept", async (req, res): Promise<void> => {
 // ─── Seller/broker: NDA template + per-listing settings + manual grant ────────
 
 async function callerOwnsListing(userId: string, listingId: string): Promise<boolean> {
-  const owner = await listingOwner(listingId);
-  return !!owner && ndaOwnerBase(owner) === ndaOwnerBase(userId);
+  const me = ndaOwnerBase(userId);
+  if (!me) return false;
+  try {
+    const rows = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(rows[0]?.value) ? (rows[0]!.value as any[]) : [];
+    const l = listings.find((x) => x?.listingId === listingId);
+    if (!l) return false;
+    return [l.submittedBy, l.sellerPhone, l.ownerPhone, l.phone, l.contactPhone]
+      .some((f) => { const k = ndaOwnerBase(f); return !!k && k === me; });
+  } catch { return false; }
 }
 
 /** GET the caller's default NDA template (used across all their listings). */
