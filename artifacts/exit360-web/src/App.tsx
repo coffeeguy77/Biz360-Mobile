@@ -18,6 +18,8 @@ import { Walkthroughs } from "@/pages/marketing/Walkthroughs";
 import { HowItWorks } from "@/pages/marketing/HowItWorks";
 import { Compare } from "@/pages/marketing/Compare";
 import { ListYourBusiness } from "@/pages/marketing/ListYourBusiness";
+import { Photographers } from "@/pages/marketing/Photographers";
+import { FindAPartner } from "@/pages/marketing/FindAPartner";
 import { SellerDashboard } from "@/pages/seller-dashboard";
 import { BrokerAnalytics } from "@/pages/broker-analytics";
 
@@ -42,6 +44,8 @@ function Router() {
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/compare" component={Compare} />
       <Route path="/list-your-business" component={ListYourBusiness} />
+      <Route path="/photographers" component={Photographers} />
+      <Route path="/find-a-partner" component={FindAPartner} />
       {/* Seller & broker */}
       <Route path="/seller" component={SellerDashboard} />
       <Route path="/broker/analytics/:listingId" component={BrokerAnalytics} />

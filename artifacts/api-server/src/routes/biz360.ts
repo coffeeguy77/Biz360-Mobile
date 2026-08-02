@@ -447,6 +447,80 @@ router.post("/public/listing/:listingId/analytics-viewers", async (req, res): Pr
   }
 });
 
+// ─── Walkthrough photographer partner program ─────────────────────────────────
+// Photographers apply to become EXIT360 walkthrough partners (own an Insta360,
+// complete sample listings as training, then get approved for referral). Apps
+// are stored in KV; the approved directory is served publicly for the "find a
+// local partner" lookup.
+const PARTNER_APPS_KEY = "biz360_partner_apps_v1";
+const PARTNERS_KEY = "biz360_partners_v1";
+
+// POST /public/partners/apply — a photographer applies to join.
+router.post("/public/partners/apply", async (req, res): Promise<void> => {
+  const b = req.body as Record<string, unknown>;
+  const name = String(b.name ?? "").trim();
+  const phone = String(b.phone ?? "").trim();
+  if (name.length < 2 || phone.replace(/\D/g, "").length < 8) {
+    res.status(400).json({ error: "Name and a valid mobile number are required" });
+    return;
+  }
+  try {
+    const [row] = await db.select().from(kvStore).where(eq(kvStore.key, PARTNER_APPS_KEY));
+    const apps = Array.isArray(row?.value) ? (row!.value as any[]) : [];
+    apps.push({
+      id: `pa-${Date.now()}`,
+      name,
+      phone,
+      email: String(b.email ?? "").trim().slice(0, 160),
+      city: String(b.city ?? "").trim().slice(0, 80),
+      region: String(b.region ?? b.state ?? "").trim().slice(0, 40),
+      ownsCamera: b.ownsCamera === true || b.ownsCamera === "yes",
+      experience: String(b.experience ?? "").trim().slice(0, 2000),
+      notes: String(b.notes ?? "").trim().slice(0, 2000),
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(kvStore).values({ key: PARTNER_APPS_KEY, value: apps })
+      .onConflictDoUpdate({ target: kvStore.key, set: { value: apps } });
+    // Best-effort notify EXIT360.
+    try {
+      await sendEmail({
+        to: "info@beanculture.com.au",
+        subject: `New EXIT360 walkthrough partner application — ${name}`,
+        html: emailShell("New partner application",
+          `<p><strong>${name}</strong> (${phone}${b.email ? `, ${b.email}` : ""}) applied to become a walkthrough partner${b.city ? ` in ${b.city}` : ""}.</p><p>Owns an Insta360: ${b.ownsCamera ? "Yes" : "Not stated"}.</p>`),
+      });
+    } catch { /* non-fatal */ }
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Could not submit application" });
+  }
+});
+
+// GET /public/partners?region= — approved partner directory for the lookup.
+router.get("/public/partners", async (req, res): Promise<void> => {
+  const { region } = req.query as { region?: string };
+  try {
+    const [row] = await db.select().from(kvStore).where(eq(kvStore.key, PARTNERS_KEY));
+    let partners = Array.isArray(row?.value) ? (row!.value as any[]) : [];
+    partners = partners.filter((p) => p?.approved !== false);
+    if (region && region.trim()) {
+      const q = region.trim().toLowerCase();
+      partners = partners.filter((p) =>
+        String(p?.region ?? "").toLowerCase().includes(q) ||
+        String(p?.city ?? "").toLowerCase().includes(q) ||
+        String(p?.serviceAreas ?? "").toLowerCase().includes(q));
+    }
+    res.json({ partners: partners.map((p) => ({
+      name: p?.name ?? "", city: p?.city ?? "", region: p?.region ?? "",
+      serviceAreas: p?.serviceAreas ?? "", phone: p?.phone ?? null, email: p?.email ?? null,
+      bio: p?.bio ?? "", avatarUrl: p?.avatarUrl ?? null,
+    })) });
+  } catch {
+    res.json({ partners: [] });
+  }
+});
+
 // POST /biz360/seller/listings  (create a listing from the web)
 // Lets a phone-verified seller start a listing on the website. Photos, the 360°
 // tour and the financial report are enriched in the app, but the core record is

@@ -81,8 +81,9 @@ export function SiteFooter() {
     { title: "Platform", links: [
       { label: "Browse Listings", href: "/listings" },
       { label: "360° Walkthroughs", href: "/walkthroughs" },
+      { label: "Find a Partner", href: "/find-a-partner" },
+      { label: "Become a Partner", href: "/photographers" },
       { label: "How It Works", href: "/how-it-works" },
-      { label: "Compare Us", href: "/compare" },
     ]},
     { title: "For Sellers", links: [
       { label: "Sell Your Business", href: "/selling" },

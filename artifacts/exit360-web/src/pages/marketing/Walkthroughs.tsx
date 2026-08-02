@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
   Compass, Camera, MousePointerClick, Smartphone, FileText, Clock,
-  ArrowRight, CheckCircle2, Users, ShieldCheck, Eye, Layers, Globe, Sparkles,
+  ArrowRight, CheckCircle2, Users, ShieldCheck, Eye, Layers, Globe, Sparkles, Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
@@ -236,6 +236,65 @@ export function Walkthroughs() {
               <p className="text-sm text-muted-foreground leading-relaxed mt-3">{f.a}</p>
             </motion.details>
           ))}
+        </div>
+      </section>
+
+      {/* Recommended camera + capture options */}
+      <section className="max-w-7xl mx-auto px-6 py-20">
+        <div className="grid lg:grid-cols-2 gap-10 items-center">
+          <motion.div {...fade}>
+            <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
+              <Camera size={13} /> Recommended camera
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">
+              Shot on the <span className="theme-text-gradient">Insta360</span>.
+            </h2>
+            <p className="text-lg text-muted-foreground leading-relaxed mb-5">
+              We build EXIT360 walkthroughs around the Insta360 — and for good reason. It captures a full,
+              razor-sharp 360° sphere of a room in a single tap, so a whole business can be shot in well under
+              an hour. It's pocket-sized, quick to move between scenes, and its high resolution means buyers can
+              look closely at fit-out, equipment and finishes without the image falling apart. One walkthrough,
+              stitched and scene-linked, and your business is explorable like Street View.
+            </p>
+            <ul className="space-y-2.5 mb-6">
+              {["One-tap full 360° capture — a room in seconds", "High resolution buyers can zoom into", "Compact and fast to move scene to scene", "Feeds straight into our scene-linking + AI narration workflow"].map((t) => (
+                <li key={t} className="flex items-start gap-2.5 text-sm"><CheckCircle2 size={16} className="text-primary flex-shrink-0 mt-0.5" /> <span className="text-muted-foreground">{t}</span></li>
+              ))}
+            </ul>
+          </motion.div>
+
+          <motion.div {...fade} className="space-y-4">
+            <div className="rounded-2xl border border-border bg-card/50 p-6">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-11 h-11 rounded-xl grid place-items-center bg-primary/10 text-primary"><Camera size={20} /></div>
+                <div>
+                  <h3 className="text-lg font-bold">Rent a camera — $330</h3>
+                  <p className="text-xs text-muted-foreground">Prefer to shoot it yourself</p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">Don't want to buy one? Rent an Insta360 from us for <strong className="text-foreground">$330</strong> and capture your own walkthrough with our step-by-step guide.</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-card/50 p-6">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-11 h-11 rounded-xl grid place-items-center bg-primary/10 text-primary"><Video size={20} /></div>
+                <div>
+                  <h3 className="text-lg font-bold">We shoot it for you — $990</h3>
+                  <p className="text-xs text-muted-foreground">Canberra only (for now)</p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">Want it done professionally? Our team captures a full 360° walkthrough of your business for <strong className="text-foreground">$990</strong> — currently available in <strong className="text-foreground">Canberra</strong>, with more regions coming as our partner network grows.</p>
+            </div>
+            <div className="rounded-2xl border border-border theme-aurora-bg overflow-hidden">
+              <div className="relative z-10 p-6">
+                <h3 className="text-lg font-bold mb-1">Find a local partner</h3>
+                <p className="text-sm text-muted-foreground mb-4">Outside Canberra? Find an approved EXIT360 walkthrough partner near you — or become one.</p>
+                <div className="flex gap-3 flex-wrap">
+                  <Link href="/find-a-partner"><Button className="theme-btn-gradient border-0">Find a partner</Button></Link>
+                  <Link href="/photographers"><Button variant="outline">Become a partner</Button></Link>
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </div>
       </section>
 
