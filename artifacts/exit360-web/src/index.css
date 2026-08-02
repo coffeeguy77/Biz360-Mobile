@@ -468,3 +468,10 @@
 @media (prefers-reduced-motion: reduce) {
   .theme-aurora-bg::before, .theme-aurora-bg::after { animation: none; }
 }
+
+/* Themed thin scrollbar (used by tour thumbnail strips etc.) */
+.themed-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.themed-scroll::-webkit-scrollbar-track { background: hsl(var(--muted) / 0.4); border-radius: 8px; }
+.themed-scroll::-webkit-scrollbar-thumb { background: hsl(var(--primary) / 0.7); border-radius: 8px; }
+.themed-scroll::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary)); }
+.themed-scroll { scrollbar-width: thin; scrollbar-color: hsl(var(--primary) / 0.7) hsl(var(--muted) / 0.4); }

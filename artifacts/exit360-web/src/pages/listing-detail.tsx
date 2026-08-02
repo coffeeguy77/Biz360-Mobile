@@ -18,6 +18,10 @@ import {
   Phone,
   Mail,
   Calendar,
+  Maximize2,
+  Minimize2,
+  LayoutGrid,
+  EyeOff,
   Play,
   Pause,
   Volume2,
@@ -97,12 +101,26 @@ function TourViewer({
 }) {
   const valid = spaces.filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"));
   const srcdoc = valid.length > 0 ? buildMultiSceneSrcdoc(spaces, autoPanAll) : "";
+  const frameWrapRef = useRef<HTMLDivElement>(null);
+  const [showPresets, setShowPresets] = useState(true);
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  function toggleFullscreen() {
+    const el = frameWrapRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else (el.requestFullscreen?.() ?? Promise.reject()).catch(() => {});
+  }
 
   if (!valid.length) return null;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative rounded-2xl overflow-hidden bg-black" style={{ height: "clamp(220px, 50vw, 460px)", touchAction: "none" }}>
+      <div ref={frameWrapRef} className="relative rounded-2xl overflow-hidden bg-black" style={{ height: isFs ? "100vh" : "clamp(220px, 50vw, 460px)", touchAction: "none" }}>
         <iframe
           ref={iframeRef}
           srcDoc={srcdoc}
@@ -110,14 +128,38 @@ function TourViewer({
           title="360° Tour"
           allow="fullscreen"
         />
-        <div className="absolute top-4 right-4 bg-black/60 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 z-10 pointer-events-none">
+        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 z-10 pointer-events-none">
           <Camera size={11} className="text-primary" />
           {valid.length} spaces
         </div>
+        <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+          <button onClick={() => setShowPresets((s) => !s)} title={showPresets ? "Hide scene presets" : "Show scene presets"}
+            className="bg-black/60 hover:bg-black/80 backdrop-blur text-white w-9 h-9 rounded-full grid place-items-center transition-colors">
+            {showPresets ? <EyeOff size={16} /> : <LayoutGrid size={16} />}
+          </button>
+          <button onClick={toggleFullscreen} title={isFs ? "Exit fullscreen" : "Fullscreen immersive"}
+            className="bg-black/60 hover:bg-black/80 backdrop-blur text-white w-9 h-9 rounded-full grid place-items-center transition-colors">
+            {isFs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+        </div>
+        {isFs && showPresets && (
+          <div className="absolute bottom-4 left-0 right-0 px-4 z-10">
+            <div className="flex gap-2 overflow-x-auto themed-scroll pb-1 max-w-3xl mx-auto">
+              {valid.map((s) => (
+                <button key={s.id} onClick={() => { onSceneChange(s.id); iframeRef.current?.contentWindow?.postMessage({ type: "pano_goto", sceneId: s.id }, "*"); }}
+                  className={`relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${s.id === activeId ? "border-primary" : "border-white/20 opacity-70 hover:opacity-100"}`}
+                  style={{ width: 84, height: 52 }} title={s.name}>
+                  <img src={s.panoramaUrl} alt={s.name} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Thumbnail strip */}
-      <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
+      {/* Thumbnail strip (toggle via presets button) */}
+      {showPresets && !isFs && (
+      <div className="flex gap-2 overflow-x-auto themed-scroll pb-1">
         {valid.map((s) => (
           <button
             key={s.id}
@@ -143,6 +185,7 @@ function TourViewer({
           </button>
         ))}
       </div>
+      )}
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground px-1">
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-primary/80" />Navigate to space</span>

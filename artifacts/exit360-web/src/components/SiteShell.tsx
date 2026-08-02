@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Link } from "wouter";
-import { Eye, Menu, X } from "lucide-react";
+import { Eye, Menu, X, User, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const NAV = [
@@ -12,8 +12,24 @@ const NAV = [
   { label: "Compare",       href: "/compare" },
 ];
 
+/** Signed-in when a buyer-portal token is present. Re-checks on focus/nav so the
+ *  header updates right after a buyer signs in on any page. */
+function useSignedIn() {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    const check = () => { try { setSignedIn(!!localStorage.getItem("exit360_buyer_token")); } catch { setSignedIn(false); } };
+    check();
+    window.addEventListener("focus", check);
+    window.addEventListener("storage", check);
+    const iv = setInterval(check, 2000);
+    return () => { window.removeEventListener("focus", check); window.removeEventListener("storage", check); clearInterval(iv); };
+  }, []);
+  return signedIn;
+}
+
 export function SiteNav() {
   const [open, setOpen] = useState(false);
+  const signedIn = useSignedIn();
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -30,10 +46,16 @@ export function SiteNav() {
             <Link key={n.href} href={n.href}><span className="hover:text-foreground transition-colors cursor-pointer">{n.label}</span></Link>
           ))}
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/listings"><Button variant="ghost" className="hidden sm:inline-flex">Browse</Button></Link>
-          <Link href="/list-your-business"><Button className="theme-btn-gradient border-0">List a Business</Button></Link>
-          <button className="lg:hidden w-9 h-9 grid place-items-center rounded-lg bg-muted" onClick={() => setOpen((o) => !o)}>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link href="/listings"><Button variant="ghost" className="hidden md:inline-flex">Browse</Button></Link>
+          {/* Persistent portal / sign-in — sign in once, message & reveal phones across every listing */}
+          {signedIn ? (
+            <Link href="/buyers/portal"><Button variant="outline" className="gap-1.5"><User size={15} /> <span className="hidden sm:inline">My Portal</span></Button></Link>
+          ) : (
+            <Link href="/buyers"><Button variant="outline" className="gap-1.5"><LogIn size={15} /> <span className="hidden sm:inline">Sign in</span></Button></Link>
+          )}
+          <Link href="/list-your-business"><Button className="theme-btn-gradient border-0 hidden sm:inline-flex">List a Business</Button></Link>
+          <button className="lg:hidden w-9 h-9 grid place-items-center rounded-lg bg-muted flex-shrink-0" onClick={() => setOpen((o) => !o)}>
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
@@ -43,6 +65,11 @@ export function SiteNav() {
           {NAV.map((n) => (
             <Link key={n.href} href={n.href}><span className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>{n.label}</span></Link>
           ))}
+          <div className="border-t border-border pt-3 flex flex-col gap-3">
+            <Link href="/listings"><span className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>Browse listings</span></Link>
+            <Link href={signedIn ? "/buyers/portal" : "/buyers"}><span className="text-sm font-semibold text-primary" onClick={() => setOpen(false)}>{signedIn ? "My Portal" : "Sign in"}</span></Link>
+            <Link href="/list-your-business"><span className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>List a Business</span></Link>
+          </div>
         </div>
       )}
     </nav>

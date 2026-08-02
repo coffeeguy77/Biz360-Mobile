@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera } from "lucide-react";
+import { Camera, Maximize2, Minimize2, LayoutGrid, EyeOff } from "lucide-react";
 
 export interface TourPin {
   id: string;
@@ -271,7 +271,10 @@ requestAnimationFrame(tick);
  */
 export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSpace[]; autoPanAll?: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const frameWrapRef = useRef<HTMLDivElement>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [showPresets, setShowPresets] = useState(true);
+  const [isFs, setIsFs] = useState(false);
   const valid = spaces.filter((s) => s.panoramaUrl && !s.panoramaUrl.startsWith("file://"));
 
   useEffect(() => {
@@ -281,16 +284,25 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
       if (e.data?.type === "pano_sceneChange" && e.data.sceneId) setActiveId(e.data.sceneId);
     };
     window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => { window.removeEventListener("message", onMsg); document.removeEventListener("fullscreenchange", onFs); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaces]);
+
+  function toggleFullscreen() {
+    const el = frameWrapRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) { document.exitFullscreen?.(); }
+    else { (el.requestFullscreen?.() ?? Promise.reject()).catch(() => {}); }
+  }
 
   if (!valid.length) return null;
   const srcdoc = buildMultiSceneSrcdoc(spaces, autoPanAll);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative rounded-2xl overflow-hidden bg-black border border-[#1E3A5C]" style={{ height: "clamp(360px, 58vw, 580px)", touchAction: "none" }}>
+      <div ref={frameWrapRef} className="relative rounded-2xl overflow-hidden bg-black border border-[#1E3A5C]" style={{ height: isFs ? "100vh" : "clamp(360px, 58vw, 580px)", touchAction: "none" }}>
         <iframe
           ref={iframeRef}
           srcDoc={srcdoc}
@@ -298,14 +310,40 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
           title="360° Business Walkthrough"
           allow="fullscreen"
         />
-        <div className="absolute top-4 right-4 bg-black/60 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 z-10 pointer-events-none">
+        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 z-10 pointer-events-none">
           <Camera size={11} className="text-blue-400" />
           {valid.length} spaces
         </div>
+        {/* Immersive controls */}
+        <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+          <button onClick={() => setShowPresets((s) => !s)} title={showPresets ? "Hide scene presets" : "Show scene presets"}
+            className="bg-black/60 hover:bg-black/80 backdrop-blur text-white w-9 h-9 rounded-full grid place-items-center transition-colors">
+            {showPresets ? <EyeOff size={16} /> : <LayoutGrid size={16} />}
+          </button>
+          <button onClick={toggleFullscreen} title={isFs ? "Exit fullscreen" : "Fullscreen immersive"}
+            className="bg-black/60 hover:bg-black/80 backdrop-blur text-white w-9 h-9 rounded-full grid place-items-center transition-colors">
+            {isFs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+        </div>
+        {/* In fullscreen, the thumbnail presets float over the bottom of the immersive view */}
+        {isFs && showPresets && (
+          <div className="absolute bottom-4 left-0 right-0 px-4 z-10">
+            <div className="flex gap-2 overflow-x-auto themed-scroll pb-1 max-w-3xl mx-auto justify-start">
+              {valid.map((s) => (
+                <button key={s.id} onClick={() => { setActiveId(s.id); iframeRef.current?.contentWindow?.postMessage({ type: "pano_goto", sceneId: s.id }, "*"); }}
+                  className={`relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${s.id === activeId ? "border-blue-500" : "border-white/20 opacity-70 hover:opacity-100"}`}
+                  style={{ width: 84, height: 52 }} title={s.name}>
+                  <img src={s.panoramaUrl} alt={s.name} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Thumbnail strip — click to jump to a space */}
-      <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
+      {/* Thumbnail strip — click to jump to a space (hidden in fullscreen; toggled by the presets button) */}
+      {showPresets && !isFs && (
+      <div className="flex gap-2 overflow-x-auto themed-scroll pb-1">
         {valid.map((s) => (
           <button
             key={s.id}
@@ -331,6 +369,7 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
           </button>
         ))}
       </div>
+      )}
 
       <div className="flex items-center gap-4 text-xs text-slate-400 px-1">
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-blue-500/80" />Navigate to space</span>

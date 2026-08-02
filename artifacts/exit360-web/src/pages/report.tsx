@@ -794,6 +794,9 @@ function EquipmentRegisterSection({ reg, printMode, inline }: { reg: EquipmentRe
   const divisions = Array.from(new Set(reg.items.map((i) => (i.division || "General").trim() || "General"))).sort();
   const showTabs = divisions.length > 1;
   const [activeDivision, setActiveDivision] = useState<string>("All");
+  // On phones we show one price column at a time (item + price) via this toggle;
+  // tablet/desktop show both second-hand and replacement side by side.
+  const [priceView, setPriceView] = useState<"secondhand" | "replacement">("secondhand");
   // When printing, always show everything regardless of the on-screen filter.
   const effectiveDivision = printMode ? "All" : activeDivision;
   const viewItems = effectiveDivision === "All"
@@ -866,8 +869,56 @@ function EquipmentRegisterSection({ reg, printMode, inline }: { reg: EquipmentRe
           </div>
         </div>
 
-        <div className={cn("overflow-x-auto rounded-xl border", printMode ? "border-slate-200" : "border-[#1E3A5C]")}>
-          <table className="w-full text-sm">
+        {/* Mobile: item + one price with a Second-hand / Replacement toggle */}
+        {!printMode && (
+          <div className="sm:hidden">
+            <div className="inline-flex rounded-lg border border-[#1E3A5C] p-0.5 mb-3">
+              {([["secondhand", "Second-hand"], ["replacement", "Replacement"]] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setPriceView(k)}
+                  className={cn("px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                    priceView === k ? "bg-amber-500 text-[#0A1828]" : "text-slate-400")}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="rounded-xl border border-[#1E3A5C] overflow-hidden">
+              {cats.map((cat) => {
+                const items = groups[cat];
+                const sub = items.reduce((a, i) => ({ s: a.s + i.secondhandValue, r: a.r + i.replacementCost }), { s: 0, r: 0 });
+                const val = (n: { s: number; r: number }) => priceView === "secondhand" ? n.s : n.r;
+                return (
+                  <Fragment key={cat}>
+                    <div className="bg-[#0F2040]/50 px-4 py-2 font-bold text-xs uppercase tracking-wide text-slate-300">{cat}</div>
+                    {items.map((it) => (
+                      <div key={it.id} className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-[#1E3A5C]/50">
+                        <span className="text-slate-200 text-sm min-w-0 break-words">
+                          {it.name}{it.brand ? <span className="text-slate-500"> · {it.brand}</span> : null}
+                        </span>
+                        <span className={cn("text-right tabular-nums whitespace-nowrap font-medium flex-shrink-0", priceView === "secondhand" ? "text-amber-300" : "text-blue-300")}>
+                          {fmt(priceView === "secondhand" ? it.secondhandValue : it.replacementCost)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-[#1E3A5C] bg-[#0F2040]/30">
+                      <span className="text-slate-400 text-xs font-semibold">Subtotal · {cat}</span>
+                      <span className={cn("font-bold tabular-nums whitespace-nowrap", priceView === "secondhand" ? "text-amber-300" : "text-blue-300")}>{fmt(val(sub))}</span>
+                    </div>
+                  </Fragment>
+                );
+              })}
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#1E3A5C] bg-[#0F2040]">
+                <span className="text-white font-bold">Total</span>
+                <span className={cn("font-bold tabular-nums whitespace-nowrap", priceView === "secondhand" ? "text-amber-300" : "text-blue-300")}>
+                  {fmt(priceView === "secondhand" ? totals.secondhand : totals.replacement)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tablet / desktop (and print): full two-column table, horizontally scrollable if tight */}
+        <div className={cn("overflow-x-auto rounded-xl border", printMode ? "border-slate-200" : "border-[#1E3A5C]", printMode ? "" : "hidden sm:block")}>
+          <table className="w-full text-sm min-w-[520px]">
             <thead>
               <tr className={printMode ? "bg-slate-100" : "bg-[#0F2040]"}>
                 <th className={cn(th, "text-left")}>Item</th>
