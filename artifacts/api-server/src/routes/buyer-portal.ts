@@ -234,18 +234,26 @@ function getVerifyServiceSid(): string {
 
 /** Confirm the requesting seller owns this cafe. */
 async function requireOwner(cafeId: string, ownerId: string) {
-  const [cafe] = await db.select().from(cafesTable).where(
-    and(eq(cafesTable.id, cafeId), eq(cafesTable.ownerId, ownerId))
-  );
-  return cafe ?? null;
+  const [cafe] = await db.select().from(cafesTable).where(eq(cafesTable.id, cafeId));
+  if (!cafe) return null;
+  // Canonical-phone match so app-created (u-<phone>) and web (u-<phone>) — and
+  // any phone-format variant — resolve to the same owner.
+  return ndaOwnerBase(cafe.ownerId) === ndaOwnerBase(ownerId) ? cafe : null;
 }
 
 /** Confirm the seller owns the group (via its cafeId). */
 async function requireGroupOwner(groupId: string, ownerId: string) {
-  const [group] = await db.select().from(buyerPortalGroupsTable).where(
-    and(eq(buyerPortalGroupsTable.id, groupId), eq(buyerPortalGroupsTable.ownerId, ownerId))
-  );
-  return group ?? null;
+  const [group] = await db.select().from(buyerPortalGroupsTable).where(eq(buyerPortalGroupsTable.id, groupId));
+  if (!group) return null;
+  return ndaOwnerBase(group.ownerId) === ndaOwnerBase(ownerId) ? group : null;
+}
+
+/** Resolve a listing's valuation cafe for the calling owner (canonical match). */
+async function resolveCafeForListing(listingId: string, ownerId: string): Promise<{ id: string; businessName: string | null } | null> {
+  const rows = await db.select().from(cafesTable).where(eq(cafesTable.listingId, listingId));
+  const me = ndaOwnerBase(ownerId);
+  const cafe = rows.find((c) => ndaOwnerBase(c.ownerId) === me);
+  return cafe ? { id: cafe.id, businessName: (cafe as any).businessName ?? (cafe as any).name ?? null } : null;
 }
 
 // ─── Buyer OTP auth ───────────────────────────────────────────────────────────
@@ -730,6 +738,15 @@ router.put("/buyer-portal/seller/tour-zones/:listingId", requireAuth, async (req
   res.json({ ok: true, changed, zones: next.map((s) => ({ id: s.id, name: s.name, enabled: s.enabled !== false })) });
 });
 
+/** Resolve the buyer-access cafe for one of the caller's listings (for the web
+ *  dashboard, which works in listingIds while groups are keyed by cafeId). */
+router.get("/buyer-portal/seller/listing-cafe/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  if (!(await callerOwnsListing(req.user!.id, listingId))) { res.status(403).json({ error: "Not your listing" }); return; }
+  const cafe = await resolveCafeForListing(listingId, req.user!.id);
+  res.json({ cafeId: cafe?.id ?? null, businessName: cafe?.businessName ?? null });
+});
+
 // ─── Seller: group CRUD ───────────────────────────────────────────────────────
 
 /**
@@ -743,8 +760,10 @@ router.get("/buyer-portal/groups", requireAuth, async (req, res): Promise<void> 
   const cafe = await requireOwner(cafeId, ownerId);
   if (!cafe) { res.status(403).json({ error: "Forbidden" }); return; }
 
+  // Owner already verified by requireOwner above; list by cafe so groups created
+  // in the app (whatever owner-id format) still show on the web.
   const groups = await db.select().from(buyerPortalGroupsTable)
-    .where(and(eq(buyerPortalGroupsTable.cafeId, cafeId), eq(buyerPortalGroupsTable.ownerId, ownerId)));
+    .where(eq(buyerPortalGroupsTable.cafeId, cafeId));
 
   if (!groups.length) { res.json({ groups: [] }); return; }
 

@@ -230,7 +230,152 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
             </div>
           )}
           <TourZones listing={listing} token={token} />
+          <BuyerAccess listing={listing} token={token} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface Member { id: string; phone: string; name: string | null; }
+interface Perms { canViewImReport: boolean; canViewWalkthrough: boolean; canViewFinancials: boolean; canViewEquipment: boolean; }
+interface Grp { id: string; name: string; description: string | null; members: Member[]; permissions: Perms | null; }
+
+const PERM_ROWS: { key: keyof Perms; label: string; desc: string }[] = [
+  { key: "canViewImReport",    label: "IM Report",       desc: "Full information memorandum" },
+  { key: "canViewWalkthrough", label: "360° Walkthrough", desc: "Virtual tour of the premises" },
+  { key: "canViewFinancials",  label: "Financials",       desc: "Revenue, EBITDA & chart data" },
+  { key: "canViewEquipment",   label: "Equipment List",   desc: "Asset register with values" },
+];
+
+function BuyerAccess({ listing, token }: { listing: Listing; token: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [cafeId, setCafeId] = useState<string | null | undefined>(undefined);
+  const [groups, setGroups] = useState<Grp[]>([]);
+  const [newGroup, setNewGroup] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const auth = { Authorization: `Bearer ${token}` };
+
+  async function loadAll() {
+    setLoading(true); setErr(null);
+    try {
+      const cr = await fetch(`/api/buyer-portal/seller/listing-cafe/${listing.listingId}`, { headers: auth });
+      const cd = await cr.json();
+      setCafeId(cd.cafeId ?? null);
+      if (cd.cafeId) {
+        const gr = await fetch(`/api/buyer-portal/groups?cafeId=${cd.cafeId}`, { headers: auth });
+        const gd = await gr.json();
+        setGroups(Array.isArray(gd.groups) ? gd.groups : []);
+      }
+    } catch { setErr("Could not load buyer access."); } finally { setLoading(false); }
+  }
+  function toggle() { const n = !open; setOpen(n); if (n && cafeId === undefined) loadAll(); }
+
+  async function createGroup() {
+    if (!newGroup.trim() || !cafeId) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/buyer-portal/groups`, { method: "POST", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ cafeId, name: newGroup.trim() }) });
+      const d = await r.json();
+      if (r.ok && d.group) { setNewGroup(""); await loadAll(); } else setErr(d.error ?? "Could not create group.");
+    } finally { setBusy(false); }
+  }
+  async function delGroup(id: string) {
+    setBusy(true);
+    try { await fetch(`/api/buyer-portal/groups/${id}`, { method: "DELETE", headers: auth }); await loadAll(); } finally { setBusy(false); }
+  }
+  async function addMember(gid: string, phone: string, name: string) {
+    if (!phone.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/buyer-portal/groups/${gid}/members`, { method: "POST", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ phone: phone.trim(), name: name.trim() || null }) });
+      const d = await r.json();
+      if (r.ok) await loadAll(); else setErr(d.error ?? "Could not add member.");
+    } finally { setBusy(false); }
+  }
+  async function removeMember(gid: string, mid: string) {
+    setBusy(true);
+    try { await fetch(`/api/buyer-portal/groups/${gid}/members/${mid}`, { method: "DELETE", headers: auth }); await loadAll(); } finally { setBusy(false); }
+  }
+  async function setPerm(g: Grp, key: keyof Perms, val: boolean) {
+    const base: Perms = g.permissions ?? { canViewImReport: false, canViewWalkthrough: false, canViewFinancials: false, canViewEquipment: false };
+    const next = { ...base, [key]: val };
+    setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, permissions: next } : x)));
+    try {
+      await fetch(`/api/buyer-portal/groups/${g.id}/permissions`, { method: "PUT", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ cafeId, ...next }) });
+    } catch { setErr("Could not save permission."); await loadAll(); }
+  }
+
+  return (
+    <div className="mt-3">
+      <button onClick={toggle} className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold">
+        <ShieldCheck size={14} /> Buyer access {cafeId && groups.length > 0 && `(${groups.length} group${groups.length > 1 ? "s" : ""})`}
+      </button>
+      {open && (
+        <div className="mt-3 rounded-xl border border-border bg-background/50 p-4">
+          <p className="text-xs text-muted-foreground mb-3">Approve exactly who can see this report and which sections — right from the web. Buyers log in at exit360.com.au/buyers with their mobile.</p>
+          {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading…</div>}
+          {!loading && cafeId === null && (
+            <p className="text-sm text-muted-foreground">Build this listing's report first (add your 360° tour, photos and financials in the EXIT360 app or the report builder), then you can manage buyer access here.</p>
+          )}
+          {!loading && cafeId && (
+            <>
+              <div className="flex gap-2 mb-3">
+                <input value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="New group e.g. Shortlisted buyers" className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60" />
+                <Button size="sm" onClick={createGroup} disabled={busy} className="theme-btn-gradient border-0">Add group</Button>
+              </div>
+              <div className="flex flex-col gap-3">
+                {groups.map((g) => <GroupCard key={g.id} g={g} busy={busy} onDelete={() => delGroup(g.id)} onAddMember={(p, n) => addMember(g.id, p, n)} onRemoveMember={(mid) => removeMember(g.id, mid)} onPerm={(k, v) => setPerm(g, k, v)} />)}
+                {groups.length === 0 && <p className="text-sm text-muted-foreground">No groups yet. Create one, add buyers by mobile, then switch on what they can see.</p>}
+              </div>
+            </>
+          )}
+          {err && <p className="text-xs text-red-500 mt-2">{err}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GroupCard({ g, busy, onDelete, onAddMember, onRemoveMember, onPerm }: {
+  g: Grp; busy: boolean; onDelete: () => void; onAddMember: (phone: string, name: string) => void; onRemoveMember: (mid: string) => void; onPerm: (k: keyof Perms, v: boolean) => void;
+}) {
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  return (
+    <div className="rounded-lg border border-border bg-card/40 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold">{g.name}</span>
+        <button onClick={onDelete} disabled={busy} className="text-[11px] text-red-400 hover:text-red-300">Delete</button>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3">
+        {PERM_ROWS.map((row) => {
+          const on = g.permissions?.[row.key] ?? false;
+          return (
+            <div key={row.key} className="flex items-center justify-between gap-2">
+              <span className={`text-xs ${on ? "text-foreground" : "text-muted-foreground"}`} title={row.desc}>{row.label}</span>
+              <button onClick={() => onPerm(row.key, !on)} className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${on ? "theme-btn-gradient" : "bg-muted"}`}>
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${on ? "translate-x-5" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {g.members.map((m) => (
+          <span key={m.id} className="inline-flex items-center gap-1 text-[11px] bg-muted/60 rounded-full pl-2.5 pr-1 py-0.5">
+            {m.name ? `${m.name} · ` : ""}{m.phone}
+            <button onClick={() => onRemoveMember(m.id)} className="w-4 h-4 grid place-items-center rounded-full hover:bg-red-500/30 text-muted-foreground">×</button>
+          </span>
+        ))}
+        {g.members.length === 0 && <span className="text-[11px] text-muted-foreground">No buyers yet</span>}
+      </div>
+      <div className="flex gap-1.5">
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Buyer mobile e.g. +61412 345 678" className="flex-1 px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs outline-none focus:border-primary/60" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" className="w-28 px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs outline-none focus:border-primary/60" />
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => { onAddMember(phone, name); setPhone(""); setName(""); }}>Add</Button>
       </div>
     </div>
   );
