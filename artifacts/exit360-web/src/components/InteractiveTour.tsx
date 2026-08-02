@@ -54,8 +54,8 @@ export function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): 
   /* ── Street-View style navigation overlay ── */
   #nav-layer{position:absolute;inset:0;pointer-events:none;z-index:20;font-family:system-ui,-apple-system,sans-serif}
   #nav-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:8px;pointer-events:auto;cursor:pointer}
-  #nav-hint .ring{width:74px;height:74px;border-radius:50%;border:3px solid rgba(255,255,255,0.95);box-shadow:0 0 0 4px rgba(37,99,235,0.35),0 4px 18px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;background:rgba(37,99,235,0.25);backdrop-filter:blur(2px);transition:transform .15s,background .15s}
-  #nav-hint:hover .ring{transform:scale(1.08);background:rgba(37,99,235,0.5)}
+  #nav-hint .ring{width:70px;height:70px;border-radius:50%;border:3px solid rgba(255,255,255,0.95);box-shadow:0 2px 14px rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;background:transparent;transition:transform .15s,background .15s}
+  #nav-hint:hover .ring{transform:scale(1.08);background:rgba(255,255,255,0.14)}
   #nav-hint .ring svg{width:34px;height:34px}
   #nav-hint .hint-label{background:rgba(15,23,42,0.9);color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.5)}
   .nav-edge{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;background:rgba(15,23,42,0.55);border:2px solid rgba(255,255,255,0.55);display:none;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;backdrop-filter:blur(2px);transition:background .15s}
@@ -74,16 +74,17 @@ export function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): 
 var SPACES=${spacesJson};
 function xToYaw(x){return(x-0.5)*360}
 function yToPitch(y){return(0.5-y)*180}
-/* Keep a consistent VERTICAL field of view regardless of container aspect, so
-   fullscreen (a much wider viewport) shows the same amount of the room as the
-   normal embed instead of appearing zoomed in. REF_ASPECT is captured from the
-   initial (non-fullscreen) size; hfov scales with aspect from there. */
-var REF_ASPECT=(window.innerWidth||1)/(window.innerHeight||1);
-function targetHfov(){
-  var a=(window.innerWidth||1)/(window.innerHeight||1);
-  var hf=100*(a/(REF_ASPECT||1));
-  if(hf<60)hf=60; if(hf>179)hf=179;
-  return hf;
+/* Navigation preserves the viewer's current zoom (clamped to a sane band) so a
+   scene change never snaps to a different zoom than what you're looking at.
+   Fullscreen just sets a comfortable wide default — no aspect maths that could
+   blow the field of view out to a "hyperspace" warp on ultra-wide screens. */
+var IS_FS=false;
+var FS_HFOV=112, EMBED_HFOV=100;
+function navHfov(){
+  var h; try{h=viewer.getHfov();}catch(e){h=IS_FS?FS_HFOV:EMBED_HFOV;}
+  if(!(h>0))h=IS_FS?FS_HFOV:EMBED_HFOV;
+  if(h<70)h=70; if(h>130)h=130;
+  return h;
 }
 function createNavPin(container,args){
   container.style.cssText='width:52px;height:52px;overflow:visible;position:relative;cursor:pointer';
@@ -110,7 +111,7 @@ function createNavPin(container,args){
          and face the target space's configured default orientation. */
       var navSp=SPACES.find(function(s){return s.id===args.sceneId});
       var navYaw=typeof args.targetYaw==='number'?args.targetYaw:(navSp&&typeof navSp.defaultYaw==='number'?navSp.defaultYaw:(navSp&&typeof navSp.panoramaStartYaw==='number'?navSp.panoramaStartYaw:0));
-      viewer.loadScene(args.sceneId,0,navYaw,targetHfov());
+      viewer.loadScene(args.sceneId,0,navYaw,navHfov());
     }catch(err){}
   });
 }
@@ -162,7 +163,7 @@ var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDura
   var sp0=SPACES.find(function(s){return s.id===firstScene});
   if(AUTOPAN_ALL||(sp0&&sp0.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}
 })();
-function doResize(){try{viewer.resize()}catch(e){}try{viewer.setHfov(targetHfov(),false)}catch(e){}}
+function doResize(){try{viewer.resize()}catch(e){}}
 window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
 window.addEventListener('resize',doResize);
 viewer.on('scenechange',function(id){
@@ -178,10 +179,25 @@ window.addEventListener('message',function(e){
   if(!e.data)return;
   if(e.data.type==='pano_goto'&&e.data.sceneId){try{ gotoScene(e.data.sceneId, typeof e.data.yaw==='number'?e.data.yaw:null); }catch(e2){}}
   else if(e.data.type==='pano_fullscreen'){
-    /* In fullscreen the parent shows a bigger thumbnail row, so hide the in-pano
-       scene chips to avoid the labels colliding under the thumbnails. */
-    try{ if(typeof chipsEl!=='undefined'&&chipsEl) chipsEl.style.display=e.data.on?'none':''; }catch(e3){}
-    try{ setTimeout(function(){viewer.resize();viewer.setHfov(targetHfov(),false);},60); }catch(e4){}
+    IS_FS=!!e.data.on;
+    /* In fullscreen the parent shows a bigger thumbnail row along the bottom, so
+       lift the in-pano scene-chip labels ABOVE it (not hidden). When the presets
+       are toggled off, hide the chips too. */
+    try{
+      if(typeof chipsEl!=='undefined'&&chipsEl){
+        if(IS_FS){
+          chipsEl.style.bottom=e.data.presets===false?'14px':'112px';
+          chipsEl.style.display=e.data.presets===false?'none':'flex';
+        }else{
+          chipsEl.style.bottom='14px';
+          chipsEl.style.display='flex';
+        }
+      }
+    }catch(e3){}
+    try{ setTimeout(function(){viewer.resize();viewer.setHfov(IS_FS?FS_HFOV:EMBED_HFOV,false);},60); }catch(e4){}
+  }
+  else if(e.data.type==='pano_presets'){
+    try{ if(typeof chipsEl!=='undefined'&&chipsEl && IS_FS){ chipsEl.style.display=e.data.on?'flex':'none'; chipsEl.style.bottom=e.data.on?'112px':'14px'; } }catch(e5){}
   }
 });
 
@@ -199,7 +215,7 @@ function defaultYawFor(id){var s=SPACES.find(function(x){return x.id===id});retu
 function gotoScene(id,yaw){
   if(!validIds.has(id))return;
   var y=typeof yaw==='number'?yaw:defaultYawFor(id);
-  try{viewer.loadScene(id,0,y,targetHfov());}catch(e){}
+  try{viewer.loadScene(id,0,y,navHfov());}catch(e){}
 }
 function navTargets(){
   var s=SPACES.find(function(x){return x.id===currentSceneId});
@@ -300,15 +316,16 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
       if (e.data?.type === "pano_sceneChange" && e.data.sceneId) setActiveId(e.data.sceneId);
     };
     window.addEventListener("message", onMsg);
-    const onFs = () => {
-      const fs = !!document.fullscreenElement;
-      setIsFs(fs);
-      iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: fs }, "*");
-    };
+    const onFs = () => setIsFs(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onFs);
     return () => { window.removeEventListener("message", onMsg); document.removeEventListener("fullscreenchange", onFs); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaces]);
+
+  // Keep the in-pano scene chips in sync with fullscreen + presets visibility.
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: isFs, presets: showPresets }, "*");
+  }, [isFs, showPresets]);
 
   function toggleFullscreen() {
     const el = frameWrapRef.current;

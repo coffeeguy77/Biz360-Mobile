@@ -105,14 +105,13 @@ function TourViewer({
   const [showPresets, setShowPresets] = useState(true);
   const [isFs, setIsFs] = useState(false);
   useEffect(() => {
-    const onFs = () => {
-      const fs = !!document.fullscreenElement;
-      setIsFs(fs);
-      iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: fs }, "*");
-    };
+    const onFs = () => setIsFs(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
-  }, [iframeRef]);
+  }, []);
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: isFs, presets: showPresets }, "*");
+  }, [isFs, showPresets, iframeRef]);
   function toggleFullscreen() {
     const el = frameWrapRef.current;
     if (!el) return;
