@@ -165,7 +165,7 @@ export function BuyersLogin() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="min-h-screen text-foreground flex flex-col">
       {/* Nav */}
       <nav className="border-b border-border bg-background/80 backdrop-blur-md">
         <div className="max-w-lg mx-auto px-6 h-16 flex items-center gap-4">

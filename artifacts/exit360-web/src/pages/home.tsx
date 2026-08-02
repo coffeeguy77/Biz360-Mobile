@@ -25,7 +25,7 @@ export function Home() {
   const slot3 = bc ? getStatSlot(bc.stat3Display ?? "staffCount", bc) : null;
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
+    <div className="min-h-screen text-foreground selection:bg-primary/30">
       
       {/* Unified site navigation (same on every page) */}
       <SiteNav />

@@ -919,7 +919,7 @@ export function ListingDetail() {
 
   if (listingLoading) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+      <div className="min-h-screen text-foreground flex items-center justify-center">
         <Loader2 size={40} className="animate-spin text-muted-foreground" />
       </div>
     );
@@ -927,7 +927,7 @@ export function ListingDetail() {
 
   if (!listing) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+      <div className="min-h-screen text-foreground flex items-center justify-center">
         <div className="text-center">
           <p className="text-muted-foreground mb-4">Listing not found.</p>
           <Link href="/listings"><Button variant="outline">Back to Listings</Button></Link>
@@ -964,7 +964,7 @@ export function ListingDetail() {
     .filter((s) => s.audioUrl || (s.pins || []).some((p) => p.type === "audio" && p.audioUrl));
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <SiteNav />
 
       {/* Contextual sub-bar: back to listings + portal shortcut */}

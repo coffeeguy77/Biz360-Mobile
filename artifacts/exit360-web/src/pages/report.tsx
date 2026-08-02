@@ -268,7 +268,9 @@ function cldHiRes(url: string | null | undefined, width = 2560): string {
   // A transform segment looks like "w_800,c_fill,q_auto" (comma-joined xx_value tokens).
   const looksLikeTransform = /^[a-z]{1,3}_[^/]+(?:,[a-z0-9]{1,3}_[^/]+)*$/i.test(segs[0]);
   const rest = looksLikeTransform ? segs.slice(1).join("/") : post;
-  return `${pre}/upload/w_${width},c_limit,q_auto:good,f_auto/${rest}`;
+  // q_auto:best keeps detail; e_improve + e_sharpen clean up JPEG softness and
+  // high-DPI upscaling so the hero/section images render crisp, not pixelated.
+  return `${pre}/upload/w_${width},c_limit,q_auto:best,e_improve,e_sharpen:60,f_auto/${rest}`;
 }
 
 function SectionImageStrip({

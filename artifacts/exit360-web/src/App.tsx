@@ -11,6 +11,7 @@ import { ReportPage } from "@/pages/report";
 import { BuyersLogin } from "@/pages/buyers-login";
 import { BuyersPortal } from "@/pages/buyers-portal";
 import { ThemePicker } from "@/components/ThemePicker";
+import { AnimatedBackground } from "@/components/AnimatedBackground";
 import { Selling } from "@/pages/marketing/Selling";
 import { Buying } from "@/pages/marketing/Buying";
 import { Brokers } from "@/pages/marketing/Brokers";
@@ -58,6 +59,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <AnimatedBackground />
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>

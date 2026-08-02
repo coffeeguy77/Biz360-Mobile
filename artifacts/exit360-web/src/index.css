@@ -469,6 +469,86 @@
   .theme-aurora-bg::before, .theme-aurora-bg::after { animation: none; }
 }
 
+/* ── Site background effects (crisp, themed, site-wide) ───────────────────── */
+.bg-fx-root {
+  position: fixed; inset: 0; z-index: -10; pointer-events: none; overflow: hidden;
+  background: hsl(var(--background));
+}
+.bg-fx-layer { position: absolute; inset: -2%; }
+
+/* Mesh gradient — smooth drifting colour mesh (far crisper than the old aurora) */
+.bg-fx-mesh-gradient {
+  background:
+    radial-gradient(42% 55% at 18% 22%, hsl(var(--grad-from) / 0.34), transparent 62%),
+    radial-gradient(40% 52% at 82% 18%, hsl(var(--grad-to) / 0.30), transparent 62%),
+    radial-gradient(46% 58% at 68% 88%, hsl(var(--grad-via) / 0.28), transparent 64%),
+    radial-gradient(38% 50% at 30% 82%, hsl(var(--glow) / 0.22), transparent 60%);
+  filter: blur(6px) saturate(1.15);
+  animation: fxMeshDrift 26s ease-in-out infinite alternate;
+}
+@keyframes fxMeshDrift {
+  0%   { transform: scale(1.06) translate3d(0, 0, 0); }
+  50%  { transform: scale(1.13) translate3d(1.5%, -2%, 0); }
+  100% { transform: scale(1.09) translate3d(-1.5%, 1.5%, 0); }
+}
+
+/* Halftone — crisp dot field that fades across the canvas and slowly drifts */
+.bg-fx-halftone {
+  background-image: radial-gradient(hsl(var(--grad-from) / 0.55) 1.6px, transparent 1.8px);
+  background-size: 15px 15px;
+  -webkit-mask-image: radial-gradient(130% 120% at 18% 0%, #000 0%, rgba(0,0,0,0.28) 52%, transparent 82%);
+          mask-image: radial-gradient(130% 120% at 18% 0%, #000 0%, rgba(0,0,0,0.28) 52%, transparent 82%);
+  animation: fxHalftoneDrift 45s linear infinite;
+}
+@keyframes fxHalftoneDrift { to { background-position: 150px 90px; } }
+
+/* Topographic contour lines — thin crisp rings from a few centres */
+.bg-fx-topo-lines {
+  background:
+    repeating-radial-gradient(circle at 20% 30%, transparent 0 21px, hsl(var(--grad-from) / 0.17) 21px 22px),
+    repeating-radial-gradient(circle at 82% 72%, transparent 0 25px, hsl(var(--grad-to) / 0.15) 25px 26px),
+    repeating-radial-gradient(circle at 55% 10%, transparent 0 29px, hsl(var(--grad-via) / 0.13) 29px 30px);
+  animation: fxTopoDrift 70s ease-in-out infinite alternate;
+}
+@keyframes fxTopoDrift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(-2%, -2.5%, 0) scale(1.07); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-fx-mesh-gradient, .bg-fx-halftone, .bg-fx-topo-lines { animation: none; }
+}
+
+/* Mini preview swatches for the effect picker */
+.fx-swatch { background: hsl(var(--background)); position: relative; }
+.fx-swatch-mesh-gradient {
+  background:
+    radial-gradient(60% 80% at 25% 25%, hsl(var(--grad-from) / 0.85), transparent 60%),
+    radial-gradient(60% 80% at 80% 72%, hsl(var(--grad-to) / 0.75), transparent 60%),
+    hsl(var(--background));
+}
+.fx-swatch-halftone {
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(hsl(var(--grad-from) / 0.9) 1.1px, transparent 1.3px);
+  background-size: 6px 6px;
+}
+.fx-swatch-dot-grid-wave {
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(hsl(var(--grad-from) / 0.9) 1.4px, transparent 1.6px);
+  background-size: 9px 9px;
+}
+.fx-swatch-glow-orbs {
+  background:
+    radial-gradient(circle at 30% 42%, hsl(var(--grad-from) / 0.9), transparent 46%),
+    radial-gradient(circle at 72% 66%, hsl(var(--grad-to) / 0.8), transparent 46%),
+    hsl(var(--background));
+}
+.fx-swatch-topo-lines {
+  background-color: hsl(var(--background));
+  background-image: repeating-radial-gradient(circle at 42% 52%, transparent 0 3.5px, hsl(var(--grad-from) / 0.7) 3.5px 4.5px);
+}
+.fx-swatch-none { background: hsl(var(--background)); }
+
 /* Themed thin scrollbar (used by tour thumbnail strips etc.) */
 .themed-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
 .themed-scroll::-webkit-scrollbar-track { background: hsl(var(--muted) / 0.4); border-radius: 8px; }

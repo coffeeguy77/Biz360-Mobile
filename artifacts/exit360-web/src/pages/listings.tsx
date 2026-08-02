@@ -179,7 +179,7 @@ export function Listings() {
   });
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <SiteNav />
 
       <main className="max-w-[1440px] mx-auto px-6 pt-24 pb-10">

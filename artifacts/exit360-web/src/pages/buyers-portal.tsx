@@ -423,7 +423,7 @@ export function BuyersPortal() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="min-h-screen text-foreground flex flex-col">
       <style>{CHAT_STYLE}</style>
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-xl">

@@ -132,7 +132,7 @@ export function SiteFooter() {
 /** Full page wrapper: themed nav + content + footer. */
 export function SiteShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
+    <div className="min-h-screen text-foreground selection:bg-primary/30">
       <SiteNav />
       <main className="pt-16">{children}</main>
       <SiteFooter />
