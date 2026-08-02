@@ -249,6 +249,15 @@ export function TourEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [space?.pins, selPin]);
 
+  // Auto-pan the panorama to face the selected pin so it comes into view.
+  useEffect(() => {
+    const v = viewerRef.current; if (!v || !selPin) return;
+    const p = spaces.find((s) => s.id === selSpace)?.pins.find((x) => x.id === selPin);
+    if (!p) return;
+    try { v.lookAt(yToPitch(p.position.y), xToYaw(p.position.x), v.getHfov(), 700); } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selPin]);
+
   function hotspotConfig(p: Pin) {
     const col = p.pinColor || pinColor(p.type);
     const isSel = p.id === selPinRef.current;
@@ -362,35 +371,47 @@ export function TourEditor() {
                 </div>
               )}
 
-              {/* Pin palette */}
+              {/* ── Active pins (top) — select one to edit ── */}
               {isPano && space.panoramaUrl && (
-                <div>
-                  <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Add a pin — pick a type, then click the panorama</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {PIN_TYPES.map((pt) => (
-                      <button key={pt.type} onClick={() => setPlaceType(pt.type)} className={`text-xs px-2.5 py-1.5 rounded-full border inline-flex items-center gap-1.5 ${placeType === pt.type ? "border-primary" : "border-border hover:border-primary/40"}`}>
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: pt.color }} /> {pt.label}
-                      </button>
-                    ))}
+                <div className="rounded-xl border border-border bg-card/30 p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                    <h4 className="text-sm font-bold inline-flex items-center gap-1.5"><MapPin size={14} className="text-primary" /> Pins in this space <span className="text-muted-foreground font-normal">({space.pins.length})</span></h4>
+                    <span className="text-[11px] text-muted-foreground">👉 Click a pin to edit it · drag it on the panorama to move it</span>
                   </div>
-                  {space.pins.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
+                  {space.pins.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
                       {space.pins.map((p) => (
-                        <button key={p.id} onClick={() => { setSelPin(p.id); setPlaceType(null); }} className={`text-[11px] px-2 py-1 rounded-lg border inline-flex items-center gap-1.5 ${p.id === selPin ? "border-primary bg-primary/10" : "border-border"}`}>
-                          <span className="w-2 h-2 rounded-full" style={{ background: p.pinColor || pinColor(p.type) }} />{p.title || pinLabel(p.type)}
+                        <button key={p.id} onClick={() => { setSelPin(p.id); setPlaceType(null); }} className={`text-xs px-2.5 py-1.5 rounded-lg border inline-flex items-center gap-1.5 transition-colors ${p.id === selPin ? "border-primary bg-primary/15 ring-1 ring-primary/40 font-semibold" : "border-border hover:border-primary/40"}`}>
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.pinColor || pinColor(p.type) }} />{p.title || pinLabel(p.type)}
+                          {p.id === selPin && <span className="text-[10px] text-primary">· editing</span>}
                         </button>
                       ))}
                     </div>
-                  )}
+                  ) : <p className="text-xs text-muted-foreground">No pins here yet — add one from the <span className="font-semibold">Add a pin</span> section below.</p>}
                 </div>
               )}
 
-              {/* Editor — fills the width under the pano (multi-column, no long scroll) */}
+              {/* ── Editor — fills the width under the pano (multi-column) ── */}
               <div className="border-t border-border pt-4">
                 {!pin
                   ? <SpacePanel space={space} spaces={spaces} onChange={(patch) => updSpace(space.id, patch)} uploadAudio={uploadAudio} busy={busy} setBusy={setBusy} />
                   : <PinPanel key={pin.id} pin={pin} spaces={spaces} onChange={(patch) => updPin(space.id, pin.id, patch)} onDelete={() => delPin(pin.id)} onClose={() => setSelPin(null)} uploadImage={uploadImage} uploadAudio={uploadAudio} />}
               </div>
+
+              {/* ── Add a pin (bottom) ── */}
+              {isPano && space.panoramaUrl && (
+                <div className="border-t border-border pt-4">
+                  <h4 className="text-sm font-bold mb-0.5 inline-flex items-center gap-1.5"><Plus size={14} className="text-primary" /> Add a pin</h4>
+                  <p className="text-[11px] text-muted-foreground mb-2">Pick a type below, then click the spot on the panorama where it should sit.{placeType ? ` — placing a ${pinLabel(placeType)} pin, click the panorama…` : ""}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PIN_TYPES.map((pt) => (
+                      <button key={pt.type} onClick={() => setPlaceType(placeType === pt.type ? null : pt.type)} className={`text-xs px-2.5 py-1.5 rounded-full border inline-flex items-center gap-1.5 ${placeType === pt.type ? "border-primary bg-primary/15 ring-1 ring-primary/40" : "border-border hover:border-primary/40"}`}>
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: pt.color }} /> {pt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
