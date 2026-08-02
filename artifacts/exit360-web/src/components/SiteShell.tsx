@@ -32,7 +32,7 @@ export function SiteNav() {
   const signedIn = useSignedIn();
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
         <Link href="/">
           <div className="flex items-center gap-2 cursor-pointer">
             <div className="w-8 h-8 rounded-md grid place-items-center theme-btn-gradient">
@@ -47,7 +47,7 @@ export function SiteNav() {
           ))}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          <Link href="/listings"><Button variant="ghost" className="hidden md:inline-flex">Browse</Button></Link>
+          <Link href="/listings"><Button variant="outline" className="hidden md:inline-flex">Browse Listings</Button></Link>
           {/* Persistent portal / sign-in — sign in once, message & reveal phones across every listing */}
           {signedIn ? (
             <Link href="/buyers/portal"><Button variant="outline" className="gap-1.5"><User size={15} /> <span className="hidden sm:inline">My Portal</span></Button></Link>
@@ -99,7 +99,7 @@ export function SiteFooter() {
   ];
   return (
     <footer className="border-t border-border bg-card/40 mt-24">
-      <div className="max-w-7xl mx-auto px-6 py-14 grid gap-10 md:grid-cols-4">
+      <div className="max-w-[1440px] mx-auto px-6 py-14 grid gap-10 md:grid-cols-4">
         <div>
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-md grid place-items-center theme-btn-gradient">
@@ -125,7 +125,7 @@ export function SiteFooter() {
         ))}
       </div>
       <div className="border-t border-border">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+        <div className="max-w-[1440px] mx-auto px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} EXIT360. All rights reserved.</span>
           <span>Buy &amp; sell businesses with immersive 360° virtual tours.</span>
         </div>

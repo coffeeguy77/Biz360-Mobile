@@ -60,7 +60,7 @@ export function Photographers() {
       </section>
 
       {/* How to qualify */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.h2 {...fade} className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3 text-center">How to become a partner</motion.h2>
         <motion.p {...fade} className="text-lg text-muted-foreground text-center max-w-2xl mx-auto mb-12">A simple, quality-first path — because every EXIT360 walkthrough carries our name.</motion.p>
         <div className="grid md:grid-cols-4 gap-6">

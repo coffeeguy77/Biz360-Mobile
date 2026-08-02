@@ -35,7 +35,7 @@ export function Selling() {
 
       {/* Hero */}
       <section className="theme-aurora-bg">
-        <div className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
               <Sparkles size={13} /> For business owners ready to exit
@@ -80,7 +80,7 @@ export function Selling() {
       </section>
 
       {/* Why it sells for more */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-[1440px] mx-auto px-6 py-20">
         <motion.div {...fade} className="max-w-3xl mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Why EXIT360 sellers get better outcomes</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -109,7 +109,7 @@ export function Selling() {
       </section>
 
       {/* Steps */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">From listing to sold in four steps</h2>
           <p className="text-lg text-muted-foreground">Most sellers are live within an afternoon. Build it on the app or on the web — your listing syncs across both.</p>
@@ -132,7 +132,7 @@ export function Selling() {
       </section>
 
       {/* Stats band */}
-      <section className="max-w-7xl mx-auto px-6 py-8">
+      <section className="max-w-[1440px] mx-auto px-6 py-8">
         <motion.div {...fade} className="rounded-3xl border border-border theme-aurora-bg">
           <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 p-10">
             {[

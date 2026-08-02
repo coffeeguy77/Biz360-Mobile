@@ -82,7 +82,7 @@ var IS_FS=false;
 var FS_HFOV=112, EMBED_HFOV=100;
 /* Safe maximum zoom-OUT. A 360 pano stays natural up to ~120°; beyond that it
    warps into "hyperspace". This is the single value to tune the max width. */
-var MAX_HFOV=120;
+var MAX_HFOV=110;
 function navHfov(){
   var h; try{h=viewer.getHfov();}catch(e){h=IS_FS?FS_HFOV:EMBED_HFOV;}
   if(!(h>0))h=IS_FS?FS_HFOV:EMBED_HFOV;
@@ -150,7 +150,7 @@ SPACES.forEach(function(s){
       hotSpots.push({pitch:Math.max(10,yToPitch(pin.position.y)),yaw:xToYaw(pin.position.x),type:'custom',text:pin.title,cssClass:'pnlm-audio-hs-wrap',createTooltipFunc:createAudioHotspot,createTooltipArgs:{url:pin.audioUrl,name:pin.audioName||pin.title}});
     }
   });
-  var sc={type:'equirectangular',panorama:s.panoramaUrl,title:s.name,hotSpots:hotSpots,pitch:0,yaw:typeof s.defaultYaw==='number'?s.defaultYaw:(typeof s.panoramaStartYaw==='number'?s.panoramaStartYaw:0)};
+  var sc={type:'equirectangular',panorama:s.panoramaUrl,title:s.name,hotSpots:hotSpots,pitch:0,hfov:100,minHfov:50,maxHfov:MAX_HFOV,yaw:typeof s.defaultYaw==='number'?s.defaultYaw:(typeof s.panoramaStartYaw==='number'?s.panoramaStartYaw:0)};
   if(typeof s.groundPitch==='number')sc.groundPitch=s.groundPitch;
   scenesConfig[s.id]=sc;
 });
@@ -260,6 +260,9 @@ rebuildChips();
 
 // Turn-to-face reticle + edge arrows, updated each frame.
 function tick(){
+  /* Hard safety clamp — never let the zoom-out exceed MAX_HFOV (no hyperspace),
+     regardless of scroll/pinch or any pannellum edge case. */
+  try{ if(viewer.getHfov()>MAX_HFOV) viewer.setHfov(MAX_HFOV,false); }catch(e){}
   var yaw;try{yaw=viewer.getYaw();}catch(e){yaw=0;}
   var targets=navTargets();
   var best=null,bestAbs=999,leftT=null,rightT=null,leftAbs=999,rightAbs=999;

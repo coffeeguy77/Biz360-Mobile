@@ -31,7 +31,7 @@ export function Home() {
       <SiteNav />
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-6 max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-12">
+      <section className="pt-32 pb-20 px-6 max-w-[1440px] mx-auto flex flex-col md:flex-row items-center gap-12">
         <div className="flex-1 space-y-6">
           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-3 py-1">
             Now live in Australia
@@ -72,7 +72,7 @@ export function Home() {
 
       {/* Stats Section */}
       <section className="border-y border-border bg-card/50">
-        <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="max-w-[1440px] mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
           <div>
             <div className="text-3xl font-bold text-foreground mb-1">{listings.length || "—"}</div>
             <div className="text-sm text-muted-foreground font-medium">Verified Listings</div>
@@ -94,7 +94,7 @@ export function Home() {
 
       {/* Featured Listing — live from the API */}
       {bc && (
-      <section className="py-24 px-6 max-w-7xl mx-auto">
+      <section className="py-24 px-6 max-w-[1440px] mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20 px-3 py-1 mb-4">
             Featured Listing
@@ -205,7 +205,7 @@ export function Home() {
 
       {/* Value Props */}
       <section className="py-24 px-6 bg-card border-t border-border">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-16">
+        <div className="max-w-[1440px] mx-auto grid md:grid-cols-2 gap-16">
           <div className="space-y-8">
             <h2 className="text-3xl md:text-4xl font-bold">For Serious Buyers</h2>
             <div className="space-y-6">

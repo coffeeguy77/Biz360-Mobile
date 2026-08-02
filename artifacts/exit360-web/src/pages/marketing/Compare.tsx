@@ -226,7 +226,7 @@ export function Compare() {
       </section>
 
       {/* Category deep-dives */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="max-w-3xl mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Where the biggest differences show up</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">

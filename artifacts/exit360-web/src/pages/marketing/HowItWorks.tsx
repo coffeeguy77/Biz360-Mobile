@@ -42,7 +42,7 @@ export function HowItWorks() {
 
       {/* Hero */}
       <section className="theme-aurora-bg">
-        <div className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
               <Sparkles size={13} /> The complete platform guide
@@ -88,7 +88,7 @@ export function HowItWorks() {
       </section>
 
       {/* Three ways to use EXIT360 */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-[1440px] mx-auto px-6 py-20">
         <motion.div {...fade} className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Three ways to use EXIT360</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -162,7 +162,7 @@ export function HowItWorks() {
       </section>
 
       {/* Feature deep-dives */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="max-w-3xl mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">A closer look at what the platform does</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -229,7 +229,7 @@ export function HowItWorks() {
       </section>
 
       {/* Enquiries, messaging & sync */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Verified buyers, one-tap enquiries and secure messaging</h2>
           <p className="text-lg text-muted-foreground">
@@ -279,7 +279,7 @@ export function HowItWorks() {
       </section>
 
       {/* Powerful because... highlights strip */}
-      <section className="max-w-7xl mx-auto px-6 py-8">
+      <section className="max-w-[1440px] mx-auto px-6 py-8">
         <motion.div {...fade} className="rounded-3xl border border-border theme-aurora-bg">
           <div className="relative z-10 p-10">
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-center mb-10">Powerful because it does the whole job</h2>

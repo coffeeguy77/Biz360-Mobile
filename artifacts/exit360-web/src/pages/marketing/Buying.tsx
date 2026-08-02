@@ -35,7 +35,7 @@ export function Buying() {
 
       {/* Hero */}
       <section className="theme-aurora-bg">
-        <div className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
               <Search size={13} /> For buyers hunting the right business
@@ -80,7 +80,7 @@ export function Buying() {
       </section>
 
       {/* Why buy through EXIT360 */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-[1440px] mx-auto px-6 py-20">
         <motion.div {...fade} className="max-w-3xl mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Why buyers start their search on EXIT360</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -109,7 +109,7 @@ export function Buying() {
       </section>
 
       {/* How buying works */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">How buying works, in four steps</h2>
           <p className="text-lg text-muted-foreground">From first browse to booked inspection — a clearer, faster path to the right business.</p>
@@ -132,7 +132,7 @@ export function Buying() {
       </section>
 
       {/* Trust / reassurance */}
-      <section className="max-w-7xl mx-auto px-6 py-8">
+      <section className="max-w-[1440px] mx-auto px-6 py-8">
         <motion.div {...fade} className="rounded-3xl border border-border theme-aurora-bg overflow-hidden">
           <div className="relative z-10 grid lg:grid-cols-2 gap-10 p-10 sm:p-14 items-center">
             <div>

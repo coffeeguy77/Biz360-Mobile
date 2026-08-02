@@ -37,7 +37,7 @@ export function Walkthroughs() {
 
       {/* Hero */}
       <section className="theme-aurora-bg">
-        <div className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
               <Compass size={13} /> The 360° walkthrough system
@@ -82,7 +82,7 @@ export function Walkthroughs() {
       </section>
 
       {/* What it is */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-[1440px] mx-auto px-6 py-20">
         <motion.div {...fade} className="max-w-3xl mb-12">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Not photos. An actual walkthrough.</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -114,7 +114,7 @@ export function Walkthroughs() {
       </section>
 
       {/* Benefits grid: buyers + sellers */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="max-w-3xl mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Why a walkthrough sells businesses faster</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -143,7 +143,7 @@ export function Walkthroughs() {
       </section>
 
       {/* How the walkthrough works */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">How sellers build a walkthrough</h2>
           <p className="text-lg text-muted-foreground">Capturing a full tour takes an afternoon, not a production crew. Three simple steps, all on the app or the web.</p>
@@ -168,7 +168,7 @@ export function Walkthroughs() {
       </section>
 
       {/* What makes it different */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <motion.div {...fade} className="max-w-3xl mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">What makes the EXIT360 tour different</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -197,7 +197,7 @@ export function Walkthroughs() {
       </section>
 
       {/* Stats band */}
-      <section className="max-w-7xl mx-auto px-6 py-8">
+      <section className="max-w-[1440px] mx-auto px-6 py-8">
         <motion.div {...fade} className="rounded-3xl border border-border theme-aurora-bg">
           <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 p-10">
             {[
@@ -240,7 +240,7 @@ export function Walkthroughs() {
       </section>
 
       {/* Recommended camera + capture options */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-[1440px] mx-auto px-6 py-20">
         <div className="grid lg:grid-cols-2 gap-10 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">

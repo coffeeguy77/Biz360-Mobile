@@ -1380,14 +1380,16 @@ export function ReportPage() {
           <div className="flex items-center gap-2 min-w-0">
             {groupedSections.length > 0 && (
               <button
+                type="button"
                 onClick={() => setMobileNavOpen(true)}
                 aria-label="Open chapters"
+                style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
                 className={cn(
-                  "xl:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border flex-shrink-0",
+                  "xl:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border flex-shrink-0 relative z-10 active:scale-95 transition-transform",
                   printMode ? "border-slate-200 text-slate-600" : "border-[#1E3A5C] text-slate-300 hover:text-white"
                 )}
               >
-                <Menu size={16} />
+                <Menu size={18} />
               </button>
             )}
             <button
@@ -2151,6 +2153,13 @@ export function ReportPage() {
         }
         @media (prefers-reduced-motion: reduce) {
           .report-blob { animation: none !important; }
+        }
+        /* On phones the continuously-animating, heavily-blurred blobs are very
+           expensive to composite and can starve touch handling (the topbar menu
+           needing several taps). Freeze the animation and lighten the blur on
+           small screens — the gradient still looks great, just static. */
+        @media (max-width: 767px) {
+          .report-blob { animation: none !important; filter: blur(90px) !important; }
         }
       `}</style>
     </div>

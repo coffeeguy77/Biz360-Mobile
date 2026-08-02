@@ -42,7 +42,7 @@ export function ListYourBusiness() {
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-6 py-16">
+      <section className="max-w-[1440px] mx-auto px-6 py-16">
         <div className="grid md:grid-cols-2 gap-5">
           {[
             { icon: Camera, t: "Build a 360° walkthrough", b: "Add panoramic scenes and link them into a guided, Street-View-style tour buyers can explore from anywhere, day or night." },

@@ -979,7 +979,7 @@ export function ListingDetail() {
 
       {/* Contextual sub-bar: back to listings + portal shortcut */}
       <div className="border-b border-border bg-background/60">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-12 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-12 flex items-center justify-between">
           <Link href="/listings">
             <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm">
               <ArrowLeft size={16} /> All Listings
@@ -993,7 +993,7 @@ export function ListingDetail() {
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-6 sm:pb-10 overflow-x-hidden">
+      <main className="max-w-[1440px] mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-6 sm:pb-10 overflow-x-hidden">
         <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 lg:gap-10">
           {/* Left: main content */}
           <div className="lg:col-span-2 flex flex-col gap-6 sm:gap-8 min-w-0">

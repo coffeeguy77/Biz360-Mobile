@@ -491,7 +491,7 @@ export function BuyersPortal() {
     <div className="min-h-screen bg-[#070F1C] text-white flex flex-col">
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-[#1E3A5C] bg-[#070F1C]/95 backdrop-blur">
-        <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/">
               <div className="flex items-center gap-2 cursor-pointer">
@@ -526,7 +526,7 @@ export function BuyersPortal() {
 
       {/* Hero */}
       <div className="border-b border-[#1E3A5C] bg-gradient-to-br from-[#02060E] via-[#070F1C] to-[#0A1A30]">
-        <div className="max-w-4xl mx-auto px-6 py-10">
+        <div className="max-w-[1440px] mx-auto px-6 py-10">
           <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-2">Confidential</p>
           <h1 className="text-3xl font-bold text-white mb-2">Your Shared Listings</h1>
           <p className="text-slate-400 text-sm">
@@ -537,7 +537,7 @@ export function BuyersPortal() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-8">
+      <div className="flex-1 max-w-[1440px] mx-auto w-full px-6 py-8">
         {loading && (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <Loader2 size={28} className="animate-spin text-blue-500" />

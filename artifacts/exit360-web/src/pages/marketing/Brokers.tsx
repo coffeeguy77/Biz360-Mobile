@@ -38,7 +38,7 @@ export function Brokers() {
 
       {/* Hero */}
       <section className="theme-aurora-bg">
-        <div className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
               <Briefcase size={13} /> For business brokers &amp; advisory firms
@@ -83,7 +83,7 @@ export function Brokers() {
       </section>
 
       {/* Why brokers win */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-[1440px] mx-auto px-6 py-20">
         <motion.div {...fade} className="max-w-3xl mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">Why brokers win with EXIT360</h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
@@ -113,7 +113,7 @@ export function Brokers() {
       </section>
 
       {/* Highlighted feature: shareable client analytics */}
-      <section className="max-w-7xl mx-auto px-6 py-8">
+      <section className="max-w-[1440px] mx-auto px-6 py-8">
         <motion.div {...fade} className="rounded-3xl border border-border theme-aurora-bg overflow-hidden">
           <div className="relative z-10 grid lg:grid-cols-2 gap-10 p-8 sm:p-12 items-center">
             <div>
@@ -175,7 +175,7 @@ export function Brokers() {
       </section>
 
       {/* How brokers work */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
+      <section className="max-w-[1440px] mx-auto px-6 py-20">
         <motion.div {...fade} className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">How brokers work on EXIT360</h2>
           <p className="text-lg text-muted-foreground">From onboarding a new mandate to keeping your client in the loop — a four-step process built for a busy book.</p>
@@ -198,7 +198,7 @@ export function Brokers() {
       </section>
 
       {/* Trust / stats band */}
-      <section className="max-w-7xl mx-auto px-6 py-8">
+      <section className="max-w-[1440px] mx-auto px-6 py-8">
         <motion.div {...fade} className="rounded-3xl border border-border theme-aurora-bg">
           <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 p-10">
             {[
