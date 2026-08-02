@@ -211,7 +211,7 @@ function getTwilioClient() {
 }
 // Test sign-in numbers that skip real SMS OTP (any code accepted). Matched on the
 // trailing 9 digits so any format works (0414 631 463, +61414631463, …).
-const TEST_OTP_NUMBERS = ["414631463", "412708337"];
+const TEST_OTP_NUMBERS = ["414631463"];
 function isTestOtpPhone(phone?: string | null): boolean {
   if (!phone) return false;
   const digits = phone.replace(/\D/g, "");

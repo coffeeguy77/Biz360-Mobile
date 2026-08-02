@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runBootMigrations } from "./lib/boot-migrations";
+import { runPhoneCleanup } from "./lib/cleanup-phone";
 
 const rawPort = process.env["PORT"];
 
@@ -24,5 +25,8 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   // Apply additive schema tweaks against the live DB (idempotent, non-blocking).
-  void runBootMigrations();
+  void runBootMigrations()
+    // One-shot per-phone cleanup — only runs when CLEANUP_PHONE env is set.
+    .then(() => runPhoneCleanup())
+    .catch((err) => logger.error({ err }, "boot task failed"));
 });
