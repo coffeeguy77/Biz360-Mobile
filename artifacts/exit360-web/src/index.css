@@ -473,18 +473,30 @@
 .bg-fx-root {
   position: fixed; inset: 0; z-index: -10; pointer-events: none; overflow: hidden;
   background: hsl(var(--background));
+  /* Cursor position (updated by AnimatedBackground); CSS effects follow it. */
+  --fx-mx: 50%; --fx-my: 40%;
 }
 .bg-fx-layer { position: absolute; inset: -2%; }
+/* Cursor-following layer — tracks the pointer precisely (no drift transform). */
+.bg-fx-cursor {
+  position: absolute; inset: 0;
+  transition: background-position 60ms linear;
+}
 
 /* Mesh gradient — smooth drifting colour mesh (far crisper than the old aurora) */
 .bg-fx-mesh-gradient {
   background:
-    radial-gradient(42% 55% at 18% 22%, hsl(var(--grad-from) / 0.34), transparent 62%),
-    radial-gradient(40% 52% at 82% 18%, hsl(var(--grad-to) / 0.30), transparent 62%),
-    radial-gradient(46% 58% at 68% 88%, hsl(var(--grad-via) / 0.28), transparent 64%),
-    radial-gradient(38% 50% at 30% 82%, hsl(var(--glow) / 0.22), transparent 60%);
+    radial-gradient(42% 55% at 18% 22%, hsl(var(--grad-from) / 0.32), transparent 62%),
+    radial-gradient(40% 52% at 82% 18%, hsl(var(--grad-to) / 0.28), transparent 62%),
+    radial-gradient(46% 58% at 68% 88%, hsl(var(--grad-via) / 0.26), transparent 64%),
+    radial-gradient(38% 50% at 30% 82%, hsl(var(--glow) / 0.20), transparent 60%);
   filter: blur(6px) saturate(1.15);
   animation: fxMeshDrift 26s ease-in-out infinite alternate;
+}
+/* A colour blob that follows the cursor over the mesh. */
+.bg-fx-mesh-gradient-cursor {
+  background: radial-gradient(24% 30% at var(--fx-mx) var(--fx-my), hsl(var(--glow) / 0.34), transparent 62%);
+  filter: blur(4px);
 }
 @keyframes fxMeshDrift {
   0%   { transform: scale(1.06) translate3d(0, 0, 0); }
@@ -492,12 +504,12 @@
   100% { transform: scale(1.09) translate3d(-1.5%, 1.5%, 0); }
 }
 
-/* Halftone — crisp dot field that fades across the canvas and slowly drifts */
+/* Halftone — crisp dot field whose bright spot follows the cursor + drifts */
 .bg-fx-halftone {
-  background-image: radial-gradient(hsl(var(--grad-from) / 0.55) 1.6px, transparent 1.8px);
+  background-image: radial-gradient(hsl(var(--grad-from) / 0.6) 1.6px, transparent 1.8px);
   background-size: 15px 15px;
-  -webkit-mask-image: radial-gradient(130% 120% at 18% 0%, #000 0%, rgba(0,0,0,0.28) 52%, transparent 82%);
-          mask-image: radial-gradient(130% 120% at 18% 0%, #000 0%, rgba(0,0,0,0.28) 52%, transparent 82%);
+  -webkit-mask-image: radial-gradient(72% 72% at var(--fx-mx) var(--fx-my), #000 0%, rgba(0,0,0,0.32) 46%, transparent 80%);
+          mask-image: radial-gradient(72% 72% at var(--fx-mx) var(--fx-my), #000 0%, rgba(0,0,0,0.32) 46%, transparent 80%);
   animation: fxHalftoneDrift 45s linear infinite;
 }
 @keyframes fxHalftoneDrift { to { background-position: 150px 90px; } }
@@ -509,6 +521,10 @@
     repeating-radial-gradient(circle at 82% 72%, transparent 0 25px, hsl(var(--grad-to) / 0.15) 25px 26px),
     repeating-radial-gradient(circle at 55% 10%, transparent 0 29px, hsl(var(--grad-via) / 0.13) 29px 30px);
   animation: fxTopoDrift 70s ease-in-out infinite alternate;
+}
+/* Contour rings that radiate from the cursor. */
+.bg-fx-topo-lines-cursor {
+  background: repeating-radial-gradient(circle at var(--fx-mx) var(--fx-my), transparent 0 18px, hsl(var(--glow) / 0.2) 18px 19px);
 }
 @keyframes fxTopoDrift {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
