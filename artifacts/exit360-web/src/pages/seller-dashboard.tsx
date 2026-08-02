@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import {
   LayoutDashboard, Eye, ShieldCheck, Users, FileText, Compass, Share2, Copy, Check,
   Settings, LogOut, Smartphone, Plus, BarChart3, Loader2, Layers, Star,
+  MessageSquare, Send, Inbox, Phone, Mail, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
@@ -39,7 +40,7 @@ export function SellerDashboard() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [statsById, setStatsById] = useState<Record<string, Stats>>({});
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"listings" | "nda" | "profile">("listings");
+  const [tab, setTab] = useState<"listings" | "messages" | "crm" | "nda" | "profile">("listings");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -115,7 +116,7 @@ export function SellerDashboard() {
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
-          {([["listings", "My Listings", LayoutDashboard], ["nda", "NDA & Access", ShieldCheck], ["profile", "Seller Profile", Settings]] as const).map(([id, label, Icon]) => (
+          {([["listings", "My Listings", LayoutDashboard], ["messages", "Messages", MessageSquare], ["crm", "CRM", Users], ["nda", "NDA & Access", ShieldCheck], ["profile", "Seller Profile", Settings]] as const).map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${tab === id ? "theme-btn-gradient border-0 text-primary-foreground" : "border-border bg-card/40 text-muted-foreground hover:text-foreground"}`}>
               <Icon size={15} /> {label}
             </button>
@@ -147,6 +148,10 @@ export function SellerDashboard() {
               </div>
             </>
           )
+        ) : tab === "messages" ? (
+          <SellerInbox listings={listings} myPhoneDigits={myPhoneDigits} />
+        ) : tab === "crm" ? (
+          <SellerCRM listings={listings} token={token} onGoMessages={() => setTab("messages")} />
         ) : tab === "nda" ? (
           <NdaManager token={token} listings={listings} />
         ) : (
@@ -652,6 +657,237 @@ function ProfileEditor({ token }: { token: string }) {
         <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={form.anonymous} onChange={(e) => setForm({ ...form, anonymous: e.target.checked })} className="w-4 h-4 accent-[hsl(var(--primary))]" /><span className="text-sm">Stay anonymous — buyers contact me by secure message only</span></label>
       </div>
       <Button onClick={save} disabled={saving} className="mt-6 theme-btn-gradient border-0">{saving ? "Saving…" : saved ? <><Check size={16} className="mr-1" /> Saved</> : "Save profile"}</Button>
+    </div>
+  );
+}
+
+// ─── Seller messaging inbox ───────────────────────────────────────────────────
+interface InboxMsg { id: string; from: string; text: string; timestamp: number; }
+interface InboxThread {
+  id: string; listingId: string; listingName?: string; sellerName?: string;
+  buyerName?: string; buyerId: string; messages: InboxMsg[]; updatedAt: number;
+  unreadBuyer?: number; unreadSeller?: number;
+}
+
+function buyerLabel(t: InboxThread): string {
+  if (t.buyerName && !/^u-/.test(t.buyerName) && !/^\+?\d+$/.test(t.buyerName)) return t.buyerName;
+  const d = String(t.buyerId ?? "").replace(/\D/g, "");
+  if (d.length >= 9) return "+" + d;
+  return "Buyer";
+}
+function fmtWhen(ts: number): string {
+  if (!ts) return "";
+  const d = new Date(ts), now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : d.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
+function SellerInbox({ listings, myPhoneDigits }: { listings: Listing[]; myPhoneDigits: string }) {
+  const [threads, setThreads] = useState<InboxThread[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+  const ownedIds = new Set(listings.map((l) => l.listingId));
+  const nameById: Record<string, string> = {};
+  listings.forEach((l) => { nameById[l.listingId] = l.businessName || l.sellerName || "Listing"; });
+
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/biz360/kv/biz360_threads_v3");
+      const j = await r.json();
+      const all = (j?.value ?? {}) as Record<string, InboxThread>;
+      const mine = Object.values(all).filter((t) => t && ownedIds.has(t.listingId)).sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+      setThreads(mine);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }
+  useEffect(() => { load(); const iv = setInterval(load, 20000); return () => clearInterval(iv); /* eslint-disable-next-line */ }, [listings.length]);
+
+  const selected = threads.find((t) => t.id === selId) ?? null;
+
+  async function markRead(threadId: string) {
+    try {
+      const r = await fetch("/api/biz360/kv/biz360_threads_v3"); const j = await r.json();
+      const all = (j?.value ?? {}) as Record<string, any>;
+      if (all[threadId]) { all[threadId].unreadSeller = 0; await fetch("/api/biz360/kv/biz360_threads_v3", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: all }) }); }
+    } catch { /* ignore */ }
+  }
+  function openThread(t: InboxThread) {
+    setSelId(t.id);
+    if (t.unreadSeller) { setThreads((prev) => prev.map((x) => (x.id === t.id ? { ...x, unreadSeller: 0 } : x))); markRead(t.id); }
+  }
+
+  async function send() {
+    if (!reply.trim() || !selected) return;
+    setSending(true);
+    const text = reply.trim();
+    const msg: InboxMsg = { id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, from: "seller", text, timestamp: Date.now() };
+    setThreads((prev) => prev.map((t) => (t.id === selected.id ? { ...t, messages: [...(t.messages ?? []), msg], updatedAt: msg.timestamp } : t)));
+    setReply("");
+    try {
+      const r = await fetch("/api/biz360/kv/biz360_threads_v3"); const j = await r.json();
+      const all = (j?.value ?? {}) as Record<string, any>;
+      const t = all[selected.id];
+      if (t) {
+        t.messages = [...(t.messages ?? []), msg];
+        t.updatedAt = msg.timestamp; t.sellerName = t.sellerName || "Seller";
+        t.unreadBuyer = (t.unreadBuyer ?? 0) + 1; t.unreadSeller = 0;
+        await fetch("/api/biz360/kv/biz360_threads_v3", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: all }) });
+        fetch("/api/biz360/notify-message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threadId: selected.id, from: "seller" }) }).catch(() => {});
+      }
+    } finally { setSending(false); }
+  }
+
+  if (loading) return <div className="text-center py-20 text-muted-foreground flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={18} /> Loading conversations…</div>;
+  if (threads.length === 0) return (
+    <div className="rounded-2xl border border-border bg-card/50 p-10 text-center">
+      <Inbox className="mx-auto text-muted-foreground mb-3" size={34} />
+      <h2 className="text-xl font-bold mb-2">No conversations yet</h2>
+      <p className="text-muted-foreground max-w-md mx-auto">When a buyer messages you about a listing, it appears here. Replies sync with the app and the buyer's portal instantly.</p>
+    </div>
+  );
+
+  return (
+    <div className="grid md:grid-cols-[320px_1fr] gap-4 rounded-2xl border border-border bg-card/40 overflow-hidden" style={{ minHeight: 480 }}>
+      <div className="border-b md:border-b-0 md:border-r border-border max-h-[560px] overflow-y-auto themed-scroll">
+        {threads.map((t) => {
+          const last = t.messages?.[t.messages.length - 1];
+          const active = t.id === selId;
+          return (
+            <button key={t.id} onClick={() => openThread(t)} className={`w-full text-left p-3.5 border-b border-border/60 transition-colors ${active ? "bg-primary/10" : "hover:bg-muted/40"}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold truncate">{buyerLabel(t)}</span>
+                <span className="text-[10px] text-muted-foreground flex-shrink-0">{fmtWhen(t.updatedAt)}</span>
+              </div>
+              <div className="text-[11px] text-primary/80 truncate">{nameById[t.listingId] ?? t.listingName ?? "Listing"}</div>
+              <div className="text-xs text-muted-foreground truncate mt-0.5">{last ? (last.from === "seller" ? "You: " : "") + last.text : "No messages yet"}</div>
+              {!!t.unreadSeller && <span className="inline-block mt-1 text-[10px] font-bold text-primary-foreground theme-btn-gradient rounded-full px-1.5">{t.unreadSeller} new</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-col max-h-[560px]">
+        {selected ? (
+          <>
+            <div className="p-3.5 border-b border-border flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-bold truncate">{buyerLabel(selected)}</div>
+                <div className="text-[11px] text-muted-foreground truncate">{nameById[selected.listingId] ?? selected.listingName}</div>
+              </div>
+              <a href={`tel:${"+" + String(selected.buyerId).replace(/\D/g, "")}`} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/50"><Phone size={12} /> Call</a>
+            </div>
+            <div className="flex-1 overflow-y-auto themed-scroll p-4 flex flex-col gap-2">
+              {(selected.messages ?? []).map((m) => (
+                <div key={m.id} className={`max-w-[78%] px-3 py-2 rounded-2xl text-sm ${m.from === "seller" ? "self-end theme-btn-gradient text-primary-foreground rounded-br-sm" : "self-start bg-muted text-foreground rounded-bl-sm"}`}>
+                  {m.text}
+                  <div className={`text-[9px] mt-1 ${m.from === "seller" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{fmtWhen(m.timestamp)}</div>
+                </div>
+              ))}
+              {(selected.messages ?? []).length === 0 && <p className="text-sm text-muted-foreground text-center my-auto">No messages yet.</p>}
+            </div>
+            <div className="p-3 border-t border-border flex gap-2">
+              <input value={reply} onChange={(e) => setReply(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder="Type a reply…" className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60" />
+              <Button size="sm" onClick={send} disabled={sending || !reply.trim()} className="theme-btn-gradient border-0"><Send size={14} /></Button>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 grid place-items-center text-muted-foreground text-sm p-8">Select a conversation to read and reply.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Seller CRM ───────────────────────────────────────────────────────────────
+interface Contact { phone: string; name: string; listings: Set<string>; messaged: boolean; ndaSigned: boolean; lastActivity: number; }
+
+function SellerCRM({ listings, token, onGoMessages }: { listings: Listing[]; token: string; onGoMessages: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [q, setQ] = useState("");
+  const nameById: Record<string, string> = {};
+  listings.forEach((l) => { nameById[l.listingId] = l.businessName || l.sellerName || "Listing"; });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function build() {
+      setLoading(true);
+      const map = new Map<string, Contact>();
+      const key = (p: string) => { let d = p.replace(/\D/g, "").replace(/^0+/, ""); if (d.startsWith("61")) d = d.slice(2); return d.slice(-9); };
+      const upsert = (phone: string, name: string, listingId: string, opts: Partial<Contact>, ts: number) => {
+        const k = key(phone); if (k.length < 6) return;
+        const disp = "+" + phone.replace(/\D/g, "");
+        const c = map.get(k) ?? { phone: disp, name: "", listings: new Set<string>(), messaged: false, ndaSigned: false, lastActivity: 0 };
+        if (name && !/^u-/.test(name) && !/^\+?\d+$/.test(name)) c.name = c.name || name;
+        c.listings.add(nameById[listingId] ?? listingId);
+        if (opts.messaged) c.messaged = true;
+        if (opts.ndaSigned) c.ndaSigned = true;
+        c.lastActivity = Math.max(c.lastActivity, ts || 0);
+        map.set(k, c);
+      };
+      try {
+        const ownedIds = new Set(listings.map((l) => l.listingId));
+        // Threads (enquirers)
+        const tr = await fetch("/api/biz360/kv/biz360_threads_v3").then((r) => r.json()).catch(() => ({}));
+        const all = (tr?.value ?? {}) as Record<string, any>;
+        Object.values(all).forEach((t: any) => {
+          if (!t || !ownedIds.has(t.listingId)) return;
+          const digits = String(t.buyerId ?? "").replace(/\D/g, "");
+          if (digits) upsert(digits, t.buyerName ?? "", t.listingId, { messaged: true }, t.updatedAt ?? 0);
+        });
+        // NDA signers per listing
+        await Promise.all(listings.map(async (l) => {
+          try {
+            const d = await fetch(`/api/buyer-portal/seller/nda/${l.listingId}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+            (d?.signatures ?? []).forEach((s: any) => { if (s?.phone) upsert(s.phone, s.name ?? "", l.listingId, { ndaSigned: true }, s.signedAt ? new Date(s.signedAt).getTime() : 0); });
+          } catch { /* ignore */ }
+        }));
+      } catch { /* ignore */ }
+      if (!cancelled) { setContacts(Array.from(map.values()).sort((a, b) => b.lastActivity - a.lastActivity)); setLoading(false); }
+    }
+    build();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listings.length]);
+
+  const filtered = contacts.filter((c) => !q.trim() || c.name.toLowerCase().includes(q.toLowerCase()) || c.phone.includes(q));
+
+  if (loading) return <div className="text-center py-20 text-muted-foreground flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={18} /> Building your CRM…</div>;
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/40 overflow-hidden">
+      <div className="p-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-bold">Buyer CRM</h3>
+          <p className="text-xs text-muted-foreground">Everyone who's enquired, signed an NDA or is in your buyer portal — across all your listings.</p>
+        </div>
+        <div className="relative">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or number" className="pl-3 pr-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60 w-56" />
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="p-10 text-center text-muted-foreground text-sm">No buyer contacts yet. They'll appear here as buyers enquire and sign NDAs.</div>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {filtered.map((c) => (
+            <div key={c.phone} className="p-3.5 flex items-center gap-3 flex-wrap">
+              <div className="w-9 h-9 rounded-full theme-btn-gradient grid place-items-center text-primary-foreground text-sm font-bold flex-shrink-0">{(c.name || c.phone).replace("+", "").slice(0, 2).toUpperCase()}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold truncate">{c.name || c.phone}</div>
+                <div className="text-[11px] text-muted-foreground truncate">{c.name ? c.phone + " · " : ""}{Array.from(c.listings).join(", ")}</div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {c.messaged && <span className="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-primary/15 text-primary">Messaged</span>}
+                {c.ndaSigned && <span className="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-emerald-500/15 text-emerald-400">NDA signed</span>}
+                {c.lastActivity > 0 && <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1"><Clock size={10} />{fmtWhen(c.lastActivity)}</span>}
+                <a href={`tel:${c.phone}`} className="w-7 h-7 grid place-items-center rounded-lg border border-border hover:border-primary/50" title="Call"><Phone size={12} /></a>
+                <button onClick={onGoMessages} className="w-7 h-7 grid place-items-center rounded-lg border border-border hover:border-primary/50" title="Messages"><MessageSquare size={12} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
