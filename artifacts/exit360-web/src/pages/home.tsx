@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { CheckCircle2, Building, ShieldCheck, ArrowRight, Eye, Play, TrendingUp, Clock, Users, MapPin } from "lucide-react";
 import { getPriceStat, getStatSlot, BADGE_LABELS, type Listing } from "@/data/listings";
 import { fetchListings } from "@/lib/listingsApi";
+import { SiteNav, SiteFooter } from "@/components/SiteShell";
 
 export function Home() {
   const [listings, setListings] = useState<Listing[]>([]);
@@ -26,26 +27,8 @@ export function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
       
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
-              <Eye className="text-primary-foreground" size={18} />
-            </div>
-            <span className="text-xl font-bold tracking-tight">EXIT360</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-6 text-sm font-medium text-muted-foreground">
-              <Link href="/buying"><span className="hover:text-foreground transition-colors cursor-pointer">For Buyers</span></Link>
-              <Link href="/selling"><span className="hover:text-foreground transition-colors cursor-pointer">For Sellers</span></Link>
-              <Link href="/brokers"><span className="hover:text-foreground transition-colors cursor-pointer">Broker Network</span></Link>
-              <Link href="/how-it-works"><span className="hover:text-foreground transition-colors cursor-pointer">How It Works</span></Link>
-            </div>
-            <Link href="/list-your-business"><Button className="theme-btn-gradient border-0">List a Business</Button></Link>
-          </div>
-        </div>
-      </nav>
+      {/* Unified site navigation (same on every page) */}
+      <SiteNav />
 
       {/* Hero Section */}
       <section className="pt-32 pb-20 px-6 max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-12">
@@ -293,45 +276,7 @@ export function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-card border-t border-border pt-16 pb-8 px-6">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
-          <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-6 h-6 bg-primary rounded flex items-center justify-center">
-                <Eye className="text-primary-foreground" size={14} />
-              </div>
-              <span className="text-lg font-bold">EXIT360</span>
-            </div>
-            <p className="text-sm text-muted-foreground">The premium marketplace for verified businesses.</p>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-4">Platform</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link href="/listings" className="hover:text-foreground">Browse Listings</Link></li>
-              <li><a href="#" className="hover:text-foreground">Sell a Business</a></li>
-              <li><a href="#" className="hover:text-foreground">Pricing</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-4">Company</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground">About Us</a></li>
-              <li><a href="#" className="hover:text-foreground">Contact</a></li>
-              <li><a href="#" className="hover:text-foreground">Careers</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-4">Legal</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground">Terms of Service</a></li>
-              <li><a href="#" className="hover:text-foreground">Privacy Policy</a></li>
-            </ul>
-          </div>
-        </div>
-        <div className="max-w-7xl mx-auto pt-8 border-t border-border text-center text-sm text-muted-foreground">
-          &copy; {new Date().getFullYear()} EXIT360. All rights reserved.
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

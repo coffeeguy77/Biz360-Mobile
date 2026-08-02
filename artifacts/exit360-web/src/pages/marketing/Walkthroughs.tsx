@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
+import { AudioNarrationShowcase } from "@/components/AudioNarrationShowcase";
 
 const fade = {
   initial: { opacity: 0, y: 24 },
@@ -237,6 +238,8 @@ export function Walkthroughs() {
           ))}
         </div>
       </section>
+
+      <AudioNarrationShowcase />
 
       <CtaBand
         heading="Bring your business to life in 360°"

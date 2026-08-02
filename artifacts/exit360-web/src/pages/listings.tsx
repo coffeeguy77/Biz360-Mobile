@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { getPriceStat, getStatSlot, type Listing } from "@/data/listings";
 import { fetchListings } from "@/lib/listingsApi";
+import { SiteNav, SiteFooter } from "@/components/SiteShell";
 
 const CATEGORIES = ["All", "Food & Beverage", "Health & Beauty", "Health & Fitness", "Services"];
 const STATES = ["All States", "ACT", "VIC", "NSW", "QLD", "WA", "SA"];
@@ -179,31 +180,9 @@ export function Listings() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <button
-                data-testid="button-back-home"
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm"
-              >
-                <ArrowLeft size={16} /> Home
-              </button>
-            </Link>
-            <span className="text-border">|</span>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-primary rounded flex items-center justify-center">
-                <Eye className="text-primary-foreground" size={13} />
-              </div>
-              <span className="font-bold">EXIT360</span>
-            </div>
-          </div>
-          <Button size="sm" data-testid="button-list-business">List a Business</Button>
-        </div>
-      </nav>
+      <SiteNav />
 
-      <main className="max-w-7xl mx-auto px-6 py-10">
+      <main className="max-w-7xl mx-auto px-6 pt-24 pb-10">
         {/* Page header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Verified Businesses for Sale</h1>
@@ -272,6 +251,7 @@ export function Listings() {
           <Button data-testid="button-list-cta">List Your Business</Button>
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

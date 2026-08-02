@@ -1830,7 +1830,7 @@ export function ReportPage() {
                             {aboveVisuals.map(renderVisual)}
                             {/* sidebar: flex-row layout with section body in main column */}
                             {sidebarVisuals.length > 0 ? (
-                              <div className="flex gap-6 items-start">
+                              <div className="flex flex-col sm:flex-row gap-6 items-start">
                                 <div className="flex-1 min-w-0">{mainContent}</div>
                                 <div className="w-full sm:w-[42%] lg:w-[44%] flex-shrink-0 space-y-3">
                                   {sidebarVisuals.map(renderVisual)}
@@ -1916,7 +1916,7 @@ export function ReportPage() {
                   <>
                     {aboveVisuals.map(renderVisual)}
                     {sidebarVisuals.length > 0 ? (
-                      <div className="flex gap-6 items-start">
+                      <div className="flex flex-col sm:flex-row gap-6 items-start">
                         <div className="flex-1 min-w-0">{mainContent}</div>
                         <div className="w-full sm:w-[42%] lg:w-[44%] flex-shrink-0 space-y-3">
                           {sidebarVisuals.map(renderVisual)}

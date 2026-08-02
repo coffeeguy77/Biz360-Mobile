@@ -4,6 +4,7 @@ import { sendEnquiry, enquiryLabel } from "@/lib/enquiry";
 // edge arrows, scene chips, click-to-walk) used by the report tour, so the public
 // listing viewer gets the identical movement system instead of at-feet pins.
 import { buildMultiSceneSrcdoc } from "@/components/InteractiveTour";
+import { SiteNav } from "@/components/SiteShell";
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   ArrowLeft,
@@ -925,31 +926,25 @@ export function ListingDetail() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/listings">
-              <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm">
-                <ArrowLeft size={16} /> All Listings
-              </button>
-            </Link>
-            <span className="text-border">|</span>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-primary rounded flex items-center justify-center">
-                <Eye className="text-primary-foreground" size={13} />
-              </div>
-              <span className="font-bold">EXIT360</span>
-            </div>
-          </div>
+      <SiteNav />
+
+      {/* Contextual sub-bar: back to listings + portal shortcut */}
+      <div className="border-b border-border bg-background/60">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-12 flex items-center justify-between">
+          <Link href="/listings">
+            <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm">
+              <ArrowLeft size={16} /> All Listings
+            </button>
+          </Link>
           {buyerSignedIn && (
             <Link href="/buyers/portal">
               <Button size="sm" variant="outline" className="gap-2"><User size={14} /> My Portal</Button>
             </Link>
           )}
         </div>
-      </nav>
+      </div>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10 overflow-x-hidden">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-6 sm:pb-10 overflow-x-hidden">
         <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 lg:gap-10">
           {/* Left: main content */}
           <div className="lg:col-span-2 flex flex-col gap-6 sm:gap-8 min-w-0">
