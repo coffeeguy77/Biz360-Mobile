@@ -438,10 +438,10 @@ function SpacePanel({ space, spaces, onChange, uploadAudio, busy, setBusy }: { s
       </Field>
       {(space.dirMode ?? "panorama") === "panorama" && (
         <>
-          <Field label={`Start yaw (facing on load): ${space.panoramaStartYaw ?? 0}°`}><input type="range" min={-180} max={180} value={space.panoramaStartYaw ?? 0} onChange={(e) => onChange({ panoramaStartYaw: +e.target.value })} className="w-full" /></Field>
-          <Field label={`Default yaw (entering via nav): ${space.defaultYaw ?? 0}°`}><input type="range" min={-180} max={180} value={space.defaultYaw ?? 0} onChange={(e) => onChange({ defaultYaw: +e.target.value })} className="w-full" /></Field>
+          <div><span className="text-xs font-semibold text-muted-foreground block mb-1">Facing on load</span><CompassDial value={space.panoramaStartYaw ?? 0} onChange={(d) => onChange({ panoramaStartYaw: d })} /></div>
+          <div><span className="text-xs font-semibold text-muted-foreground block mb-1">Default facing (entering via a nav pin)</span><CompassDial value={space.defaultYaw ?? 0} onChange={(d) => onChange({ defaultYaw: d })} /></div>
+          <div><span className="text-xs font-semibold text-muted-foreground block mb-1">True-north calibration</span><CompassDial value={space.trueNorthYaw ?? 0} onChange={(d) => onChange({ trueNorthYaw: d })} /></div>
           <Field label={`Ground pitch (floor tilt): ${space.groundPitch ?? -50}°`}><input type="range" min={-80} max={-20} value={space.groundPitch ?? -50} onChange={(e) => onChange({ groundPitch: +e.target.value })} className="w-full" /></Field>
-          <Field label={`True north calibration: ${space.trueNorthYaw ?? 0}°`}><input type="range" min={-180} max={180} value={space.trueNorthYaw ?? 0} onChange={(e) => onChange({ trueNorthYaw: +e.target.value })} className="w-full" /></Field>
           <Toggle label="Auto-pan on load" on={!!space.autoPan} onToggle={() => onChange({ autoPan: !space.autoPan })} />
         </>
       )}
@@ -486,7 +486,7 @@ function PinPanel({ pin, spaces, onChange, onDelete, onClose, uploadImage, uploa
       {pin.type === "navigation" && (
         <>
           <Field label="Target space"><select value={pin.targetSpaceId ?? ""} onChange={(e) => onChange({ targetSpaceId: e.target.value })} className={inp}><option value="">— choose —</option>{spaces.filter((s) => s.id !== undefined).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
-          <Field label={`Arrival facing (targetYaw): ${pin.targetYaw ?? 0}°`}><input type="range" min={-180} max={180} value={pin.targetYaw ?? 0} onChange={(e) => onChange({ targetYaw: +e.target.value })} className="w-full" /></Field>
+          <div><span className="text-xs font-semibold text-muted-foreground block mb-1">Arrival facing — which way the buyer looks on arrival</span><CompassDial value={pin.targetYaw ?? 0} onChange={(d) => onChange({ targetYaw: d })} /></div>
         </>
       )}
       {pin.type === "look" && (
@@ -556,6 +556,41 @@ function SettingsModal({ settings, onChange, onClose }: { settings: Settings; on
           <Toggle label="Auto-pan all panoramas" on={!!settings.autoPanAll} onToggle={() => set({ autoPanAll: !settings.autoPanAll })} />
           <Field label="Hotspot behaviour"><select value={settings.defaultHotspotBehaviour} onChange={(e) => set({ defaultHotspotBehaviour: e.target.value as any })} className={inp}><option value="tap">Tap to open</option><option value="always">Always visible</option></select></Field>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Draggable compass dial for setting a facing angle (0°=front/N, clockwise).
+function CompassDial({ value, onChange, size = 92 }: { value: number; onChange: (deg: number) => void; size?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const deg = Math.round(((value % 360) + 360) % 360);
+  const rad = size / 2;
+  const setFromEvent = (clientX: number, clientY: number) => {
+    const el = ref.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const dx = clientX - (r.left + r.width / 2), dy = clientY - (r.top + r.height / 2);
+    const a = Math.round(((Math.atan2(dx, -dy) * 180 / Math.PI) % 360 + 360) % 360);
+    onChange(a);
+  };
+  const onDown = (e: React.PointerEvent) => {
+    setFromEvent(e.clientX, e.clientY);
+    const move = (ev: PointerEvent) => setFromEvent(ev.clientX, ev.clientY);
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  return (
+    <div className="flex items-center gap-3">
+      <div ref={ref} onPointerDown={onDown} style={{ width: size, height: size, touchAction: "none" }} className="relative rounded-full border-2 border-border bg-background cursor-grab active:cursor-grabbing select-none flex-shrink-0">
+        {["N", "E", "S", "W"].map((d, i) => (
+          <span key={d} className="absolute text-[9px] font-bold text-muted-foreground" style={{ left: "50%", top: "50%", transform: `translate(-50%,-50%) rotate(${i * 90}deg) translateY(-${rad - 9}px) rotate(-${i * 90}deg)` }}>{d}</span>
+        ))}
+        <div className="absolute left-1/2 top-1/2" style={{ width: 3, height: rad - 12, background: "hsl(var(--primary))", borderRadius: 3, transformOrigin: "50% 100%", transform: `translate(-50%,-100%) rotate(${deg}deg)` }} />
+        <div className="absolute left-1/2 top-1/2 rounded-full bg-primary" style={{ width: 8, height: 8, transform: "translate(-50%,-50%)" }} />
+      </div>
+      <div className="flex items-center gap-1">
+        <input type="number" value={deg} onChange={(e) => onChange((((+e.target.value || 0) % 360) + 360) % 360)} className="w-16 px-2 py-1 rounded border border-border bg-background text-sm" />
+        <span className="text-xs text-muted-foreground">°</span>
       </div>
     </div>
   );
