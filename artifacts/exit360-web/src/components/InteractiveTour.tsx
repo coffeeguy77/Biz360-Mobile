@@ -80,10 +80,13 @@ function yToPitch(y){return(0.5-y)*180}
    blow the field of view out to a "hyperspace" warp on ultra-wide screens. */
 var IS_FS=false;
 var FS_HFOV=112, EMBED_HFOV=100;
+/* Safe maximum zoom-OUT. A 360 pano stays natural up to ~120°; beyond that it
+   warps into "hyperspace". This is the single value to tune the max width. */
+var MAX_HFOV=120;
 function navHfov(){
   var h; try{h=viewer.getHfov();}catch(e){h=IS_FS?FS_HFOV:EMBED_HFOV;}
   if(!(h>0))h=IS_FS?FS_HFOV:EMBED_HFOV;
-  if(h<70)h=70; if(h>130)h=130;
+  if(h<70)h=70; if(h>MAX_HFOV)h=MAX_HFOV;
   return h;
 }
 function createNavPin(container,args){
@@ -152,7 +155,7 @@ SPACES.forEach(function(s){
   scenesConfig[s.id]=sc;
 });
 var userInteracted=false;
-var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:179},scenes:scenesConfig});
+var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:MAX_HFOV},scenes:scenesConfig});
 (function(){
   var panoEl=document.getElementById('pano');
   function markInteracted(){userInteracted=true;}
