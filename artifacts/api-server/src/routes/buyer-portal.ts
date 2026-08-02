@@ -738,6 +738,34 @@ router.put("/buyer-portal/seller/tour-zones/:listingId", requireAuth, async (req
   res.json({ ok: true, changed, zones: next.map((s) => ({ id: s.id, name: s.name, enabled: s.enabled !== false })) });
 });
 
+/** Save the full tour-spaces array for a listing (owner only). Bidirectional
+ *  with the app's tour store (biz360_tour_spaces_v2_<listingId>). */
+router.put("/buyer-portal/seller/tour-spaces/:listingId", requireAuth, async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  if (!(await callerOwnsListing(req.user!.id, listingId))) { res.status(403).json({ error: "Not your listing" }); return; }
+  const { spaces } = req.body as { spaces?: any[] };
+  if (!Array.isArray(spaces)) { res.status(400).json({ error: "spaces array required" }); return; }
+  // Light sanitation: keep known fields, guarantee an id + pins array.
+  const clean = spaces.slice(0, 60).map((s, i) => ({
+    id: String(s?.id ?? `space-${Date.now()}-${i}`),
+    name: String(s?.name ?? `Space ${i + 1}`).slice(0, 120),
+    panoramaUrl: typeof s?.panoramaUrl === "string" ? s.panoramaUrl : "",
+    panoramaStartYaw: typeof s?.panoramaStartYaw === "number" ? s.panoramaStartYaw : 0,
+    defaultYaw: typeof s?.defaultYaw === "number" ? s.defaultYaw : undefined,
+    groundPitch: typeof s?.groundPitch === "number" ? s.groundPitch : undefined,
+    isStartScene: !!s?.isStartScene,
+    autoPan: !!s?.autoPan,
+    enabled: s?.enabled === false ? false : undefined,
+    audioUrl: typeof s?.audioUrl === "string" ? s.audioUrl : undefined,
+    audioName: typeof s?.audioName === "string" ? s.audioName : undefined,
+    pins: Array.isArray(s?.pins) ? s.pins.slice(0, 40) : [],
+  }));
+  const key = tourSpacesKey(listingId);
+  await db.insert(kvStore).values({ key, value: clean })
+    .onConflictDoUpdate({ target: kvStore.key, set: { value: clean, updatedAt: new Date() } });
+  res.json({ ok: true, count: clean.length });
+});
+
 /** Resolve the buyer-access cafe for one of the caller's listings (for the web
  *  dashboard, which works in listingIds while groups are keyed by cafeId). */
 router.get("/buyer-portal/seller/listing-cafe/:listingId", requireAuth, async (req, res): Promise<void> => {

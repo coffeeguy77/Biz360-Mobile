@@ -234,7 +234,8 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
               </div>
             </div>
           )}
-          <TourZones listing={listing} token={token} />
+          <EditDetails listing={listing} token={token} onSaved={onChange} />
+          <TourBuilder listing={listing} token={token} />
           <BuyerAccess listing={listing} token={token} />
         </div>
       </div>
@@ -886,6 +887,190 @@ function SellerCRM({ listings, token, onGoMessages }: { listings: Listing[]; tok
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Edit listing details (web) ───────────────────────────────────────────────
+const STATES = ["VIC", "NSW", "QLD", "SA", "WA", "TAS", "ACT", "NT"];
+function EditDetails({ listing, token, onSaved }: { listing: Listing; token: string; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [f, setF] = useState<any>(null);
+  const auth = { Authorization: `Bearer ${token}` };
+
+  async function loadOne() {
+    setLoading(true);
+    try {
+      const j = await fetch("/api/biz360/kv/biz360_admin_pending_v2").then((r) => r.json());
+      const rec = (Array.isArray(j?.value) ? j.value : []).find((l: any) => l?.listingId === listing.listingId) ?? {};
+      setF({
+        businessName: rec.businessName ?? listing.businessName ?? "",
+        suburb: rec.suburb ?? "", state: rec.state ?? "VIC", category: rec.category ?? "",
+        description: rec.description ?? "",
+        priceDisplay: rec.priceDisplay ?? "askingPrice",
+        askingPrice: rec.askingPrice ? String(rec.askingPrice) : "",
+        askingPriceMin: rec.askingPriceMin ? String(rec.askingPriceMin) : "",
+        askingPriceMax: rec.askingPriceMax ? String(rec.askingPriceMax) : "",
+      });
+    } finally { setLoading(false); }
+  }
+  function toggle() { const n = !open; setOpen(n); if (n && !f) loadOne(); }
+  async function save() {
+    if (!f) return;
+    setSaving(true); setSaved(false);
+    try {
+      await fetch(`/api/biz360/seller/listings/${listing.listingId}`, { method: "PUT", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify(f) });
+      setSaved(true); onSaved(); setTimeout(() => setSaved(false), 2000);
+    } finally { setSaving(false); }
+  }
+  const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
+
+  return (
+    <div className="mt-3">
+      <button onClick={toggle} className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold"><FileText size={14} /> Edit details</button>
+      {open && (
+        <div className="mt-3 rounded-xl border border-border bg-background/50 p-4">
+          {loading || !f ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading…</div> : (
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="text-xs font-semibold sm:col-span-2">Business name
+                <input value={f.businessName} onChange={(e) => set("businessName", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
+              </label>
+              <label className="text-xs font-semibold">Suburb
+                <input value={f.suburb} onChange={(e) => set("suburb", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
+              </label>
+              <label className="text-xs font-semibold">State
+                <select value={f.state} onChange={(e) => set("state", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60">{STATES.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+              </label>
+              <label className="text-xs font-semibold sm:col-span-2">Category
+                <input value={f.category} onChange={(e) => set("category", e.target.value)} placeholder="e.g. Food & Beverage" className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
+              </label>
+              <label className="text-xs font-semibold sm:col-span-2">Description
+                <textarea value={f.description} onChange={(e) => set("description", e.target.value)} rows={4} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
+              </label>
+              <label className="text-xs font-semibold">Price display
+                <select value={f.priceDisplay} onChange={(e) => set("priceDisplay", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60">
+                  <option value="askingPrice">Asking price</option><option value="poa">POA</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold">Asking price ($)
+                <input value={f.askingPrice} onChange={(e) => set("askingPrice", e.target.value)} placeholder="e.g. 1800000" className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
+              </label>
+              <div className="sm:col-span-2">
+                <Button size="sm" onClick={save} disabled={saving} className="theme-btn-gradient border-0">{saving ? "Saving…" : saved ? <><Check size={14} className="mr-1" /> Saved</> : "Save details"}</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Web tour builder ─────────────────────────────────────────────────────────
+interface BSpace { id: string; name: string; panoramaUrl: string; isStartScene?: boolean; enabled?: boolean; pins?: any[]; autoPan?: boolean; }
+function fileToB64(file: File): Promise<{ data: string; mime: string }> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const s = String(r.result); resolve({ data: s.split(",")[1] ?? "", mime: (s.match(/^data:(.*?);/) ?? [])[1] ?? file.type }); };
+    r.onerror = reject; r.readAsDataURL(file);
+  });
+}
+function TourBuilder({ listing, token }: { listing: Listing; token: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [spaces, setSpaces] = useState<BSpace[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const auth = { Authorization: `Bearer ${token}` };
+
+  async function loadSpaces() {
+    setLoading(true); setErr(null);
+    try {
+      const j = await fetch(`/api/biz360/kv/biz360_tour_spaces_v2_${listing.listingId}`).then((r) => r.json());
+      const arr = Array.isArray(j?.value) ? j.value : (Array.isArray(j) ? j : []);
+      setSpaces(arr.map((s: any) => ({ id: s.id, name: s.name, panoramaUrl: s.panoramaUrl ?? "", isStartScene: !!s.isStartScene, enabled: s.enabled, pins: s.pins ?? [], autoPan: !!s.autoPan })));
+    } catch { setErr("Could not load tour."); } finally { setLoading(false); }
+  }
+  function toggle() { const n = !open; setOpen(n); if (n && spaces.length === 0) loadSpaces(); }
+
+  function mutate(fn: (s: BSpace[]) => BSpace[]) { setSpaces((s) => fn(s)); setDirty(true); }
+  async function save() {
+    setSaving(true); setErr(null);
+    try {
+      const r = await fetch(`/api/buyer-portal/seller/tour-spaces/${listing.listingId}`, { method: "PUT", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ spaces }) });
+      const d = await r.json();
+      if (r.ok && d.ok) { setDirty(false); setSaved(true); setTimeout(() => setSaved(false), 2000); } else setErr(d.error ?? "Could not save.");
+    } finally { setSaving(false); }
+  }
+
+  async function onUpload(file: File) {
+    if (!file) return;
+    setUploading(true); setErr(null);
+    try {
+      const { data, mime } = await fileToB64(file);
+      const key = `pano_${Date.now()}`;
+      const r = await fetch("/api/biz360/img", { method: "POST", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ key, data, mimeType: mime, listingId: listing.listingId }) });
+      const d = await r.json();
+      if (!r.ok || !d.url) { setErr(d.error ?? "Upload failed."); return; }
+      const space: BSpace = { id: `space-${Date.now()}`, name: newName.trim() || `Space ${spaces.length + 1}`, panoramaUrl: d.url, isStartScene: spaces.length === 0, enabled: true, pins: [] };
+      mutate((s) => [...s, space]); setNewName("");
+    } catch { setErr("Upload failed."); } finally { setUploading(false); }
+  }
+
+  function move(i: number, dir: -1 | 1) { const j = i + dir; if (j < 0 || j >= spaces.length) return; mutate((s) => { const a = [...s]; [a[i], a[j]] = [a[j], a[i]]; return a; }); }
+  function setStart(id: string) { mutate((s) => s.map((x) => ({ ...x, isStartScene: x.id === id }))); }
+  function rename(id: string, name: string) { mutate((s) => s.map((x) => (x.id === id ? { ...x, name } : x))); }
+  function toggleEnabled(id: string) { mutate((s) => s.map((x) => (x.id === id ? { ...x, enabled: x.enabled === false ? true : false } : x))); }
+  function del(id: string) { mutate((s) => s.filter((x) => x.id !== id)); }
+
+  return (
+    <div className="mt-3">
+      <button onClick={toggle} className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold"><Layers size={14} /> Tour builder {spaces.length > 0 && `(${spaces.length})`}</button>
+      {open && (
+        <div className="mt-3 rounded-xl border border-border bg-background/50 p-4">
+          <p className="text-xs text-muted-foreground mb-3">Build and edit the 360° tour from your computer — add spaces, upload panoramas, reorder, pick the start scene and hide zones. Saves back to the same tour the app uses. (Nav-pin placement between rooms is still done in the app.)</p>
+          {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading tour…</div>}
+          {!loading && (
+            <>
+              <div className="flex flex-col gap-2 mb-3">
+                {spaces.map((s, i) => (
+                  <div key={s.id} className="flex items-center gap-2 rounded-lg border border-border bg-card/40 p-2">
+                    {s.panoramaUrl ? <img src={s.panoramaUrl} alt="" className="w-14 h-10 object-cover rounded flex-shrink-0" /> : <div className="w-14 h-10 rounded bg-muted grid place-items-center text-muted-foreground flex-shrink-0"><Layers size={14} /></div>}
+                    <input value={s.name} onChange={(e) => rename(s.id, e.target.value)} className={`flex-1 min-w-0 px-2 py-1 rounded border border-transparent hover:border-border bg-transparent text-sm outline-none focus:border-primary/60 ${s.enabled === false ? "line-through text-muted-foreground" : ""}`} />
+                    <button onClick={() => setStart(s.id)} title="Start scene" className={`text-[10px] px-1.5 py-1 rounded ${s.isStartScene ? "theme-btn-gradient text-primary-foreground" : "border border-border text-muted-foreground"}`}><Star size={11} /></button>
+                    <button onClick={() => toggleEnabled(s.id)} title={s.enabled === false ? "Hidden — show" : "Shown — hide"} className="text-muted-foreground hover:text-foreground p-1">{s.enabled === false ? <Eye size={13} /> : <ShieldCheck size={13} />}</button>
+                    <div className="flex flex-col">
+                      <button onClick={() => move(i, -1)} disabled={i === 0} className="text-muted-foreground disabled:opacity-30 leading-none">▲</button>
+                      <button onClick={() => move(i, 1)} disabled={i === spaces.length - 1} className="text-muted-foreground disabled:opacity-30 leading-none">▼</button>
+                    </div>
+                    <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-300 text-xs px-1">✕</button>
+                  </div>
+                ))}
+                {spaces.length === 0 && <p className="text-sm text-muted-foreground">No spaces yet. Upload your first 360° panorama below.</p>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New space name (optional)" className="flex-1 min-w-[140px] px-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60" />
+                <label className={`inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-border cursor-pointer hover:border-primary/50 ${uploading ? "opacity-60 pointer-events-none" : ""}`}>
+                  {uploading ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Plus size={14} /> Upload panorama</>}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(file); e.currentTarget.value = ""; }} />
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={save} disabled={saving || !dirty} className="theme-btn-gradient border-0">{saving ? "Saving…" : saved ? <><Check size={14} className="mr-1" /> Saved</> : dirty ? "Save tour" : "Saved"}</Button>
+                {dirty && <span className="text-[11px] text-muted-foreground">Unsaved changes</span>}
+              </div>
+            </>
+          )}
+          {err && <p className="text-xs text-red-500 mt-2">{err}</p>}
         </div>
       )}
     </div>

@@ -525,6 +525,43 @@ router.get("/public/partners", async (req, res): Promise<void> => {
 // Lets a phone-verified seller start a listing on the website. Photos, the 360°
 // tour and the financial report are enriched in the app, but the core record is
 // created here and is immediately owned by (and synced to) the seller's account.
+/** Edit an existing listing's core fields (owner only, canonical-phone match). */
+router.put("/biz360/seller/listings/:listingId", async (req, res): Promise<void> => {
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const ownerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!ownerId) { res.status(401).json({ error: "Sign in required" }); return; }
+  const { listingId } = req.params;
+  const b = req.body as Record<string, unknown>;
+  const num = (v: unknown) => parseInt(String(v ?? "").replace(/[^0-9]/g, ""), 10) || 0;
+  try {
+    const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
+    const idx = listings.findIndex((l) => l?.listingId === listingId);
+    if (idx < 0) { res.status(404).json({ error: "Listing not found" }); return; }
+    if (ownerBase(listings[idx].submittedBy) !== ownerBase(ownerId)) { res.status(403).json({ error: "Not your listing" }); return; }
+    const cur = listings[idx];
+    const set = (k: string, v: unknown) => { if (v !== undefined) cur[k] = v; };
+    if (typeof b.businessName === "string" && b.businessName.trim().length >= 2) cur.businessName = b.businessName.trim();
+    set("suburb", typeof b.suburb === "string" ? b.suburb.trim() : undefined);
+    set("state", typeof b.state === "string" ? b.state : undefined);
+    set("category", typeof b.category === "string" ? b.category : undefined);
+    if (typeof b.description === "string") cur.description = b.description.trim().slice(0, 4000);
+    if (b.askingPrice !== undefined) cur.askingPrice = num(b.askingPrice);
+    if (b.askingPriceMin !== undefined) cur.askingPriceMin = num(b.askingPriceMin);
+    if (b.askingPriceMax !== undefined) cur.askingPriceMax = num(b.askingPriceMax);
+    if (b.priceDisplay === "askingPrice" || b.priceDisplay === "poa" || b.priceDisplay === "weeklyRevenue") cur.priceDisplay = b.priceDisplay;
+    if (b.confidential !== undefined) cur.confidential = !!b.confidential;
+    if (Array.isArray(b.photos)) cur.photos = (b.photos as unknown[]).filter((p) => typeof p === "string").slice(0, 30);
+    if (typeof b.heroColor === "string") cur.heroColor = b.heroColor;
+    listings[idx] = cur;
+    await db.insert(kvStore).values({ key: "biz360_admin_pending_v2", value: listings })
+      .onConflictDoUpdate({ target: kvStore.key, set: { value: listings } });
+    res.json({ ok: true, listing: cur });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Could not update listing" });
+  }
+});
+
 router.post("/biz360/seller/listings", async (req, res): Promise<void> => {
   const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
   const ownerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
