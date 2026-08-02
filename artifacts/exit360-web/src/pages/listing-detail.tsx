@@ -105,10 +105,14 @@ function TourViewer({
   const [showPresets, setShowPresets] = useState(true);
   const [isFs, setIsFs] = useState(false);
   useEffect(() => {
-    const onFs = () => setIsFs(!!document.fullscreenElement);
+    const onFs = () => {
+      const fs = !!document.fullscreenElement;
+      setIsFs(fs);
+      iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: fs }, "*");
+    };
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
-  }, []);
+  }, [iframeRef]);
   function toggleFullscreen() {
     const el = frameWrapRef.current;
     if (!el) return;
@@ -143,13 +147,16 @@ function TourViewer({
           </button>
         </div>
         {isFs && showPresets && (
-          <div className="absolute bottom-4 left-0 right-0 px-4 z-10">
-            <div className="flex gap-2 overflow-x-auto themed-scroll pb-1 max-w-3xl mx-auto">
+          <div className="absolute bottom-5 left-0 right-0 px-4 z-10">
+            <div className="flex gap-2.5 overflow-x-auto themed-scroll pb-1 max-w-5xl mx-auto justify-center">
               {valid.map((s) => (
                 <button key={s.id} onClick={() => { onSceneChange(s.id); iframeRef.current?.contentWindow?.postMessage({ type: "pano_goto", sceneId: s.id }, "*"); }}
-                  className={`relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${s.id === activeId ? "border-primary" : "border-white/20 opacity-70 hover:opacity-100"}`}
-                  style={{ width: 84, height: 52 }} title={s.name}>
+                  className={`group relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${s.id === activeId ? "border-primary shadow-[0_0_14px_rgba(59,130,246,0.5)]" : "border-white/25 opacity-75 hover:opacity-100"}`}
+                  style={{ width: 128, height: 78 }} title={s.name}>
                   <img src={s.panoramaUrl} alt={s.name} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 to-transparent flex items-end p-1.5">
+                    <span className="text-white text-[10px] font-medium leading-tight line-clamp-2">{s.name}</span>
+                  </div>
                 </button>
               ))}
             </div>

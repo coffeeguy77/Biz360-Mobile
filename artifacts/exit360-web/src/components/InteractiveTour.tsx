@@ -74,6 +74,17 @@ export function buildMultiSceneSrcdoc(spaces: TourSpace[], autoPanAll = false): 
 var SPACES=${spacesJson};
 function xToYaw(x){return(x-0.5)*360}
 function yToPitch(y){return(0.5-y)*180}
+/* Keep a consistent VERTICAL field of view regardless of container aspect, so
+   fullscreen (a much wider viewport) shows the same amount of the room as the
+   normal embed instead of appearing zoomed in. REF_ASPECT is captured from the
+   initial (non-fullscreen) size; hfov scales with aspect from there. */
+var REF_ASPECT=(window.innerWidth||1)/(window.innerHeight||1);
+function targetHfov(){
+  var a=(window.innerWidth||1)/(window.innerHeight||1);
+  var hf=100*(a/(REF_ASPECT||1));
+  if(hf<60)hf=60; if(hf>179)hf=179;
+  return hf;
+}
 function createNavPin(container,args){
   container.style.cssText='width:52px;height:52px;overflow:visible;position:relative;cursor:pointer';
   var ring=document.createElement('span');
@@ -99,7 +110,7 @@ function createNavPin(container,args){
          and face the target space's configured default orientation. */
       var navSp=SPACES.find(function(s){return s.id===args.sceneId});
       var navYaw=typeof args.targetYaw==='number'?args.targetYaw:(navSp&&typeof navSp.defaultYaw==='number'?navSp.defaultYaw:(navSp&&typeof navSp.panoramaStartYaw==='number'?navSp.panoramaStartYaw:0));
-      viewer.loadScene(args.sceneId,0,navYaw,100);
+      viewer.loadScene(args.sceneId,0,navYaw,targetHfov());
     }catch(err){}
   });
 }
@@ -140,7 +151,7 @@ SPACES.forEach(function(s){
   scenesConfig[s.id]=sc;
 });
 var userInteracted=false;
-var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:150},scenes:scenesConfig});
+var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDuration:800,autoLoad:true,showFullscreenCtrl:false,showZoomCtrl:true,compass:false,friction:0.15,hfov:100,pitch:0,yaw:0,minHfov:50,maxHfov:179},scenes:scenesConfig});
 (function(){
   var panoEl=document.getElementById('pano');
   function markInteracted(){userInteracted=true;}
@@ -151,7 +162,7 @@ var viewer=pannellum.viewer('pano',{default:{firstScene:firstScene,sceneFadeDura
   var sp0=SPACES.find(function(s){return s.id===firstScene});
   if(AUTOPAN_ALL||(sp0&&sp0.autoPan)){try{viewer.startAutoRotate(-2)}catch(e){}}
 })();
-function doResize(){try{viewer.resize()}catch(e){}}
+function doResize(){try{viewer.resize()}catch(e){}try{viewer.setHfov(targetHfov(),false)}catch(e){}}
 window.addEventListener('load',function(){setTimeout(doResize,50);setTimeout(doResize,300)});
 window.addEventListener('resize',doResize);
 viewer.on('scenechange',function(id){
@@ -164,9 +175,14 @@ viewer.on('scenechange',function(id){
   else{try{viewer.stopAutoRotate()}catch(e){}}
 });
 window.addEventListener('message',function(e){
-  if(e.data&&e.data.type==='pano_goto'&&e.data.sceneId)try{
-    gotoScene(e.data.sceneId, typeof e.data.yaw==='number'?e.data.yaw:null);
-  }catch(e2){}
+  if(!e.data)return;
+  if(e.data.type==='pano_goto'&&e.data.sceneId){try{ gotoScene(e.data.sceneId, typeof e.data.yaw==='number'?e.data.yaw:null); }catch(e2){}}
+  else if(e.data.type==='pano_fullscreen'){
+    /* In fullscreen the parent shows a bigger thumbnail row, so hide the in-pano
+       scene chips to avoid the labels colliding under the thumbnails. */
+    try{ if(typeof chipsEl!=='undefined'&&chipsEl) chipsEl.style.display=e.data.on?'none':''; }catch(e3){}
+    try{ setTimeout(function(){viewer.resize();viewer.setHfov(targetHfov(),false);},60); }catch(e4){}
+  }
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -183,7 +199,7 @@ function defaultYawFor(id){var s=SPACES.find(function(x){return x.id===id});retu
 function gotoScene(id,yaw){
   if(!validIds.has(id))return;
   var y=typeof yaw==='number'?yaw:defaultYawFor(id);
-  try{viewer.loadScene(id,0,y,100);}catch(e){}
+  try{viewer.loadScene(id,0,y,targetHfov());}catch(e){}
 }
 function navTargets(){
   var s=SPACES.find(function(x){return x.id===currentSceneId});
@@ -284,7 +300,11 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
       if (e.data?.type === "pano_sceneChange" && e.data.sceneId) setActiveId(e.data.sceneId);
     };
     window.addEventListener("message", onMsg);
-    const onFs = () => setIsFs(!!document.fullscreenElement);
+    const onFs = () => {
+      const fs = !!document.fullscreenElement;
+      setIsFs(fs);
+      iframeRef.current?.contentWindow?.postMessage({ type: "pano_fullscreen", on: fs }, "*");
+    };
     document.addEventListener("fullscreenchange", onFs);
     return () => { window.removeEventListener("message", onMsg); document.removeEventListener("fullscreenchange", onFs); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -327,13 +347,16 @@ export function InteractiveTour({ spaces, autoPanAll = false }: { spaces: TourSp
         </div>
         {/* In fullscreen, the thumbnail presets float over the bottom of the immersive view */}
         {isFs && showPresets && (
-          <div className="absolute bottom-4 left-0 right-0 px-4 z-10">
-            <div className="flex gap-2 overflow-x-auto themed-scroll pb-1 max-w-3xl mx-auto justify-start">
+          <div className="absolute bottom-5 left-0 right-0 px-4 z-10">
+            <div className="flex gap-2.5 overflow-x-auto themed-scroll pb-1 max-w-5xl mx-auto justify-center">
               {valid.map((s) => (
                 <button key={s.id} onClick={() => { setActiveId(s.id); iframeRef.current?.contentWindow?.postMessage({ type: "pano_goto", sceneId: s.id }, "*"); }}
-                  className={`relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${s.id === activeId ? "border-blue-500" : "border-white/20 opacity-70 hover:opacity-100"}`}
-                  style={{ width: 84, height: 52 }} title={s.name}>
+                  className={`group relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${s.id === activeId ? "border-blue-500 shadow-[0_0_14px_rgba(59,130,246,0.5)]" : "border-white/25 opacity-75 hover:opacity-100"}`}
+                  style={{ width: 128, height: 78 }} title={s.name}>
                   <img src={s.panoramaUrl} alt={s.name} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 to-transparent flex items-end p-1.5">
+                    <span className="text-white text-[10px] font-medium leading-tight line-clamp-2">{s.name}</span>
+                  </div>
                 </button>
               ))}
             </div>
