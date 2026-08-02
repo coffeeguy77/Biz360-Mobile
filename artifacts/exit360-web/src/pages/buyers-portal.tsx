@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Logo } from "@/components/Logo";
 
 interface Permissions {
   canViewImReport: boolean;
@@ -429,11 +430,8 @@ export function BuyersPortal() {
         <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/">
-              <div className="flex items-center gap-2 cursor-pointer">
-                <div className="w-8 h-8 rounded-md grid place-items-center theme-btn-gradient">
-                  <Eye className="text-primary-foreground" size={16} />
-                </div>
-                <span className="font-bold">EXIT360</span>
+              <div className="flex items-center cursor-pointer text-foreground">
+                <Logo height={28} />
               </div>
             </Link>
             <span className="text-border">/</span>

@@ -12,6 +12,7 @@ import {
   Loader2, CheckCircle2, Building2, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/Logo";
 
 type Step = "phone" | "otp" | "done";
 
@@ -174,11 +175,8 @@ export function BuyersLogin() {
             </button>
           </Link>
           <span className="text-border">|</span>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary rounded flex items-center justify-center">
-              <Eye className="text-primary-foreground" size={13} />
-            </div>
-            <span className="font-bold">EXIT360</span>
+          <div className="flex items-center gap-2 text-foreground">
+            <Logo height={24} />
             <span className="text-xs text-muted-foreground font-medium tracking-wider uppercase">Buyer Portal</span>
           </div>
         </div>

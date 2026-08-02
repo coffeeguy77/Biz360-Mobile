@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { ArrowLeft, Eye, Phone, ShieldCheck, ChevronRight, Loader2, CheckCircle2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { sendEnquiry } from "@/lib/enquiry";
+import { Logo } from "@/components/Logo";
 
 type Step = "phone" | "otp" | "name" | "signedin" | "done";
 
@@ -368,11 +369,8 @@ export function SignIn() {
             </button>
           </Link>
           <span className="text-border">|</span>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary rounded flex items-center justify-center">
-              <Eye className="text-primary-foreground" size={13} />
-            </div>
-            <span className="font-bold">EXIT360</span>
+          <div className="flex items-center text-foreground">
+            <Logo height={24} />
           </div>
         </div>
       </nav>

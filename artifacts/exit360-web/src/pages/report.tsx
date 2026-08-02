@@ -1,5 +1,6 @@
 import { useParams, useLocation } from "wouter";
 import { useEffect, useState, useRef, useMemo, Fragment } from "react";
+import { Logo } from "@/components/Logo";
 import {
   Lock, Download, Phone, Calendar, Shield,
   CheckCircle2, FileText, MapPin, Printer, ChevronRight, Eye,
@@ -1402,9 +1403,11 @@ export function ReportPage() {
             >
               <ArrowLeft size={13} /> <span className="hidden sm:inline">Listing</span>
             </button>
-            <span className={cn("text-xs font-bold tracking-wider", printMode ? "text-slate-400" : "text-blue-500")}>
-              EXIT360
-            </span>
+            {printMode ? (
+              <span className="text-xs font-bold tracking-wider text-slate-400">EXIT360</span>
+            ) : (
+              <Logo height={18} className="text-primary" />
+            )}
             <span className={cn("hidden sm:inline", printMode ? "text-slate-300" : "text-[#1E3A5C]")}>/</span>
             <span className={cn("text-sm font-semibold truncate hidden sm:inline", printMode ? "text-slate-700" : "text-white")}>
               {businessName}

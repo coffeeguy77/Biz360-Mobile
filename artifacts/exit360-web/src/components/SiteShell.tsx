@@ -1,7 +1,8 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { Link } from "wouter";
-import { Eye, Menu, X, User, LogIn } from "lucide-react";
+import { Menu, X, User, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/Logo";
 
 const NAV = [
   { label: "For Buyers",    href: "/buying" },
@@ -34,11 +35,8 @@ export function SiteNav() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
       <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
         <Link href="/">
-          <div className="flex items-center gap-2 cursor-pointer">
-            <div className="w-8 h-8 rounded-md grid place-items-center theme-btn-gradient">
-              <Eye className="text-primary-foreground" size={18} />
-            </div>
-            <span className="text-xl font-bold tracking-tight">EXIT360</span>
+          <div className="flex items-center cursor-pointer text-foreground">
+            <Logo height={30} />
           </div>
         </Link>
         <div className="hidden lg:flex items-center gap-6 text-sm font-medium text-muted-foreground">
@@ -101,11 +99,8 @@ export function SiteFooter() {
     <footer className="border-t border-border bg-card/40 mt-24">
       <div className="max-w-[1440px] mx-auto px-6 py-14 grid gap-10 md:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-md grid place-items-center theme-btn-gradient">
-              <Eye className="text-primary-foreground" size={18} />
-            </div>
-            <span className="text-xl font-bold">EXIT360</span>
+          <div className="flex items-center mb-3 text-foreground">
+            <Logo height={30} />
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             Australia's 360° business-for-sale marketplace. Walk through before you sign.
