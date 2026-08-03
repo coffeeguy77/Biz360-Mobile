@@ -43,9 +43,16 @@ async function findUniqueSlug(base: string, excludeId?: string): Promise<string>
   }
 }
 
+// Canonical AU-mobile owner key so a seller matches whether their id is
+// u-<phone>, u-<phone>-<ts>, +61…, 0… etc (same fix used across the app/web).
+function ownerKey(id?: string | null): string {
+  let d = String(id ?? "").replace(/^u-/, "").replace(/\D/g, "").replace(/^0+/, "");
+  if (d.startsWith("61")) d = d.slice(2);
+  return d.slice(0, 9);
+}
 async function assertCafeOwner(cafeId: string, userId: string) {
-  const [cafe] = await db.select().from(cafesTable).where(and(eq(cafesTable.id, cafeId), eq(cafesTable.ownerId, userId)));
-  if (!cafe) { const err: any = new Error("Café not found or access denied"); err.status = 403; throw err; }
+  const [cafe] = await db.select().from(cafesTable).where(eq(cafesTable.id, cafeId));
+  if (!cafe || ownerKey(cafe.ownerId) !== ownerKey(userId)) { const err: any = new Error("Café not found or access denied"); err.status = 403; throw err; }
   return cafe;
 }
 export { assertCafeOwner };
