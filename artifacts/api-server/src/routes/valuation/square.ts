@@ -485,12 +485,16 @@ router.get("/square/categories", async (req, res) => {
 function monthsAgoStr(n: number): string {
   const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10);
 }
+function reqMonths(req: any): number {
+  const n = Number(req.query?.months ?? 12);
+  return [3, 6, 12, 24, 36].includes(n) ? n : 12;
+}
 
-/** 12-month revenue trend (gross/net/orders per month) from the daily cache. */
+/** Revenue trend (gross/net/orders per month) from the daily cache. */
 router.get("/cafes/:cafeId/insights/monthly", async (req, res) => {
   const userId = req.user!.id; const { cafeId } = req.params;
   try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
-  const from = monthsAgoStr(12);
+  const from = monthsAgoStr(reqMonths(req));
   const rows = await db.select({
     month: sql<string>`to_char(${squareOrdersCacheTable.orderDate}, 'YYYY-MM')`,
     gross: sql<string>`coalesce(sum(${squareOrdersCacheTable.grossAmount}),0)`,
@@ -507,7 +511,7 @@ router.get("/cafes/:cafeId/insights/monthly", async (req, res) => {
 router.get("/cafes/:cafeId/insights/day-of-week", async (req, res) => {
   const userId = req.user!.id; const { cafeId } = req.params;
   try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
-  const from = monthsAgoStr(12);
+  const from = monthsAgoStr(reqMonths(req));
   const rows = await db.select({
     dow: sql<string>`extract(dow from ${squareOrdersCacheTable.orderDate})`,
     total: sql<string>`coalesce(sum(${squareOrdersCacheTable.grossAmount}),0)`,
@@ -524,11 +528,33 @@ router.get("/cafes/:cafeId/insights/day-of-week", async (req, res) => {
   return res.json({ days: out });
 });
 
+/** Connection + freshness meta for the insights UI. */
+router.get("/cafes/:cafeId/insights/meta", async (req, res) => {
+  const userId = req.user!.id; const { cafeId } = req.params;
+  try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
+  const [sqInt] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "square"), eq(cafeIntegrationsTable.status, "connected")));
+  const [agg] = await db.select({
+    lastDate: sql<string>`max(${squareOrdersCacheTable.orderDate})`,
+    firstDate: sql<string>`min(${squareOrdersCacheTable.orderDate})`,
+    days: sql<string>`count(*)`,
+  }).from(squareOrdersCacheTable).where(eq(squareOrdersCacheTable.cafeId, cafeId));
+  const [catAgg] = await db.select({ n: sql<string>`count(distinct ${squareCategoryCacheTable.categoryName})` })
+    .from(squareCategoryCacheTable).where(eq(squareCategoryCacheTable.cafeId, cafeId));
+  return res.json({
+    squareConnected: !!sqInt,
+    merchantName: sqInt?.merchantName ?? null,
+    lastSyncedDate: agg?.lastDate ?? null,
+    firstDate: agg?.firstDate ?? null,
+    cachedDays: Number(agg?.days ?? 0),
+    categoryCount: Number(catAgg?.n ?? 0),
+  });
+});
+
 /** Top categories/items by revenue and popularity (best available "top dishes"). */
 router.get("/cafes/:cafeId/insights/top-categories", async (req, res) => {
   const userId = req.user!.id; const { cafeId } = req.params;
   try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
-  const from = monthsAgoStr(12);
+  const from = monthsAgoStr(reqMonths(req));
   const rows = await db.select({
     name: squareCategoryCacheTable.categoryName,
     total: sql<string>`coalesce(sum(${squareCategoryCacheTable.grossAmount}),0)`,
