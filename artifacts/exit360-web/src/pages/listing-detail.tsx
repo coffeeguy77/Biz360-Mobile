@@ -359,6 +359,7 @@ export function ListingDetail() {
   const listingId = params?.id ?? "";
   const [listing, setListing] = useState<Listing | null>(null);
   const [listingLoading, setListingLoading] = useState(true);
+  const [publicViews, setPublicViews] = useState<number | null>(null);
   const [buyerSignedIn, setBuyerSignedIn] = useState(false);
   useEffect(() => {
     try { setBuyerSignedIn(!!localStorage.getItem("exit360_buyer_token")); } catch { /* ignore */ }
@@ -538,6 +539,10 @@ export function ListingDetail() {
         setListingLoading(false);
       })
       .catch(() => { if (!cancelled) { setListing(null); setListingLoading(false); } });
+    // Real view count lives in the analytics counter, not the static listing field.
+    fetch(`/api/biz360/kv/biz360_analytics_v1_${encodeURIComponent(listingId)}`)
+      .then((r) => r.json()).then((d) => { const v = d?.value?.views; if (!cancelled && typeof v === "number") setPublicViews(v); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [listingId]);
 
@@ -1071,7 +1076,7 @@ export function ListingDetail() {
                 )}
                 <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
                   <Eye size={18} className="text-primary" />
-                  <div><div className="font-semibold">{listing.viewCount} views</div><div className="text-xs text-muted-foreground">Buyer interest so far</div></div>
+                  <div><div className="font-semibold">{(publicViews ?? listing.viewCount).toLocaleString()} views</div><div className="text-xs text-muted-foreground">Buyer interest so far</div></div>
                 </div>
               </div>
             </div>

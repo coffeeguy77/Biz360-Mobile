@@ -1055,7 +1055,10 @@ export function ReportPage() {
 
     // Resolve bearer token: prefer exchanged previewToken (mobile seller preview)
     // over localStorage. The raw JWT is never passed in the URL.
-    const authToken = previewToken || localStorage.getItem("biz360_auth_token") || null;
+    // Include the WEB seller token (biz360_web_auth_token) as well as the app
+    // token key, so a seller opening their own report from the web dashboard is
+    // recognised as the owner and never sees it locked / behind an NDA.
+    const authToken = previewToken || localStorage.getItem("biz360_auth_token") || localStorage.getItem("biz360_web_auth_token") || null;
 
     // Buyer portal JWT — if the buyer is logged into the portal, send their JWT so
     // the server can check group membership and unlock approved_buyers sections without
