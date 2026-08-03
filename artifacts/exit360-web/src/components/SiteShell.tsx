@@ -48,11 +48,19 @@ export function SiteNav() {
           <Link href="/listings"><Button variant="outline" className="hidden md:inline-flex">Browse Listings</Button></Link>
           {/* Persistent portal / sign-in — sign in once, message & reveal phones across every listing */}
           {signedIn ? (
-            <Link href="/buyers/portal"><Button variant="outline" className="gap-1.5"><User size={15} /> <span className="hidden sm:inline">My Portal</span></Button></Link>
+            <details className="relative group">
+              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-background hover:border-primary/50 text-sm"><User size={15} /> <span className="hidden sm:inline">Account</span></summary>
+              <div className="absolute right-0 mt-2 w-52 rounded-xl border border-border bg-card shadow-2xl p-1 z-50">
+                <Link href="/buyers/portal"><div className="px-3 py-2 rounded-lg hover:bg-muted text-sm cursor-pointer">My Portal <span className="text-[11px] text-muted-foreground">· buyer</span></div></Link>
+                <Link href="/seller"><div className="px-3 py-2 rounded-lg hover:bg-muted text-sm cursor-pointer">Seller dashboard <span className="text-[11px] text-muted-foreground">· selling</span></div></Link>
+                <Link href="/seller"><div className="px-3 py-2 rounded-lg hover:bg-muted text-sm cursor-pointer text-primary font-semibold">＋ Start selling</div></Link>
+                <button onClick={() => { try { localStorage.removeItem("exit360_buyer_token"); localStorage.removeItem("biz360_web_auth_token"); } catch {} window.location.href = "/"; }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted text-sm text-red-400">Sign out</button>
+              </div>
+            </details>
           ) : (
             <Link href="/buyers"><Button variant="outline" className="gap-1.5"><LogIn size={15} /> <span className="hidden sm:inline">Sign in</span></Button></Link>
           )}
-          <Link href="/list-your-business"><Button className="theme-btn-gradient border-0 hidden sm:inline-flex">List a Business</Button></Link>
+          <Link href="/list-your-business"><Button className="theme-btn-gradient border-0 hidden sm:inline-flex">Start selling</Button></Link>
           <button className="lg:hidden w-9 h-9 grid place-items-center rounded-lg bg-muted flex-shrink-0" onClick={() => setOpen((o) => !o)}>
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>

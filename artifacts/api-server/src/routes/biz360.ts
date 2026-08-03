@@ -1567,17 +1567,20 @@ router.post("/biz360/auth/verify-otp", async (req, res): Promise<void> => {
     if (approved) {
       const userId = `u-${phone.replace(/\D/g, "")}`;
       let token: string | null = null;
+      let buyerToken: string | null = null;
       const jwtSecret = process.env.JWT_SECRET;
       if (jwtSecret) {
         const { SignJWT } = await import("jose");
         const secret = new TextEncoder().encode(jwtSecret);
         token = await new SignJWT({ sub: userId })
-          .setProtectedHeader({ alg: "HS256" })
-          .setIssuedAt()
-          .setExpirationTime("90d")
-          .sign(secret);
+          .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("90d").sign(secret);
+        // Also mint a buyer-portal token so ONE sign-in unlocks both the seller
+        // dashboard and the buyer portal (unified phone identity).
+        const e164 = `+${phone.replace(/\D/g, "")}`;
+        buyerToken = await new SignJWT({ phone: e164, role: "buyer_portal" })
+          .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("90d").sign(secret);
       }
-      res.json({ ok: true, token, userId });
+      res.json({ ok: true, token, buyerToken, userId });
     } else {
       res.status(400).json({ error: "Incorrect or expired code" });
     }

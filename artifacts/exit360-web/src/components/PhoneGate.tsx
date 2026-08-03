@@ -52,6 +52,8 @@ export function PhoneGate({
       const r = await fetch("/api/biz360/auth/verify-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: e164, code }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.token) throw new Error(d.message || d.error || "Invalid code");
+      // Unified session: one sign-in also signs into the buyer portal.
+      try { if (d.buyerToken) localStorage.setItem("exit360_buyer_token", d.buyerToken); } catch { /* ignore */ }
       onVerified(d.token, d.userId ?? `u-${e164.replace(/\D/g, "")}`, e164);
     } catch (e: any) { setError(e.message ?? "Verification failed."); setOtp(Array(6).fill("")); refs.current[0]?.focus(); } finally { setLoading(false); }
   }

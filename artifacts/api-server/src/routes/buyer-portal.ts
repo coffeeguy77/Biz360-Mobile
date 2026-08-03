@@ -284,7 +284,15 @@ router.post("/buyer-portal/auth/verify", async (req, res): Promise<void> => {
     let buyerName: string | null = null;
     try { buyerName = (await upsertBuyer(canonical, name))?.name ?? null; } catch { /* non-fatal */ }
     const token = await signBuyerToken(canonical);
-    res.json({ ok: true, token, phone: canonical, name: buyerName });
+    // Also mint a seller token so ONE sign-in unlocks the seller dashboard too
+    // (unified phone identity: buyer by default, seller when they own a listing).
+    let sellerToken: string | null = null;
+    try {
+      const secret = getNdaSecret();
+      sellerToken = await new SignJWT({ sub: `u-${canonical.replace(/\D/g, "")}` })
+        .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("90d").sign(secret);
+    } catch { /* non-fatal */ }
+    res.json({ ok: true, token, sellerToken, phone: canonical, name: buyerName });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Verification failed";
     res.status(400).json({ error: msg });

@@ -140,8 +140,12 @@ export function BuyersLogin() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Invalid code — please try again");
-      // Store buyer JWT
-      try { localStorage.setItem("exit360_buyer_token", data.token); } catch {}
+      // Store buyer JWT — and the seller token too, so one sign-in unlocks both
+      // the buyer portal and the seller dashboard (unified phone identity).
+      try {
+        localStorage.setItem("exit360_buyer_token", data.token);
+        if (data.sellerToken) localStorage.setItem("biz360_web_auth_token", data.sellerToken);
+      } catch {}
       setStep("done");
       // Brief success flash then redirect
       setTimeout(() => navigate("/buyers/portal"), 900);
