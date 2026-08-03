@@ -26,6 +26,7 @@ import { TourEditor } from "@/pages/tour-editor";
 import { EquipmentEditor } from "@/pages/equipment-editor";
 import { ReportBuilder } from "@/pages/report-builder";
 import { Valuation } from "@/pages/valuation";
+import { Leases } from "@/pages/leases";
 import { BrokerAnalytics } from "@/pages/broker-analytics";
 
 const queryClient = new QueryClient();
@@ -57,6 +58,7 @@ function Router() {
       <Route path="/seller/equipment/:listingId" component={EquipmentEditor} />
       <Route path="/seller/report/:listingId" component={ReportBuilder} />
       <Route path="/seller/valuation/:listingId" component={Valuation} />
+      <Route path="/seller/leases" component={Leases} />
       <Route path="/broker/analytics/:listingId" component={BrokerAnalytics} />
       <Route component={NotFound} />
     </Switch>

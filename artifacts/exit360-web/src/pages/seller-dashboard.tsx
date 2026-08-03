@@ -113,7 +113,10 @@ export function SellerDashboard() {
             <h1 className="text-3xl font-extrabold tracking-tight">Seller dashboard</h1>
             <p className="text-muted-foreground">Everything here stays in sync with the EXIT360 app.</p>
           </div>
-          <button onClick={signOut} className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-border bg-card/50 hover:border-primary/50"><LogOut size={14} /> Sign out</button>
+          <div className="flex items-center gap-2">
+            <Link href="/seller/leases"><button className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-border bg-card/50 hover:border-primary/50"><FileText size={14} /> Leases</button></Link>
+            <button onClick={signOut} className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-border bg-card/50 hover:border-primary/50"><LogOut size={14} /> Sign out</button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
