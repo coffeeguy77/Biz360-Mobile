@@ -90,11 +90,17 @@ const router = Router();
  * Verify a listing belongs to the authenticated user by checking val_cafes.
  * Returns the cafe row or throws a 403-tagged error.
  */
+function ownerKey(id?: string | null): string {
+  let d = String(id ?? "").replace(/^u-/, "").replace(/\D/g, "").replace(/^0+/, "");
+  if (d.startsWith("61")) d = d.slice(2);
+  return d.slice(0, 9);
+}
 async function assertListingOwner(listingId: string, ownerId: string) {
-  const [cafe] = await db
-    .select()
-    .from(cafesTable)
-    .where(and(eq(cafesTable.listingId, listingId), eq(cafesTable.ownerId, ownerId)));
+  // Canonical-phone match so the web token (u-<phone>) matches an app-created
+  // cafe regardless of id-format differences.
+  const rows = await db.select().from(cafesTable).where(eq(cafesTable.listingId, listingId));
+  const me = ownerKey(ownerId);
+  const cafe = rows.find((c) => ownerKey(c.ownerId) === me);
   if (!cafe) {
     const err: Error & { status?: number } = new Error("Listing not found or access denied");
     err.status = 403;

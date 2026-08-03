@@ -208,7 +208,7 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
               {listing.city && <p className="text-sm text-muted-foreground">{listing.city}</p>}
             </div>
             <div className="flex gap-2 flex-wrap justify-end">
-              <Link href={`/reports/${listing.listingId}`}><Button size="sm" variant="outline" className="gap-1.5"><FileText size={14} /> Report</Button></Link>
+              <Link href={`/seller/report/${listing.listingId}`}><Button size="sm" variant="outline" className="gap-1.5"><FileText size={14} /> Report builder</Button></Link>
               <Link href={`/listings/${listing.listingId}`}><Button size="sm" variant="outline" className="gap-1.5"><Compass size={14} /> Listing</Button></Link>
               <Link href={`/seller/tour/${listing.listingId}`}><Button size="sm" className="gap-1.5 theme-btn-gradient border-0"><Layers size={14} /> Tour editor</Button></Link>
               <Link href={`/seller/equipment/${listing.listingId}`}><Button size="sm" variant="outline" className="gap-1.5"><Settings size={14} /> Equipment</Button></Link>
