@@ -480,5 +480,67 @@ router.get("/square/categories", async (req, res) => {
   return res.json({ categories, hasCategoryData: categories.length > 0 });
 });
 
+// ─── Square intelligence — trends, day-of-week, top items ────────────────────
+
+function monthsAgoStr(n: number): string {
+  const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10);
+}
+
+/** 12-month revenue trend (gross/net/orders per month) from the daily cache. */
+router.get("/cafes/:cafeId/insights/monthly", async (req, res) => {
+  const userId = req.user!.id; const { cafeId } = req.params;
+  try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
+  const from = monthsAgoStr(12);
+  const rows = await db.select({
+    month: sql<string>`to_char(${squareOrdersCacheTable.orderDate}, 'YYYY-MM')`,
+    gross: sql<string>`coalesce(sum(${squareOrdersCacheTable.grossAmount}),0)`,
+    net: sql<string>`coalesce(sum(${squareOrdersCacheTable.netAmount}),0)`,
+    orders: sql<string>`coalesce(sum(${squareOrdersCacheTable.orderCount}),0)`,
+  }).from(squareOrdersCacheTable)
+    .where(and(eq(squareOrdersCacheTable.cafeId, cafeId), gte(squareOrdersCacheTable.orderDate, from)))
+    .groupBy(sql`to_char(${squareOrdersCacheTable.orderDate}, 'YYYY-MM')`)
+    .orderBy(sql`to_char(${squareOrdersCacheTable.orderDate}, 'YYYY-MM')`);
+  return res.json({ months: rows.map((r) => ({ month: r.month, gross: Number(r.gross) || 0, net: Number(r.net) || 0, orders: Number(r.orders) || 0 })) });
+});
+
+/** Average takings by day of the week (which days are strongest). */
+router.get("/cafes/:cafeId/insights/day-of-week", async (req, res) => {
+  const userId = req.user!.id; const { cafeId } = req.params;
+  try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
+  const from = monthsAgoStr(12);
+  const rows = await db.select({
+    dow: sql<string>`extract(dow from ${squareOrdersCacheTable.orderDate})`,
+    total: sql<string>`coalesce(sum(${squareOrdersCacheTable.grossAmount}),0)`,
+    days: sql<string>`count(*)`,
+    orders: sql<string>`coalesce(sum(${squareOrdersCacheTable.orderCount}),0)`,
+  }).from(squareOrdersCacheTable)
+    .where(and(eq(squareOrdersCacheTable.cafeId, cafeId), gte(squareOrdersCacheTable.orderDate, from)))
+    .groupBy(sql`extract(dow from ${squareOrdersCacheTable.orderDate})`);
+  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const out = rows.map((r) => {
+    const dow = Number(r.dow) || 0, days = Number(r.days) || 1, total = Number(r.total) || 0;
+    return { dow, day: names[dow], avgGross: Math.round(total / days), totalGross: Math.round(total), totalOrders: Number(r.orders) || 0, tradingDays: days };
+  }).sort((a, b) => b.avgGross - a.avgGross);
+  return res.json({ days: out });
+});
+
+/** Top categories/items by revenue and popularity (best available "top dishes"). */
+router.get("/cafes/:cafeId/insights/top-categories", async (req, res) => {
+  const userId = req.user!.id; const { cafeId } = req.params;
+  try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
+  const from = monthsAgoStr(12);
+  const rows = await db.select({
+    name: squareCategoryCacheTable.categoryName,
+    total: sql<string>`coalesce(sum(${squareCategoryCacheTable.grossAmount}),0)`,
+    orders: sql<string>`coalesce(sum(${squareCategoryCacheTable.orderCount}),0)`,
+  }).from(squareCategoryCacheTable)
+    .where(and(eq(squareCategoryCacheTable.cafeId, cafeId), gte(squareCategoryCacheTable.orderDate, from)))
+    .groupBy(squareCategoryCacheTable.categoryName)
+    .orderBy(desc(sql`sum(${squareCategoryCacheTable.grossAmount})`))
+    .limit(25);
+  const items = rows.map((r) => ({ name: String(r.name).replace(/^__item__/, ""), total: Math.round(Number(r.total) || 0), orders: Number(r.orders) || 0 }));
+  return res.json({ items });
+});
+
 export { calculateAndSaveSnapshot };
 export default router;

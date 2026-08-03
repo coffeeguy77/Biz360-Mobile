@@ -68,7 +68,17 @@ function donePage(title: string, message: string, ok: boolean, provider: string,
   const status = ok ? "success" : "error";
   const deepLink = `${APP_SCHEME}://oauth/done?provider=${provider}&status=${status}&detail=${encodeURIComponent(detail)}`;
   return `<!DOCTYPE html><html><head><title>${title}</title><meta name="viewport" content="width=device-width,initial-scale=1">
-<script>window.location.href=${JSON.stringify(deepLink)};</script>
+<script>
+  // Web popup: tell the opener and close. Native app: deep-link back.
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ exit360OAuth: { provider: ${JSON.stringify(provider)}, status: ${JSON.stringify(status)} } }, "*");
+      setTimeout(function(){ try { window.close(); } catch(e){} }, 600);
+    } else {
+      window.location.href = ${JSON.stringify(deepLink)};
+    }
+  } catch (e) { window.location.href = ${JSON.stringify(deepLink)}; }
+</script>
 <style>body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#FAF7F2;color:#1a0a00;padding:24px;text-align:center}
 .icon{width:72px;height:72px;border-radius:36px;background:${color}20;display:flex;align-items:center;justify-content:center;font-size:32px;color:${color};margin:0 auto 20px}
 h1{color:${color};margin:0 0 12px}p{color:#8A7060;max-width:340px;margin:0}</style></head>

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import {
   LayoutDashboard, Eye, ShieldCheck, Users, FileText, Compass, Share2, Copy, Check,
   Settings, LogOut, Smartphone, Plus, BarChart3, Loader2, Layers, Star,
-  MessageSquare, Send, Inbox, Phone, Mail, Clock,
+  MessageSquare, Send, Inbox, Phone, Mail, Clock, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
@@ -212,6 +212,7 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
               <Link href={`/listings/${listing.listingId}`}><Button size="sm" variant="outline" className="gap-1.5"><Compass size={14} /> Listing</Button></Link>
               <Link href={`/seller/tour/${listing.listingId}`}><Button size="sm" className="gap-1.5 theme-btn-gradient border-0"><Layers size={14} /> Tour editor</Button></Link>
               <Link href={`/seller/equipment/${listing.listingId}`}><Button size="sm" variant="outline" className="gap-1.5"><Settings size={14} /> Equipment</Button></Link>
+              <Link href={`/seller/valuation/${listing.listingId}`}><Button size="sm" variant="outline" className="gap-1.5"><TrendingUp size={14} /> Valuation</Button></Link>
             </div>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
