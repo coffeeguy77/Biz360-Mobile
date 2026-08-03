@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
 import { SiteShell } from "@/components/SiteShell";
 import { PhoneGate } from "@/components/PhoneGate";
+import { ListingForm } from "@/components/ListingForm";
 
 const TOKEN_KEY = "biz360_web_auth_token";
 
@@ -125,7 +126,7 @@ export function SellerDashboard() {
 
         {tab === "listings" ? (
           creating ? (
-            <NewListingForm token={token} onDone={() => { setCreating(false); load(); }} onCancel={() => setCreating(false)} />
+            <ListingForm mode="create" token={token} onDone={() => { setCreating(false); load(); }} onCancel={() => setCreating(false)} />
           ) : loading ? (
             <div className="text-center py-20 text-muted-foreground flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={18} /> Loading your listings…</div>
           ) : listings.length === 0 ? (
@@ -213,7 +214,7 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
             </div>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
-            <StatChip icon={Eye} label="Views" value={stats?.reportViews ?? 0} />
+            <StatChip icon={Eye} label="Views" value={(stats as any)?.views ?? stats?.reportViews ?? 0} />
             <StatChip icon={Users} label="Buyers" value={stats?.uniqueBuyers ?? 0} />
             <StatChip icon={ShieldCheck} label="NDAs" value={stats?.ndaSigned ?? 0} />
             <StatChip icon={Compass} label="Tours" value={stats?.tourClicks ?? 0} />
@@ -889,79 +890,12 @@ function SellerCRM({ listings, token, onGoMessages }: { listings: Listing[]; tok
 }
 
 // ─── Edit listing details (web) ───────────────────────────────────────────────
-const STATES = ["VIC", "NSW", "QLD", "SA", "WA", "TAS", "ACT", "NT"];
 function EditDetails({ listing, token, onSaved }: { listing: Listing; token: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [f, setF] = useState<any>(null);
-  const auth = { Authorization: `Bearer ${token}` };
-
-  async function loadOne() {
-    setLoading(true);
-    try {
-      const j = await fetch("/api/biz360/kv/biz360_admin_pending_v2").then((r) => r.json());
-      const rec = (Array.isArray(j?.value) ? j.value : []).find((l: any) => l?.listingId === listing.listingId) ?? {};
-      setF({
-        businessName: rec.businessName ?? listing.businessName ?? "",
-        suburb: rec.suburb ?? "", state: rec.state ?? "VIC", category: rec.category ?? "",
-        description: rec.description ?? "",
-        priceDisplay: rec.priceDisplay ?? "askingPrice",
-        askingPrice: rec.askingPrice ? String(rec.askingPrice) : "",
-        askingPriceMin: rec.askingPriceMin ? String(rec.askingPriceMin) : "",
-        askingPriceMax: rec.askingPriceMax ? String(rec.askingPriceMax) : "",
-      });
-    } finally { setLoading(false); }
-  }
-  function toggle() { const n = !open; setOpen(n); if (n && !f) loadOne(); }
-  async function save() {
-    if (!f) return;
-    setSaving(true); setSaved(false);
-    try {
-      await fetch(`/api/biz360/seller/listings/${listing.listingId}`, { method: "PUT", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify(f) });
-      setSaved(true); onSaved(); setTimeout(() => setSaved(false), 2000);
-    } finally { setSaving(false); }
-  }
-  const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
-
   return (
     <div className="mt-3">
-      <button onClick={toggle} className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold"><FileText size={14} /> Edit details</button>
-      {open && (
-        <div className="mt-3 rounded-xl border border-border bg-background/50 p-4">
-          {loading || !f ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading…</div> : (
-            <div className="grid sm:grid-cols-2 gap-3">
-              <label className="text-xs font-semibold sm:col-span-2">Business name
-                <input value={f.businessName} onChange={(e) => set("businessName", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
-              </label>
-              <label className="text-xs font-semibold">Suburb
-                <input value={f.suburb} onChange={(e) => set("suburb", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
-              </label>
-              <label className="text-xs font-semibold">State
-                <select value={f.state} onChange={(e) => set("state", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60">{STATES.map((s) => <option key={s} value={s}>{s}</option>)}</select>
-              </label>
-              <label className="text-xs font-semibold sm:col-span-2">Category
-                <input value={f.category} onChange={(e) => set("category", e.target.value)} placeholder="e.g. Food & Beverage" className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
-              </label>
-              <label className="text-xs font-semibold sm:col-span-2">Description
-                <textarea value={f.description} onChange={(e) => set("description", e.target.value)} rows={4} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
-              </label>
-              <label className="text-xs font-semibold">Price display
-                <select value={f.priceDisplay} onChange={(e) => set("priceDisplay", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60">
-                  <option value="askingPrice">Asking price</option><option value="poa">POA</option>
-                </select>
-              </label>
-              <label className="text-xs font-semibold">Asking price ($)
-                <input value={f.askingPrice} onChange={(e) => set("askingPrice", e.target.value)} placeholder="e.g. 1800000" className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-normal outline-none focus:border-primary/60" />
-              </label>
-              <div className="sm:col-span-2">
-                <Button size="sm" onClick={save} disabled={saving} className="theme-btn-gradient border-0">{saving ? "Saving…" : saved ? <><Check size={14} className="mr-1" /> Saved</> : "Save details"}</Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold"><FileText size={14} /> Edit details</button>
+      {open && <div className="mt-3"><ListingForm mode="edit" listingId={listing.listingId} token={token} onDone={() => { setOpen(false); onSaved(); }} onCancel={() => setOpen(false)} /></div>}
     </div>
   );
 }

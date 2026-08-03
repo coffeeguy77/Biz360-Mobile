@@ -475,8 +475,22 @@ router.get("/public/listing/:listingId/analytics", async (req, res): Promise<voi
       ndaSigned = sigs.length;
     } catch { /* table may be empty */ }
 
+    // Unify "views" with the app + public listing: use the shared analytics
+    // counter (biz360_analytics_v1_<id>.views) so every surface shows the same
+    // number; fall back to the report_viewed log count if the blob is absent.
+    let analyticsViews: number | null = null;
+    let analyticsTourStarts: number | null = null;
+    try {
+      const [arow] = await db.select().from(kvStore).where(eq(kvStore.key, `biz360_analytics_v1_${listingId}`));
+      const av = (arow?.value ?? {}) as any;
+      if (typeof av?.views === "number") analyticsViews = av.views;
+      if (typeof av?.tourStarts === "number") analyticsTourStarts = av.tourStarts;
+    } catch { /* blob optional */ }
+
     const stats = {
+      views:        analyticsViews ?? c("report_viewed"),
       reportViews:  c("report_viewed"),
+      tourStarts:   analyticsTourStarts ?? (c("tour_clicked") + c("tour_start")),
       tourClicks:   c("tour_clicked") + c("tour_start"),
       pdfDownloads: c("pdf_downloaded"),
       requestInfo:  c("request_info") + c("access_requested"),
@@ -626,6 +640,37 @@ router.get("/public/partners", async (req, res): Promise<void> => {
 // Lets a phone-verified seller start a listing on the website. Photos, the 360°
 // tour and the financial report are enriched in the app, but the core record is
 // created here and is immediately owned by (and synced to) the seller's account.
+// Full listing field set — kept in sync with the app's create-listing form so a
+// listing built on web carries the same information as one built in the app.
+const LISTING_CATEGORIES = ["Food & Beverage", "Health & Beauty", "Services", "Health & Fitness", "Retail", "Professional Services", "Manufacturing", "Hospitality", "Technology", "Transport"];
+const LISTING_STATES = ["VIC", "NSW", "QLD", "WA", "SA", "ACT", "TAS", "NT"];
+const FRANCHISE_OPTIONS = ["Independent", "Franchise", "License Agreement", "Cooperative"];
+const STAT_OPTS = ["sde", "staffCount", "weeklyRevenue", "rent", "equipmentValue", "ownerHours", "leaseExpiry", "none"];
+const BADGES = ["identity", "abn", "financials", "lease", "equipment", "tour", "broker", "accountant", "seller_supplied"];
+function applyListingFields(cur: any, b: Record<string, unknown>): void {
+  const num = (v: unknown) => parseInt(String(v ?? "").replace(/[^0-9]/g, ""), 10) || 0;
+  const str = (v: unknown, max = 4000) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
+  const setStr = (k: string, max = 500) => { const v = str(b[k], max); if (v !== undefined) cur[k] = v; };
+  const setNum = (k: string) => { if (b[k] !== undefined) cur[k] = num(b[k]); };
+  if (typeof b.businessName === "string" && b.businessName.trim().length >= 2) cur.businessName = b.businessName.trim();
+  setStr("suburb"); setStr("description", 4000); setStr("leaseExpiry"); setStr("leaseOptions");
+  setStr("trainingPeriod"); setStr("reasonForSale", 4000); setStr("growthOpportunities", 4000); setStr("risks", 4000);
+  setStr("sellerPhone", 40); setStr("subcategory");
+  if (typeof b.category === "string" && (LISTING_CATEGORIES.includes(b.category) || b.category)) cur.category = b.category;
+  if (typeof b.state === "string" && LISTING_STATES.includes(b.state)) cur.state = b.state;
+  if (typeof b.franchiseStatus === "string" && FRANCHISE_OPTIONS.includes(b.franchiseStatus)) cur.franchiseStatus = b.franchiseStatus;
+  if (typeof b.stat2Display === "string" && STAT_OPTS.includes(b.stat2Display)) cur.stat2Display = b.stat2Display;
+  if (typeof b.stat3Display === "string" && STAT_OPTS.includes(b.stat3Display)) cur.stat3Display = b.stat3Display;
+  if (b.priceDisplay === "askingPrice" || b.priceDisplay === "poa" || b.priceDisplay === "weeklyRevenue") cur.priceDisplay = b.priceDisplay;
+  if (b.contactPreference === "message" || b.contactPreference === "call" || b.contactPreference === "broker_only") cur.contactPreference = b.contactPreference;
+  setNum("askingPrice"); setNum("askingPriceMin"); setNum("askingPriceMax"); setNum("weeklyRevenue");
+  setNum("adjustedProfit"); setNum("rent"); setNum("staffCount"); setNum("ownerHours"); setNum("equipmentValue");
+  if (b.confidential !== undefined) cur.confidential = !!b.confidential;
+  if (Array.isArray(b.photos)) cur.photos = (b.photos as unknown[]).filter((p) => typeof p === "string").slice(0, 12);
+  if (Array.isArray(b.badges)) cur.badges = (b.badges as unknown[]).filter((x) => typeof x === "string" && BADGES.includes(x));
+  if (typeof b.heroColor === "string") cur.heroColor = b.heroColor;
+}
+
 /** Edit an existing listing's core fields (owner only, canonical-phone match). */
 router.put("/biz360/seller/listings/:listingId", async (req, res): Promise<void> => {
   const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
@@ -641,19 +686,7 @@ router.put("/biz360/seller/listings/:listingId", async (req, res): Promise<void>
     if (idx < 0) { res.status(404).json({ error: "Listing not found" }); return; }
     if (ownerBase(listings[idx].submittedBy) !== ownerBase(ownerId)) { res.status(403).json({ error: "Not your listing" }); return; }
     const cur = listings[idx];
-    const set = (k: string, v: unknown) => { if (v !== undefined) cur[k] = v; };
-    if (typeof b.businessName === "string" && b.businessName.trim().length >= 2) cur.businessName = b.businessName.trim();
-    set("suburb", typeof b.suburb === "string" ? b.suburb.trim() : undefined);
-    set("state", typeof b.state === "string" ? b.state : undefined);
-    set("category", typeof b.category === "string" ? b.category : undefined);
-    if (typeof b.description === "string") cur.description = b.description.trim().slice(0, 4000);
-    if (b.askingPrice !== undefined) cur.askingPrice = num(b.askingPrice);
-    if (b.askingPriceMin !== undefined) cur.askingPriceMin = num(b.askingPriceMin);
-    if (b.askingPriceMax !== undefined) cur.askingPriceMax = num(b.askingPriceMax);
-    if (b.priceDisplay === "askingPrice" || b.priceDisplay === "poa" || b.priceDisplay === "weeklyRevenue") cur.priceDisplay = b.priceDisplay;
-    if (b.confidential !== undefined) cur.confidential = !!b.confidential;
-    if (Array.isArray(b.photos)) cur.photos = (b.photos as unknown[]).filter((p) => typeof p === "string").slice(0, 30);
-    if (typeof b.heroColor === "string") cur.heroColor = b.heroColor;
+    applyListingFields(cur, b);
     listings[idx] = cur;
     await db.insert(kvStore).values({ key: "biz360_admin_pending_v2", value: listings })
       .onConflictDoUpdate({ target: kvStore.key, set: { value: listings } });
@@ -670,12 +703,12 @@ router.post("/biz360/seller/listings", async (req, res): Promise<void> => {
   const b = req.body as Record<string, unknown>;
   const businessName = String(b.businessName ?? "").trim();
   if (businessName.length < 2) { res.status(400).json({ error: "Business name is required" }); return; }
-  const num = (v: unknown) => parseInt(String(v ?? "").replace(/[^0-9]/g, ""), 10) || 0;
+  const PALETTE = ["#2563EB", "#7C3AED", "#0891B2", "#059669", "#D97706", "#DC2626", "#0F766E", "#9333EA"];
   try {
     const profile = await loadSellerProfile(ownerId).catch(() => ({} as any));
     const now = Date.now();
     const listingId = `user-listing-${now}`;
-    const item = {
+    const item: any = {
       id: `p-${now}`,
       listingId,
       submittedAt: now,
@@ -684,18 +717,17 @@ router.post("/biz360/seller/listings", async (req, res): Promise<void> => {
       submittedByName: profile?.displayName || "Seller",
       submittedByRole: "seller",
       businessName,
-      suburb: String(b.suburb ?? "").trim() || "Unknown",
-      state: String(b.state ?? "VIC"),
-      category: String(b.category ?? "Other"),
-      description: String(b.description ?? "").trim().slice(0, 4000),
-      confidential: !!b.confidential,
-      askingPrice: num(b.askingPrice),
-      askingPriceMin: num(b.askingPriceMin),
-      askingPriceMax: num(b.askingPriceMax),
-      priceDisplay: (b.priceDisplay === "weeklyRevenue" || b.priceDisplay === "poa") ? b.priceDisplay : "askingPrice",
+      suburb: "Unknown",
+      state: "VIC",
+      category: "Other",
+      priceDisplay: "askingPrice",
+      contactPreference: "message",
+      heroColor: PALETTE[now % PALETTE.length],
       photos: [] as string[],
       badges: [] as string[],
     };
+    applyListingFields(item, b);
+    if (!item.suburb) item.suburb = "Unknown";
     const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
     const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
     listings.push(item);
