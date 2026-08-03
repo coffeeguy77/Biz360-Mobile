@@ -5,6 +5,7 @@ import { sendEnquiry, enquiryLabel } from "@/lib/enquiry";
 // listing viewer gets the identical movement system instead of at-feet pins.
 import { buildMultiSceneSrcdoc, useImmersive, immersiveWrapStyle } from "@/components/InteractiveTour";
 import { SiteNav } from "@/components/SiteShell";
+import { SaleStatusBadge } from "@/components/SaleStatusBadge";
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   ArrowLeft,
@@ -1008,7 +1009,10 @@ export function ListingDetail() {
                   </span>
                 )}
               </div>
-              <h1 className="text-3xl font-bold mb-2">{listing.businessName}</h1>
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <h1 className="text-3xl font-bold">{listing.businessName}</h1>
+                <SaleStatusBadge status={(liveData?.listing as any)?.saleStatus} />
+              </div>
               <div className="flex items-center gap-2 text-muted-foreground text-sm">
                 <MapPin size={14} />
                 <span>{listing.suburb}, {listing.state}</span>

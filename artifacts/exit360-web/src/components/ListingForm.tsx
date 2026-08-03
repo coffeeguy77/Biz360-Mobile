@@ -2,8 +2,37 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2, Check, X, Upload, Star, Trash2 } from "lucide-react";
 
-// Kept in sync with the app's create-listing form so web ↔ app listings match.
-const CATEGORIES = ["Food & Beverage", "Health & Beauty", "Services", "Health & Fitness", "Retail", "Professional Services", "Manufacturing", "Hospitality", "Technology", "Transport"];
+// Comprehensive category tree modelled on the leading AU business-for-sale sites
+// (BusinessesForSale, SEEK Business, Commercial Real Estate, AnyBusiness).
+const CATEGORY_TREE: Record<string, string[]> = {
+  "Food & Beverage": ["Café", "Restaurant", "Takeaway / Fast Food", "Bakery", "Coffee / Roastery", "Bar / Pub / Tavern", "Catering", "Food Truck", "Juice / Smoothie", "Function Venue", "Other food & beverage"],
+  "Retail": ["Clothing / Fashion", "Convenience Store", "Newsagency / Tobacconist", "Supermarket / Grocery", "Pharmacy / Chemist", "Homewares / Giftware", "Florist", "Liquor / Bottle Shop", "Pet / Aquarium", "Electronics", "Jewellery", "Hardware", "Other retail"],
+  "Hospitality & Accommodation": ["Hotel / Motel", "Bed & Breakfast", "Caravan Park / Camping", "Backpackers / Hostel", "Serviced Apartments", "Function / Events"],
+  "Health & Beauty": ["Hair Salon", "Beauty Salon", "Nail Salon", "Day Spa", "Massage", "Tanning", "Tattoo / Piercing", "Cosmetic / Injectables"],
+  "Health & Medical": ["Medical Practice / GP", "Dental", "Physiotherapy", "Allied Health", "Optometry", "Pharmacy", "Veterinary", "Aged Care / NDIS"],
+  "Health & Fitness": ["Gym / Fitness Centre", "Personal Training / Studio", "Yoga / Pilates", "Martial Arts", "Sports Club"],
+  "Professional Services": ["Accounting / Bookkeeping", "Legal", "Real Estate Agency", "Financial / Insurance", "Consulting", "Marketing / Advertising", "Recruitment", "Architecture / Design"],
+  "Trade & Services": ["Cleaning", "Landscaping / Gardening", "Plumbing", "Electrical", "Building / Construction", "Automotive / Mechanic", "Car Wash / Detailing", "Locksmith", "Pest Control", "Waste / Skip"],
+  "Manufacturing & Industrial": ["Food Manufacturing", "Engineering / Fabrication", "Textiles / Apparel", "Signage / Printing", "Joinery / Cabinetry", "Chemical / Plastics", "Other manufacturing"],
+  "Automotive": ["Dealership", "Mechanic / Workshop", "Panel / Smash Repair", "Tyres", "Car Wash", "Spare Parts", "Towing"],
+  "Transport & Logistics": ["Courier / Delivery", "Freight / Trucking", "Removalist", "Warehousing", "Taxi / Rideshare"],
+  "Education & Childcare": ["Childcare / Daycare", "Tutoring", "Training / RTO", "Driving School", "Early Learning"],
+  "Technology": ["Software / SaaS", "IT Services / MSP", "E-commerce", "Web / Digital Agency", "App / Development"],
+  "Import / Export / Wholesale": ["Wholesale", "Distribution", "Import", "Export"],
+  "Franchise": ["Food Franchise", "Retail Franchise", "Services Franchise", "Other Franchise"],
+  "Leisure & Entertainment": ["Cinema / Theatre", "Amusement / Arcade", "Sports / Recreation", "Tourism / Tours", "Events / Ticketing"],
+  "Agriculture & Rural": ["Farming", "Orchard / Vineyard", "Nursery / Landscaping supply", "Aquaculture", "Livestock"],
+  "Home & Garden": ["Nursery / Garden Centre", "Furniture", "Interiors / Decor", "Pool / Spa"],
+  "Online / Internet": ["Online Store", "Content / Media", "Marketplace", "Subscription / Membership"],
+  "Other": ["Other"],
+};
+const CATEGORIES = Object.keys(CATEGORY_TREE);
+const SALE_STATUS: { v: string; label: string }[] = [
+  { v: "available", label: "Available" }, { v: "new", label: "New listing" }, { v: "hot", label: "Hot / High demand" },
+  { v: "price_reduced", label: "Price reduced" }, { v: "under_offer", label: "Under offer" }, { v: "under_contract", label: "Under contract" },
+  { v: "sold", label: "Sold" }, { v: "coming_soon", label: "Coming soon" },
+];
+const TENURE = ["", "Leasehold", "Freehold", "Freehold going concern", "Franchise", "Licence"];
 const STATES = ["VIC", "NSW", "QLD", "WA", "SA", "ACT", "TAS", "NT"];
 const FRANCHISE = ["Independent", "Franchise", "License Agreement", "Cooperative"];
 const STAT_OPTS: { v: string; label: string }[] = [
@@ -48,7 +77,7 @@ async function fileToB64(file: File): Promise<{ data: string; mime: string }> {
 }
 
 export interface ListingFormValues {
-  businessName: string; category: string; state: string; suburb: string; description: string; confidential: boolean;
+  businessName: string; category: string; subcategory: string; saleStatus: string; tenure: string; state: string; suburb: string; description: string; confidential: boolean;
   priceDisplay: string; askingPrice: string; askingPriceMin: string; askingPriceMax: string; weeklyRevenue: string;
   adjustedProfit: string; rent: string; staffCount: string; ownerHours: string; leaseExpiry: string; leaseOptions: string;
   stat2Display: string; stat3Display: string; franchiseStatus: string; trainingPeriod: string; reasonForSale: string;
@@ -56,7 +85,7 @@ export interface ListingFormValues {
   badges: string[]; photos: string[];
 }
 const EMPTY: ListingFormValues = {
-  businessName: "", category: "", state: "VIC", suburb: "", description: "", confidential: false,
+  businessName: "", category: "", subcategory: "", saleStatus: "available", tenure: "", state: "VIC", suburb: "", description: "", confidential: false,
   priceDisplay: "askingPrice", askingPrice: "", askingPriceMin: "", askingPriceMax: "", weeklyRevenue: "",
   adjustedProfit: "", rent: "", staffCount: "", ownerHours: "", leaseExpiry: "", leaseOptions: "",
   stat2Display: "sde", stat3Display: "staffCount", franchiseStatus: "", trainingPeriod: "", reasonForSale: "",
@@ -84,7 +113,7 @@ export function ListingForm({ mode, listingId, token, onDone, onCancel }: {
         const n = (v: any) => (v ? String(v) : "");
         setF({
           ...EMPTY,
-          businessName: s(rec.businessName), category: s(rec.category), state: s(rec.state) || "VIC", suburb: s(rec.suburb === "Unknown" ? "" : rec.suburb),
+          businessName: s(rec.businessName), category: s(rec.category), subcategory: s(rec.subcategory), saleStatus: s(rec.saleStatus) || "available", tenure: s(rec.tenure), state: s(rec.state) || "VIC", suburb: s(rec.suburb === "Unknown" ? "" : rec.suburb),
           description: s(rec.description), confidential: !!rec.confidential, priceDisplay: s(rec.priceDisplay) || "askingPrice",
           askingPrice: n(rec.askingPrice), askingPriceMin: n(rec.askingPriceMin), askingPriceMax: n(rec.askingPriceMax), weeklyRevenue: n(rec.weeklyRevenue),
           adjustedProfit: n(rec.adjustedProfit), rent: n(rec.rent), staffCount: n(rec.staffCount), ownerHours: n(rec.ownerHours),
@@ -138,9 +167,12 @@ export function ListingForm({ mode, listingId, token, onDone, onCancel }: {
 
       <Section title="Basics">
         <Field label="Business name *" span><input value={f.businessName} onChange={(e) => set("businessName", e.target.value)} className={inp} placeholder="e.g. Bean Culture Coffee Roastery" /></Field>
-        <Field label="Category"><Chips options={CATEGORIES} value={f.category} onChange={(v) => set("category", v)} /></Field>
+        <Field label="Category"><select value={f.category} onChange={(e) => { set("category", e.target.value); set("subcategory", ""); }} className={inp}><option value="">— choose —</option>{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+        <Field label="Subcategory"><select value={f.subcategory} onChange={(e) => set("subcategory", e.target.value)} className={inp} disabled={!f.category}><option value="">— choose —</option>{(CATEGORY_TREE[f.category] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
         <Field label="State"><Chips options={STATES} value={f.state} onChange={(v) => set("state", v)} /></Field>
         <Field label="Suburb"><input value={f.suburb} onChange={(e) => set("suburb", e.target.value)} className={inp} placeholder="e.g. Mitchell" /></Field>
+        <Field label="Sale status"><select value={f.saleStatus} onChange={(e) => set("saleStatus", e.target.value)} className={inp}>{SALE_STATUS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select></Field>
+        <Field label="Tenure"><select value={f.tenure} onChange={(e) => set("tenure", e.target.value)} className={inp}>{TENURE.map((t) => <option key={t} value={t}>{t || "— not set —"}</option>)}</select></Field>
         <Field label="Confidential listing"><Toggle on={f.confidential} onToggle={() => set("confidential", !f.confidential)} label="Hide business name from public search" /></Field>
         <Field label="Description" span><textarea value={f.description} onChange={(e) => set("description", e.target.value)} rows={3} className={inp} placeholder="History, what makes it attractive, what's included…" /></Field>
       </Section>

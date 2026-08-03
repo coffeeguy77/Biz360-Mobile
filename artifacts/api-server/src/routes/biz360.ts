@@ -656,8 +656,11 @@ function applyListingFields(cur: any, b: Record<string, unknown>): void {
   setStr("suburb"); setStr("description", 4000); setStr("leaseExpiry"); setStr("leaseOptions");
   setStr("trainingPeriod"); setStr("reasonForSale", 4000); setStr("growthOpportunities", 4000); setStr("risks", 4000);
   setStr("sellerPhone", 40); setStr("subcategory");
-  if (typeof b.category === "string" && (LISTING_CATEGORIES.includes(b.category) || b.category)) cur.category = b.category;
+  if (typeof b.category === "string" && b.category.trim()) cur.category = b.category.trim();
   if (typeof b.state === "string" && LISTING_STATES.includes(b.state)) cur.state = b.state;
+  const SALE_STATUS = ["available", "new", "hot", "under_offer", "under_contract", "sold", "price_reduced", "leased", "coming_soon"];
+  if (typeof b.saleStatus === "string" && SALE_STATUS.includes(b.saleStatus)) cur.saleStatus = b.saleStatus;
+  if (typeof b.tenure === "string") cur.tenure = b.tenure.trim().slice(0, 40); // leasehold / freehold / franchise
   if (typeof b.franchiseStatus === "string" && FRANCHISE_OPTIONS.includes(b.franchiseStatus)) cur.franchiseStatus = b.franchiseStatus;
   if (typeof b.stat2Display === "string" && STAT_OPTS.includes(b.stat2Display)) cur.stat2Display = b.stat2Display;
   if (typeof b.stat3Display === "string" && STAT_OPTS.includes(b.stat3Display)) cur.stat3Display = b.stat3Display;
