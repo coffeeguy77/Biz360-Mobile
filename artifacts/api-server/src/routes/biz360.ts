@@ -61,6 +61,38 @@ async function verifyNdaToken(token: string, listingId: string): Promise<boolean
 
 // ─── KV store ─────────────────────────────────────────────────────────────────
 
+const THREADS_KEY = "biz360_threads_v3";
+
+/** Stable identity for a message, so we can union without duplicates. */
+function msgKey(m: any): string {
+  return String(m?.id ?? `${m?.from ?? ""}|${m?.timestamp ?? ""}|${m?.text ?? ""}`);
+}
+/**
+ * Merge two message-thread maps WITHOUT ever losing threads or messages. Used
+ * whenever a client writes the whole threads object, so a stale or empty write
+ * can never wipe history (root cause of two prior message-loss incidents):
+ *  - every thread present in EITHER side is kept
+ *  - each thread's messages = union by id (never shrinks)
+ *  - metadata (name/updatedAt/unread) takes the incoming value when provided
+ */
+function mergeThreads(existing: Record<string, any>, incoming: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = { ...(existing || {}) };
+  for (const [tid, inc] of Object.entries(incoming || {})) {
+    const cur = out[tid];
+    if (!cur) { out[tid] = inc; continue; }
+    const byKey = new Map<string, any>();
+    for (const m of (cur.messages ?? [])) byKey.set(msgKey(m), m);
+    for (const m of ((inc as any).messages ?? [])) if (!byKey.has(msgKey(m))) byKey.set(msgKey(m), m);
+    const messages = [...byKey.values()].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+    out[tid] = {
+      ...cur, ...(inc as any),
+      messages,
+      updatedAt: Math.max(cur.updatedAt ?? 0, (inc as any).updatedAt ?? 0),
+    };
+  }
+  return out;
+}
+
 router.get("/biz360/kv/:key", async (req, res): Promise<void> => {
   const { key } = req.params;
   try {
@@ -79,16 +111,85 @@ router.put("/biz360/kv/:key", async (req, res): Promise<void> => {
     return;
   }
   try {
+    let toWrite: unknown = value;
+    // Message threads are append-only: merge with what's already stored so a
+    // stale/empty write from any client (app, web, portal) can't delete history.
+    if (key === THREADS_KEY && value && typeof value === "object" && !Array.isArray(value)) {
+      const [cur] = await db.select().from(kvStore).where(eq(kvStore.key, key));
+      const existing = (cur?.value && typeof cur.value === "object" && !Array.isArray(cur.value)) ? (cur.value as Record<string, any>) : {};
+      toWrite = mergeThreads(existing, value as Record<string, any>);
+    }
     await db
       .insert(kvStore)
-      .values({ key, value })
+      .values({ key, value: toWrite })
       .onConflictDoUpdate({
         target: kvStore.key,
-        set: { value, updatedAt: new Date() },
+        set: { value: toWrite, updatedAt: new Date() },
       });
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "DB error" });
+  }
+});
+
+// ─── Messaging: atomic, append-only (never rewrites the whole store) ──────────
+
+/** Append one message to a thread. Creates the thread if needed. Atomic jsonb
+ *  operations so concurrent sends from app/web/portal can't clobber each other. */
+router.post("/biz360/threads/append", async (req, res): Promise<void> => {
+  const b = req.body as { threadId?: string; listingId?: string; listingName?: string; buyerId?: string; buyerName?: string; sellerName?: string; from?: string; text?: string };
+  const from = b.from === "seller" ? "seller" : "buyer";
+  if (!b.threadId || !b.text || !b.listingId) { res.status(400).json({ error: "threadId, listingId and text are required" }); return; }
+  const threadId = b.threadId;
+  const msg = { id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, from, text: String(b.text).slice(0, 5000), timestamp: Date.now() };
+  const newThread = {
+    id: threadId, listingId: b.listingId, listingName: b.listingName ?? "", buyerId: b.buyerId ?? "",
+    buyerName: b.buyerName ?? "", sellerName: b.sellerName ?? "Seller",
+    messages: [msg], updatedAt: msg.timestamp, unreadSeller: 0, unreadBuyer: 0,
+  };
+  const unreadField = from === "buyer" ? "unreadSeller" : "unreadBuyer";
+  try {
+    // Ensure the row exists, then append (or create the thread) atomically.
+    await db.execute(sql`
+      INSERT INTO kv_store (key, value) VALUES (${THREADS_KEY}, ${JSON.stringify({ [threadId]: newThread })}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = CASE
+        WHEN jsonb_exists(kv_store.value, ${threadId})
+          THEN jsonb_set(
+                 jsonb_set(kv_store.value, ARRAY[${threadId}, 'messages'],
+                   COALESCE(kv_store.value->${threadId}->'messages', '[]'::jsonb) || ${JSON.stringify([msg])}::jsonb),
+                 ARRAY[${threadId}, 'updatedAt'], ${String(msg.timestamp)}::jsonb)
+          ELSE jsonb_set(COALESCE(kv_store.value, '{}'::jsonb), ARRAY[${threadId}], ${JSON.stringify(newThread)}::jsonb)
+        END,
+        updated_at = now()`);
+    // Bump the recipient's unread counter atomically.
+    await db.execute(sql`
+      UPDATE kv_store SET value = jsonb_set(value, ARRAY[${threadId}, ${unreadField}],
+        ((COALESCE((value->${threadId}->>${unreadField})::int, 0) + 1))::text::jsonb),
+        updated_at = now()
+      WHERE key = ${THREADS_KEY} AND jsonb_exists(value, ${threadId})`);
+    // Reset the sender's own unread.
+    const senderField = from === "buyer" ? "unreadBuyer" : "unreadSeller";
+    await db.execute(sql`
+      UPDATE kv_store SET value = jsonb_set(value, ARRAY[${threadId}, ${senderField}], '0'::jsonb)
+      WHERE key = ${THREADS_KEY} AND jsonb_exists(value, ${threadId})`);
+    res.json({ ok: true, message: msg });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Could not send message" });
+  }
+});
+
+/** Zero a thread's unread counter for one side, atomically. */
+router.post("/biz360/threads/mark-read", async (req, res): Promise<void> => {
+  const { threadId, side } = req.body as { threadId?: string; side?: string };
+  if (!threadId) { res.status(400).json({ error: "threadId required" }); return; }
+  const field = side === "buyer" ? "unreadBuyer" : "unreadSeller";
+  try {
+    await db.execute(sql`
+      UPDATE kv_store SET value = jsonb_set(value, ARRAY[${threadId}, ${field}], '0'::jsonb)
+      WHERE key = ${THREADS_KEY} AND jsonb_exists(value, ${threadId})`);
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
   }
 });
 

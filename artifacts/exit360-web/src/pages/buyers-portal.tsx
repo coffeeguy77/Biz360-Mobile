@@ -386,16 +386,11 @@ export function BuyersPortal() {
       return [{ id: threadId, listingId: item.listingId!, listingName: item.businessName, sellerName: "Seller", buyerId: myId, messages: [optimistic], updatedAt: optimistic.timestamp, unreadBuyer: 0, unreadSeller: 1 }, ...prev];
     });
     try {
-      const r = await fetch("/api/biz360/kv/biz360_threads_v3");
-      const j = await r.json();
-      const all = (j?.value ?? {}) as Record<string, any>;
-      if (!all[threadId]) all[threadId] = { id: threadId, listingId: item.listingId, listingName: item.businessName, sellerName: "Seller", buyerName: data?.name ?? "Buyer", buyerId: myId, messages: [], updatedAt: 0, unreadBuyer: 0, unreadSeller: 0 };
-      all[threadId].messages = [...(all[threadId].messages ?? []), optimistic];
-      all[threadId].updatedAt = optimistic.timestamp;
-      all[threadId].unreadSeller = (all[threadId].unreadSeller ?? 0) + 1;
-      all[threadId].unreadBuyer = 0;
-      await fetch("/api/biz360/kv/biz360_threads_v3", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: all }) });
-      setThreads((prev) => prev.map((t) => (t.id === threadId ? { ...all[threadId] } : t)));
+      // Atomic append — never rewrites the whole store, so messages can't be lost.
+      await fetch("/api/biz360/threads/append", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId, listingId: item.listingId, listingName: item.businessName, buyerId: myId, buyerName: data?.name ?? "Buyer", sellerName: existing?.sellerName ?? "Seller", from: "buyer", text }),
+      });
       fetch("/api/biz360/notify-message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threadId, from: "buyer" }) }).catch(() => {});
     } catch { /* ignore */ }
   }

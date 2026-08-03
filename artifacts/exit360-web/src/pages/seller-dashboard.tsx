@@ -710,11 +710,8 @@ function SellerInbox({ listings, myPhoneDigits }: { listings: Listing[]; myPhone
   const selected = threads.find((t) => t.id === selId) ?? null;
 
   async function markRead(threadId: string) {
-    try {
-      const r = await fetch("/api/biz360/kv/biz360_threads_v3"); const j = await r.json();
-      const all = (j?.value ?? {}) as Record<string, any>;
-      if (all[threadId]) { all[threadId].unreadSeller = 0; await fetch("/api/biz360/kv/biz360_threads_v3", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: all }) }); }
-    } catch { /* ignore */ }
+    // Atomic — only zeroes a counter, never rewrites the message store.
+    fetch("/api/biz360/threads/mark-read", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threadId, side: "seller" }) }).catch(() => {});
   }
   function openThread(t: InboxThread) {
     setSelId(t.id);
@@ -729,16 +726,12 @@ function SellerInbox({ listings, myPhoneDigits }: { listings: Listing[]; myPhone
     setThreads((prev) => prev.map((t) => (t.id === selected.id ? { ...t, messages: [...(t.messages ?? []), msg], updatedAt: msg.timestamp } : t)));
     setReply("");
     try {
-      const r = await fetch("/api/biz360/kv/biz360_threads_v3"); const j = await r.json();
-      const all = (j?.value ?? {}) as Record<string, any>;
-      const t = all[selected.id];
-      if (t) {
-        t.messages = [...(t.messages ?? []), msg];
-        t.updatedAt = msg.timestamp; t.sellerName = t.sellerName || "Seller";
-        t.unreadBuyer = (t.unreadBuyer ?? 0) + 1; t.unreadSeller = 0;
-        await fetch("/api/biz360/kv/biz360_threads_v3", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: all }) });
-        fetch("/api/biz360/notify-message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threadId: selected.id, from: "seller" }) }).catch(() => {});
-      }
+      // Atomic append — never rewrites the whole store, so nothing can be lost.
+      await fetch("/api/biz360/threads/append", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId: selected.id, listingId: selected.listingId, listingName: nameById[selected.listingId] ?? selected.listingName, buyerId: selected.buyerId, buyerName: selected.buyerName, sellerName: selected.sellerName || "Seller", from: "seller", text }),
+      });
+      fetch("/api/biz360/notify-message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threadId: selected.id, from: "seller" }) }).catch(() => {});
     } finally { setSending(false); }
   }
 
