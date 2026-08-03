@@ -203,6 +203,9 @@ export function Leases() {
         {view.name === "detail" && view.leaseId && (
           <Detail leaseId={view.leaseId} leases={leases} allClauses={allClauses} addDraft={addDraft} setView={setView} />
         )}
+        {view.name === "builder" && (
+          <Builder addDraft={addDraft} setView={setView} />
+        )}
         {view.name === "drafts" && (
           <Drafts drafts={drafts} draftId={view.draftId} deleteDraft={deleteDraft} setView={setView} />
         )}
@@ -277,8 +280,9 @@ function ClauseCard({ clause, onClick }: { clause: Clause; onClick?: () => void 
 const ACTIONS = [
   { icon: UploadCloud, label: "Upload & Analyse", view: "upload", color: "#3B82F6", bg: "#1E3A5C" },
   { icon: BookOpen, label: "Clause Library", view: "library", color: "#8B5CF6", bg: "#2D1B69" },
-  { icon: Copy, label: "Templates", view: "templates", color: "#EC4899", bg: "#4A0020" },
+  { icon: Edit3, label: "Lease Builder", view: "builder", color: "#F59E0B", bg: "#431407" },
   { icon: FileText, label: "My Drafts", view: "drafts", color: "#16A34A", bg: "#052E16" },
+  { icon: Copy, label: "Templates", view: "templates", color: "#EC4899", bg: "#4A0020" },
 ];
 
 function Hub({ leases, drafts, allClauses, setView, deleteLease }: any) {
@@ -303,7 +307,7 @@ function Hub({ leases, drafts, allClauses, setView, deleteLease }: any) {
         <Stat value={drafts.length} label="Drafts" color="#86EFAC" />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         {ACTIONS.map(a => (
           <button key={a.label} onClick={() => setView({ name: a.view })}
             className="rounded-2xl border p-4 text-left transition hover:brightness-110"
@@ -810,6 +814,222 @@ function Templates({ authHeaders, setView }: any) {
         </div>
       )}
     </>
+  );
+}
+
+// ─── Lease Builder (guided draft generator, ported from app) ──────────────────
+const B_JURISDICTIONS = ["ACT", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT"];
+const B_LEASE_TYPES = [{ value: "commercial", label: "Commercial" }, { value: "retail", label: "Retail" }, { value: "licence", label: "Licence" }, { value: "mixed", label: "Mixed" }];
+const B_PREMISES = [
+  { value: "cafe", label: "Café (General)" }, { value: "kiosk", label: "Kiosk" }, { value: "restaurant", label: "Restaurant" },
+  { value: "office-foyer-cafe", label: "Office Foyer Café" }, { value: "shopping-centre-cafe", label: "Shopping Centre Café" },
+  { value: "street-front-cafe", label: "Street Front Café" }, { value: "outdoor-seating-cafe", label: "Outdoor Seating Café" },
+];
+const B_POSITIONS = [
+  { value: "tenant-friendly", label: "Tenant Friendly", desc: "Maximum protections — best for negotiation" },
+  { value: "balanced", label: "Balanced", desc: "Reasonable protections on both sides" },
+  { value: "landlord-friendly", label: "Landlord Friendly", desc: "Use only as a reference" },
+];
+const B_LICENCE_AREAS = [
+  { key: "outdoor-seating-licence", label: "Outdoor Seating Area" }, { key: "foyer-licence", label: "Building Foyer" },
+  { key: "storage-licence", label: "Storage Area" }, { key: "peppercorn-common-areas", label: "Common Areas" },
+];
+const B_PROTECTIONS = [
+  { key: "rent-reduction-occupancy", label: "Occupancy Rent Reduction", risk: "high" }, { key: "rent-abatement-works", label: "Rent Abatement During Works", risk: "high" },
+  { key: "no-rent-approvals", label: "No Rent Until DA Approved", risk: "critical" }, { key: "no-rent-services", label: "No Rent — No Services", risk: "critical" },
+  { key: "outgoings-cap", label: "Outgoings Cap", risk: "medium" }, { key: "exclude-vacant-outgoings", label: "Exclude Vacant Outgoings", risk: "medium" },
+  { key: "cafe-exclusivity", label: "Café Exclusivity", risk: "high" }, { key: "assignment-purchaser", label: "Assignment to Buyer", risk: "medium" },
+  { key: "limited-makegood", label: "Limited Make-Good", risk: "medium" }, { key: "option-to-renew", label: "Option to Renew", risk: "high" },
+  { key: "market-rent-dispute", label: "Market Rent Dispute", risk: "medium" }, { key: "signage-rights", label: "Signage Rights", risk: "low" },
+  { key: "delivery-access", label: "24-Hour Delivery Access", risk: "low" }, { key: "grease-trap", label: "Grease Trap — Landlord", risk: "high" },
+  { key: "landlord-base-building", label: "Landlord Base Building", risk: "medium" }, { key: "landlord-maintenance", label: "Landlord Maintenance", risk: "medium" },
+  { key: "disruption-compensation", label: "Disruption Compensation", risk: "high" }, { key: "termination-approvals", label: "No Termination — Approvals", risk: "high" },
+];
+const PROTECTION_LABELS: Record<string, string> = {
+  "rent-reduction-occupancy": "Building Occupancy Rent Reduction", "rent-abatement-works": "Rent Abatement During Landlord Works",
+  "peppercorn-common-areas": "Peppercorn Rent for Common Areas", "outdoor-seating-licence": "Outdoor Seating Licence",
+  "foyer-licence": "Building Foyer Licence", "storage-licence": "Storage Area Licence", "no-rent-approvals": "No Rent Until DA/Licence Approval",
+  "no-rent-services": "No Rent When Services Unavailable", "landlord-base-building": "Landlord Base Building Obligations",
+  "outgoings-cap": "Outgoings Cap", "exclude-vacant-outgoings": "Exclude Vacant Tenancy Outgoings", "cafe-exclusivity": "Café Exclusivity",
+  "assignment-purchaser": "Assignment to Business Purchaser", "limited-makegood": "Limited Make-Good Obligation",
+  "termination-approvals": "No Termination While Approvals Pending", "landlord-maintenance": "Landlord Structural Maintenance",
+  "disruption-compensation": "Disruption Compensation", "option-to-renew": "Option to Renew", "market-rent-dispute": "Market Rent Dispute Resolution",
+  "signage-rights": "Signage Rights", "delivery-access": "24-Hour Delivery Access", "grease-trap": "Grease Trap & Exhaust Landlord Obligations",
+};
+const PROTECTION_CLAUSES: Record<string, string> = {
+  "rent-reduction-occupancy": "If the overall occupancy of the Building falls below [threshold]% for a continuous period exceeding 30 days, the Base Rent shall be reduced by [percentage]% for the duration of the reduced occupancy. The Landlord must notify the Tenant in writing within 7 days of occupancy falling below the threshold.",
+  "rent-abatement-works": "If the Landlord carries out any works that materially interfere with the Tenant's use and enjoyment of the Premises, Rent shall be abated by a fair and reasonable proportion for the period of interference, as agreed by the parties or determined by an independent valuer.",
+  "peppercorn-common-areas": "Use of any common areas adjacent to the Premises for dining or display is licensed at a peppercorn rent of $1 per annum, irrevocable for the Term and any option periods.",
+  "outdoor-seating-licence": "The Tenant is granted an exclusive licence to use the Outdoor Seating Area delineated on the Plan for outdoor dining for the full Term and any renewal at a peppercorn rent of $1 per annum. The licence cannot be terminated independently of the Lease.",
+  "foyer-licence": "The Tenant is granted a non-exclusive licence to use the Building Foyer area shown on the Plan for coffee service and display during the Tenant's trading hours, at a peppercorn rent, not to be revoked without 90 days' written notice and compensation.",
+  "storage-licence": "The Tenant is granted an exclusive licence to use the Storage Area shown on the Plan for the storage of goods used in connection with the Permitted Use, at a peppercorn rent of $1 per annum.",
+  "no-rent-approvals": "Rent and Outgoings shall not commence until all Development Approvals, food business registrations and other statutory consents required to operate the Permitted Use have been granted and become unconditional. The Tenant must use reasonable endeavours to obtain approvals promptly.",
+  "no-rent-services": "If electricity, gas, water, or sewerage services are unavailable for any period exceeding 4 hours (other than due to the Tenant's act or default), Rent and Outgoings shall be abated in full for the period of unavailability. If unavailability exceeds 5 business days, the Tenant may terminate the Lease without penalty.",
+  "landlord-base-building": "The Landlord is responsible at its cost for the repair, maintenance and replacement of the base building structure, roof, external walls, and all base building services including hydraulic, electrical and mechanical systems serving the Premises.",
+  "outgoings-cap": "The Tenant's total annual Outgoings liability is capped at $[amount] per annum (indexed by CPI). Outgoings shall not include capital expenditure, management fees exceeding 5% of gross income, or costs referable to vacant tenancies.",
+  "exclude-vacant-outgoings": "All Outgoings calculations shall be based on the Building's actual occupation. Costs attributable to vacant tenancies or unoccupied floors shall be excluded from the Tenant's Outgoings contribution.",
+  "cafe-exclusivity": "The Landlord will not lease, licence or permit any part of the Building to be used for the operation of a café, espresso bar, coffee shop, or any business deriving more than 30% of revenue from the retail sale of food or beverages. Breach entitles the Tenant to a rent abatement of [percentage]% per month.",
+  "assignment-purchaser": "The Tenant may assign this Lease to a bona fide purchaser of the Tenant's business on 14 days' written notice, provided the assignee demonstrates sufficient financial capacity. The Landlord must not unreasonably withhold consent. The Tenant is released from all obligations upon completion of assignment.",
+  "limited-makegood": "The Tenant's make-good obligation is limited to: (a) removing trade fixtures and equipment; (b) making good damage caused by such removal; and (c) leaving the Premises clean. The Tenant is not required to remove fixed joinery, structural items or improvements. The Landlord must advise disputed items within 14 days of vacancy.",
+  "termination-approvals": "The Landlord may not terminate this Lease while any application for Development Approval, food business licence or liquor licence is pending before the relevant authority. The Lease continues until the outcome of such applications is determined.",
+  "landlord-maintenance": "The Landlord shall maintain and repair the structure of the Building, roof, foundations, external walls, and all structural components. The Landlord shall complete all structural repairs within 30 days of written notice from the Tenant.",
+  "disruption-compensation": "If any act, omission or works by the Landlord, other tenants or third parties causes material disruption to the Tenant's trading for any period, the Landlord shall compensate the Tenant for lost trading revenue as demonstrated by the Tenant's financial records, in addition to any rent abatement otherwise applicable.",
+  "option-to-renew": "Subject to the Tenant not being in unremedied default, the Tenant has two options to renew for further 5-year terms on 3 months' prior written notice. Rent for each option period shall be at market review, not to exceed CPI + 2% per annum compounded. The Tenant is released from the obligation to pay any increased rent until market rent is formally determined.",
+  "market-rent-dispute": "If the parties cannot agree on market rent within 30 days of the review date, either party may refer determination to an independent valuer appointed by the President of the Australian Property Institute. The valuer acts as expert. Costs are shared equally. Ratchet provisions do not apply — market rent cannot be set below the current rent.",
+  "signage-rights": "The Tenant has the right to install external and internal signage of its choosing, subject to council and statutory approvals. The Tenant shall also be included in the Building's directory, entrance signage, and all wayfinding. The Landlord must not unreasonably withhold or delay consent.",
+  "delivery-access": "The Tenant and its authorised suppliers have 24-hour, 7-day access to delivery areas and loading docks serving the Premises without restriction or additional charge. The Landlord must provide at least 48 hours' notice before restricting delivery access for any reason.",
+  "grease-trap": "The Landlord shall, prior to the Commencement Date, install a grease arrestor of sufficient capacity and a mechanical exhaust system compliant with all statutory requirements. The Landlord is responsible for all maintenance, servicing (including quarterly pump-outs), repair and replacement of these systems throughout the Term.",
+};
+const B_PREMISES_LABELS: Record<string, string> = {
+  cafe: "Café", kiosk: "Kiosk", restaurant: "Restaurant", "office-foyer-cafe": "Office Foyer Café",
+  "shopping-centre-cafe": "Shopping Centre Café", "street-front-cafe": "Street Front Café", "outdoor-seating-cafe": "Outdoor Seating Café",
+};
+const B_POSITION_LABELS: Record<string, string> = { "tenant-friendly": "Tenant Friendly", balanced: "Balanced", "landlord-friendly": "Landlord Friendly" };
+const CRITICAL_PROTECTIONS = ["no-rent-approvals", "no-rent-services", "option-to-renew", "limited-makegood", "assignment-purchaser"];
+
+interface BState { jurisdiction: string; leaseType: string; premisesType: string; position: string; rentStructure: string; outgoingsStructure: string; licenceAreas: string[]; selectedProtections: string[]; occupancyThreshold: number; }
+
+function generateDraft(state: BState, id: string): DraftLease {
+  const sections: DraftSection[] = [];
+  const SEP = "\n\n──────────────────────────────────────────\n\n";
+  sections.push({ id: genId(), type: "schedule", title: "Lease Schedule",
+    content: `LEASE SCHEDULE\n\nJurisdiction: ${state.jurisdiction}\nLease Type: ${state.leaseType.charAt(0).toUpperCase() + state.leaseType.slice(1)}\nPremises Type: ${B_PREMISES_LABELS[state.premisesType]}\nDrafting Position: ${B_POSITION_LABELS[state.position]}\n\nRent Structure: ${state.rentStructure}\nOutgoings Structure: ${state.outgoingsStructure}\nOccupancy Threshold: ${state.occupancyThreshold}%\n\nLicence Areas:\n${state.licenceAreas.length > 0 ? state.licenceAreas.map(a => `  • ${PROTECTION_LABELS[a] ?? a}`).join("\n") : "  None selected"}\n\nThis schedule forms part of the Lease and should be read in conjunction with the Special Conditions below.` });
+  sections.push({ id: genId(), type: "special-conditions", title: "Special Conditions",
+    content: state.selectedProtections.length > 0
+      ? state.selectedProtections.map(k => `SPECIAL CONDITION: ${PROTECTION_LABELS[k] ?? k}\n\n${PROTECTION_CLAUSES[k] ?? `[Clause text for ${PROTECTION_LABELS[k] ?? k} — to be drafted by solicitor]`}`).join(SEP)
+      : "No special conditions selected. Use the Lease Builder to add tenant protections." });
+  sections.push({ id: genId(), type: "licence-clauses", title: "Licence Area Clauses",
+    content: state.licenceAreas.length > 0
+      ? state.licenceAreas.map(k => `LICENCE: ${PROTECTION_LABELS[k] ?? k}\n\n${PROTECTION_CLAUSES[k] ?? `[Licence clause for ${PROTECTION_LABELS[k] ?? k}]`}`).join(SEP)
+      : "No licence areas selected." });
+  const allSelected = [...state.selectedProtections, ...state.licenceAreas];
+  sections.push({ id: genId(), type: "tenant-protections", title: "Tenant Protections Summary",
+    content: allSelected.length > 0 ? `SELECTED PROTECTIONS (${allSelected.length} of 22)\n\n${allSelected.map(k => `✓ ${PROTECTION_LABELS[k] ?? k}`).join("\n")}` : "No protections selected." });
+  sections.push({ id: genId(), type: "summary", title: "Plain English Summary",
+    content: `PLAIN ENGLISH LEASE SUMMARY\n\nThis lease document has been prepared for a ${B_PREMISES_LABELS[state.premisesType]} in ${state.jurisdiction}, taking a ${B_POSITION_LABELS[state.position]} drafting position.\n\nRENT: ${state.rentStructure}\n\nOUTGOINGS: ${state.outgoingsStructure}\n\nKEY PROTECTIONS INCLUDED:\n${state.selectedProtections.slice(0, 8).map(k => `• ${PROTECTION_LABELS[k] ?? k}`).join("\n")}\n\nThis summary is a guide only. You should have a qualified solicitor review the full lease document before signing. Commercial leases are legally binding documents with significant financial consequences.` });
+  sections.push({ id: genId(), type: "checklist", title: "Negotiation Checklist",
+    content: `LEASE NEGOTIATION CHECKLIST\n\nUse this checklist when negotiating with your landlord or solicitor.\n\n${Object.keys(PROTECTION_LABELS).map(k => `${allSelected.includes(k) ? "[✓]" : "[ ]"} ${PROTECTION_LABELS[k]}`).join("\n")}` });
+  const missing = CRITICAL_PROTECTIONS.filter(k => !allSelected.includes(k));
+  sections.push({ id: genId(), type: "red-flags", title: "Red Flag Report",
+    content: missing.length === 0 ? "No critical red flags identified. All recommended protections are included in this draft."
+      : `RED FLAG WARNINGS\n\nThe following critical protections are MISSING from this draft. These are highly recommended for any café lease:\n\n${missing.map(k => `⚠️ MISSING: ${PROTECTION_LABELS[k] ?? k}\n   This is a high-risk omission that could significantly impact your business.`).join("\n\n")}` });
+  return {
+    id, name: `${B_PREMISES_LABELS[state.premisesType]} Lease — ${state.jurisdiction} (${new Date().toLocaleDateString("en-AU")})`,
+    createdAt: new Date().toISOString(), jurisdiction: state.jurisdiction, leaseType: state.leaseType, premisesType: state.premisesType,
+    position: state.position, rentStructure: state.rentStructure, outgoingsStructure: state.outgoingsStructure,
+    licenceAreas: state.licenceAreas, selectedProtections: state.selectedProtections, sections,
+  };
+}
+
+function BChip({ label, selected, onClick, color = "#3B82F6" }: { label: string; selected: boolean; onClick: () => void; color?: string }) {
+  return <button onClick={onClick} className="px-3 py-1.5 rounded-full border text-[13px] font-medium transition"
+    style={{ borderColor: selected ? color : "hsl(var(--border))", background: selected ? color + "20" : "hsl(var(--card))", color: selected ? color : "hsl(var(--muted-foreground))" }}>{label}</button>;
+}
+function BSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="space-y-2.5 mb-6"><h3 className="text-[15px] font-bold">{title}</h3>{children}</div>;
+}
+
+function Builder({ addDraft, setView }: any) {
+  const [step, setStep] = useState(0);
+  const [state, setState] = useState<BState>({
+    jurisdiction: "NSW", leaseType: "commercial", premisesType: "cafe", position: "tenant-friendly",
+    rentStructure: "", outgoingsStructure: "",
+    licenceAreas: [],
+    selectedProtections: ["rent-reduction-occupancy", "no-rent-approvals", "option-to-renew", "limited-makegood", "assignment-purchaser", "cafe-exclusivity", "grease-trap"],
+    occupancyThreshold: 70,
+  });
+  const toggle = (key: string, field: "licenceAreas" | "selectedProtections") =>
+    setState(s => ({ ...s, [field]: s[field].includes(key) ? s[field].filter(k => k !== key) : [...s[field], key] }));
+
+  const steps = ["Jurisdiction & Type", "Premises & Position", "Licence Areas", "Tenant Protections", "Rent & Outgoings"];
+
+  const generate = () => {
+    const id = genId();
+    addDraft(generateDraft(state, id));
+    setView({ name: "drafts", draftId: id });
+  };
+
+  const inp = "w-full rounded-xl border border-border bg-card p-3 text-sm outline-none focus:border-primary/60 resize-none";
+
+  return (
+    <>
+      <div className="flex items-center gap-3 mb-4">
+        <button onClick={() => { if (step > 0) setStep(s => s - 1); else setView({ name: "hub" }); }} className="p-1.5 rounded-lg hover:bg-muted/60"><ArrowLeft size={20} /></button>
+        <div className="flex-1"><h1 className="text-xl font-bold">Lease Builder</h1><p className="text-xs text-muted-foreground">Step {step + 1} of {steps.length}: {steps[step]}</p></div>
+      </div>
+      <div className="flex gap-1 mb-6">
+        {steps.map((_, i) => <button key={i} onClick={() => setStep(i)} className="flex-1 h-1 rounded-full transition" style={{ background: i <= step ? "#2563EB" : "#1E3A5C" }} />)}
+      </div>
+
+      {step === 0 && (<>
+        <BSection title="Jurisdiction"><div className="flex flex-wrap gap-2">{B_JURISDICTIONS.map(j => <BChip key={j} label={j} selected={state.jurisdiction === j} onClick={() => setState(s => ({ ...s, jurisdiction: j }))} />)}</div></BSection>
+        <BSection title="Lease Type"><div className="flex flex-wrap gap-2">{B_LEASE_TYPES.map(lt => <BChip key={lt.value} label={lt.label} selected={state.leaseType === lt.value} onClick={() => setState(s => ({ ...s, leaseType: lt.value }))} color="#8B5CF6" />)}</div></BSection>
+      </>)}
+
+      {step === 1 && (<>
+        <BSection title="Premises Type"><div className="flex flex-wrap gap-2">{B_PREMISES.map(pt => <BChip key={pt.value} label={pt.label} selected={state.premisesType === pt.value} onClick={() => setState(s => ({ ...s, premisesType: pt.value }))} color="#F59E0B" />)}</div></BSection>
+        <BSection title="Drafting Position">{B_POSITIONS.map(pos => (
+          <button key={pos.value} onClick={() => setState(s => ({ ...s, position: pos.value }))}
+            className="w-full flex items-center gap-3 rounded-xl border p-3.5 text-left transition"
+            style={{ borderColor: state.position === pos.value ? "#3B82F6" : "hsl(var(--border))", background: state.position === pos.value ? "#1E3A5C" : "hsl(var(--card))" }}>
+            <div className="flex-1"><div className="font-semibold text-sm" style={{ color: state.position === pos.value ? "#93C5FD" : undefined }}>{pos.label}</div>
+              <div className="text-xs text-muted-foreground">{pos.desc}</div></div>
+            {state.position === pos.value && <CheckCircle2 size={18} color="#3B82F6" />}
+          </button>
+        ))}</BSection>
+      </>)}
+
+      {step === 2 && (
+        <BSection title="Licence Areas (peppercorn rent)">
+          <p className="text-xs text-muted-foreground mb-1">Select any areas you need licenced. These will be added at peppercorn rent ($1/year).</p>
+          {B_LICENCE_AREAS.map(la => <CheckRow key={la.key} label={la.label} checked={state.licenceAreas.includes(la.key)} color="#16A34A" onClick={() => toggle(la.key, "licenceAreas")} />)}
+        </BSection>
+      )}
+
+      {step === 3 && (
+        <BSection title={`Tenant Protections (${state.selectedProtections.length} selected)`}>
+          <p className="text-xs text-muted-foreground mb-1">Select clauses to include. Recommended protections are pre-selected.</p>
+          {B_PROTECTIONS.map(tp => (
+            <CheckRow key={tp.key} label={tp.label} checked={state.selectedProtections.includes(tp.key)} color="#3B82F6" onClick={() => toggle(tp.key, "selectedProtections")}
+              right={<span className="text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ color: RISK_COLORS[tp.risk], background: RISK_COLORS[tp.risk] + "30" }}>{tp.risk}</span>} />
+          ))}
+        </BSection>
+      )}
+
+      {step === 4 && (<>
+        <BSection title="Rent Structure"><textarea rows={3} className={inp} placeholder="e.g. $2,500/week base + annual CPI review, market review at each option" value={state.rentStructure} onChange={e => setState(s => ({ ...s, rentStructure: e.target.value }))} /></BSection>
+        <BSection title="Outgoings Structure"><textarea rows={3} className={inp} placeholder="e.g. Gross lease, all outgoings included. OR Net + proportionate share of building outgoings, capped at $15,000/year" value={state.outgoingsStructure} onChange={e => setState(s => ({ ...s, outgoingsStructure: e.target.value }))} /></BSection>
+        <BSection title={`Occupancy Threshold: ${state.occupancyThreshold}%`}>
+          <p className="text-xs text-muted-foreground mb-1">Rent reduction triggers if building occupancy falls below this level.</p>
+          <div className="flex flex-wrap gap-2">{[50, 60, 70, 75, 80].map(t => <BChip key={t} label={`${t}%`} selected={state.occupancyThreshold === t} onClick={() => setState(s => ({ ...s, occupancyThreshold: t }))} color="#F59E0B" />)}</div>
+        </BSection>
+      </>)}
+
+      <div className="mt-2">
+        {step < steps.length - 1 ? (
+          <button onClick={() => setStep(s => s + 1)} className="w-full rounded-2xl p-4 flex items-center justify-center gap-2 font-semibold text-white" style={{ background: "#2563EB" }}>
+            Next: {steps[step + 1]} <ChevronRight size={16} />
+          </button>
+        ) : (
+          <button onClick={generate} className="w-full rounded-2xl p-4 flex items-center justify-center gap-2 font-semibold text-white" style={{ background: "#16A34A" }}>
+            <FileText size={16} /> Generate Draft
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+function CheckRow({ label, checked, color, onClick, right }: { label: string; checked: boolean; color: string; onClick: () => void; right?: React.ReactNode }) {
+  return (
+    <button onClick={onClick} className="w-full flex items-center gap-3 rounded-xl border p-3 text-left transition"
+      style={{ borderColor: checked ? color : "hsl(var(--border))", background: checked ? color + "1a" : "hsl(var(--card))" }}>
+      <span className="w-5.5 h-5.5 rounded-md border-2 flex items-center justify-center shrink-0" style={{ width: 22, height: 22, borderColor: checked ? color : "#1E3A5C", background: checked ? color : "transparent" }}>
+        {checked && <Check size={12} color="#fff" />}
+      </span>
+      <span className="flex-1 text-[13px] font-medium">{label}</span>
+      {right}
+    </button>
   );
 }
 
