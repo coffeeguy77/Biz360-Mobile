@@ -1107,6 +1107,21 @@ export function ReportPage() {
     }
 
     recordAccessLog(listingId, "report_viewed", versionId ? { versionId } : {});
+
+    // Log an identified report visit (who + when) for the seller's activity feed.
+    // Skip when it's the seller previewing their own report (seller token, no
+    // buyer identity); log identified buyers and anonymous public visitors.
+    try {
+      const portalTok = localStorage.getItem("exit360_buyer_token");
+      const sellerTok = previewToken || localStorage.getItem("biz360_auth_token");
+      const buyerTok = portalTok || accessToken;
+      if (buyerTok || !sellerTok) {
+        fetch(`/api/public/listing/${listingId}/log-view`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ documentType: "report", token: buyerTok || undefined }),
+        }).catch(() => {});
+      }
+    } catch { /* non-fatal */ }
   }, [listingId, versionId, accessToken, previewToken, previewCode]);
 
   // Equipment register — included items with second-hand + replacement values.

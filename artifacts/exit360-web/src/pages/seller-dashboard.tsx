@@ -235,6 +235,7 @@ function ListingCard({ listing, stats, token, myPhoneDigits, onChange }: { listi
               </div>
             </div>
           )}
+          <VisitorActivity listing={listing} token={token} />
           <EditDetails listing={listing} token={token} onSaved={onChange} />
           <TourBuilder listing={listing} token={token} />
           <BuyerAccess listing={listing} token={token} />
@@ -1072,6 +1073,76 @@ function TourBuilder({ listing, token }: { listing: Listing; token: string }) {
             </>
           )}
           {err && <p className="text-xs text-red-500 mt-2">{err}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Report visitor activity ──────────────────────────────────────────────────
+interface Visitor { phone: string | null; name: string | null; anonymous: boolean; visits: number; firstSeen: number; lastSeen: number; docs?: Record<string, number>; }
+function relTime(ts: number): string {
+  if (!ts) return "";
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24); if (d < 30) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString([], { day: "numeric", month: "short" });
+}
+function VisitorActivity({ listing, token }: { listing: Listing; token: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [visitors, setVisitors] = useState<Visitor[] | null>(null);
+  const [totals, setTotals] = useState<{ totalViews: number; uniqueVisitors: number }>({ totalViews: 0, uniqueVisitors: 0 });
+
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/public/listing/${listing.listingId}/visitors`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      setVisitors(Array.isArray(d.visitors) ? d.visitors : []);
+      setTotals({ totalViews: d.totalViews ?? 0, uniqueVisitors: d.uniqueVisitors ?? 0 });
+    } catch { setVisitors([]); } finally { setLoading(false); }
+  }
+  function toggle() { const n = !open; setOpen(n); if (n && visitors === null) load(); }
+
+  return (
+    <div className="mt-3">
+      <button onClick={toggle} className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold"><Clock size={14} /> Visitor activity {visitors && `· ${totals.totalViews} views`}</button>
+      {open && (
+        <div className="mt-3 rounded-xl border border-border bg-background/50 p-4">
+          <p className="text-xs text-muted-foreground mb-3">Who's opened this report, when, and how often. Signed-in buyers show their name/number; others show as anonymous.</p>
+          {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading activity…</div>}
+          {!loading && visitors && (
+            <>
+              <div className="flex gap-4 mb-3">
+                <div><div className="text-lg font-bold">{totals.totalViews}</div><div className="text-[10px] text-muted-foreground uppercase">Total views</div></div>
+                <div><div className="text-lg font-bold">{totals.uniqueVisitors}</div><div className="text-[10px] text-muted-foreground uppercase">Unique visitors</div></div>
+                <div><div className="text-lg font-bold">{visitors.filter((v) => !v.anonymous).length}</div><div className="text-[10px] text-muted-foreground uppercase">Signed-in</div></div>
+              </div>
+              {visitors.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No report visits yet.</p>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {visitors.map((v, i) => (
+                    <div key={i} className="py-2 flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full grid place-items-center text-[11px] font-bold flex-shrink-0 ${v.anonymous ? "bg-muted text-muted-foreground" : "theme-btn-gradient text-primary-foreground"}`}>{v.anonymous ? "?" : (v.name || v.phone || "").replace(/\D/g, "").slice(-2) || "B"}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold truncate">{v.anonymous ? "Anonymous visitor" : (v.name || v.phone)}</div>
+                        <div className="text-[11px] text-muted-foreground">{v.anonymous ? "Not signed in" : v.phone} · first seen {relTime(v.firstSeen)}</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-bold">{v.visits}<span className="text-[10px] font-normal text-muted-foreground"> {v.visits === 1 ? "visit" : "visits"}</span></div>
+                        <div className="text-[10px] text-muted-foreground">last {relTime(v.lastSeen)}</div>
+                      </div>
+                      {!v.anonymous && v.phone && <a href={`tel:${v.phone}`} className="w-7 h-7 grid place-items-center rounded-lg border border-border hover:border-primary/50" title="Call"><Phone size={12} /></a>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

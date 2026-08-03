@@ -1302,13 +1302,22 @@ router.post("/public/listing/:listingId/nda/sign", async (req, res): Promise<voi
 
 router.post("/public/listing/:listingId/log-view", async (req, res): Promise<void> => {
   const { listingId } = req.params;
-  const { phone, documentType } = req.body as { phone?: string; documentType?: string };
+  const { phone, documentType, token } = req.body as { phone?: string; documentType?: string; token?: string };
   try {
     let viewerPhone = phone ?? null;
     const authHeader = req.headers.authorization;
     if (!viewerPhone && authHeader?.startsWith("Bearer ")) {
       const userId = await verifyToken(authHeader.slice(7)).catch(() => null);
       if (userId) viewerPhone = userId.replace(/^u-/, "").replace(/^(\d+)$/, "+$1");
+    }
+    // Resolve the viewer's phone from a buyer-portal or report-access token
+    // (both carry a `phone` claim) so we know WHO opened the report.
+    if (!viewerPhone && token && process.env.JWT_SECRET) {
+      try {
+        const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+        const { payload } = await jwtVerify(token, secret);
+        if (typeof (payload as any).phone === "string") viewerPhone = (payload as any).phone;
+      } catch { /* invalid token — log anonymously */ }
     }
     await db.insert(reportViewEventsTable).values({
       listingId,
@@ -1320,6 +1329,61 @@ router.post("/public/listing/:listingId/log-view", async (req, res): Promise<voi
     res.json({ ok: true });
   } catch {
     res.json({ ok: false });
+  }
+});
+
+// GET /public/listing/:listingId/visitors  (owner only)
+// Seller activity feed: who has opened this report, when, and how many times.
+router.get("/public/listing/:listingId/visitors", async (req, res): Promise<void> => {
+  const { listingId } = req.params;
+  const bearer = req.headers.authorization?.replace("Bearer ", "").trim();
+  const callerId = bearer ? await verifyToken(bearer).catch(() => null) : null;
+  if (!callerId) { res.status(401).json({ error: "Sign in required" }); return; }
+  try {
+    const [lrow] = await db.select().from(kvStore).where(eq(kvStore.key, "biz360_admin_pending_v2"));
+    const listings = Array.isArray(lrow?.value) ? (lrow!.value as any[]) : [];
+    const listing = listings.find((l) => l?.listingId === listingId);
+    if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+    if (ownerBase(listing.submittedBy) !== ownerBase(callerId)) { res.status(403).json({ error: "Not your listing" }); return; }
+
+    const events = await db.select().from(reportViewEventsTable)
+      .where(eq(reportViewEventsTable.listingId, listingId))
+      .orderBy(desc(reportViewEventsTable.openedAt)).limit(3000);
+
+    const tail = (p?: string | null) => { const d = String(p ?? "").replace(/\D/g, ""); return d.length >= 9 ? d.slice(-9) : ""; };
+    type Agg = { phone: string | null; anonymous: boolean; visits: number; firstSeen: number; lastSeen: number; docs: Record<string, number> };
+    const byKey = new Map<string, Agg>();
+    for (const e of events) {
+      const t9 = tail(e.viewerPhone);
+      const key = t9 ? `p:${t9}` : `ip:${e.viewerIp ?? "unknown"}`;
+      const ts = e.openedAt ? new Date(e.openedAt as any).getTime() : 0;
+      const g = byKey.get(key) ?? { phone: t9 ? (e.viewerPhone ?? null) : null, anonymous: !t9, visits: 0, firstSeen: ts || Date.now(), lastSeen: 0, docs: {} };
+      g.visits++;
+      if (ts) { g.lastSeen = Math.max(g.lastSeen, ts); g.firstSeen = Math.min(g.firstSeen, ts); }
+      const dt = String((e as any).documentType ?? "report"); g.docs[dt] = (g.docs[dt] ?? 0) + 1;
+      byKey.set(key, g);
+    }
+
+    // Resolve names for identified visitors.
+    const nameByTail = new Map<string, string>();
+    try {
+      const buyers = await db.select().from(buyersTable);
+      for (const b of buyers) { const t9 = tail(b.phone); if (t9 && b.name) nameByTail.set(t9, b.name); }
+    } catch { /* names are best-effort */ }
+
+    const visitors = [...byKey.values()].map((g) => ({
+      phone: g.phone,
+      name: g.phone ? (nameByTail.get(tail(g.phone)) ?? null) : null,
+      anonymous: g.anonymous,
+      visits: g.visits,
+      firstSeen: g.firstSeen,
+      lastSeen: g.lastSeen,
+      docs: g.docs,
+    })).sort((a, b) => b.lastSeen - a.lastSeen);
+
+    res.json({ visitors, totalViews: events.length, uniqueVisitors: visitors.length });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load visitors" });
   }
 });
 
