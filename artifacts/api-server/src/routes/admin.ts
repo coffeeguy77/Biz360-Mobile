@@ -265,6 +265,25 @@ Australian English spelling. Do not keyword-stuff. Titles must read naturally.`;
   }
 });
 
+// ─── Support inbox ───────────────────────────────────────────────────────────
+const SUPPORT_KEY = "support_requests_v1";
+router.get("/admin/support", requireAdmin, async (_req, res) => {
+  const [row] = await db.select().from(kvStore).where(eq(kvStore.key, SUPPORT_KEY));
+  const list = Array.isArray(row?.value) ? (row!.value as any[]) : [];
+  res.json({ requests: list });
+});
+router.post("/admin/support/:id/resolve", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { resolved = true } = req.body as { resolved?: boolean };
+  const [row] = await db.select().from(kvStore).where(eq(kvStore.key, SUPPORT_KEY));
+  const list = Array.isArray(row?.value) ? (row!.value as any[]) : [];
+  const idx = list.findIndex((r) => r.id === id);
+  if (idx < 0) return res.status(404).json({ error: "Not found" });
+  list[idx].resolved = !!resolved;
+  await db.insert(kvStore).values({ key: SUPPORT_KEY, value: list }).onConflictDoUpdate({ target: kvStore.key, set: { value: list } });
+  res.json({ ok: true });
+});
+
 // ─── Site SEO settings ───────────────────────────────────────────────────────
 router.get("/admin/seo", requireAdmin, async (_req, res) => {
   res.json(await getSiteSettings(true));

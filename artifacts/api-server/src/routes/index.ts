@@ -13,6 +13,7 @@ import reportVisualsRouter from "./report-visuals/index";
 import buyerPortalRouter from "./buyer-portal";
 import listingDocumentsRouter from "./listing-documents/index";
 import adminRouter from "./admin";
+import supportRouter from "./support";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(reportVisualsRouter);
 router.use(buyerPortalRouter);
 router.use(listingDocumentsRouter);
 router.use(adminRouter);
+router.use(supportRouter);
 
 export default router;

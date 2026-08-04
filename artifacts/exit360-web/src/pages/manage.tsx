@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import {
   LayoutDashboard, FileText, FileCheck2, Users, Globe, ShieldCheck, Settings as SettingsIcon,
   Search as SearchIcon, Loader2, Check, X, Ban, RotateCcw, Eye, EyeOff, Save, ArrowLeft,
-  Sparkles, Upload, Image as ImageIcon, TrendingUp, Plus, Minus, Menu, ExternalLink, Type, Activity, Trash2,
+  Sparkles, Upload, Image as ImageIcon, TrendingUp, Plus, Minus, Menu, ExternalLink, Type, Activity, Trash2, LifeBuoy, Mail,
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,7 @@ export function Manage() {
     ["dashboard", "Dashboard", LayoutDashboard],
     ["pages", "Pages & SEO", FileText],
     ["listings", "Listings", FileCheck2],
+    ["support", "Support", LifeBuoy],
     ["users", "Users & roles", Users],
     ["settings", "Site settings", SettingsIcon],
   ];
@@ -101,6 +102,7 @@ export function Manage() {
               {section === "dashboard" && <Dashboard auth={auth} />}
               {section === "pages" && <Pages auth={auth} />}
               {section === "listings" && <Listings auth={auth} />}
+              {section === "support" && <SupportInbox auth={auth} />}
               {section === "users" && <UsersTab auth={auth} isSuper={me.isSuperAdmin} />}
               {section === "settings" && <Settings auth={auth} />}
             </div>
@@ -529,6 +531,46 @@ function UsersTab({ auth, isSuper }: { auth: any; isSuper: boolean }) {
               {u.role && <BusyBtn busy={busy === u.phone} onClick={() => setRole(u.phone, "none")} className="border-red-500/40 text-red-300">Remove</BusyBtn>}
             </div>
           )}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ─── Support inbox ────────────────────────────────────────────────────────────
+function SupportInbox({ auth }: { auth: any }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showResolved, setShowResolved] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(async () => { setLoading(true); try { const d = await fetch("/api/admin/support", { headers: auth }).then((r) => r.json()); setRows(d.requests ?? []); } finally { setLoading(false); } }, []);
+  useEffect(() => { load(); }, [load]);
+  async function resolve(id: string, resolved: boolean) { setBusy(id); try { await fetch(`/api/admin/support/${id}/resolve`, { method: "POST", headers: auth, body: JSON.stringify({ resolved }) }); await load(); } finally { setBusy(null); } }
+  if (loading) return <Loader2 className="animate-spin" />;
+  const shown = rows.filter((r) => showResolved || !r.resolved);
+  const openCount = rows.filter((r) => !r.resolved).length;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm text-muted-foreground">Messages from the <b>Contact our team</b> form and the assistant's fallback. <b>{openCount}</b> open.</p>
+        <label className="text-xs inline-flex items-center gap-2"><input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} /> Show resolved</label>
+      </div>
+      {shown.length === 0 && <Card className="text-center text-sm text-muted-foreground py-8">No messages.</Card>}
+      {shown.map((r) => (
+        <Card key={r.id} className={`!py-3 ${r.resolved ? "opacity-60" : ""}`}>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm">{r.name || "Anonymous"}</span>
+                {r.email && <a href={`mailto:${r.email}`} className="text-[11px] text-primary inline-flex items-center gap-1"><Mail size={11} /> {r.email}</a>}
+                <span className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground">{r.topic}</span>
+                {r.resolved && <span className="text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/40 text-emerald-300">resolved</span>}
+              </div>
+              <p className="text-sm mt-1.5 whitespace-pre-wrap">{r.message}</p>
+              <div className="text-[11px] text-muted-foreground mt-1">{r.path ? `${r.path} · ` : ""}{r.createdAt ? new Date(r.createdAt).toLocaleString("en-AU") : ""}</div>
+            </div>
+            <BusyBtn busy={busy === r.id} onClick={() => resolve(r.id, !r.resolved)} className={r.resolved ? "border-border" : "border-emerald-500/40 text-emerald-300"}>{r.resolved ? "Reopen" : <><Check size={13} /> Resolve</>}</BusyBtn>
+          </div>
         </Card>
       ))}
     </div>

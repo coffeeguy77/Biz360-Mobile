@@ -11,6 +11,7 @@ const NAV = [
   { label: "360° Tours",    href: "/walkthroughs" },
   { label: "How It Works",  href: "/how-it-works" },
   { label: "Compare",       href: "/compare" },
+  { label: "Help",          href: "/help" },
 ];
 
 /** Signed-in when a buyer-portal token is present. Re-checks on focus/nav so the

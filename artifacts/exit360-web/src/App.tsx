@@ -28,6 +28,8 @@ import { ReportBuilder } from "@/pages/report-builder";
 import { Valuation } from "@/pages/valuation";
 import { Leases } from "@/pages/leases";
 import { Manage } from "@/pages/manage";
+import { Help } from "@/pages/help";
+import { HelpAssistant } from "@/components/HelpAssistant";
 import { BrokerAnalytics } from "@/pages/broker-analytics";
 
 const queryClient = new QueryClient();
@@ -61,6 +63,8 @@ function Router() {
       <Route path="/seller/valuation/:listingId" component={Valuation} />
       <Route path="/seller/leases" component={Leases} />
       <Route path="/manage" component={Manage} />
+      <Route path="/help" component={Help} />
+      <Route path="/support" component={Help} />
       <Route path="/broker/analytics/:listingId" component={BrokerAnalytics} />
       <Route component={NotFound} />
     </Switch>
@@ -74,6 +78,7 @@ function App() {
         <AnimatedBackground />
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
+          <HelpAssistant />
         </WouterRouter>
         <ThemePicker />
         <Toaster />
