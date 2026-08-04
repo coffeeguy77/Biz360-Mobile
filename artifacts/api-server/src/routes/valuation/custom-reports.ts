@@ -3,7 +3,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { db, cafesTable, cafeIntegrationsTable, squareOrdersCacheTable, squareCategoryCacheTable, customReportsTable, customReportLineItemsTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { assertCafeOwner } from "./cafes";
-import { getValidXeroToken } from "./xero";
+import { getValidXeroToken, getXeroSupplierMonthlySpend } from "./xero";
 
 const router: IRouter = Router();
 
@@ -209,12 +209,13 @@ async function buildReportData(
   }
 
   const xeroItems = lineItems.filter((li) => li.source === "xero_pl");
+  const supplierItems = lineItems.filter((li) => li.source === "xero_supplier");
   const squareItems = lineItems.filter((li) => li.source === "square");
   // Square category items: source="square_category", xeroAccountName holds the category name
   const squareCategoryItems = lineItems.filter((li) => li.source === "square_category");
 
-  // ── Xero monthly data ──────────────────────────────────────────────────────
-  if (xeroItems.length > 0) {
+  // ── Xero monthly data (P&L lines + individual suppliers/people) ─────────────
+  if (xeroItems.length > 0 || supplierItems.length > 0) {
     const [xeroInt] = await db
       .select()
       .from(cafeIntegrationsTable)
@@ -234,17 +235,33 @@ async function buildReportData(
             : null;
 
         if (accessToken && tenantId) {
-          const xeroMonthly = await fetchXeroMonthlyPL(accessToken, tenantId, fromDate, toDate);
+          // P&L account lines
+          if (xeroItems.length > 0) {
+            const xeroMonthly = await fetchXeroMonthlyPL(accessToken, tenantId, fromDate, toDate);
+            for (const { month, rows } of xeroMonthly) {
+              if (!months.includes(month)) continue;
+              for (const row of rows) {
+                const matchingItems = xeroItems.filter((li) => li.xeroAccountName === row.name);
+                for (const li of matchingItems) {
+                  if (li.kind === "income") incomeByMonth[month] = (incomeByMonth[month] ?? 0) + row.amount;
+                  else expensesByMonth[month] = (expensesByMonth[month] ?? 0) + row.amount;
+                }
+              }
+            }
+          }
 
-          for (const { month, rows } of xeroMonthly) {
-            if (!months.includes(month)) continue;
-            for (const row of rows) {
-              const matchingItems = xeroItems.filter(
-                (li) => li.xeroAccountName === row.name,
-              );
-              for (const li of matchingItems) {
-                if (li.kind === "income") incomeByMonth[month] = (incomeByMonth[month] ?? 0) + row.amount;
-                else expensesByMonth[month] = (expensesByMonth[month] ?? 0) + row.amount;
+          // Individual suppliers / people (COGS suppliers, chef wage, etc.) —
+          // matched by contact name, subtracted (or added) month by month.
+          if (supplierItems.length > 0) {
+            const wanted = new Map(supplierItems.map((li) => [li.xeroAccountName, li.kind]));
+            const monthlySpend = await getXeroSupplierMonthlySpend(accessToken, tenantId, dateRangeMonths);
+            for (const sup of monthlySpend) {
+              const kind = wanted.get(sup.name);
+              if (!kind) continue;
+              for (const [month, amt] of Object.entries(sup.byMonth)) {
+                if (!months.includes(month)) continue;
+                if (kind === "income") incomeByMonth[month] = (incomeByMonth[month] ?? 0) + amt;
+                else expensesByMonth[month] = (expensesByMonth[month] ?? 0) + amt;
               }
             }
           }

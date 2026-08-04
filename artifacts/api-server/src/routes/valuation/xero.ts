@@ -93,6 +93,51 @@ export async function getXeroSupplierSpend(accessToken: string, tenantId: string
   return Object.values(contactTotals);
 }
 
+/** Parse a Xero transaction date (ISO DateString or "/Date(ms+zone)/") → "YYYY-MM". */
+function xeroTxnMonth(t: any): string | null {
+  const ds: string | undefined = t.DateString || t.Date;
+  if (!ds) return null;
+  if (/^\d{4}-\d{2}/.test(ds)) return ds.slice(0, 7);
+  const m = /\/Date\((\d+)/.exec(ds);
+  if (m) { const d = new Date(Number(m[1])); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`; }
+  return null;
+}
+
+/**
+ * Per-supplier, per-month spend from Xero bank transactions. Same source as
+ * getXeroSupplierSpend but keeps the month so a monthly P&L can subtract a
+ * specific supplier (food supplier, or the chef paid via Xero) month by month.
+ */
+export async function getXeroSupplierMonthlySpend(accessToken: string, tenantId: string, months: number) {
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - months);
+  const xdf = (d: Date) => `DateTime(${d.getFullYear()},${d.getMonth() + 1},${d.getDate()})`;
+  const byContact: Record<string, { name: string; contactId: string; byMonth: Record<string, number> }> = {};
+  const headers = { Authorization: `Bearer ${accessToken}`, "xero-tenant-id": tenantId, Accept: "application/json" };
+  let page = 1;
+  while (true) {
+    const where = `Type=="SPEND"&&Date>=${xdf(fromDate)}&&Date<=${xdf(toDate)}`;
+    const r = await fetch(`https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(where)}&page=${page}`, { headers });
+    if (!r.ok) break;
+    const data = await r.json() as any;
+    const txns: any[] = data.BankTransactions ?? [];
+    if (txns.length === 0) break;
+    for (const t of txns) {
+      const contactId = t.Contact?.ContactID ?? t.Contact?.Name ?? "unknown";
+      const name = t.Contact?.Name ?? "Unknown";
+      const amount = Math.abs(t.Total ?? 0);
+      const month = xeroTxnMonth(t);
+      if (!month) continue;
+      if (!byContact[contactId]) byContact[contactId] = { name, contactId, byMonth: {} };
+      byContact[contactId].byMonth[month] = (byContact[contactId].byMonth[month] ?? 0) + amount;
+    }
+    if (txns.length < 100) break;
+    page++;
+  }
+  return Object.values(byContact);
+}
+
 function xeroDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }

@@ -308,6 +308,8 @@ function ReportEditor({ cafeId, auth, report, onClose }: { cafeId: string; auth:
   const [items, setItems] = useState<any[]>([]);
   const [cats, setCats] = useState<any[]>([]);
   const [xero, setXero] = useState<any[]>([]);
+  const [sups, setSups] = useState<any[]>([]);
+  const [supSearch, setSupSearch] = useState("");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [includeIm, setIncludeIm] = useState(!!report.includeInIm);
@@ -329,13 +331,15 @@ function ReportEditor({ cafeId, auth, report, onClose }: { cafeId: string; auth:
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [li, xr] = await Promise.all([
+      const [li, xr, sp] = await Promise.all([
         fetch(`/api/valuation/custom-reports/${report.id}/line-items`, { headers: auth }).then((r) => r.json()),
         fetch(`/api/valuation/xero/reports?cafeId=${cafeId}&months=12`, { headers: auth }).then((r) => r.json()).catch(() => ({})),
+        fetch(`/api/valuation/xero/suppliers?cafeId=${cafeId}&months=12`, { headers: auth }).then((r) => r.json()).catch(() => ({})),
       ]);
       setItems(li.items ?? []);
       const flat: any[] = []; (xr.sections ?? []).forEach((s: any) => (s.rows ?? []).forEach((r: any) => flat.push({ name: r.name, section: s.title, isIncome: s.isIncome })));
       setXero(flat);
+      setSups(Array.isArray(sp.suppliers) ? sp.suppliers : []);
       await loadCats();
       setLoading(false);
     })();
@@ -356,7 +360,7 @@ function ReportEditor({ cafeId, auth, report, onClose }: { cafeId: string; auth:
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between"><button onClick={onClose} className="text-sm text-muted-foreground inline-flex items-center gap-1.5"><ArrowLeft size={14} /> Reports</button><h3 className="font-bold">{report.name}</h3><label className="text-xs inline-flex items-center gap-1.5"><input type="checkbox" checked={includeIm} onChange={(e) => setIncludeIm(e.target.checked)} /> Include in IM</label></div>
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card>
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-bold">Square categories (income/expense)</h4>
@@ -381,6 +385,29 @@ function ReportEditor({ cafeId, auth, report, onClose }: { cafeId: string; auth:
                 <span className="text-sm truncate">{x.name}</span><span className={`text-[10px] ${x.isIncome ? "text-emerald-400" : "text-red-400"}`}>{x.isIncome ? "income" : "expense"}</span>
               </button>); })}
             {xero.length === 0 && <p className="text-xs text-muted-foreground">Connect Xero to see P&L lines.</p>}
+          </div>
+        </Card>
+        <Card>
+          <h4 className="text-sm font-bold mb-1">COGS suppliers &amp; wages</h4>
+          <p className="text-[11px] text-muted-foreground mb-2">People &amp; businesses you pay in Xero — pick food suppliers and the kitchen staff member (e.g. chef) to subtract as expense.</p>
+          {sups.length > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 mb-2">
+              <Search size={13} className="text-muted-foreground" />
+              <input value={supSearch} onChange={(e) => setSupSearch(e.target.value)} placeholder="Search supplier or person…" className="flex-1 bg-transparent text-sm outline-none" />
+              {supSearch && <button onClick={() => setSupSearch("")}><X size={13} className="text-muted-foreground" /></button>}
+            </div>
+          )}
+          <div className="flex flex-col gap-1 max-h-64 overflow-y-auto themed-scroll">
+            {sups.filter((s) => !supSearch || String(s.name).toLowerCase().includes(supSearch.toLowerCase())).map((s) => {
+              const on = has("xero_supplier", s.name); const it = items.find((i) => i.source === "xero_supplier" && i.xeroAccountName === s.name); return (
+              <div key={s.contactId || s.name} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${on ? "border-primary bg-primary/10" : "border-border"}`}>
+                <button onClick={() => toggle("xero_supplier", s.name, "expense", s.name)} className="flex-1 text-left text-sm truncate">
+                  {s.name} <span className="text-[10px] text-muted-foreground">{money0(s.total)}</span>
+                  {s.isCogs && <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400">COGS</span>}
+                </button>
+                {on && <select value={it?.kind} onChange={(e) => setKind("xero_supplier", s.name, e.target.value)} className="text-[11px] bg-background border border-border rounded px-1"><option value="expense">expense</option><option value="income">income</option></select>}
+              </div>); })}
+            {sups.length === 0 && <p className="text-xs text-muted-foreground">Connect Xero to see the suppliers &amp; people you pay. The chef appears here if paid through Xero.</p>}
           </div>
         </Card>
       </div>
