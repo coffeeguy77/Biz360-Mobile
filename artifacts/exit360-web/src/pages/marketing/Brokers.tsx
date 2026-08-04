@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { useCopy, RichCopy } from "@/content/copy";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 const fade = {
@@ -17,6 +18,7 @@ const fade = {
 };
 
 export function Brokers() {
+  const c = useCopy("/brokers");
   return (
     <SiteShell>
       <Seo
@@ -41,16 +43,13 @@ export function Brokers() {
         <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
-              <Briefcase size={13} /> For business brokers &amp; advisory firms
+              <Briefcase size={13} /> {c("heroEyebrow")}
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              Run your whole book of listings from <span className="theme-text-gradient">one broker login.</span>
+              <RichCopy text={c("heroTitle")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-xl mb-8">
-              EXIT360 gives brokers a single account to build, manage and market every client's
-              business for sale — each with its own <strong className="text-foreground">immersive 360° tour,
-              NDA-gated IM report and live buyer analytics</strong>. Then send each client a private link
-              so they can watch their own listing's performance without ever having to ask you for an update.
+              <RichCopy text={c("heroSubtitle")} />
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/list-your-business"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">Start as a broker <ArrowRight size={18} className="ml-1" /></Button></Link>

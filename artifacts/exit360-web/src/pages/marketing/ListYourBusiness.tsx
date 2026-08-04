@@ -3,11 +3,13 @@ import { motion } from "framer-motion";
 import { Camera, FileText, ShieldCheck, BarChart3, Smartphone, Monitor, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { useCopy, RichCopy } from "@/content/copy";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 const fade = { initial: { opacity: 0, y: 24 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-80px" }, transition: { duration: 0.5 } };
 
 export function ListYourBusiness() {
+  const c = useCopy("/list-your-business");
   return (
     <SiteShell>
       <Seo
@@ -22,12 +24,10 @@ export function ListYourBusiness() {
         <div className="relative z-10 max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
           <motion.div {...fade}>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              List your business <span className="theme-text-gradient">where buyers can walk through it.</span>
+              <RichCopy text={c("heroTitle")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
-              Publish a listing that does the selling for you: an immersive 360° walkthrough, a
-              professional information memorandum, NDA-gated financials and live buyer analytics —
-              all keyed to your phone number so you can build on the app or the web and edit either.
+              <RichCopy text={c("heroSubtitle")} />
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <Link href="/seller"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">Create your seller account <ArrowRight size={18} className="ml-1" /></Button></Link>

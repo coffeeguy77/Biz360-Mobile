@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { useCopy, RichCopy } from "@/content/copy";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 const fade = {
@@ -16,6 +17,7 @@ const fade = {
 };
 
 export function Buying() {
+  const c = useCopy("/buying");
   return (
     <SiteShell>
       <Seo
@@ -38,16 +40,13 @@ export function Buying() {
         <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
-              <Search size={13} /> For buyers hunting the right business
+              <Search size={13} /> {c("heroEyebrow")}
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              Buy a business you've <span className="theme-text-gradient">already walked through.</span>
+              <RichCopy text={c("heroTitle")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-xl mb-8">
-              Stop booking flights and Saturdays around blurry photos. EXIT360 lets you
-              <strong className="text-foreground"> explore businesses for sale in immersive 360°</strong>,
-              review real financials under NDA, and send a verified enquiry in one tap — so you shortlist
-              faster, travel only for the deals worth chasing, and buy with genuine confidence.
+              <RichCopy text={c("heroSubtitle")} />
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/listings"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">Browse listings <ArrowRight size={18} className="ml-1" /></Button></Link>

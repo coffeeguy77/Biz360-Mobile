@@ -7,8 +7,10 @@ import { CheckCircle2, Building, ShieldCheck, ArrowRight, Eye, Play, TrendingUp,
 import { getPriceStat, getStatSlot, BADGE_LABELS, type Listing } from "@/data/listings";
 import { fetchListings } from "@/lib/listingsApi";
 import { SiteNav, SiteFooter } from "@/components/SiteShell";
+import { useCopy, RichCopy } from "@/content/copy";
 
 export function Home() {
+  const c = useCopy("/");
   const [listings, setListings] = useState<Listing[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -34,22 +36,22 @@ export function Home() {
       <section className="pt-32 pb-20 px-6 max-w-[1440px] mx-auto flex flex-col md:flex-row items-center gap-12">
         <div className="flex-1 space-y-6">
           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-3 py-1">
-            Now live in Australia
+            {c("heroEyebrow")}
           </Badge>
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.1]">
-            Walk through before you sign.
+            <RichCopy text={c("heroTitle")} />
           </h1>
           <p className="text-xl text-muted-foreground max-w-xl leading-relaxed">
-            The premium marketplace for verified businesses. Experience immersive 360° tours enriched with financial data, equipment specs, and lease details. Due diligence starts here.
+            <RichCopy text={c("heroSubtitle")} />
           </p>
           <div className="flex flex-wrap gap-4 pt-4">
             <Link href="/listings">
               <Button size="lg" className="h-14 px-8 text-base" data-testid="button-browse-listings">
-                Browse Listings
+                {c("ctaPrimary")}
               </Button>
             </Link>
             <Button size="lg" variant="outline" className="h-14 px-8 text-base">
-              <Play className="mr-2" size={18} /> Watch Video
+              <Play className="mr-2" size={18} /> {c("ctaSecondary")}
             </Button>
           </div>
         </div>
@@ -78,12 +80,12 @@ export function Home() {
             <div className="text-sm text-muted-foreground font-medium">Verified Listings</div>
           </div>
           <div>
-            <div className="text-3xl font-bold text-foreground mb-1">$4.2B+</div>
-            <div className="text-sm text-muted-foreground font-medium">Listed Value</div>
+            <div className="text-3xl font-bold text-foreground mb-1">{c("stat1Value")}</div>
+            <div className="text-sm text-muted-foreground font-medium">{c("stat1Label")}</div>
           </div>
           <div>
-            <div className="text-3xl font-bold text-foreground mb-1">12,000+</div>
-            <div className="text-sm text-muted-foreground font-medium">Qualified Buyers</div>
+            <div className="text-3xl font-bold text-foreground mb-1">{c("stat2Value")}</div>
+            <div className="text-sm text-muted-foreground font-medium">{c("stat2Label")}</div>
           </div>
           <div>
             <div className="text-3xl font-bold text-foreground mb-1">89</div>

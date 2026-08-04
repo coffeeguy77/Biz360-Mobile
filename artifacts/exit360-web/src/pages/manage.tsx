@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { PAGE_CONTENT } from "@/content/copy";
 
 const TOKEN_KEY = "biz360_web_auth_token";
 const inp = "w-full px-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus:border-primary/60";
@@ -190,6 +191,7 @@ function SeoTab({ auth }: { auth: any }) {
   function setGsc(k: string, v: string) { setS((p: any) => ({ ...p, gsc: { ...p.gsc, [k]: v } })); }
   function setDefault(k: string, v: string) { setS((p: any) => ({ ...p, defaults: { ...p.defaults, [k]: v } })); }
   function setPageField(k: string, v: any) { setS((p: any) => ({ ...p, pages: { ...p.pages, [page]: { ...(p.pages?.[page] ?? {}), [k]: v } } })); }
+  function setCopyField(k: string, v: string) { setS((p: any) => ({ ...p, pages: { ...p.pages, [page]: { ...(p.pages?.[page] ?? {}), copy: { ...((p.pages?.[page] ?? {}).copy ?? {}), [k]: v } } } })); }
 
   async function save() {
     setSaving(true); setSaved(false);
@@ -241,6 +243,25 @@ function SeoTab({ auth }: { auth: any }) {
           <label className="text-xs inline-flex items-center gap-2"><input type="checkbox" checked={!!pg.noindex} onChange={(e) => setPageField("noindex", e.target.checked)} /> Hide this page from search engines (noindex)</label>
         </div>
       </Card>
+
+      {PAGE_CONTENT[page] && (
+        <Card>
+          <h3 className="font-bold text-sm mb-1">Page copy — {PAGE_CONTENT[page].label}</h3>
+          <p className="text-[11px] text-muted-foreground mb-3">Edit the on-page wording for this page. Use <b>==text==</b> for a gradient highlight and <b>**text**</b> for bold. Leave a field blank to keep the current default (shown as the placeholder).</p>
+          <div className="grid gap-3">
+            {PAGE_CONTENT[page].slots.map((slot: any) => {
+              const val = pg.copy?.[slot.key] ?? "";
+              return (
+                <label key={slot.key} className="text-xs font-semibold text-muted-foreground">{slot.label}
+                  {slot.type === "textarea"
+                    ? <textarea rows={2} value={val} onChange={(e) => setCopyField(slot.key, e.target.value)} placeholder={slot.default} className={`${inp} mt-1 font-normal resize-none`} />
+                    : <input value={val} onChange={(e) => setCopyField(slot.key, e.target.value)} placeholder={slot.default} className={`${inp} mt-1 font-normal`} />}
+                </label>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <div className="flex items-center gap-3">
         <Button onClick={save} disabled={saving} className="theme-btn-gradient border-0 gap-1.5">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save settings</Button>

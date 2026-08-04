@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { useCopy, RichCopy } from "@/content/copy";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 import { AudioNarrationShowcase } from "@/components/AudioNarrationShowcase";
 
@@ -17,6 +18,7 @@ const fade = {
 };
 
 export function Walkthroughs() {
+  const c = useCopy("/walkthroughs");
   return (
     <SiteShell>
       <Seo
@@ -40,16 +42,13 @@ export function Walkthroughs() {
         <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
-              <Compass size={13} /> The 360° walkthrough system
+              <Compass size={13} /> {c("heroEyebrow")}
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              Walk through a business <span className="theme-text-gradient">before you ever step inside.</span>
+              <RichCopy text={c("heroTitle")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-xl mb-8">
-              EXIT360 turns a listing into an immersive, navigable tour. Buyers
-              <strong className="text-foreground"> move from room to room like Google Street View</strong> —
-              the storefront, the kitchen, the plant room, the office — exploring
-              every corner in 360°, day or night, from anywhere in Australia.
+              <RichCopy text={c("heroSubtitle")} />
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/listings"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">Explore live tours <ArrowRight size={18} className="ml-1" /></Button></Link>

@@ -157,6 +157,15 @@ export async function injectMeta(html: string, pathname: string): Promise<string
   extra.push(`<meta name="twitter:image" content="${esc(seo.ogImage)}" />`);
   if (gsc) extra.push(`<meta name="google-site-verification" content="${esc(gsc)}" />`);
   if (seo.jsonLd) extra.push(`<script type="application/ld+json">${JSON.stringify(seo.jsonLd)}</script>`);
+  // Editable marketing copy overrides — injected synchronously so pages render
+  // admin-edited copy on first paint (no flash of default text).
+  const copyMap: Record<string, Record<string, string>> = {};
+  for (const [p, pg] of Object.entries(settings.pages ?? {})) {
+    if (pg?.copy && Object.keys(pg.copy).length) copyMap[p] = pg.copy;
+  }
+  if (Object.keys(copyMap).length) {
+    extra.push(`<script>window.__EXIT360_COPY__=${JSON.stringify(copyMap).replace(/</g, "\\u003c")}</script>`);
+  }
 
   out = out.replace(/<\/head>/i, `${extra.join("\n    ")}\n  </head>`);
   return out;

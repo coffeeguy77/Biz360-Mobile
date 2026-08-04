@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { useCopy, RichCopy } from "@/content/copy";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 const fade = {
@@ -69,6 +70,7 @@ const ROWS: { feature: string; detail: string; exit360: boolean; traditional: bo
 ];
 
 export function Compare() {
+  const c = useCopy("/compare");
   return (
     <SiteShell>
       <Seo
@@ -139,16 +141,13 @@ export function Compare() {
         <div className="relative z-10 max-w-5xl mx-auto px-6 pt-20 pb-20 text-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
-              <Scale size={13} /> EXIT360 vs traditional listing sites
+              <Scale size={13} /> {c("heroEyebrow")}
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              The best way to buy and sell a business, <span className="theme-text-gradient">side by side.</span>
+              <RichCopy text={c("heroTitle")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
-              Most Australian businesses are still advertised on classified-style listing
-              portals — the same channels people use to sell a car or rent a shopfront.
-              EXIT360 was built specifically for business sales, so here's an honest,
-              feature-by-feature look at everything we do that a traditional listing site can't.
+              <RichCopy text={c("heroSubtitle")} />
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <Link href="/list-your-business"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">List your business <ArrowRight size={18} className="ml-1" /></Button></Link>

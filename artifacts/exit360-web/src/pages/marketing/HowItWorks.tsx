@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { useCopy, RichCopy } from "@/content/copy";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 const fade = {
@@ -17,6 +18,7 @@ const fade = {
 };
 
 export function HowItWorks() {
+  const c = useCopy("/how-it-works");
   return (
     <SiteShell>
       <Seo
@@ -45,17 +47,13 @@ export function HowItWorks() {
         <div className="relative z-10 max-w-[1440px] mx-auto px-6 pt-20 pb-24 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
-              <Sparkles size={13} /> The complete platform guide
+              <Sparkles size={13} /> {c("heroEyebrow")}
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              How EXIT360 works — and <span className="theme-text-gradient">everything it can do.</span>
+              <RichCopy text={c("heroTitle")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-xl mb-8">
-              EXIT360 is Australia's 360° business-for-sale marketplace. It's far more than a
-              classified ad: it's a <strong className="text-foreground">tour builder, an information
-              memorandum generator, an NDA-gated data room and a live analytics dashboard</strong> —
-              all synced across app and web from one phone-verified account. This guide walks you
-              through the whole platform, whether you're buying, selling or broking.
+              <RichCopy text={c("heroSubtitle")} />
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/list-your-business"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">Start a listing <ArrowRight size={18} className="ml-1" /></Button></Link>

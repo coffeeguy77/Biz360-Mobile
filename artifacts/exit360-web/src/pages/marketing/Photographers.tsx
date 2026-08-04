@@ -4,12 +4,14 @@ import { motion } from "framer-motion";
 import { Camera, CheckCircle2, GraduationCap, MapPin, DollarSign, Award, ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
+import { useCopy, RichCopy } from "@/content/copy";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 const fade = { initial: { opacity: 0, y: 24 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-80px" }, transition: { duration: 0.5 } };
 const STATES = ["ACT", "NSW", "VIC", "QLD", "WA", "SA", "TAS", "NT"];
 
 export function Photographers() {
+  const c = useCopy("/photographers");
   const [f, setF] = useState({ name: "", phone: "", email: "", city: "", region: "ACT", ownsCamera: false, experience: "" });
   const [sent, setSent] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,15 +43,13 @@ export function Photographers() {
         <div className="relative z-10 max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
-              <Sparkles size={13} /> Partner program
+              <Sparkles size={13} /> {c("heroEyebrow")}
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              Get paid to capture businesses in <span className="theme-text-gradient">immersive 360°.</span>
+              <RichCopy text={c("heroTitle")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
-              EXIT360 needs skilled local photographers to build stunning 360° walkthroughs for businesses
-              going to market. Own an Insta360, pass our short training, and get referred paid shoots in your
-              area — with the tools, templates and support to make every listing look world-class.
+              <RichCopy text={c("heroSubtitle")} />
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <a href="#apply"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">Apply to join <ArrowRight size={18} className="ml-1" /></Button></a>
