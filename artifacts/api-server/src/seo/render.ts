@@ -1,6 +1,6 @@
 import { db, kvStore } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getSiteSettings, SITE_URL, type PageSeo } from "./site-settings";
+import { getSiteSettings, SITE_URL, extractGscToken, type PageSeo } from "./site-settings";
 
 const LISTINGS_KEY = "biz360_admin_pending_v2";
 
@@ -134,7 +134,7 @@ export async function resolveSeo(pathname: string): Promise<ResolvedSeo> {
 export async function injectMeta(html: string, pathname: string): Promise<string> {
   const seo = await resolveSeo(pathname);
   const settings = await getSiteSettings();
-  const gsc = settings.gsc?.metaToken;
+  const gsc = extractGscToken(settings.gsc?.metaToken);
 
   let out = html;
   // Replace <title>

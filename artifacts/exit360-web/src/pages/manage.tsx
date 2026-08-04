@@ -207,7 +207,8 @@ function SeoTab({ auth }: { auth: any }) {
         <h3 className="font-bold text-sm mb-1 inline-flex items-center gap-1.5"><ShieldCheck size={14} /> Google Search Console verification</h3>
         <p className="text-[11px] text-muted-foreground mb-3">Use either method Google offers. Paste the meta-tag token, or the HTML file's name and contents. Saved instantly — no redeploy.</p>
         <label className="text-xs font-semibold text-muted-foreground">Verification meta token
-          <input value={s.gsc?.metaToken ?? ""} onChange={(e) => setGsc("metaToken", e.target.value)} placeholder="content value from the google-site-verification meta tag" className={`${inp} mt-1 font-normal`} />
+          <input value={s.gsc?.metaToken ?? ""} onChange={(e) => setGsc("metaToken", e.target.value)} placeholder='Paste the whole <meta …> tag or just the token — either works' className={`${inp} mt-1 font-normal`} />
+          <span className="block text-[10px] text-muted-foreground mt-1 font-normal">Tip: paste Google's full tag; we'll keep just the token and inject it correctly on every page.</span>
         </label>
         <div className="grid sm:grid-cols-2 gap-3 mt-3">
           <label className="text-xs font-semibold text-muted-foreground">HTML file name

@@ -88,3 +88,17 @@ export async function savePageSeo(path: string, page: PageSeo): Promise<SiteSett
 export function invalidateSettingsCache() {
   cache = null;
 }
+
+/**
+ * Accept either the bare Google verification token OR the full
+ * `<meta name="google-site-verification" content="…">` tag someone pasted, and
+ * return just the token. Prevents the "meta tag is not formatted correctly" error.
+ */
+export function extractGscToken(raw?: string | null): string {
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+  const m = v.match(/content\s*=\s*["']([^"']+)["']/i);
+  if (m) return m[1].trim();
+  // Strip any stray tag fragments if they pasted markup without quotes
+  return v.replace(/<[^>]*>/g, "").trim();
+}

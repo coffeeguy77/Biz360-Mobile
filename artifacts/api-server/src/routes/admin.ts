@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { eq } from "drizzle-orm";
 import { db, kvStore } from "@workspace/db";
 import { verifyToken } from "../middlewares/auth";
-import { getSiteSettings, saveSiteSettings, type SiteSettings } from "../seo/site-settings";
+import { getSiteSettings, saveSiteSettings, extractGscToken, type SiteSettings } from "../seo/site-settings";
 
 const router: IRouter = Router();
 
@@ -179,8 +179,10 @@ router.get("/admin/seo", requireAdmin, async (_req, res) => {
 });
 router.put("/admin/seo", requireAdmin, async (req, res) => {
   const body = req.body as Partial<SiteSettings>;
+  // Accept the whole <meta> tag or just the token — store only the token.
+  const gsc = body.gsc ? { ...body.gsc, metaToken: extractGscToken(body.gsc.metaToken) } : undefined;
   const saved = await saveSiteSettings({
-    gsc: body.gsc,
+    gsc,
     defaults: body.defaults,
     pages: body.pages,
   });
