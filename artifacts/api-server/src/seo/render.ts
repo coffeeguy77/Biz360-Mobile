@@ -166,11 +166,16 @@ export async function injectMeta(html: string, pathname: string): Promise<string
   // Editable marketing copy overrides — injected synchronously so pages render
   // admin-edited copy on first paint (no flash of default text).
   const copyMap: Record<string, Record<string, string>> = {};
+  const contentMap: Record<string, unknown> = {};
   for (const [p, pg] of Object.entries(settings.pages ?? {})) {
     if (pg?.copy && Object.keys(pg.copy).length) copyMap[p] = pg.copy;
+    if ((pg as any)?.content && Object.keys((pg as any).content).length) contentMap[p] = (pg as any).content;
   }
   if (Object.keys(copyMap).length) {
     extra.push(`<script>window.__EXIT360_COPY__=${JSON.stringify(copyMap).replace(/</g, "\\u003c")}</script>`);
+  }
+  if (Object.keys(contentMap).length) {
+    extra.push(`<script>window.__EXIT360_CONTENT__=${JSON.stringify(contentMap).replace(/</g, "\\u003c")}</script>`);
   }
 
   out = out.replace(/<\/head>/i, `${extra.join("\n    ")}\n  </head>`);

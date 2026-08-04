@@ -3,18 +3,25 @@ import { Link } from "wouter";
 import {
   LayoutDashboard, FileText, FileCheck2, Users, Globe, ShieldCheck, Settings as SettingsIcon,
   Search as SearchIcon, Loader2, Check, X, Ban, RotateCcw, Eye, EyeOff, Save, ArrowLeft,
-  Sparkles, Upload, Image as ImageIcon, TrendingUp, Plus, Minus, Menu, ExternalLink, Type, Activity,
+  Sparkles, Upload, Image as ImageIcon, TrendingUp, Plus, Minus, Menu, ExternalLink, Type, Activity, Trash2,
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
 import { PAGE_CONTENT } from "@/content/copy";
+import { PAGE_MODEL } from "@/content/model";
 
 const TOKEN_KEY = "biz360_web_auth_token";
 const inp = "w-full px-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/60";
 const money = (v: any) => { const n = Number(v ?? 0) || 0; return n ? `$${n.toLocaleString()}` : "—"; };
 
-const SEO_PAGES: [string, string][] = Object.entries(PAGE_CONTENT).map(([p, c]) => [p, c.label]);
+// Union of rich-model pages and simple-slot pages, model label preferred.
+const SEO_PAGES: [string, string][] = (() => {
+  const seen = new Map<string, string>();
+  for (const [p, m] of Object.entries(PAGE_MODEL)) seen.set(p, m.label);
+  for (const [p, c] of Object.entries(PAGE_CONTENT)) if (!seen.has(p)) seen.set(p, c.label);
+  return [...seen.entries()];
+})();
 
 // ─── Root shell ───────────────────────────────────────────────────────────────
 export function Manage() {
@@ -245,9 +252,14 @@ function PageEditor({ auth, path, settings, onClose }: { auth: any; path: string
   const [ai, setAi] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
   const slots = PAGE_CONTENT[path]?.slots ?? [];
+  const model = PAGE_MODEL[path];
 
   function setField(k: string, v: any) { setPg((p: any) => ({ ...p, [k]: v })); }
   function setCopy(k: string, v: string) { setPg((p: any) => ({ ...p, copy: { ...(p.copy ?? {}), [k]: v } })); }
+  // Rich content helpers (section-based pages)
+  function setText(k: string, v: string) { setPg((p: any) => ({ ...p, content: { ...(p.content ?? {}), text: { ...(p.content?.text ?? {}), [k]: v } } })); }
+  function getList(key: string): any[] { const ov = pg.content?.lists?.[key]; if (Array.isArray(ov)) return ov; const def = model?.sections.flatMap((s) => s.lists ?? []).find((l) => l.key === key)?.default ?? []; return def.map((x) => ({ ...x })); }
+  function setList(key: string, arr: any[]) { setPg((p: any) => ({ ...p, content: { ...(p.content ?? {}), lists: { ...(p.content?.lists ?? {}), [key]: arr } } })); }
 
   async function save() {
     setSaving(true); setSaved(false);
@@ -264,14 +276,20 @@ function PageEditor({ auth, path, settings, onClose }: { auth: any; path: string
       const r = await fetch("/api/admin/seo/ai-suggest", { method: "POST", headers: auth, body: JSON.stringify({ path, label, currentTitle: pg.title, copy: pg.copy }) }).then((x) => x.json());
       const sug = r.suggestion;
       if (!sug) { setAiNote(r.error || "AI could not generate suggestions."); return; }
-      setPg((p: any) => ({
-        ...p,
-        title: sug.title ?? p.title,
-        description: sug.description ?? p.description,
-        keywords: Array.isArray(sug.keywords) ? sug.keywords.join(", ") : (sug.keywords ?? p.keywords),
-        ogImageAlt: sug.ogImageAlt ?? p.ogImageAlt,
-        copy: sug.h1 && slots.some((s: any) => s.key === "heroTitle") ? { ...(p.copy ?? {}), heroTitle: sug.h1 } : p.copy,
-      }));
+      setPg((p: any) => {
+        const next: any = {
+          ...p,
+          title: sug.title ?? p.title,
+          description: sug.description ?? p.description,
+          keywords: Array.isArray(sug.keywords) ? sug.keywords.join(", ") : (sug.keywords ?? p.keywords),
+          ogImageAlt: sug.ogImageAlt ?? p.ogImageAlt,
+        };
+        if (sug.h1) {
+          if (model) next.content = { ...(p.content ?? {}), text: { ...(p.content?.text ?? {}), "hero.title": sug.h1 } };
+          else if (slots.some((s: any) => s.key === "heroTitle")) next.copy = { ...(p.copy ?? {}), heroTitle: sug.h1 };
+        }
+        return next;
+      });
       setAiNote(sug.notes ? `AI: ${sug.notes}` : "AI suggestions applied — review and Save.");
     } catch { setAiNote("AI request failed."); }
     finally { setAi(false); }
@@ -304,7 +322,62 @@ function PageEditor({ auth, path, settings, onClose }: { auth: any; path: string
         </div>
       </Card>
 
-      {slots.length > 0 && (
+      {model ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold">Page content <span className="text-[11px] text-muted-foreground font-normal">· every section is editable</span></h3>
+            <p className="text-[11px] text-muted-foreground"><b>==text==</b> gradient · <b>**text**</b> bold</p>
+          </div>
+          {model.sections.map((sec: any) => (
+            <details key={sec.key} className="rounded-2xl border border-border bg-card/70 backdrop-blur group" open={sec.key === "hero"}>
+              <summary className="flex items-center justify-between cursor-pointer list-none px-4 py-3 select-none">
+                <span className="font-semibold text-sm">{sec.label}</span>
+                <span className="text-muted-foreground text-xs group-open:rotate-180 transition-transform">▾</span>
+              </summary>
+              <div className="px-4 pb-4 pt-1 grid gap-3 border-t border-border/60">
+                {(sec.fields ?? []).map((f: any) => (
+                  <L key={f.key} label={f.label}>
+                    {f.type === "textarea"
+                      ? <textarea rows={2} value={pg.content?.text?.[f.key] ?? ""} onChange={(e) => setText(f.key, e.target.value)} placeholder={f.default} className={`${inp} resize-none`} />
+                      : <input value={pg.content?.text?.[f.key] ?? ""} onChange={(e) => setText(f.key, e.target.value)} placeholder={f.default} className={inp} />}
+                  </L>
+                ))}
+                {(sec.lists ?? []).map((lst: any) => {
+                  const items = getList(lst.key);
+                  const blank = Object.fromEntries(lst.fields.map((x: any) => [x.key, ""]));
+                  return (
+                    <div key={lst.key} className="rounded-xl border border-border/60 p-3">
+                      <div className="flex items-center justify-between mb-2"><span className="text-xs font-semibold">{lst.label} <span className="text-muted-foreground">· {items.length}</span></span></div>
+                      <div className="flex flex-col gap-2">
+                        {items.map((it: any, idx: number) => (
+                          <div key={idx} className="rounded-lg border border-border bg-background/60 p-2.5">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{lst.itemNoun} {idx + 1}</span>
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => { if (idx > 0) { const a = [...items]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; setList(lst.key, a); } }} disabled={idx === 0} className="p-1 rounded hover:bg-muted disabled:opacity-30" aria-label="Move up">↑</button>
+                                <button onClick={() => { if (idx < items.length - 1) { const a = [...items]; [a[idx + 1], a[idx]] = [a[idx], a[idx + 1]]; setList(lst.key, a); } }} disabled={idx === items.length - 1} className="p-1 rounded hover:bg-muted disabled:opacity-30" aria-label="Move down">↓</button>
+                                <button onClick={() => setList(lst.key, items.filter((_: any, j: number) => j !== idx))} className="p-1 rounded hover:bg-red-500/10 text-red-400" aria-label={`Remove ${lst.itemNoun}`}><Trash2 size={13} /></button>
+                              </div>
+                            </div>
+                            <div className="grid gap-2">
+                              {lst.fields.map((ff: any) => (
+                                ff.type === "textarea"
+                                  ? <textarea key={ff.key} rows={2} value={it[ff.key] ?? ""} onChange={(e) => setList(lst.key, items.map((x: any, j: number) => j === idx ? { ...x, [ff.key]: e.target.value } : x))} placeholder={ff.label} className={`${inp} resize-none`} aria-label={ff.label} />
+                                  : <input key={ff.key} value={it[ff.key] ?? ""} onChange={(e) => setList(lst.key, items.map((x: any, j: number) => j === idx ? { ...x, [ff.key]: e.target.value } : x))} placeholder={ff.label} className={inp} aria-label={ff.label} />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <button onClick={() => setList(lst.key, [...items, blank])} className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-border hover:border-primary/50 hover:text-primary transition"><Plus size={13} /> Add {lst.itemNoun}</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          ))}
+        </div>
+      ) : slots.length > 0 && (
         <Card>
           <h3 className="text-sm font-bold mb-1">Page content</h3>
           <p className="text-[11px] text-muted-foreground mb-3">Edit the on-page wording. <b>==text==</b> = gradient highlight, <b>**text**</b> = bold. Blank keeps the current default (shown as placeholder).</p>

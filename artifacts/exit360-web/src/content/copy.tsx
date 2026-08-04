@@ -47,14 +47,6 @@ export const PAGE_CONTENT: Record<string, PageContent> = {
       { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "EXIT360 gives brokers a single account to build, manage and market every client's business for sale — each with its own **immersive 360° tour, NDA-gated IM report and live buyer analytics**. Then send each client a private link so they can watch their own listing's performance without ever having to ask you for an update." },
     ],
   },
-  "/walkthroughs": {
-    label: "Walkthroughs",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "The 360° walkthrough system" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "Walk through a business ==before you ever step inside.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "EXIT360 turns a listing into an immersive, navigable tour. Buyers **move from room to room like Google Street View** — the storefront, the kitchen, the plant room, the office — exploring every corner in 360°, day or night, from anywhere in Australia." },
-    ],
-  },
   "/how-it-works": {
     label: "How it works",
     slots: [

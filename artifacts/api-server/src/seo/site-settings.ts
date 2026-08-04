@@ -14,6 +14,8 @@ export interface PageSeo {
   noindex?: boolean;
   /** Editable marketing copy (Phase C) — arbitrary named text blocks. */
   copy?: Record<string, string>;
+  /** Rich section-based content (full-page editor): { text: {...}, lists: {...} } */
+  content?: { text?: Record<string, string>; lists?: Record<string, Record<string, string>[]> };
 }
 
 export interface SiteSettings {
