@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "wouter";
-import { ArrowLeft, Loader2, RefreshCw, Plus, Trash2, X, Check, Link2, Layers, TrendingUp, BarChart3, FileText, Upload as UploadIcon } from "lucide-react";
+import { ArrowLeft, Loader2, RefreshCw, Plus, Trash2, X, Check, Link2, Layers, TrendingUp, BarChart3, FileText, Search, Upload as UploadIcon } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
