@@ -55,7 +55,7 @@ export function Valuation() {
           {cafeId && tab === "connections" && <Connections cafeId={cafeId} auth={auth} token={token!} />}
           {cafeId && tab === "addbacks" && <AddBacks cafeId={cafeId} auth={auth} />}
           {cafeId && tab === "reports" && <FinReports cafeId={cafeId} auth={auth} />}
-          {cafeId && tab === "insights" && <Insights cafeId={cafeId} auth={auth} />}
+          {cafeId && tab === "insights" && <Insights cafeId={cafeId} auth={auth} token={token!} />}
         </div>
       )}
     </div>
@@ -412,7 +412,7 @@ function ReportEditor({ cafeId, auth, report, onClose }: { cafeId: string; auth:
 const PERIODS = [[3, "3 mo"], [6, "6 mo"], [12, "12 mo"], [24, "24 mo"]] as const;
 const DOW_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-function Insights({ cafeId, auth }: { cafeId: string; auth: any }) {
+function Insights({ cafeId, auth, token }: { cafeId: string; auth: any; token: string }) {
   const [monthly, setMonthly] = useState<any[]>([]);
   const [dow, setDow] = useState<any[]>([]);
   const [top, setTop] = useState<any[]>([]);
@@ -458,15 +458,25 @@ function Insights({ cafeId, auth }: { cafeId: string; auth: any }) {
     await syncSquare();
   }
 
+  function reconnectSquare() {
+    const url = `/api/valuation/oauth/square/start?cafeId=${cafeId}&token=${encodeURIComponent(token)}`;
+    window.open(url, "oauth", "width=520,height=680");
+  }
+
   async function syncSquare() {
     setSyncing(true); setSyncMsg(null);
     try {
       const r = await fetch(`/api/valuation/square/sync`, { method: "POST", headers: auth, body: JSON.stringify({ cafeId, periodMonths: Math.max(months, 12), forceSync: true }) });
-      if (!r.ok) { const e = await r.json().catch(() => ({})); setSyncMsg(e.error || `Sync failed (${r.status})`); }
-      else { setSyncMsg("Synced from Square ✓ (bucketed by your local trading day)"); await load(); }
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) setSyncMsg(body.error || `Sync failed (${r.status})`);
+      else if (body.syncError) setSyncMsg(body.syncError);
+      else { setSyncMsg("Synced from Square ✓ (bucketed by your local trading day)"); }
+      await load();
     } catch { setSyncMsg("Sync failed — check your connection"); }
     finally { setSyncing(false); }
   }
+  // Re-pull when the OAuth reconnect popup reports success
+  useEffect(() => { const h = (e: MessageEvent) => { if ((e.data as any)?.exit360OAuth?.provider === "square") setTimeout(load, 800); }; window.addEventListener("message", h); return () => window.removeEventListener("message", h); }, [load]);
 
   // Derived KPIs
   const totalRev = monthly.reduce((a, m) => a + (Number(m.gross) || 0), 0);
@@ -503,6 +513,12 @@ function Insights({ cafeId, auth }: { cafeId: string; auth: any }) {
       </div>
       {syncMsg && <div className="text-xs px-3 py-2 rounded-lg border border-border bg-muted/30">{syncMsg}</div>}
       {!meta?.squareConnected && <div className="text-xs px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300">Square isn't connected. Add it under Connections to unlock these insights.</div>}
+      {meta?.squareConnected && locData?.needsReconnect && (
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-red-500/50 bg-red-500/10">
+          <div className="text-xs text-red-300"><b>Square needs reconnecting.</b> Your Square authorisation has expired, so no fresh sales can be pulled — the figures below are the last cached data. Reconnect to update.</div>
+          <Button size="sm" onClick={reconnectSquare} className="theme-btn-gradient border-0 shrink-0">Reconnect Square</Button>
+        </div>
+      )}
 
       {/* Data source — which Square account/locations (income streams) feed these numbers */}
       {meta?.squareConnected && (
@@ -515,7 +531,7 @@ function Insights({ cafeId, auth }: { cafeId: string; auth: any }) {
                   const locs = locData?.locations ?? [];
                   const active = locs.filter((l: any) => l.status === "ACTIVE");
                   const inUse = sel ? active.filter((l: any) => sel.has(l.id)) : active;
-                  if (!locs.length) return "Square account connected — no locations returned.";
+                  if (!locs.length) return locData?.needsReconnect ? "Square authorisation expired — reconnect above to load your locations." : "Square account connected — no locations returned.";
                   if (inUse.length === active.length) return `All ${active.length} location${active.length !== 1 ? "s" : ""} included${active.length > 1 ? " (summed)" : ""}. Tap to choose which income streams to include.`;
                   return `${inUse.length} of ${active.length} locations included: ${inUse.map((l: any) => l.name).join(", ")}. Tap to change.`;
                 })()}

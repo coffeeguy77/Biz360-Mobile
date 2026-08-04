@@ -22,12 +22,17 @@ router.post("/square/sync", async (req, res) => {
   const selectedLocationIds = (squareInt.metadata && typeof squareInt.metadata === "object")
     ? ((squareInt.metadata as any).selectedLocationIds as string[] | undefined) ?? null
     : null;
+  let syncError: string | null = null;
   if (forceSync || process.env.SQUARE_APP_ID) {
-    try { await syncSquareOrders(cafeId, userId, squareInt.accessToken!, fromDate, toDate, selectedLocationIds); }
-    catch (e: any) { logger.warn({ err: e.message, cafeId }, "Square sync partial failure — using cached data"); }
+    const accessToken = await getValidSquareToken(squareInt);
+    if (!accessToken) syncError = "Square token unavailable — please reconnect Square.";
+    else {
+      try { await syncSquareOrders(cafeId, userId, accessToken, fromDate, toDate, selectedLocationIds); }
+      catch (e: any) { syncError = e?.message || "Square sync failed"; logger.warn({ err: e?.message, cafeId }, "Square sync failure"); }
+    }
   }
   const result = await calculateAndSaveSnapshot(cafeId, userId, periodMonths);
-  return res.json(result);
+  return res.json({ ...result, syncError });
 });
 
 /**
@@ -44,20 +49,54 @@ function localDateInTz(iso: string, tz: string): string {
   }
 }
 
-/** Fetch Square locations with id, name, timezone, status and currency. */
-async function fetchSquareLocations(accessToken: string): Promise<{ id: string; name: string; timezone: string; status: string; currency: string | null }[]> {
+type SquareLoc = { id: string; name: string; timezone: string; status: string; currency: string | null };
+
+/** Fetch Square locations; surfaces the HTTP status so callers can detect an
+ *  expired/invalid token (401) vs. a genuine empty account. */
+async function fetchSquareLocations(accessToken: string): Promise<{ ok: boolean; status: number; locations: SquareLoc[] }> {
   try {
     const r = await fetch("https://connect.squareup.com/v2/locations", { headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17" } });
-    if (!r.ok) return [];
+    if (!r.ok) return { ok: false, status: r.status, locations: [] };
     const data = await r.json() as any;
-    return (data.locations ?? []).map((l: any) => ({
+    const locations = (data.locations ?? []).map((l: any) => ({
       id: l.id as string,
       name: (l.name as string) ?? "Location",
       timezone: (l.timezone as string) ?? "Australia/Sydney",
       status: (l.status as string) ?? "ACTIVE",
       currency: l.currency ?? null,
     }));
-  } catch { return []; }
+    return { ok: true, status: 200, locations };
+  } catch { return { ok: false, status: 0, locations: [] }; }
+}
+
+/**
+ * Return a valid Square access token, refreshing via the stored refresh_token
+ * when the current one is expired or near expiry. Square access tokens live ~30
+ * days; without this, every live call fails once the token lapses (no locations,
+ * no fresh orders) and the UI silently shows stale cache. Mirrors getValidXeroToken.
+ */
+async function getValidSquareToken(sqInt: { id: string; accessToken: string | null; refreshToken: string | null; tokenExpiresAt: Date | null }): Promise<string | null> {
+  const appId = process.env.SQUARE_APP_ID, appSecret = process.env.SQUARE_APP_SECRET;
+  const expMs = sqInt.tokenExpiresAt ? new Date(sqInt.tokenExpiresAt).getTime() : 0;
+  const stillValid = !!sqInt.accessToken && expMs > 0 && expMs - Date.now() > 2 * 86400000; // >2 day buffer
+  if (stillValid) return sqInt.accessToken;
+  if (!appId || !appSecret || !sqInt.refreshToken) return sqInt.accessToken ?? null; // can't refresh — best effort
+  try {
+    const r = await fetch("https://connect.squareup.com/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Square-Version": "2024-01-17" },
+      body: JSON.stringify({ client_id: appId, client_secret: appSecret, grant_type: "refresh_token", refresh_token: sqInt.refreshToken }),
+    });
+    if (!r.ok) { logger.warn({ status: r.status }, "Square token refresh failed"); return sqInt.accessToken ?? null; }
+    const d = await r.json() as any;
+    if (!d.access_token) return sqInt.accessToken ?? null;
+    await db.update(cafeIntegrationsTable).set({
+      accessToken: d.access_token,
+      refreshToken: d.refresh_token ?? sqInt.refreshToken,
+      tokenExpiresAt: d.expires_at ? new Date(d.expires_at) : null,
+    }).where(eq(cafeIntegrationsTable.id, sqInt.id));
+    return d.access_token as string;
+  } catch (e: any) { logger.warn({ err: e?.message }, "Square token refresh threw"); return sqInt.accessToken ?? null; }
 }
 
 /** GET /valuation/square/locations?cafeId=… — list Square locations + current selection. */
@@ -68,9 +107,11 @@ router.get("/square/locations", async (req, res) => {
   try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
   const [sqInt] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "square"), eq(cafeIntegrationsTable.status, "connected")));
   if (!sqInt) return res.json({ connected: false, locations: [], selectedLocationIds: null, merchantName: null });
-  const locations = await fetchSquareLocations(sqInt.accessToken!);
+  const token = await getValidSquareToken(sqInt);
+  const { ok, status, locations } = await fetchSquareLocations(token ?? "");
   const selectedLocationIds = (sqInt.metadata && typeof sqInt.metadata === "object") ? ((sqInt.metadata as any).selectedLocationIds as string[] | undefined) ?? null : null;
-  return res.json({ connected: true, merchantName: sqInt.merchantName ?? null, locations, selectedLocationIds });
+  const needsReconnect = !ok && (status === 401 || status === 403);
+  return res.json({ connected: true, merchantName: sqInt.merchantName ?? null, locations, selectedLocationIds, tokenValid: ok, needsReconnect, error: ok ? null : `Square returned ${status || "no response"}` });
 });
 
 /** POST /valuation/square/locations — save which locations (income streams) to include. */
@@ -139,7 +180,12 @@ async function buildSquareCatalogCategoryMap(accessToken: string): Promise<Recor
 }
 
 async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: string, fromDate: Date, toDate: Date, selectedLocationIds?: string[] | null) {
-  const allLocations = await fetchSquareLocations(accessToken);
+  const locRes = await fetchSquareLocations(accessToken);
+  if (!locRes.ok) {
+    if (locRes.status === 401 || locRes.status === 403) throw new Error("Square authorisation expired — please reconnect Square.");
+    throw new Error(`Square locations unavailable (status ${locRes.status || "no response"}).`);
+  }
+  const allLocations = locRes.locations;
   // Timezone per location — used to bucket each order by the café's LOCAL date.
   const locationTz: Record<string, string> = {};
   for (const l of allLocations) locationTz[l.id] = l.timezone;
