@@ -422,25 +422,48 @@ function Insights({ cafeId, auth }: { cafeId: string; auth: any }) {
   const [metric, setMetric] = useState<"gross" | "net" | "orders">("gross");
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [locData, setLocData] = useState<any>(null);
+  const [sel, setSel] = useState<Set<string> | null>(null); // null = all
+  const [showSource, setShowSource] = useState(false);
+  const [selDirty, setSelDirty] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [m, d, t, mt] = await Promise.all([
+    const [m, d, t, mt, lc] = await Promise.all([
       fetch(`/api/valuation/cafes/${cafeId}/insights/monthly?months=${months}`, { headers: auth }).then((r) => r.json()).catch(() => ({})),
       fetch(`/api/valuation/cafes/${cafeId}/insights/day-of-week?months=${months}`, { headers: auth }).then((r) => r.json()).catch(() => ({})),
       fetch(`/api/valuation/cafes/${cafeId}/insights/top-categories?months=${months}`, { headers: auth }).then((r) => r.json()).catch(() => ({})),
       fetch(`/api/valuation/cafes/${cafeId}/insights/meta`, { headers: auth }).then((r) => r.json()).catch(() => ({})),
+      fetch(`/api/valuation/square/locations?cafeId=${cafeId}`, { headers: auth }).then((r) => r.json()).catch(() => ({})),
     ]);
-    setMonthly(m.months ?? []); setDow(d.days ?? []); setTop(t.items ?? []); setMeta(mt ?? null); setLoading(false);
+    setMonthly(m.months ?? []); setDow(d.days ?? []); setTop(t.items ?? []); setMeta(mt ?? null);
+    setLocData(lc ?? null);
+    setSel(Array.isArray(lc?.selectedLocationIds) && lc.selectedLocationIds.length ? new Set<string>(lc.selectedLocationIds) : null);
+    setSelDirty(false);
+    setLoading(false);
   }, [cafeId, months]);
   useEffect(() => { load(); }, [load]);
+
+  function toggleLoc(id: string, allIds: string[]) {
+    setSelDirty(true);
+    setSel((cur) => {
+      const base = cur ? new Set(cur) : new Set(allIds); // null(all) → materialise then toggle off
+      if (base.has(id)) base.delete(id); else base.add(id);
+      return base;
+    });
+  }
+  async function saveSourceAndSync() {
+    const ids = sel ? Array.from(sel) : null;
+    await fetch(`/api/valuation/square/locations`, { method: "POST", headers: auth, body: JSON.stringify({ cafeId, selectedLocationIds: ids }) });
+    await syncSquare();
+  }
 
   async function syncSquare() {
     setSyncing(true); setSyncMsg(null);
     try {
       const r = await fetch(`/api/valuation/square/sync`, { method: "POST", headers: auth, body: JSON.stringify({ cafeId, periodMonths: Math.max(months, 12), forceSync: true }) });
       if (!r.ok) { const e = await r.json().catch(() => ({})); setSyncMsg(e.error || `Sync failed (${r.status})`); }
-      else { setSyncMsg("Synced from Square ✓"); await load(); }
+      else { setSyncMsg("Synced from Square ✓ (bucketed by your local trading day)"); await load(); }
     } catch { setSyncMsg("Sync failed — check your connection"); }
     finally { setSyncing(false); }
   }
@@ -480,6 +503,51 @@ function Insights({ cafeId, auth }: { cafeId: string; auth: any }) {
       </div>
       {syncMsg && <div className="text-xs px-3 py-2 rounded-lg border border-border bg-muted/30">{syncMsg}</div>}
       {!meta?.squareConnected && <div className="text-xs px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300">Square isn't connected. Add it under Connections to unlock these insights.</div>}
+
+      {/* Data source — which Square account/locations (income streams) feed these numbers */}
+      {meta?.squareConnected && (
+        <Card className="!py-3">
+          <button onClick={() => setShowSource((s) => !s)} className="w-full flex items-center justify-between text-left">
+            <div>
+              <div className="text-sm font-bold">Data source{locData?.merchantName ? ` · ${locData.merchantName}` : ""}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {(() => {
+                  const locs = locData?.locations ?? [];
+                  const active = locs.filter((l: any) => l.status === "ACTIVE");
+                  const inUse = sel ? active.filter((l: any) => sel.has(l.id)) : active;
+                  if (!locs.length) return "Square account connected — no locations returned.";
+                  if (inUse.length === active.length) return `All ${active.length} location${active.length !== 1 ? "s" : ""} included${active.length > 1 ? " (summed)" : ""}. Tap to choose which income streams to include.`;
+                  return `${inUse.length} of ${active.length} locations included: ${inUse.map((l: any) => l.name).join(", ")}. Tap to change.`;
+                })()}
+              </div>
+            </div>
+            <span className="text-[11px] text-primary shrink-0">{showSource ? "Hide" : "Choose"}</span>
+          </button>
+          {showSource && (
+            <div className="mt-3 flex flex-col gap-1.5">
+              {(locData?.locations ?? []).length === 0 && <p className="text-xs text-muted-foreground">No locations returned by Square.</p>}
+              {(locData?.locations ?? []).map((l: any) => {
+                const allIds = (locData?.locations ?? []).filter((x: any) => x.status === "ACTIVE").map((x: any) => x.id);
+                const checked = sel ? sel.has(l.id) : l.status === "ACTIVE";
+                return (
+                  <label key={l.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${checked ? "border-primary bg-primary/10" : "border-border"} ${l.status !== "ACTIVE" ? "opacity-60" : "cursor-pointer"}`}>
+                    <input type="checkbox" checked={checked} disabled={l.status !== "ACTIVE"} onChange={() => toggleLoc(l.id, allIds)} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{l.name} {l.status !== "ACTIVE" && <span className="text-[10px] text-muted-foreground">({l.status.toLowerCase()})</span>}</div>
+                      <div className="text-[11px] text-muted-foreground">{l.timezone}{l.currency ? ` · ${l.currency}` : ""}</div>
+                    </div>
+                  </label>
+                );
+              })}
+              <div className="flex items-center gap-2 mt-1">
+                <Button size="sm" onClick={saveSourceAndSync} disabled={syncing || !selDirty} className="theme-btn-gradient border-0 gap-1.5">{syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Save &amp; re-sync</Button>
+                {selDirty && <span className="text-[11px] text-amber-400">Selection changed — save &amp; re-sync to apply.</span>}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Include only the location(s) that belong to <b>this</b> business. Takings are counted on your local trading day, so a day you're closed reads $0.</p>
+            </div>
+          )}
+        </Card>
+      )}
       {meta?.squareConnected && !hasData && (
         <Center>Square is connected but no sales are cached yet. Hit <b className="mx-1">Sync Square</b> above to pull your transactions — this can take up to a minute for a full year.</Center>
       )}

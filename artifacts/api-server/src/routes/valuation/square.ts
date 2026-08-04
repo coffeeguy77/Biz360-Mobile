@@ -19,12 +19,72 @@ router.post("/square/sync", async (req, res) => {
   const toDate = new Date();
   const fromDate = new Date();
   fromDate.setMonth(fromDate.getMonth() - periodMonths);
+  const selectedLocationIds = (squareInt.metadata && typeof squareInt.metadata === "object")
+    ? ((squareInt.metadata as any).selectedLocationIds as string[] | undefined) ?? null
+    : null;
   if (forceSync || process.env.SQUARE_APP_ID) {
-    try { await syncSquareOrders(cafeId, userId, squareInt.accessToken!, fromDate, toDate); }
+    try { await syncSquareOrders(cafeId, userId, squareInt.accessToken!, fromDate, toDate, selectedLocationIds); }
     catch (e: any) { logger.warn({ err: e.message, cafeId }, "Square sync partial failure — using cached data"); }
   }
   const result = await calculateAndSaveSnapshot(cafeId, userId, periodMonths);
   return res.json(result);
+});
+
+/**
+ * Convert a UTC ISO timestamp to the calendar date (YYYY-MM-DD) in a given IANA
+ * timezone. Square returns created_at in UTC; an Australian café's early-morning
+ * trade otherwise lands on the previous UTC day, smearing takings across days and
+ * putting phantom sales on closed days. Bucketing by *local* date fixes that.
+ */
+function localDateInTz(iso: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+/** Fetch Square locations with id, name, timezone, status and currency. */
+async function fetchSquareLocations(accessToken: string): Promise<{ id: string; name: string; timezone: string; status: string; currency: string | null }[]> {
+  try {
+    const r = await fetch("https://connect.squareup.com/v2/locations", { headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17" } });
+    if (!r.ok) return [];
+    const data = await r.json() as any;
+    return (data.locations ?? []).map((l: any) => ({
+      id: l.id as string,
+      name: (l.name as string) ?? "Location",
+      timezone: (l.timezone as string) ?? "Australia/Sydney",
+      status: (l.status as string) ?? "ACTIVE",
+      currency: l.currency ?? null,
+    }));
+  } catch { return []; }
+}
+
+/** GET /valuation/square/locations?cafeId=… — list Square locations + current selection. */
+router.get("/square/locations", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId } = req.query as Record<string, string>;
+  if (!cafeId) return res.status(400).json({ error: "cafeId required" });
+  try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
+  const [sqInt] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "square"), eq(cafeIntegrationsTable.status, "connected")));
+  if (!sqInt) return res.json({ connected: false, locations: [], selectedLocationIds: null, merchantName: null });
+  const locations = await fetchSquareLocations(sqInt.accessToken!);
+  const selectedLocationIds = (sqInt.metadata && typeof sqInt.metadata === "object") ? ((sqInt.metadata as any).selectedLocationIds as string[] | undefined) ?? null : null;
+  return res.json({ connected: true, merchantName: sqInt.merchantName ?? null, locations, selectedLocationIds });
+});
+
+/** POST /valuation/square/locations — save which locations (income streams) to include. */
+router.post("/square/locations", async (req, res) => {
+  const userId = req.user!.id;
+  const { cafeId, selectedLocationIds } = req.body as { cafeId?: string; selectedLocationIds?: string[] | null };
+  if (!cafeId) return res.status(400).json({ error: "cafeId required" });
+  try { await assertCafeOwner(cafeId, userId); } catch (e: any) { return res.status(e.status ?? 403).json({ error: e.message }); }
+  const [sqInt] = await db.select().from(cafeIntegrationsTable).where(and(eq(cafeIntegrationsTable.cafeId, cafeId), eq(cafeIntegrationsTable.type, "square"), eq(cafeIntegrationsTable.status, "connected")));
+  if (!sqInt) return res.status(404).json({ error: "Square not connected" });
+  const meta = (sqInt.metadata && typeof sqInt.metadata === "object") ? { ...(sqInt.metadata as any) } : {};
+  meta.selectedLocationIds = Array.isArray(selectedLocationIds) && selectedLocationIds.length > 0 ? selectedLocationIds : null;
+  await db.update(cafeIntegrationsTable).set({ metadata: meta }).where(eq(cafeIntegrationsTable.id, sqInt.id));
+  return res.json({ ok: true, selectedLocationIds: meta.selectedLocationIds });
 });
 
 /**
@@ -78,16 +138,17 @@ async function buildSquareCatalogCategoryMap(accessToken: string): Promise<Recor
   }
 }
 
-async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: string, fromDate: Date, toDate: Date) {
-  let locationIds: string[] = [];
-  try {
-    const locRes = await fetch("https://connect.squareup.com/v2/locations", { headers: { Authorization: `Bearer ${accessToken}`, "Square-Version": "2024-01-17" } });
-    if (locRes.ok) {
-      const locData = await locRes.json() as any;
-      locationIds = (locData.locations ?? []).filter((l: any) => l.status === "ACTIVE").map((l: any) => l.id as string);
-    }
-  } catch {}
-  if (locationIds.length === 0) { logger.warn({ cafeId }, "Square: no active locations found, skipping sync"); return; }
+async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: string, fromDate: Date, toDate: Date, selectedLocationIds?: string[] | null) {
+  const allLocations = await fetchSquareLocations(accessToken);
+  // Timezone per location — used to bucket each order by the café's LOCAL date.
+  const locationTz: Record<string, string> = {};
+  for (const l of allLocations) locationTz[l.id] = l.timezone;
+  const fallbackTz = allLocations[0]?.timezone ?? "Australia/Sydney";
+  // Which locations to include: the seller's selection, else all ACTIVE locations.
+  const activeIds = allLocations.filter((l) => l.status === "ACTIVE").map((l) => l.id);
+  const selSet = Array.isArray(selectedLocationIds) && selectedLocationIds.length > 0 ? new Set(selectedLocationIds) : null;
+  const locationIds = selSet ? activeIds.filter((id) => selSet.has(id)) : activeIds;
+  if (locationIds.length === 0) { logger.warn({ cafeId }, "Square: no locations to sync (none active or none selected), skipping"); return; }
 
   // Fetch catalog category map in parallel with orders (non-fatal if it fails)
   const catalogMapPromise = buildSquareCatalogCategoryMap(accessToken);
@@ -109,7 +170,8 @@ async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: st
     const data = await r.json() as any;
     cursor = data.cursor;
     for (const order of data.orders ?? []) {
-      const date = (order.created_at as string).slice(0, 10);
+      const tz = locationTz[order.location_id as string] ?? fallbackTz;
+      const date = localDateInTz(order.created_at as string, tz);
       const gross = (order.total_money?.amount ?? 0) / 100;
       const net = (order.net_amounts?.total_money?.amount ?? order.total_money?.amount ?? 0) / 100;
       if (!dailyTotals[date]) dailyTotals[date] = { gross: 0, net: 0, count: 0 };
@@ -130,6 +192,12 @@ async function syncSquareOrders(cafeId: string, ownerId: string, accessToken: st
       }
     }
   } while (cursor);
+
+  // All orders fetched successfully — now atomically replace the café's cache so a
+  // re-sync (new location selection or corrected local-date bucketing) fully wins
+  // over stale rows rather than merging with them.
+  await db.delete(squareOrdersCacheTable).where(eq(squareOrdersCacheTable.cafeId, cafeId));
+  await db.delete(squareCategoryCacheTable).where(eq(squareCategoryCacheTable.cafeId, cafeId));
 
   // Save daily totals (existing cache)
   for (const [date, totals] of Object.entries(dailyTotals)) {
