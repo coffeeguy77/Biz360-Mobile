@@ -77,7 +77,7 @@ async function fileToB64(file: File): Promise<{ data: string; mime: string }> {
 }
 
 export interface ListingFormValues {
-  businessName: string; category: string; subcategory: string; saleStatus: string; tenure: string; state: string; suburb: string; description: string; confidential: boolean;
+  businessName: string; category: string; subcategory: string; saleStatus: string; tenure: string; state: string; suburb: string; description: string; confidential: boolean; seoIndexable: boolean;
   priceDisplay: string; askingPrice: string; askingPriceMin: string; askingPriceMax: string; weeklyRevenue: string;
   adjustedProfit: string; rent: string; staffCount: string; ownerHours: string; leaseExpiry: string; leaseOptions: string;
   stat2Display: string; stat3Display: string; franchiseStatus: string; trainingPeriod: string; reasonForSale: string;
@@ -85,7 +85,7 @@ export interface ListingFormValues {
   badges: string[]; photos: string[];
 }
 const EMPTY: ListingFormValues = {
-  businessName: "", category: "", subcategory: "", saleStatus: "available", tenure: "", state: "VIC", suburb: "", description: "", confidential: false,
+  businessName: "", category: "", subcategory: "", saleStatus: "available", tenure: "", state: "VIC", suburb: "", description: "", confidential: false, seoIndexable: true,
   priceDisplay: "askingPrice", askingPrice: "", askingPriceMin: "", askingPriceMax: "", weeklyRevenue: "",
   adjustedProfit: "", rent: "", staffCount: "", ownerHours: "", leaseExpiry: "", leaseOptions: "",
   stat2Display: "sde", stat3Display: "staffCount", franchiseStatus: "", trainingPeriod: "", reasonForSale: "",
@@ -114,7 +114,7 @@ export function ListingForm({ mode, listingId, token, onDone, onCancel }: {
         setF({
           ...EMPTY,
           businessName: s(rec.businessName), category: s(rec.category), subcategory: s(rec.subcategory), saleStatus: s(rec.saleStatus) || "available", tenure: s(rec.tenure), state: s(rec.state) || "VIC", suburb: s(rec.suburb === "Unknown" ? "" : rec.suburb),
-          description: s(rec.description), confidential: !!rec.confidential, priceDisplay: s(rec.priceDisplay) || "askingPrice",
+          description: s(rec.description), confidential: !!rec.confidential, seoIndexable: rec.seoIndexable !== false, priceDisplay: s(rec.priceDisplay) || "askingPrice",
           askingPrice: n(rec.askingPrice), askingPriceMin: n(rec.askingPriceMin), askingPriceMax: n(rec.askingPriceMax), weeklyRevenue: n(rec.weeklyRevenue),
           adjustedProfit: n(rec.adjustedProfit), rent: n(rec.rent), staffCount: n(rec.staffCount), ownerHours: n(rec.ownerHours),
           leaseExpiry: s(rec.leaseExpiry), leaseOptions: s(rec.leaseOptions), stat2Display: s(rec.stat2Display) || "sde", stat3Display: s(rec.stat3Display) || "staffCount",
@@ -174,6 +174,7 @@ export function ListingForm({ mode, listingId, token, onDone, onCancel }: {
         <Field label="Sale status"><select value={f.saleStatus} onChange={(e) => set("saleStatus", e.target.value)} className={inp}>{SALE_STATUS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select></Field>
         <Field label="Tenure"><select value={f.tenure} onChange={(e) => set("tenure", e.target.value)} className={inp}>{TENURE.map((t) => <option key={t} value={t}>{t || "— not set —"}</option>)}</select></Field>
         <Field label="Confidential listing"><Toggle on={f.confidential} onToggle={() => set("confidential", !f.confidential)} label="Hide business name from public search" /></Field>
+        <Field label="Search engine visibility"><Toggle on={f.seoIndexable} onToggle={() => set("seoIndexable", !f.seoIndexable)} label="Allow Google & other search engines to index this listing (recommended)" /></Field>
         <Field label="Description" span><textarea value={f.description} onChange={(e) => set("description", e.target.value)} rows={3} className={inp} placeholder="History, what makes it attractive, what's included…" /></Field>
       </Section>
 

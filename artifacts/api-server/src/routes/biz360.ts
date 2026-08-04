@@ -669,6 +669,8 @@ function applyListingFields(cur: any, b: Record<string, unknown>): void {
   setNum("askingPrice"); setNum("askingPriceMin"); setNum("askingPriceMax"); setNum("weeklyRevenue");
   setNum("adjustedProfit"); setNum("rent"); setNum("staffCount"); setNum("ownerHours"); setNum("equipmentValue");
   if (b.confidential !== undefined) cur.confidential = !!b.confidential;
+  // SEO: whether search engines may index this listing's public page (default true)
+  if (b.seoIndexable !== undefined) cur.seoIndexable = !!b.seoIndexable;
   if (Array.isArray(b.photos)) cur.photos = (b.photos as unknown[]).filter((p) => typeof p === "string").slice(0, 12);
   if (Array.isArray(b.badges)) cur.badges = (b.badges as unknown[]).filter((x) => typeof x === "string" && BADGES.includes(x));
   if (typeof b.heroColor === "string") cur.heroColor = b.heroColor;
