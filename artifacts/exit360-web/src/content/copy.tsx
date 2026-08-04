@@ -9,14 +9,6 @@ export interface Slot { key: string; label: string; type?: "text" | "textarea"; 
 export interface PageContent { label: string; slots: Slot[]; }
 
 export const PAGE_CONTENT: Record<string, PageContent> = {
-  "/brokers": {
-    label: "Brokers",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "For business brokers & advisory firms" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "Run your whole book of listings from ==one broker login.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "EXIT360 gives brokers a single account to build, manage and market every client's business for sale — each with its own **immersive 360° tour, NDA-gated IM report and live buyer analytics**. Then send each client a private link so they can watch their own listing's performance without ever having to ask you for an update." },
-    ],
-  },
   "/how-it-works": {
     label: "How it works",
     slots: [

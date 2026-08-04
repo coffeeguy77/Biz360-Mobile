@@ -68,6 +68,101 @@ export const PAGE_MODEL: Record<string, MPage> = {
       },
     ],
   },
+  "/brokers": {
+    label: "Brokers",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.eyebrow", label: "Eyebrow", default: "For business brokers & advisory firms" },
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "Run your whole book of listings from ==one broker login.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "EXIT360 gives brokers a single account to build, manage and market every client's business for sale — each with its own **immersive 360° tour, NDA-gated IM report and live buyer analytics**. Then send each client a private link so they can watch their own listing's performance without ever having to ask you for an update." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "Start as a broker" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "See how it works" },
+          { key: "hero.cardTitle", label: "Image card title", default: "12 active listings" },
+          { key: "hero.cardSub", label: "Image card subtitle", default: "Managed under one broker account" },
+        ],
+        lists: [{ key: "hero.chips", label: "Trust chips", itemNoun: "chip", fields: [{ key: "text", label: "Text" }], default: [{ text: "Unlimited listings, one dashboard" }, { text: "Build on app & web" }, { text: "White-glove reporting" }] }],
+      },
+      {
+        key: "why", label: "Why brokers win",
+        fields: [
+          { key: "why.heading", label: "Heading", type: "textarea", default: "Why brokers win with EXIT360" },
+          { key: "why.body", label: "Intro paragraph", type: "textarea", default: "You're not selling one business — you're running a portfolio. EXIT360 is built for the way brokers actually work: many listings, many clients, and the constant demand for updates. Everything sits in one place, presents like a premium advisory firm, and keeps your clients informed automatically." },
+        ],
+        lists: [{ key: "why.cards", label: "Cards", itemNoun: "card", fields: CARD, default: [
+          { title: "Every listing, one login", body: "Manage your entire book from a single broker account. Add a new client business, switch between listings and update details without juggling logins, spreadsheets or duplicate profiles." },
+          { title: "Build on app or web, always synced", body: "Capture a listing on-site with the mobile app, then finish the write-up on your desktop. Every listing is keyed to a phone number, so your work stays in sync across every device." },
+          { title: "A 360° tour for each business", body: "Give every client a standout listing. Capture panoramic scenes on location and link them into a guided walkthrough buyers can explore like Street View — before they ever request an inspection." },
+          { title: "Data-room-grade IM reports", body: "Each listing generates a polished, NDA-gated information memorandum — financials, add-backs, divisions and equipment — that presents your client's business with the professionalism it deserves." },
+          { title: "You manage buyer access", body: "Gate financials behind NDAs and turn access on or off per buyer. Only phone-verified, genuinely interested buyers reach your clients — no anonymous tyre-kickers wasting your time." },
+          { title: "White-glove positioning", body: "Present as the premium advisor you are. Immersive tours, professional reports and live analytics make every mandate look like a well-run process, helping you win and retain listings." },
+        ] }],
+      },
+      {
+        key: "showcase", label: "Shareable client analytics",
+        fields: [
+          { key: "showcase.eyebrow", label: "Eyebrow", default: "The broker's secret weapon" },
+          { key: "showcase.heading", label: "Heading", type: "textarea", default: "A shareable analytics page ==your client can check themselves.==" },
+          { key: "showcase.body", label: "Paragraph 1", type: "textarea", default: "Every broker knows the routine: the client rings to ask how their sale is tracking, and you stop what you're doing to pull numbers together. EXIT360 ends that. Send your client a private link, they log in, and they see their own listing's performance in real time — no chasing, no status emails, no interruptions to the rest of your book." },
+          { key: "showcase.body2", label: "Paragraph 2", type: "textarea", default: "Your client sees exactly what matters and nothing they shouldn't: live view counts, NDAs signed and buyer requests broken down by type — requests for information, calls and site visits. They get the transparency they crave, you get your time back, and every listing feels like a first-class, professionally managed campaign." },
+          { key: "showcase.ctaLabel", label: "Button label", default: "Give clients their own view" },
+          { key: "showcase.cardTitle", label: "Demo card title", default: "Client analytics — Cafe & Roastery" },
+          { key: "showcase.cardSub", label: "Demo card subtitle", default: "Shared by your broker · live now" },
+        ],
+        lists: [
+          { key: "showcase.bigstats", label: "Headline stats", itemNoun: "stat", fields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }], default: [
+            { value: "1,284", label: "Listing views" }, { value: "37", label: "NDAs signed" },
+          ] },
+          { key: "showcase.requests", label: "Request rows", itemNoun: "row", fields: [{ key: "label", label: "Label" }, { key: "value", label: "Value" }], default: [
+            { label: "Requests for information", value: "24" }, { label: "Call requests", value: "11" }, { label: "Site-visit requests", value: "8" },
+          ] },
+        ],
+      },
+      {
+        key: "steps", label: "How brokers work",
+        fields: [
+          { key: "steps.heading", label: "Heading", type: "textarea", default: "How brokers work on EXIT360" },
+          { key: "steps.body", label: "Intro paragraph", type: "textarea", default: "From onboarding a new mandate to keeping your client in the loop — a four-step process built for a busy book." },
+        ],
+        lists: [{ key: "steps.items", label: "Steps", itemNoun: "step", fields: [{ key: "n", label: "Number" }, { key: "title", label: "Title" }, { key: "body", label: "Body", type: "textarea" }], default: [
+          { n: "01", title: "Open your broker account", body: "Sign up once and get a dashboard built to hold many listings. Every business you take on lives under the same login, keyed to your verified number." },
+          { n: "02", title: "Build each client listing", body: "Capture the 360° tour and details on-site with the app, or write it up on the web. Add financials, divisions and the equipment register — it all syncs automatically." },
+          { n: "03", title: "Publish with NDA gating", body: "Set the NDA and per-buyer access, then go live. Verified buyers explore the tour, sign to unlock financials, and lodge requests for info, calls or site visits." },
+          { n: "04", title: "Share the client link", body: "Send each client their private analytics page. They log in and track views, NDAs and requests themselves — while you focus on progressing the deals." },
+        ] }],
+      },
+      {
+        key: "stats", label: "Stats band",
+        lists: [{ key: "stats.items", label: "Stats", itemNoun: "stat", fields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }], default: [
+          { value: "Unlimited", label: "Listings per broker account" },
+          { value: "Live reporting", label: "Shared straight to clients" },
+          { value: "100% verified", label: "Every buyer, phone-checked" },
+          { value: "NDA-gated", label: "Financials protected by default" },
+        ] }],
+      },
+      {
+        key: "faq", label: "FAQ",
+        fields: [{ key: "faq.heading", label: "Heading", default: "Broker questions, answered" }],
+        lists: [{ key: "faq.items", label: "Questions", itemNoun: "question", fields: [{ key: "q", label: "Question" }, { key: "a", label: "Answer", type: "textarea" }], default: [
+          { q: "Can I manage multiple client listings under one account?", a: "Yes — that's exactly what a broker account is built for. Every business you take on lives under a single login, so you can add, switch between and update as many listings as you're managing without ever creating separate profiles." },
+          { q: "How does the shareable client analytics page work?", a: "Each listing has its own analytics view you can share with the client. You send them a private link, they log in, and they see their own listing's performance — views, NDAs signed and requests by type — in real time. They stay informed without having to ring you for an update." },
+          { q: "What exactly can my client see?", a: "Only their own listing's numbers: live view counts, how many buyers have signed an NDA, and buyer requests broken down into information requests, call requests and site-visit requests. They never see other clients' data, and sensitive buyer details stay with you." },
+          { q: "Can I build a listing on the app and finish it on my computer?", a: "Absolutely. Capture the 360° tour and details on-site with the mobile app, then finish the write-up on the web. Because everything is keyed to your phone number, your listings stay in sync across every device." },
+          { q: "Do I control which buyers see financials?", a: "Yes. Financials sit behind an NDA gate by default, and you can turn per-buyer access on or off. Only phone-verified buyers can enquire, and you decide who progresses to your client's numbers." },
+        ] }],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "Bring your whole book to EXIT360" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "One login for every listing, a 360° tour and IM report for each client, and a shareable analytics page that keeps them informed for you. Start managing your listings the modern way." },
+          { key: "cta.primary", label: "Primary button", default: "Start as a broker" },
+          { key: "cta.secondary", label: "Secondary button", default: "For sellers" },
+        ],
+      },
+    ],
+  },
   "/buying": {
     label: "Buying",
     sections: [
