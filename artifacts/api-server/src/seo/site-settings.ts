@@ -34,6 +34,11 @@ export interface SiteSettings {
   };
   /** Per-path SEO + copy overrides, keyed by pathname ("/", "/selling", …). */
   pages: Record<string, PageSeo>;
+  /** Editable site menus (primary nav + footer columns). */
+  menus?: {
+    primary?: { label: string; href: string }[];
+    footer?: { title: string; links: { label: string; href: string }[] }[];
+  };
 }
 
 const DEFAULTS: SiteSettings = {
@@ -59,6 +64,7 @@ export async function getSiteSettings(force = false): Promise<SiteSettings> {
       gsc: { ...DEFAULTS.gsc, ...(stored.gsc ?? {}) },
       defaults: { ...DEFAULTS.defaults, ...(stored.defaults ?? {}) },
       pages: stored.pages ?? {},
+      menus: stored.menus ?? {},
     };
     cache = { value, at: Date.now() };
     return value;
@@ -73,6 +79,7 @@ export async function saveSiteSettings(partial: Partial<SiteSettings>): Promise<
     gsc: { ...cur.gsc, ...(partial.gsc ?? {}) },
     defaults: { ...cur.defaults, ...(partial.defaults ?? {}) },
     pages: partial.pages ? { ...cur.pages, ...partial.pages } : cur.pages,
+    menus: partial.menus ? { ...cur.menus, ...partial.menus } : cur.menus,
   };
   await db
     .insert(kvStore)

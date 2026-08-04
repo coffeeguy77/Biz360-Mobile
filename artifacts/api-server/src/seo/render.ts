@@ -177,6 +177,9 @@ export async function injectMeta(html: string, pathname: string): Promise<string
   if (Object.keys(contentMap).length) {
     extra.push(`<script>window.__EXIT360_CONTENT__=${JSON.stringify(contentMap).replace(/</g, "\\u003c")}</script>`);
   }
+  if (settings.menus && (settings.menus.primary?.length || settings.menus.footer?.length)) {
+    extra.push(`<script>window.__EXIT360_MENUS__=${JSON.stringify(settings.menus).replace(/</g, "\\u003c")}</script>`);
+  }
 
   out = out.replace(/<\/head>/i, `${extra.join("\n    ")}\n  </head>`);
   return out;

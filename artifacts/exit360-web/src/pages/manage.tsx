@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
 import { PAGE_CONTENT } from "@/content/copy";
 import { PAGE_MODEL } from "@/content/model";
+import { DEFAULT_PRIMARY, DEFAULT_FOOTER } from "@/content/menus";
+import { ListTree } from "lucide-react";
 
 const TOKEN_KEY = "biz360_web_auth_token";
 const inp = "w-full px-3 py-2 rounded-lg border border-border bg-background text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/60";
@@ -54,6 +56,7 @@ export function Manage() {
   const NAV: [string, string, any][] = [
     ["dashboard", "Dashboard", LayoutDashboard],
     ["pages", "Pages & SEO", FileText],
+    ["menus", "Menus", ListTree],
     ["listings", "Listings", FileCheck2],
     ["support", "Support", LifeBuoy],
     ["users", "Users & roles", Users],
@@ -101,6 +104,7 @@ export function Manage() {
             <div className="max-w-5xl mx-auto">
               {section === "dashboard" && <Dashboard auth={auth} />}
               {section === "pages" && <Pages auth={auth} />}
+              {section === "menus" && <Menus auth={auth} />}
               {section === "listings" && <Listings auth={auth} />}
               {section === "support" && <SupportInbox auth={auth} />}
               {section === "users" && <UsersTab auth={auth} isSuper={me.isSuperAdmin} />}
@@ -533,6 +537,81 @@ function UsersTab({ auth, isSuper }: { auth: any; isSuper: boolean }) {
           )}
         </Card>
       ))}
+    </div>
+  );
+}
+
+// ─── Menu manager ─────────────────────────────────────────────────────────────
+function Menus({ auth }: { auth: any }) {
+  const [primary, setPrimary] = useState<any[]>([]);
+  const [footer, setFooter] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    fetch("/api/admin/seo", { headers: auth }).then((r) => r.json()).then((s) => {
+      const m = s.menus ?? {};
+      setPrimary(Array.isArray(m.primary) && m.primary.length ? m.primary : DEFAULT_PRIMARY.map((x) => ({ ...x })));
+      setFooter(Array.isArray(m.footer) && m.footer.length ? m.footer.map((c: any) => ({ ...c, links: [...c.links] })) : DEFAULT_FOOTER.map((c) => ({ ...c, links: c.links.map((l) => ({ ...l })) })));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+  async function save() {
+    setSaving(true); setSaved(false);
+    try { await fetch("/api/admin/seo", { method: "PUT", headers: auth, body: JSON.stringify({ menus: { primary, footer } }) }); setSaved(true); setTimeout(() => setSaved(false), 2500); }
+    finally { setSaving(false); }
+  }
+  function move(arr: any[], set: any, i: number, d: number) { const j = i + d; if (j < 0 || j >= arr.length) return; const a = [...arr]; [a[i], a[j]] = [a[j], a[i]]; set(a); }
+  if (loading) return <Loader2 className="animate-spin" />;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">Edit the top navigation and footer links shown across the whole site. Reorder, rename, re-point, add or remove.</p>
+
+      <Card>
+        <h3 className="text-sm font-bold mb-3 inline-flex items-center gap-1.5"><Menu size={15} aria-hidden /> Top navigation</h3>
+        <div className="flex flex-col gap-2">
+          {primary.map((l, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input value={l.label} onChange={(e) => setPrimary(primary.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="Label" className={`${inp} flex-1`} aria-label="Label" />
+              <input value={l.href} onChange={(e) => setPrimary(primary.map((x, j) => j === i ? { ...x, href: e.target.value } : x))} placeholder="/path" className={`${inp} flex-1`} aria-label="Link" />
+              <button onClick={() => move(primary, setPrimary, i, -1)} className="p-1.5 rounded hover:bg-muted disabled:opacity-30" disabled={i === 0} aria-label="Up">↑</button>
+              <button onClick={() => move(primary, setPrimary, i, 1)} className="p-1.5 rounded hover:bg-muted disabled:opacity-30" disabled={i === primary.length - 1} aria-label="Down">↓</button>
+              <button onClick={() => setPrimary(primary.filter((_, j) => j !== i))} className="p-1.5 rounded hover:bg-red-500/10 text-red-400" aria-label="Remove"><Trash2 size={14} /></button>
+            </div>
+          ))}
+          <button onClick={() => setPrimary([...primary, { label: "New link", href: "/" }])} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-border hover:border-primary/50 hover:text-primary transition self-start"><Plus size={13} /> Add nav link</button>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-sm font-bold mb-3 inline-flex items-center gap-1.5"><ListTree size={15} aria-hidden /> Footer columns</h3>
+        <div className="grid md:grid-cols-2 gap-3">
+          {footer.map((col, ci) => (
+            <div key={ci} className="rounded-xl border border-border/60 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input value={col.title} onChange={(e) => setFooter(footer.map((c, j) => j === ci ? { ...c, title: e.target.value } : c))} placeholder="Column title" className={`${inp} flex-1 font-semibold`} aria-label="Column title" />
+                <button onClick={() => setFooter(footer.filter((_, j) => j !== ci))} className="p-1.5 rounded hover:bg-red-500/10 text-red-400" aria-label="Remove column"><Trash2 size={14} /></button>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {col.links.map((l: any, li: number) => (
+                  <div key={li} className="flex items-center gap-1.5">
+                    <input value={l.label} onChange={(e) => setFooter(footer.map((c, j) => j === ci ? { ...c, links: c.links.map((x: any, k: number) => k === li ? { ...x, label: e.target.value } : x) } : c))} placeholder="Label" className={`${inp} flex-1`} aria-label="Label" />
+                    <input value={l.href} onChange={(e) => setFooter(footer.map((c, j) => j === ci ? { ...c, links: c.links.map((x: any, k: number) => k === li ? { ...x, href: e.target.value } : x) } : c))} placeholder="/path" className={`${inp} flex-1`} aria-label="Link" />
+                    <button onClick={() => setFooter(footer.map((c, j) => j === ci ? { ...c, links: c.links.filter((_: any, k: number) => k !== li) } : c))} className="p-1 rounded hover:bg-red-500/10 text-red-400" aria-label="Remove link"><Trash2 size={13} /></button>
+                  </div>
+                ))}
+                <button onClick={() => setFooter(footer.map((c, j) => j === ci ? { ...c, links: [...c.links, { label: "New", href: "/" }] } : c))} className="text-[11px] text-primary self-start mt-1">+ Add link</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => setFooter([...footer, { title: "New column", links: [{ label: "New", href: "/" }] }])} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-border hover:border-primary/50 hover:text-primary transition mt-3"><Plus size={13} /> Add column</button>
+      </Card>
+
+      <div className="flex items-center gap-3">
+        <Button onClick={save} disabled={saving} className="theme-btn-gradient border-0 gap-1.5">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save menus</Button>
+        {saved && <span className="text-sm text-emerald-400 inline-flex items-center gap-1"><Check size={14} /> Saved — refresh the site to see it</span>}
+      </div>
     </div>
   );
 }

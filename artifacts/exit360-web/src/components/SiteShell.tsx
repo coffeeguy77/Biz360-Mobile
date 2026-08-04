@@ -3,16 +3,7 @@ import { Link } from "wouter";
 import { Menu, X, User, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-
-const NAV = [
-  { label: "For Buyers",    href: "/buying" },
-  { label: "For Sellers",   href: "/selling" },
-  { label: "Brokers",       href: "/brokers" },
-  { label: "360° Tours",    href: "/walkthroughs" },
-  { label: "How It Works",  href: "/how-it-works" },
-  { label: "Compare",       href: "/compare" },
-  { label: "Help",          href: "/help" },
-];
+import { useMenus } from "@/content/menus";
 
 /** Signed-in when a buyer-portal token is present. Re-checks on focus/nav so the
  *  header updates right after a buyer signs in on any page. */
@@ -46,6 +37,7 @@ export function SiteNav() {
   const [open, setOpen] = useState(false);
   const signedIn = useSignedIn();
   const isAdmin = useIsAdmin();
+  const { primary: NAV } = useMenus();
   return (
     <nav aria-label="Primary" className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-primary focus:text-primary-foreground">Skip to main content</a>
@@ -100,26 +92,7 @@ export function SiteNav() {
 }
 
 export function SiteFooter() {
-  const cols: { title: string; links: { label: string; href: string }[] }[] = [
-    { title: "Platform", links: [
-      { label: "Browse Listings", href: "/listings" },
-      { label: "360° Walkthroughs", href: "/walkthroughs" },
-      { label: "Find a Partner", href: "/find-a-partner" },
-      { label: "Become a Partner", href: "/photographers" },
-      { label: "How It Works", href: "/how-it-works" },
-    ]},
-    { title: "For Sellers", links: [
-      { label: "Sell Your Business", href: "/selling" },
-      { label: "List a Business", href: "/list-your-business" },
-      { label: "Broker Network", href: "/brokers" },
-      { label: "Seller Dashboard", href: "/seller" },
-    ]},
-    { title: "For Buyers", links: [
-      { label: "Buy a Business", href: "/buying" },
-      { label: "Browse Listings", href: "/listings" },
-      { label: "Buyer Portal", href: "/buyers" },
-    ]},
-  ];
+  const { footer: cols } = useMenus();
   return (
     <footer className="border-t border-border bg-card/40 mt-24">
       <div className="max-w-[1440px] mx-auto px-6 py-14 grid gap-10 md:grid-cols-4">

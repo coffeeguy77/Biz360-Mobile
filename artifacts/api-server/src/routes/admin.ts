@@ -296,6 +296,7 @@ router.put("/admin/seo", requireAdmin, async (req, res) => {
     gsc,
     defaults: body.defaults,
     pages: body.pages,
+    menus: (body as any).menus,
   });
   res.json(saved);
 });
