@@ -7,7 +7,9 @@ const SETTINGS_KEY = "site_settings_v1";
 export interface PageSeo {
   title?: string;
   description?: string;
+  keywords?: string;
   ogImage?: string;
+  ogImageAlt?: string;
   canonical?: string;
   noindex?: boolean;
   /** Editable marketing copy (Phase C) — arbitrary named text blocks. */

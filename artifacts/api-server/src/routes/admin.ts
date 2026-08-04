@@ -1,8 +1,10 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { eq } from "drizzle-orm";
-import { db, kvStore } from "@workspace/db";
+import { eq, sql, gte, desc, count } from "drizzle-orm";
+import { db, kvStore, reportViewEventsTable } from "@workspace/db";
 import { verifyToken } from "../middlewares/auth";
 import { getSiteSettings, saveSiteSettings, extractGscToken, type SiteSettings } from "../seo/site-settings";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -171,6 +173,96 @@ router.post("/admin/users/role", requireSuperAdmin, async (req, res) => {
   } else { res.status(400).json({ error: "Invalid role" }); return; }
   await saveAdminMap(map);
   res.json({ ok: true, phone: c, role: role === "none" ? null : role });
+});
+
+// ─── Dashboard analytics ─────────────────────────────────────────────────────
+router.get("/admin/dashboard", requireAdmin, async (_req, res) => {
+  const listings = await loadListings();
+  const counts = {
+    listings: listings.length,
+    pending: listings.filter((l) => (l.status ?? "pending") === "pending").length,
+    approved: listings.filter((l) => l.status === "approved").length,
+    rejected: listings.filter((l) => l.status === "rejected").length,
+    suspended: listings.filter((l) => l.suspended).length,
+  };
+
+  // Per-listing view blobs: biz360_analytics_v1_<listingId>
+  const viewByListing: Record<string, number> = {};
+  let totalViews = 0;
+  try {
+    const rows = await db.select().from(kvStore).where(sql`${kvStore.key} LIKE 'biz360_analytics_v1_%'`);
+    for (const r of rows) {
+      const lid = String(r.key).replace("biz360_analytics_v1_", "");
+      const v = Number((r.value as any)?.views ?? 0) || 0;
+      viewByListing[lid] = v; totalViews += v;
+    }
+  } catch { /* ignore */ }
+
+  const topListings = listings
+    .filter((l) => l.listingId)
+    .map((l) => ({ listingId: l.listingId, businessName: l.businessName ?? "Business", status: l.status ?? "pending", views: viewByListing[l.listingId] ?? 0 }))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 8);
+
+  // 30-day report-open time series + recent activity
+  const since = new Date(Date.now() - 30 * 86400000);
+  let series: { date: string; opens: number }[] = [];
+  let totalOpens = 0;
+  let recent: { listingId: string; businessName: string; viewerPhone: string | null; openedAt: string }[] = [];
+  try {
+    const rows = await db.select({ day: sql<string>`to_char(${reportViewEventsTable.openedAt}, 'YYYY-MM-DD')`, n: count() })
+      .from(reportViewEventsTable).where(gte(reportViewEventsTable.openedAt, since))
+      .groupBy(sql`to_char(${reportViewEventsTable.openedAt}, 'YYYY-MM-DD')`).orderBy(sql`to_char(${reportViewEventsTable.openedAt}, 'YYYY-MM-DD')`);
+    const map: Record<string, number> = {};
+    for (const r of rows) { map[r.day] = Number(r.n) || 0; totalOpens += Number(r.n) || 0; }
+    // Fill every day so the chart is continuous
+    for (let i = 29; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); series.push({ date: d, opens: map[d] ?? 0 }); }
+    const nameById: Record<string, string> = {};
+    for (const l of listings) if (l.listingId) nameById[l.listingId] = l.businessName ?? "Business";
+    const ev = await db.select().from(reportViewEventsTable).orderBy(desc(reportViewEventsTable.openedAt)).limit(12);
+    recent = ev.map((e) => ({ listingId: e.listingId, businessName: nameById[e.listingId] ?? e.listingId, viewerPhone: e.viewerPhone ? `···${String(e.viewerPhone).slice(-3)}` : null, openedAt: e.openedAt ? new Date(e.openedAt).toISOString() : "" }));
+  } catch { /* ignore */ }
+
+  // Users
+  let userCount = 0;
+  try {
+    const seen = new Set<string>();
+    for (const l of listings) { const c = canonicalPhone(l.submittedBy); if (c) seen.add(c); }
+    userCount = seen.size;
+  } catch { /* ignore */ }
+
+  res.json({ counts: { ...counts, users: userCount }, totalViews, totalOpens, topListings, series, recent });
+});
+
+// ─── AI SEO assistant ────────────────────────────────────────────────────────
+router.post("/admin/seo/ai-suggest", requireAdmin, async (req, res) => {
+  const { path, label, currentTitle, copy } = req.body as { path?: string; label?: string; currentTitle?: string; copy?: Record<string, string> };
+  const context = Object.entries(copy ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n").slice(0, 4000);
+  const system = `You are a senior technical SEO strategist optimising an Australian 360°-virtual-tour business-for-sale marketplace called EXIT360 (exit360.com.au). Produce best-practice, high-CTR, non-spammy on-page SEO for the given page. Return ONLY a valid JSON object, no markdown, matching exactly:
+{
+  "title": "<50-60 char SEO title, primary keyword front-loaded, brand suffix optional>",
+  "description": "<140-160 char meta description, active voice, includes a call to action and primary keyword>",
+  "keywords": ["<8-12 relevant, high-intent keywords/phrases, Australian English>"],
+  "h1": "<a strong, unique H1 for the page>",
+  "ogImageAlt": "<descriptive, keyword-aware alt text for the share image>",
+  "notes": "<one short sentence on the ranking angle>"
+}
+Australian English spelling. Do not keyword-stuff. Titles must read naturally.`;
+  const user = `Page path: ${path}\nPage name: ${label ?? path}\nCurrent title: ${currentTitle ?? "(none)"}\nPage content:\n${context || "(no content provided)"}`;
+  try {
+    const msg: any = await anthropic.messages.create({
+      model: "claude-haiku-4-5", max_tokens: 1024, system,
+      messages: [{ role: "user", content: user }],
+    });
+    const raw = msg.content?.[0]?.type === "text" ? msg.content[0].text : "";
+    const cleaned = String(raw).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    let parsed: any;
+    try { parsed = JSON.parse(cleaned); } catch { return res.status(502).json({ error: "AI returned invalid JSON" }); }
+    return res.json({ suggestion: parsed });
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "AI SEO suggest failed");
+    return res.status(500).json({ error: err?.message || "AI request failed" });
+  }
 });
 
 // ─── Site SEO settings ───────────────────────────────────────────────────────

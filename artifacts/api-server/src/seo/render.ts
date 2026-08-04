@@ -7,6 +7,8 @@ const LISTINGS_KEY = "biz360_admin_pending_v2";
 export interface ResolvedSeo {
   title: string;
   description: string;
+  keywords?: string | null;
+  ogImageAlt?: string | null;
   canonical: string;
   ogImage: string;
   ogType: string;
@@ -116,6 +118,8 @@ export async function resolveSeo(pathname: string): Promise<ResolvedSeo> {
   return {
     title: finalTitle,
     description: override?.description || pd?.description || defaults.defaultDescription,
+    keywords: override?.keywords || null,
+    ogImageAlt: override?.ogImageAlt || null,
     canonical: override?.canonical || `${SITE_URL}${pathname === "/" ? "/" : pathname}`,
     ogImage: override?.ogImage || defaults.defaultOgImage,
     ogType: pathname === "/" ? "website" : "website",
@@ -155,6 +159,8 @@ export async function injectMeta(html: string, pathname: string): Promise<string
   extra.push(`<meta name="twitter:title" content="${esc(seo.title)}" />`);
   extra.push(`<meta name="twitter:description" content="${esc(seo.description)}" />`);
   extra.push(`<meta name="twitter:image" content="${esc(seo.ogImage)}" />`);
+  if (seo.keywords) extra.push(`<meta name="keywords" content="${esc(seo.keywords)}" />`);
+  if (seo.ogImageAlt) extra.push(`<meta property="og:image:alt" content="${esc(seo.ogImageAlt)}" />`);
   if (gsc) extra.push(`<meta name="google-site-verification" content="${esc(gsc)}" />`);
   if (seo.jsonLd) extra.push(`<script type="application/ld+json">${JSON.stringify(seo.jsonLd)}</script>`);
   // Editable marketing copy overrides — injected synchronously so pages render

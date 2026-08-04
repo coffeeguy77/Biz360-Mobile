@@ -46,10 +46,11 @@ export function SiteNav() {
   const signedIn = useSignedIn();
   const isAdmin = useIsAdmin();
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
+    <nav aria-label="Primary" className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-primary focus:text-primary-foreground">Skip to main content</a>
       <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
         <Link href="/">
-          <div className="flex items-center cursor-pointer text-foreground">
+          <div className="flex items-center cursor-pointer text-foreground" aria-label="EXIT360 home">
             <Logo height={30} />
           </div>
         </Link>
@@ -76,7 +77,7 @@ export function SiteNav() {
             <Link href="/buyers"><Button variant="outline" className="gap-1.5"><LogIn size={15} /> <span className="hidden sm:inline">Sign in</span></Button></Link>
           )}
           <Link href="/list-your-business"><Button className="theme-btn-gradient border-0 hidden sm:inline-flex">Start selling</Button></Link>
-          <button className="lg:hidden w-9 h-9 grid place-items-center rounded-lg bg-muted flex-shrink-0" onClick={() => setOpen((o) => !o)}>
+          <button className="lg:hidden w-9 h-9 grid place-items-center rounded-lg bg-muted flex-shrink-0" onClick={() => setOpen((o) => !o)} aria-label={open ? "Close menu" : "Open menu"} aria-expanded={open}>
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
