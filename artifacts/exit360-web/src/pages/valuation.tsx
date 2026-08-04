@@ -279,13 +279,55 @@ function AddBacks({ cafeId, auth }: { cafeId: string; auth: any }) {
   );
 }
 
+// Reusable P&L totals + monthly line chart (used in the list and the editor).
+function ReportChart({ data, height = 220 }: { data: any; height?: number }) {
+  return (
+    <div>
+      <div className="flex gap-6 mb-3 text-sm">
+        <div><div className="text-[10px] text-muted-foreground uppercase">Income</div><b className="text-emerald-400">{money(data.totals?.income)}</b></div>
+        <div><div className="text-[10px] text-muted-foreground uppercase">Expenses</div><b className="text-red-400">{money(data.totals?.expenses)}</b></div>
+        <div><div className="text-[10px] text-muted-foreground uppercase">Net profit</div><b>{money(data.totals?.net)}</b></div>
+        {data.growth?.momPct != null && <div><div className="text-[10px] text-muted-foreground uppercase">MoM</div><b className={data.growth.momPct >= 0 ? "text-emerald-400" : "text-red-400"}>{data.growth.momPct >= 0 ? "▲" : "▼"} {Math.abs(data.growth.momPct)}%</b></div>}
+      </div>
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data.months ?? []} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis dataKey="month" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+            <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => moneyK(v)} width={48} />
+            <Tooltip formatter={(v: any) => money0(v)} contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+            <Line type="monotone" dataKey="income" name="Income" stroke="#16A34A" strokeWidth={2} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#EF4444" strokeWidth={2} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="net" name="Net" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 // ── Financial Reports (custom) ──
 function FinReports({ cafeId, auth }: { cafeId: string; auth: any }) {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any | null>(null);
   const [name, setName] = useState("");
-  const load = useCallback(async () => { setLoading(true); try { const d = await fetch(`/api/valuation/custom-reports?cafeId=${cafeId}`, { headers: auth }).then((r) => r.json()); setReports(d.reports ?? []); } finally { setLoading(false); } }, [cafeId]);
+  const [dataById, setDataById] = useState<Record<string, any>>({});
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await fetch(`/api/valuation/custom-reports?cafeId=${cafeId}`, { headers: auth }).then((r) => r.json());
+      const list = d.reports ?? [];
+      setReports(list);
+      setLoading(false);
+      // Fetch each report's computed data for inline charts (parallel).
+      const entries = await Promise.all(list.map(async (r: any) => {
+        try { const rd = await fetch(`/api/valuation/custom-reports/${r.id}/data`, { headers: auth }).then((x) => x.json()); return [r.id, rd] as const; }
+        catch { return [r.id, null] as const; }
+      }));
+      setDataById(Object.fromEntries(entries));
+    } catch { setLoading(false); }
+  }, [cafeId]);
   useEffect(() => { load(); }, [load]);
   async function create() { if (!name.trim()) return; const d = await fetch(`/api/valuation/custom-reports`, { method: "POST", headers: auth, body: JSON.stringify({ cafeId, name: name.trim(), dateRangeMonths: 12 }) }).then((r) => r.json()); setName(""); await load(); if (d.report) setEditing(d.report); }
   async function del(id: string) { await fetch(`/api/valuation/custom-reports/${id}`, { method: "DELETE", headers: auth }); load(); }
@@ -293,13 +335,27 @@ function FinReports({ cafeId, auth }: { cafeId: string; auth: any }) {
   if (editing) return <ReportEditor cafeId={cafeId} auth={auth} report={editing} onClose={() => { setEditing(null); load(); }} />;
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-muted-foreground">Build custom profit/loss reports from Square + Xero — e.g. kitchen-only: include Square food categories as income, minus food suppliers + chef wages from Xero, to see a real monthly P&L. Toggle “Include in IM” to surface a summary in your report.</p>
-      {reports.map((r) => (
-        <Card key={r.id} className="flex items-center justify-between !py-3">
-          <div><div className="font-semibold text-sm">{r.name} {r.includeInIm && <span className="text-[10px] text-primary">· in IM</span>}</div><div className="text-[11px] text-muted-foreground">{r.incomeCount} income · {r.expenseCount} expense · {r.dateRangeMonths}mo</div></div>
-          <div className="flex items-center gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(r)}>Open</Button><button onClick={() => del(r.id)} className="text-red-400"><Trash2 size={14} /></button></div>
-        </Card>
-      ))}
+      <p className="text-xs text-muted-foreground">Build custom profit/loss reports from Square + Xero — e.g. kitchen-only: include Square food categories as income, minus food suppliers + chef wages from Xero, to see a real monthly P&L. Open a report to customise it; toggle “Include in IM” to surface a summary in your report.</p>
+      {reports.map((r) => {
+        const rd = dataById[r.id];
+        const hasData = rd && (rd.months?.length || rd.totals);
+        return (
+          <Card key={r.id} className="!py-4">
+            <div className="flex items-center justify-between mb-3">
+              <div><div className="font-semibold text-sm">{r.name} {r.includeInIm && <span className="text-[10px] text-primary">· in IM</span>}</div><div className="text-[11px] text-muted-foreground">{r.incomeCount} income · {r.expenseCount} expense · {r.dateRangeMonths}mo</div></div>
+              <div className="flex items-center gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(r)}>Open</Button><button onClick={() => del(r.id)} className="text-red-400"><Trash2 size={14} /></button></div>
+            </div>
+            {rd === undefined ? (
+              <div className="h-[180px] grid place-items-center text-muted-foreground"><Loader2 size={16} className="animate-spin" /></div>
+            ) : hasData ? (
+              <ReportChart data={rd} height={200} />
+            ) : (
+              <div className="text-xs text-muted-foreground py-6 text-center">No lines selected yet. <button onClick={() => setEditing(r)} className="text-primary hover:underline">Open</button> to pick Square categories &amp; Xero suppliers.</div>
+            )}
+          </Card>
+        );
+      })}
+      {reports.length === 0 && <p className="text-xs text-muted-foreground">No reports yet — create one below (e.g. a Kitchen P&L).</p>}
       <div className="flex gap-2"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="New report e.g. Kitchen P&L" className={inp} /><Button onClick={create} className="theme-btn-gradient border-0"><Plus size={14} className="mr-1" /> New</Button></div>
     </div>
   );
@@ -414,20 +470,7 @@ function ReportEditor({ cafeId, auth, report, onClose }: { cafeId: string; auth:
       <Button onClick={save} className="theme-btn-gradient border-0 self-start">Save & calculate</Button>
       {data && (
         <Card>
-          <div className="flex gap-6 mb-3 text-sm"><div><div className="text-[10px] text-muted-foreground uppercase">Income</div><b className="text-emerald-400">{money(data.totals?.income)}</b></div><div><div className="text-[10px] text-muted-foreground uppercase">Expenses</div><b className="text-red-400">{money(data.totals?.expenses)}</b></div><div><div className="text-[10px] text-muted-foreground uppercase">Net profit</div><b>{money(data.totals?.net)}</b></div></div>
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.months ?? []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => money(v)} width={48} />
-                <Tooltip formatter={(v: any) => money(v)} contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Line type="monotone" dataKey="income" stroke="#16A34A" strokeWidth={2} dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="expenses" stroke="#EF4444" strokeWidth={2} dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="net" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <ReportChart data={data} />
           <p className="text-[11px] text-muted-foreground mt-2">Net profit line shows the peaks and troughs across 12 months.</p>
         </Card>
       )}
