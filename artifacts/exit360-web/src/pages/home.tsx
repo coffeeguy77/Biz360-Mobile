@@ -7,10 +7,11 @@ import { CheckCircle2, Building, ShieldCheck, ArrowRight, Eye, Play, TrendingUp,
 import { getPriceStat, getStatSlot, BADGE_LABELS, type Listing } from "@/data/listings";
 import { fetchListings } from "@/lib/listingsApi";
 import { SiteNav, SiteFooter } from "@/components/SiteShell";
-import { useCopy, RichCopy } from "@/content/copy";
+import { RichCopy } from "@/content/copy";
+import { usePageContent } from "@/content/model";
 
 export function Home() {
-  const c = useCopy("/");
+  const pc = usePageContent("/");
   const [listings, setListings] = useState<Listing[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -36,22 +37,22 @@ export function Home() {
       <section id="main" tabIndex={-1} className="pt-32 pb-20 px-6 max-w-[1440px] mx-auto flex flex-col md:flex-row items-center gap-12">
         <div className="flex-1 space-y-6">
           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-3 py-1">
-            {c("heroEyebrow")}
+            {pc.t("hero.eyebrow")}
           </Badge>
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.1]">
-            <RichCopy text={c("heroTitle")} />
+            <RichCopy text={pc.t("hero.title")} />
           </h1>
           <p className="text-xl text-muted-foreground max-w-xl leading-relaxed">
-            <RichCopy text={c("heroSubtitle")} />
+            <RichCopy text={pc.t("hero.subtitle")} />
           </p>
           <div className="flex flex-wrap gap-4 pt-4">
             <Link href="/listings">
               <Button size="lg" className="h-14 px-8 text-base" data-testid="button-browse-listings">
-                {c("ctaPrimary")}
+                {pc.t("hero.ctaPrimary")}
               </Button>
             </Link>
             <Button size="lg" variant="outline" className="h-14 px-8 text-base">
-              <Play className="mr-2" size={18} /> {c("ctaSecondary")}
+              <Play className="mr-2" size={18} /> {pc.t("hero.ctaSecondary")}
             </Button>
           </div>
         </div>
@@ -77,19 +78,19 @@ export function Home() {
         <div className="max-w-[1440px] mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
           <div>
             <div className="text-3xl font-bold text-foreground mb-1">{listings.length || "—"}</div>
-            <div className="text-sm text-muted-foreground font-medium">Verified Listings</div>
+            <div className="text-sm text-muted-foreground font-medium">{pc.t("stats.l1")}</div>
           </div>
           <div>
-            <div className="text-3xl font-bold text-foreground mb-1">{c("stat1Value")}</div>
-            <div className="text-sm text-muted-foreground font-medium">{c("stat1Label")}</div>
+            <div className="text-3xl font-bold text-foreground mb-1">{pc.t("stats.v2")}</div>
+            <div className="text-sm text-muted-foreground font-medium">{pc.t("stats.l2")}</div>
           </div>
           <div>
-            <div className="text-3xl font-bold text-foreground mb-1">{c("stat2Value")}</div>
-            <div className="text-sm text-muted-foreground font-medium">{c("stat2Label")}</div>
+            <div className="text-3xl font-bold text-foreground mb-1">{pc.t("stats.v3")}</div>
+            <div className="text-sm text-muted-foreground font-medium">{pc.t("stats.l3")}</div>
           </div>
           <div>
-            <div className="text-3xl font-bold text-foreground mb-1">89</div>
-            <div className="text-sm text-muted-foreground font-medium">Avg Tours per Listing</div>
+            <div className="text-3xl font-bold text-foreground mb-1">{pc.t("stats.v4")}</div>
+            <div className="text-sm text-muted-foreground font-medium">{pc.t("stats.l4")}</div>
           </div>
         </div>
       </section>
@@ -99,7 +100,7 @@ export function Home() {
       <section className="py-24 px-6 max-w-[1440px] mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20 px-3 py-1 mb-4">
-            Featured Listing
+            {pc.t("featured.eyebrow")}
           </Badge>
           <h2 className="text-3xl md:text-5xl font-bold mb-5">{bc.businessName}</h2>
           <p className="text-lg text-muted-foreground">
@@ -209,50 +210,24 @@ export function Home() {
       <section className="py-24 px-6 bg-card border-t border-border">
         <div className="max-w-[1440px] mx-auto grid md:grid-cols-2 gap-16">
           <div className="space-y-8">
-            <h2 className="text-3xl md:text-4xl font-bold">For Serious Buyers</h2>
+            <h2 className="text-3xl md:text-4xl font-bold">{pc.t("buyers.heading")}</h2>
             <div className="space-y-6">
-              <div className="flex gap-4">
-                <div className="mt-1 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Eye className="text-primary" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold mb-2">Eliminate Wasted Trips</h3>
-                  <p className="text-muted-foreground leading-relaxed">Tour the premises and inspect the equipment before committing to an in-person site visit.</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <div className="mt-1 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <ShieldCheck className="text-primary" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold mb-2">Verified Financials</h3>
-                  <p className="text-muted-foreground leading-relaxed">Listings require ABN and identity verification. Key financial metrics are tied directly to the physical space.</p>
-                </div>
-              </div>
+              {pc.list("buyers.items").map((it, i) => { const Icon = [Eye, ShieldCheck][i % 2]; return (
+                <div key={i} className="flex gap-4">
+                  <div className="mt-1 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0"><Icon className="text-primary" size={20} /></div>
+                  <div><h3 className="text-xl font-semibold mb-2">{it.title}</h3><p className="text-muted-foreground leading-relaxed">{it.body}</p></div>
+                </div>); })}
             </div>
           </div>
-          
+
           <div className="space-y-8">
-            <h2 className="text-3xl md:text-4xl font-bold">For Premium Sellers</h2>
+            <h2 className="text-3xl md:text-4xl font-bold">{pc.t("sellers.heading")}</h2>
             <div className="space-y-6">
-              <div className="flex gap-4">
-                <div className="mt-1 w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
-                  <CheckCircle2 className="text-accent" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold mb-2">Filter Tire-Kickers</h3>
-                  <p className="text-muted-foreground leading-relaxed">Let buyers experience the business digitally. Only engage with highly qualified leads who already understand your operation.</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <div className="mt-1 w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
-                  <Building className="text-accent" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold mb-2">Defend Your Valuation</h3>
-                  <p className="text-muted-foreground leading-relaxed">Justify your asking price by showcasing your premium fit-out, high-value equipment, and operational efficiency in 360°.</p>
-                </div>
-              </div>
+              {pc.list("sellers.items").map((it, i) => { const Icon = [CheckCircle2, Building][i % 2]; return (
+                <div key={i} className="flex gap-4">
+                  <div className="mt-1 w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0"><Icon className="text-accent" size={20} /></div>
+                  <div><h3 className="text-xl font-semibold mb-2">{it.title}</h3><p className="text-muted-foreground leading-relaxed">{it.body}</p></div>
+                </div>); })}
             </div>
           </div>
         </div>
@@ -263,15 +238,15 @@ export function Home() {
         <div className="max-w-4xl mx-auto bg-gradient-to-br from-card to-background border border-border rounded-3xl p-12 text-center shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-primary/10 rounded-full blur-3xl"></div>
           <div className="relative z-10">
-            <h2 className="text-4xl font-bold mb-6">Ready to acquire your next asset?</h2>
+            <h2 className="text-4xl font-bold mb-6">{pc.t("cta.heading")}</h2>
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Join 12,000+ buyers already using EXIT360 to find premium businesses.
+              {pc.t("cta.sub")}
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Link href="/sign-in?intent=signup">
-                <Button size="lg" className="h-14 px-8 text-base">Create Buyer Profile</Button>
+                <Button size="lg" className="h-14 px-8 text-base">{pc.t("cta.primary")}</Button>
               </Link>
-              <Button size="lg" variant="outline" className="h-14 px-8 text-base">List a Business</Button>
+              <Link href="/list-your-business"><Button size="lg" variant="outline" className="h-14 px-8 text-base">{pc.t("cta.secondary")}</Button></Link>
             </div>
           </div>
         </div>

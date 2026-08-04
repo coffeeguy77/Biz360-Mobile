@@ -9,20 +9,6 @@ export interface Slot { key: string; label: string; type?: "text" | "textarea"; 
 export interface PageContent { label: string; slots: Slot[]; }
 
 export const PAGE_CONTENT: Record<string, PageContent> = {
-  "/": {
-    label: "Home",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "Now live in Australia" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "Walk through before you sign." },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "The premium marketplace for verified businesses. Experience immersive 360° tours enriched with financial data, equipment specs, and lease details. Due diligence starts here." },
-      { key: "ctaPrimary", label: "Primary button", default: "Browse Listings" },
-      { key: "ctaSecondary", label: "Secondary button", default: "Watch Video" },
-      { key: "stat1Value", label: "Stat 1 value", default: "$4.2B+" },
-      { key: "stat1Label", label: "Stat 1 label", default: "Listed Value" },
-      { key: "stat2Value", label: "Stat 2 value", default: "12,000+" },
-      { key: "stat2Label", label: "Stat 2 label", default: "Qualified Buyers" },
-    ],
-  },
   "/selling": {
     label: "Selling",
     slots: [

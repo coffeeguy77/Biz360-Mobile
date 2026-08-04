@@ -18,6 +18,56 @@ const CARD = [
 ];
 
 export const PAGE_MODEL: Record<string, MPage> = {
+  "/": {
+    label: "Home",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.eyebrow", label: "Eyebrow badge", default: "Now live in Australia" },
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "Walk through before you sign." },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "The premium marketplace for verified businesses. Experience immersive 360° tours enriched with financial data, equipment specs, and lease details. Due diligence starts here." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "Browse Listings" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "Watch Video" },
+        ],
+      },
+      {
+        key: "stats", label: "Stats bar",
+        fields: [
+          { key: "stats.l1", label: "Stat 1 label (value is live count)", default: "Verified Listings" },
+          { key: "stats.v2", label: "Stat 2 value", default: "$4.2B+" }, { key: "stats.l2", label: "Stat 2 label", default: "Listed Value" },
+          { key: "stats.v3", label: "Stat 3 value", default: "12,000+" }, { key: "stats.l3", label: "Stat 3 label", default: "Qualified Buyers" },
+          { key: "stats.v4", label: "Stat 4 value", default: "89" }, { key: "stats.l4", label: "Stat 4 label", default: "Avg Tours per Listing" },
+        ],
+      },
+      { key: "featured", label: "Featured listing", fields: [{ key: "featured.eyebrow", label: "Eyebrow badge", default: "Featured Listing" }] },
+      {
+        key: "buyers", label: "For buyers",
+        fields: [{ key: "buyers.heading", label: "Heading", default: "For Serious Buyers" }],
+        lists: [{ key: "buyers.items", label: "Points", itemNoun: "point", fields: CARD, default: [
+          { title: "Eliminate Wasted Trips", body: "Tour the premises and inspect the equipment before committing to an in-person site visit." },
+          { title: "Verified Financials", body: "Listings require ABN and identity verification. Key financial metrics are tied directly to the physical space." },
+        ] }],
+      },
+      {
+        key: "sellers", label: "For sellers",
+        fields: [{ key: "sellers.heading", label: "Heading", default: "For Premium Sellers" }],
+        lists: [{ key: "sellers.items", label: "Points", itemNoun: "point", fields: CARD, default: [
+          { title: "Filter Tire-Kickers", body: "Let buyers experience the business digitally. Only engage with highly qualified leads who already understand your operation." },
+          { title: "Defend Your Valuation", body: "Justify your asking price by showcasing your premium fit-out, high-value equipment, and operational efficiency in 360°." },
+        ] }],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "Ready to acquire your next asset?" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "Join 12,000+ buyers already using EXIT360 to find premium businesses." },
+          { key: "cta.primary", label: "Primary button", default: "Create Buyer Profile" },
+          { key: "cta.secondary", label: "Secondary button", default: "List a Business" },
+        ],
+      },
+    ],
+  },
   "/walkthroughs": {
     label: "Walkthroughs",
     sections: [
