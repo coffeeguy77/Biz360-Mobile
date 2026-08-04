@@ -4,14 +4,18 @@ import { motion } from "framer-motion";
 import { Camera, CheckCircle2, GraduationCap, MapPin, DollarSign, Award, ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
-import { useCopy, RichCopy } from "@/content/copy";
+import { RichCopy } from "@/content/copy";
+import { usePageContent } from "@/content/model";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 const fade = { initial: { opacity: 0, y: 24 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-80px" }, transition: { duration: 0.5 } };
+const pick = (arr: any[], i: number) => arr[i % arr.length];
 const STATES = ["ACT", "NSW", "VIC", "QLD", "WA", "SA", "TAS", "NT"];
 
 export function Photographers() {
-  const c = useCopy("/photographers");
+  const pc = usePageContent("/photographers");
+  const stepI = [Camera, GraduationCap, Award, MapPin];
+  const whyI = [DollarSign, MapPin, Camera];
   const [f, setF] = useState({ name: "", phone: "", email: "", city: "", region: "ACT", ownsCamera: false, experience: "" });
   const [sent, setSent] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,17 +47,17 @@ export function Photographers() {
         <div className="relative z-10 max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
           <motion.div {...fade}>
             <span className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary mb-5">
-              <Sparkles size={13} /> {c("heroEyebrow")}
+              <Sparkles size={13} /> {pc.t("hero.eyebrow")}
             </span>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
-              <RichCopy text={c("heroTitle")} />
+              <RichCopy text={pc.t("hero.title")} />
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
-              <RichCopy text={c("heroSubtitle")} />
+              <RichCopy text={pc.t("hero.subtitle")} />
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
-              <a href="#apply"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">Apply to join <ArrowRight size={18} className="ml-1" /></Button></a>
-              <Link href="/find-a-partner"><Button size="lg" variant="outline" className="h-13 px-8 text-base">Find a partner near me</Button></Link>
+              <a href="#apply"><Button size="lg" className="h-13 px-8 text-base theme-btn-gradient border-0">{pc.t("hero.ctaPrimary")} <ArrowRight size={18} className="ml-1" /></Button></a>
+              <Link href="/find-a-partner"><Button size="lg" variant="outline" className="h-13 px-8 text-base">{pc.t("hero.ctaSecondary")}</Button></Link>
             </div>
           </motion.div>
         </div>
@@ -61,22 +65,16 @@ export function Photographers() {
 
       {/* How to qualify */}
       <section className="max-w-[1440px] mx-auto px-6 py-16">
-        <motion.h2 {...fade} className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3 text-center">How to become a partner</motion.h2>
-        <motion.p {...fade} className="text-lg text-muted-foreground text-center max-w-2xl mx-auto mb-12">A simple, quality-first path — because every EXIT360 walkthrough carries our name.</motion.p>
+        <motion.h2 {...fade} className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3 text-center"><RichCopy text={pc.t("qualify.heading")} /></motion.h2>
+        <motion.p {...fade} className="text-lg text-muted-foreground text-center max-w-2xl mx-auto mb-12"><RichCopy text={pc.t("qualify.body")} /></motion.p>
         <div className="grid md:grid-cols-4 gap-6">
-          {[
-            { icon: Camera, t: "Own an Insta360", b: "You supply your own Insta360 camera (X4 or similar). It's the gear we build our capture workflow around — compact, fast and stunning quality." },
-            { icon: GraduationCap, t: "Complete training listings", b: "Shoot a small number of sample listings to our spec so we can check quality, scene linking and narration placement before you go live." },
-            { icon: Award, t: "Get approved", b: "Pass the review and you're an approved EXIT360 partner, listed in our directory for buyers, sellers and brokers to find." },
-            { icon: MapPin, t: "Receive local referrals", b: "We refer paid walkthrough work in your region straight to you, with templates and support for every shoot." },
-          ].map((s, i) => (
-            <motion.div key={s.t} {...fade} transition={{ duration: 0.5, delay: i * 0.06 }} className="rounded-2xl border border-border bg-card/50 p-6">
-              <div className="w-11 h-11 rounded-xl grid place-items-center bg-primary/10 text-primary mb-4"><s.icon size={20} /></div>
+          {pc.list("qualify.steps").map((s, i) => { const Icon = pick(stepI, i); return (
+            <motion.div key={i} {...fade} transition={{ duration: 0.5, delay: i * 0.06 }} className="rounded-2xl border border-border bg-card/50 p-6">
+              <div className="w-11 h-11 rounded-xl grid place-items-center bg-primary/10 text-primary mb-4"><Icon size={20} /></div>
               <div className="text-xs font-bold text-primary mb-1">STEP {i + 1}</div>
-              <h3 className="text-lg font-bold mb-2">{s.t}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{s.b}</p>
-            </motion.div>
-          ))}
+              <h3 className="text-lg font-bold mb-2">{s.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed"><RichCopy text={s.body} /></p>
+            </motion.div>); })}
         </div>
       </section>
 
@@ -84,25 +82,20 @@ export function Photographers() {
       <section className="max-w-6xl mx-auto px-6 py-8">
         <motion.div {...fade} className="rounded-3xl border border-border theme-aurora-bg">
           <div className="relative z-10 grid md:grid-cols-3 gap-8 p-10">
-            {[
-              { icon: DollarSign, t: "Paid shoots", b: "Earn from referred walkthrough jobs — a growing pipeline as more businesses list with 360° tours." },
-              { icon: MapPin, t: "Own your region", b: "Be the go-to EXIT360 partner locally, discoverable in our find-a-partner directory." },
-              { icon: Camera, t: "Do great work", b: "Immersive 360° storytelling with AI narration — the most impressive listings in the market." },
-            ].map((c) => (
-              <div key={c.t} className="text-center">
-                <c.icon className="mx-auto text-primary mb-2" size={24} />
-                <h3 className="font-bold mb-1">{c.t}</h3>
-                <p className="text-sm text-muted-foreground">{c.b}</p>
-              </div>
-            ))}
+            {pc.list("why.cards").map((c, i) => { const Icon = pick(whyI, i); return (
+              <div key={i} className="text-center">
+                <Icon className="mx-auto text-primary mb-2" size={24} />
+                <h3 className="font-bold mb-1">{c.title}</h3>
+                <p className="text-sm text-muted-foreground"><RichCopy text={c.body} /></p>
+              </div>); })}
           </div>
         </motion.div>
       </section>
 
       {/* Apply form */}
       <section id="apply" className="max-w-2xl mx-auto px-6 py-20 scroll-mt-24">
-        <motion.h2 {...fade} className="text-3xl font-extrabold tracking-tight mb-2 text-center">Apply to join</motion.h2>
-        <motion.p {...fade} className="text-muted-foreground text-center mb-8">We'll be in touch about training listings and next steps.</motion.p>
+        <motion.h2 {...fade} className="text-3xl font-extrabold tracking-tight mb-2 text-center"><RichCopy text={pc.t("apply.heading")} /></motion.h2>
+        <motion.p {...fade} className="text-muted-foreground text-center mb-8"><RichCopy text={pc.t("apply.sub")} /></motion.p>
         {sent ? (
           <div className="rounded-2xl border border-border bg-card/50 p-8 text-center">
             <CheckCircle2 className="mx-auto text-primary mb-3" size={40} />
@@ -127,10 +120,10 @@ export function Photographers() {
       </section>
 
       <CtaBand
-        heading="Looking for a walkthrough, not a job?"
-        sub="Find an approved EXIT360 partner in your area to capture your business — or book our Canberra shoot service."
-        primary={{ label: "Find a partner", href: "/find-a-partner" }}
-        secondary={{ label: "About 360° tours", href: "/walkthroughs" }}
+        heading={pc.t("cta.heading")}
+        sub={pc.t("cta.sub")}
+        primary={{ label: pc.t("cta.primary"), href: "/find-a-partner" }}
+        secondary={{ label: pc.t("cta.secondary"), href: "/walkthroughs" }}
       />
     </SiteShell>
   );

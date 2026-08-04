@@ -8,46 +8,9 @@ import type { ReactNode } from "react";
 export interface Slot { key: string; label: string; type?: "text" | "textarea"; default: string; }
 export interface PageContent { label: string; slots: Slot[]; }
 
-export const PAGE_CONTENT: Record<string, PageContent> = {
-  "/how-it-works": {
-    label: "How it works",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "The complete platform guide" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "How EXIT360 works — and ==everything it can do.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "EXIT360 is Australia's 360° business-for-sale marketplace. It's far more than a classified ad: it's a **tour builder, an information memorandum generator, an NDA-gated data room and a live analytics dashboard** — all synced across app and web from one phone-verified account. This guide walks you through the whole platform, whether you're buying, selling or broking." },
-    ],
-  },
-  "/compare": {
-    label: "Compare",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "EXIT360 vs traditional listing sites" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "The best way to buy and sell a business, ==side by side.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "Most Australian businesses are still advertised on classified-style listing portals — the same channels people use to sell a car or rent a shopfront. EXIT360 was built specifically for business sales, so here's an honest, feature-by-feature look at everything we do that a traditional listing site can't." },
-    ],
-  },
-  "/list-your-business": {
-    label: "List your business",
-    slots: [
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "List your business ==where buyers can walk through it.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "Publish a listing that does the selling for you: an immersive 360° walkthrough, a professional information memorandum, NDA-gated financials and live buyer analytics — all keyed to your phone number so you can build on the app or the web and edit either." },
-    ],
-  },
-  "/photographers": {
-    label: "Photographers",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "Partner program" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "Get paid to capture businesses in ==immersive 360°.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "EXIT360 needs skilled local photographers to build stunning 360° walkthroughs for businesses going to market. Own an Insta360, pass our short training, and get referred paid shoots in your area — with the tools, templates and support to make every listing look world-class." },
-    ],
-  },
-  "/find-a-partner": {
-    label: "Find a partner",
-    slots: [
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "Find a local ==walkthrough partner.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "Approved EXIT360 partners capture your business in immersive 360° so it sells faster. Search your area to find one — or book our own shoot service in Canberra." },
-    ],
-  },
-};
+// All marketing pages now use the rich section model (see content/model.tsx).
+// PAGE_CONTENT is kept for the simple-slot fallback API but is currently empty.
+export const PAGE_CONTENT: Record<string, PageContent> = {};
 
 function overridesFor(path: string): Record<string, string> {
   try { return (window as any).__EXIT360_COPY__?.[path] ?? {}; } catch { return {}; }

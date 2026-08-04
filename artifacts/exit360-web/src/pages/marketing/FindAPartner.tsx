@@ -4,14 +4,15 @@ import { motion } from "framer-motion";
 import { Search, MapPin, Phone, Mail, Camera, UserPlus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
-import { useCopy, RichCopy } from "@/content/copy";
+import { RichCopy } from "@/content/copy";
+import { usePageContent } from "@/content/model";
 import { SiteShell, CtaBand } from "@/components/SiteShell";
 
 interface Partner { name: string; city: string; region: string; serviceAreas: string; phone: string | null; email: string | null; bio: string; avatarUrl: string | null; }
 const fade = { initial: { opacity: 0, y: 20 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-60px" }, transition: { duration: 0.5 } };
 
 export function FindAPartner() {
-  const c = useCopy("/find-a-partner");
+  const pc = usePageContent("/find-a-partner");
   const [region, setRegion] = useState("");
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,9 +40,9 @@ export function FindAPartner() {
       <section className="theme-aurora-bg">
         <div className="relative z-10 max-w-4xl mx-auto px-6 pt-20 pb-14 text-center">
           <motion.div {...fade}>
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4"><RichCopy text={c("heroTitle")} /></h1>
+            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4"><RichCopy text={pc.t("hero.title")} /></h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
-              <RichCopy text={c("heroSubtitle")} />
+              <RichCopy text={pc.t("hero.subtitle")} />
             </p>
             <div className="flex gap-2 max-w-md mx-auto">
               <div className="flex-1 flex items-center bg-background border-2 border-border rounded-xl overflow-hidden focus-within:border-primary/60">
@@ -98,10 +99,10 @@ export function FindAPartner() {
       </section>
 
       <CtaBand
-        heading="Are you a photographer?"
-        sub="Own an Insta360 and want paid walkthrough work in your area? Join the EXIT360 partner network."
-        primary={{ label: "Become a partner", href: "/photographers" }}
-        secondary={{ label: "About 360° tours", href: "/walkthroughs" }}
+        heading={pc.t("cta.heading")}
+        sub={pc.t("cta.sub")}
+        primary={{ label: pc.t("cta.primary"), href: "/photographers" }}
+        secondary={{ label: pc.t("cta.secondary"), href: "/walkthroughs" }}
       />
     </SiteShell>
   );

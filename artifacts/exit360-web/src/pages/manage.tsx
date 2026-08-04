@@ -251,7 +251,7 @@ function Pages({ auth }: { auth: any }) {
 }
 
 function PageEditor({ auth, path, settings, onClose }: { auth: any; path: string; settings: any; onClose: () => void }) {
-  const label = PAGE_CONTENT[path]?.label ?? path;
+  const label = PAGE_MODEL[path]?.label ?? PAGE_CONTENT[path]?.label ?? path;
   const [pg, setPg] = useState<any>(() => ({ copy: {}, ...(settings.pages?.[path] ?? {}) }));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);

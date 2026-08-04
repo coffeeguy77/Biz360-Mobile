@@ -326,6 +326,122 @@ export const PAGE_MODEL: Record<string, MPage> = {
       },
     ],
   },
+  "/list-your-business": {
+    label: "List your business",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "List your business ==where buyers can walk through it.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "Publish a listing that does the selling for you: an immersive 360° walkthrough, a professional information memorandum, NDA-gated financials and live buyer analytics — all keyed to your phone number so you can build on the app or the web and edit either." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "Create your seller account" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "See how it works" },
+        ],
+        lists: [{ key: "hero.chips", label: "Trust chips", itemNoun: "chip", fields: [{ key: "text", label: "Text" }], default: [{ text: "Verify with your phone — no passwords" }, { text: "Free to build" }, { text: "App & web, always in sync" }] }],
+      },
+      {
+        key: "features", label: "Feature cards",
+        lists: [{ key: "features.cards", label: "Cards", itemNoun: "card", fields: CARD, default: [
+          { title: "Build a 360° walkthrough", body: "Add panoramic scenes and link them into a guided, Street-View-style tour buyers can explore from anywhere, day or night." },
+          { title: "Generate a pro IM report", body: "Your financials, business divisions and equipment register become a polished, data-room-grade information memorandum buyers trust." },
+          { title: "Protect your numbers", body: "Financials sit behind an NDA gate. Buyers verify their phone and sign before a single figure is revealed — and you see who signed." },
+          { title: "Watch it work in real time", body: "Track views, tour engagement, NDAs signed and enquiry types live, so you always know which buyers are worth your time." },
+        ] }],
+      },
+      {
+        key: "sync", label: "Build anywhere",
+        fields: [
+          { key: "sync.heading", label: "Heading", default: "Build anywhere. Edit everywhere." },
+          { key: "sync.body", label: "Paragraph", type: "textarea", default: "Your account lives on your phone number, so your listing, tour, report and messages are the same whether you're on the couch with the app or at your desk on the website. Start on one, finish on the other — nothing to re-enter." },
+        ],
+        lists: [{ key: "sync.steps", label: "Numbered steps", itemNoun: "step", fields: [{ key: "text", label: "Text" }], default: [
+          { text: "Verify your mobile number" }, { text: "Add your business, price & divisions" }, { text: "Capture the 360° tour & upload financials" }, { text: "Publish and start receiving verified enquiries" },
+        ] }],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "Your business deserves better than a photo and a phone number." },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "Create your seller account and publish a listing buyers can actually walk through." },
+          { key: "cta.primary", label: "Primary button", default: "Create your seller account" },
+          { key: "cta.secondary", label: "Secondary button", default: "I'm a broker" },
+        ],
+      },
+    ],
+  },
+  "/photographers": {
+    label: "Photographers",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.eyebrow", label: "Eyebrow", default: "Partner program" },
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "Get paid to capture businesses in ==immersive 360°.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "EXIT360 needs skilled local photographers to build stunning 360° walkthroughs for businesses going to market. Own an Insta360, pass our short training, and get referred paid shoots in your area — with the tools, templates and support to make every listing look world-class." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "Apply to join" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "Find a partner near me" },
+        ],
+      },
+      {
+        key: "qualify", label: "How to become a partner",
+        fields: [
+          { key: "qualify.heading", label: "Heading", default: "How to become a partner" },
+          { key: "qualify.body", label: "Intro paragraph", type: "textarea", default: "A simple, quality-first path — because every EXIT360 walkthrough carries our name." },
+        ],
+        lists: [{ key: "qualify.steps", label: "Steps", itemNoun: "step", fields: CARD, default: [
+          { title: "Own an Insta360", body: "You supply your own Insta360 camera (X4 or similar). It's the gear we build our capture workflow around — compact, fast and stunning quality." },
+          { title: "Complete training listings", body: "Shoot a small number of sample listings to our spec so we can check quality, scene linking and narration placement before you go live." },
+          { title: "Get approved", body: "Pass the review and you're an approved EXIT360 partner, listed in our directory for buyers, sellers and brokers to find." },
+          { title: "Receive local referrals", body: "We refer paid walkthrough work in your region straight to you, with templates and support for every shoot." },
+        ] }],
+      },
+      {
+        key: "why", label: "Why partner",
+        lists: [{ key: "why.cards", label: "Cards", itemNoun: "card", fields: CARD, default: [
+          { title: "Paid shoots", body: "Earn from referred walkthrough jobs — a growing pipeline as more businesses list with 360° tours." },
+          { title: "Own your region", body: "Be the go-to EXIT360 partner locally, discoverable in our find-a-partner directory." },
+          { title: "Do great work", body: "Immersive 360° storytelling with AI narration — the most impressive listings in the market." },
+        ] }],
+      },
+      {
+        key: "apply", label: "Apply form heading",
+        fields: [
+          { key: "apply.heading", label: "Heading", default: "Apply to join" },
+          { key: "apply.sub", label: "Subtext", default: "We'll be in touch about training listings and next steps." },
+        ],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "Looking for a walkthrough, not a job?" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "Find an approved EXIT360 partner in your area to capture your business — or book our Canberra shoot service." },
+          { key: "cta.primary", label: "Primary button", default: "Find a partner" },
+          { key: "cta.secondary", label: "Secondary button", default: "About 360° tours" },
+        ],
+      },
+    ],
+  },
+  "/find-a-partner": {
+    label: "Find a partner",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "Find a local ==walkthrough partner.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "Approved EXIT360 partners capture your business in immersive 360° so it sells faster. Search your area to find one — or book our own shoot service in Canberra." },
+        ],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "Are you a photographer?" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "Own an Insta360 and want paid walkthrough work in your area? Join the EXIT360 partner network." },
+          { key: "cta.primary", label: "Primary button", default: "Become a partner" },
+          { key: "cta.secondary", label: "Secondary button", default: "About 360° tours" },
+        ],
+      },
+    ],
+  },
   "/walkthroughs": {
     label: "Walkthroughs",
     sections: [
@@ -455,6 +571,191 @@ export const PAGE_MODEL: Record<string, MPage> = {
         fields: [
           { key: "cta.heading", label: "Heading", default: "Bring your business to life in 360°" },
           { key: "cta.sub", label: "Subtext", type: "textarea", default: "Build an immersive walkthrough that lets serious buyers explore every corner — and sell faster with fewer wasted inspections." },
+          { key: "cta.primary", label: "Primary button", default: "List your business" },
+          { key: "cta.secondary", label: "Secondary button", default: "See how it works" },
+        ],
+      },
+    ],
+  },
+  "/how-it-works": {
+    label: "How it works",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.eyebrow", label: "Eyebrow", default: "The complete platform guide" },
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "How EXIT360 works — and ==everything it can do.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "EXIT360 is Australia's 360° business-for-sale marketplace. It's far more than a classified ad: it's a **tour builder, an information memorandum generator, an NDA-gated data room and a live analytics dashboard** — all synced across app and web from one phone-verified account. This guide walks you through the whole platform, whether you're buying, selling or broking." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "Start a listing" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "Browse businesses" },
+          { key: "hero.cardTitle", label: "Image card title", default: "One platform, end to end" },
+          { key: "hero.cardSub", label: "Image card subtitle", default: "Tour → IM report → NDA → enquiry → sold" },
+        ],
+        lists: [{ key: "hero.chips", label: "Trust chips", itemNoun: "chip", fields: [{ key: "text", label: "Text" }], default: [{ text: "App & web, always in sync" }, { text: "Verified buyers only" }, { text: "You control the financials" }] }],
+      },
+      {
+        key: "tracks", label: "Three ways to use EXIT360",
+        fields: [
+          { key: "tracks.heading", label: "Heading", default: "Three ways to use EXIT360" },
+          { key: "tracks.body", label: "Intro paragraph", type: "textarea", default: "The same platform works three ways. Buyers explore and enquire, sellers build and control the sale, and brokers run entire portfolios for their clients. Here's the short version of each track." },
+        ],
+        lists: [{ key: "tracks.items", label: "Tracks", itemNoun: "track", fields: [
+          { key: "tag", label: "Tag" }, { key: "title", label: "Title" },
+          { key: "steps", label: "Steps (one per line)", type: "textarea" }, { key: "cta", label: "Button label" },
+        ], default: [
+          { tag: "Explore, verify, enquire", title: "For Buyers", cta: "Explore for buyers", steps: "Create a free account with your mobile number — one verified profile across app and web.\nBrowse listings and take the immersive 360° walkthrough of each business, room by room.\nSign the seller's NDA to unlock verified financials, divisions and the equipment register.\nSend a one-tap enquiry — request info, a call or a site visit — and message the seller securely.\nTrack everything you've unlocked and every conversation in your buyer portal." },
+          { tag: "Build, gate, sell", title: "For Sellers", cta: "Explore for sellers", steps: "Create your listing with details, asking price and business divisions on app or web.\nCapture panoramic scenes and link them into a guided 360° walkthrough of your premises.\nGenerate your information memorandum from your financials, equipment and tour in a few taps.\nSwitch on the NDA gate and set per-buyer financial access so only serious buyers see the numbers.\nField verified enquiries, watch live analytics and reveal your details only when you're ready." },
+          { tag: "Manage, share, scale", title: "For Brokers", cta: "Explore for brokers", steps: "Set up your broker profile and add every client business under one dashboard.\nBuild 360° tours and IM reports for each listing, or invite clients to help capture scenes.\nShare a polished, NDA-gated listing link with your buyer database in a single click.\nManage NDAs, enquiries and messages across your whole portfolio from one inbox.\nReport back to each vendor with live analytics — views, NDAs signed and requests by type." },
+        ] }],
+      },
+      {
+        key: "features", label: "Feature deep-dives",
+        fields: [
+          { key: "features.heading", label: "Heading", default: "A closer look at what the platform does" },
+          { key: "features.body", label: "Intro paragraph", type: "textarea", default: "Every EXIT360 listing is built from four connected tools. Together they turn a business for sale into something a buyer can genuinely understand and trust before they ever pick up the phone." },
+        ],
+        lists: [{ key: "features.items", label: "Features", itemNoun: "feature", fields: [
+          { key: "kicker", label: "Kicker" }, { key: "title", label: "Title" },
+          { key: "body", label: "Body", type: "textarea" }, { key: "points", label: "Points (one per line)", type: "textarea" },
+        ], default: [
+          { kicker: "The walkthrough builder", title: "Capture a Street-View-style 360° tour of your business", body: "Shoot panoramic scenes of your storefront, floor, kitchen, plant room, workshop or warehouse straight from the app. Link scenes together with navigation hotspots so buyers move naturally from space to space, exactly like Google Street View. Add captions to highlight equipment, fit-out or capacity. The finished walkthrough embeds directly in your listing and your IM report — so buyers arrive at inspection already sold on the space instead of deciding whether it's worth the drive.", points: "Panoramic scene capture\nLinked, guided navigation\nScene captions & hotspots" },
+          { kicker: "The report builder", title: "Generate a data-room-grade information memorandum", body: "Turn your financials, business divisions, equipment register and 360° tour into a professional information memorandum in minutes — no accountant's template or design software required. The builder structures your P&L, add-backs, revenue by division and asset list into a clean, credible document buyers and their advisers can rely on. It's the difference between a one-page teaser and a genuine data room, and it's generated automatically as you complete your listing.", points: "Financials & add-backs\nDivisions & equipment register\nTour embedded in the IM" },
+          { kicker: "The NDA gate", title: "Protect your numbers with NDAs and per-buyer access", body: "Sensitive information stays hidden until a buyer earns it. Buyers must verify their mobile number and electronically sign your NDA before a single financial figure, division breakdown or IM report is revealed. You see exactly who signed and when, and you can grant or revoke financial access per buyer at any time. Run the whole sale confidentially — message-only, with your identity and phone number hidden until you choose to share them.", points: "e-Signed NDA required\nPer-buyer access toggles\nFully confidential mode" },
+          { kicker: "Live analytics & sharing", title: "Know exactly how your sale is tracking", body: "Your dashboard shows listing views, tour engagement, NDAs signed and enquiries broken down by type — request for information, call-back or site visit — updating in real time. You'll know which buyers are hot before you spend a minute on the phone, and which parts of the tour draw the most attention. Brokers can share these same live analytics with each vendor client, so every party sees genuine, verifiable progress rather than a monthly guess.", points: "Views & tour engagement\nNDAs & requests by type\nBroker client-sharing" },
+        ] }],
+      },
+      {
+        key: "enquiries", label: "Enquiries & messaging",
+        fields: [
+          { key: "enquiries.heading", label: "Heading", default: "Verified buyers, one-tap enquiries and secure messaging" },
+          { key: "enquiries.body", label: "Intro paragraph", type: "textarea", default: "Once a buyer is verified and past the NDA gate, everything runs through the platform — no anonymous time-wasters, no lost email threads, no leaked numbers." },
+          { key: "enquiries.info1Title", label: "Info card 1 title", default: "Buyer portal & seller dashboard" },
+          { key: "enquiries.info1Body", label: "Info card 1 body", type: "textarea", default: "Buyers track saved listings, signed NDAs and open conversations in the buyer portal. Sellers manage listings, financial access, enquiries and analytics from the seller dashboard. Each side sees exactly what it needs — and nothing it shouldn't." },
+          { key: "enquiries.info2Title", label: "Info card 2 title", default: "One account, app and web" },
+          { key: "enquiries.info2Body", label: "Info card 2 body", type: "textarea", default: "Your account is keyed to your phone number, so everything syncs instantly between the EXIT360 app and the website. Start a listing on your phone at the premises, finish the IM on your laptop, and reply to a buyer from whichever is closest." },
+        ],
+        lists: [{ key: "enquiries.cards", label: "Request cards", itemNoun: "card", fields: CARD, default: [
+          { title: "Request information", body: "One tap sends a request for the full information memorandum. You approve it, and the buyer gets access — with a record of who has what." },
+          { title: "Request a call", body: "Buyers can ask for a call-back without ever seeing your number. Reveal your phone only once you're comfortable and they've verified theirs." },
+          { title: "Request a site visit", body: "Serious buyers who've explored the 360° tour can request an in-person inspection, so every visit is qualified rather than exploratory." },
+        ] }],
+      },
+      {
+        key: "highlights", label: "Highlights strip",
+        fields: [{ key: "highlights.heading", label: "Heading", default: "Powerful because it does the whole job" }],
+        lists: [{ key: "highlights.stats", label: "Highlights", itemNoun: "highlight", fields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }], default: [
+          { value: "Guided 360° tours", label: "Street-View-style walkthroughs" },
+          { value: "Auto IM reports", label: "Data-room-grade documents" },
+          { value: "NDA + access control", label: "Per-buyer financial gating" },
+          { value: "Live analytics", label: "Views, NDAs, requests by type" },
+        ] }],
+      },
+      {
+        key: "control", label: "Control callout",
+        fields: [
+          { key: "control.heading", label: "Heading", default: "You stay in control the whole way" },
+          { key: "control.body", label: "Body", type: "textarea", default: "Stay anonymous, run message-only, or reveal your number once a buyer verifies theirs. Turn financial access on and off per buyer, and pause or edit your listing whenever you like. There are no lock-in contracts — it's your sale, run on your terms, across app and web." },
+        ],
+      },
+      {
+        key: "faq", label: "FAQ",
+        fields: [{ key: "faq.heading", label: "Heading", default: "How EXIT360 works — your questions" }],
+        lists: [{ key: "faq.items", label: "Questions", itemNoun: "question", fields: [{ key: "q", label: "Question" }, { key: "a", label: "Answer", type: "textarea" }], default: [
+          { q: "Do I need special equipment to build a 360° walkthrough?", a: "No. You can capture panoramic scenes with the EXIT360 app on your phone, then link them into a guided tour. If you already have professional 360° imagery, you can use that too — the builder handles both." },
+          { q: "What exactly goes into the information memorandum?", a: "Your IM report pulls together your financials and add-backs, business divisions, the equipment register and your 360° walkthrough into one professional, data-room-grade document. It's generated automatically as you complete your listing, so buyers and their advisers get a credible package from day one." },
+          { q: "How are buyers stopped from seeing my financials?", a: "Financials sit behind an NDA gate. A buyer must verify their mobile number and electronically sign your NDA before any numbers are revealed, and you can grant or revoke access per buyer at any time. You always see who signed and when." },
+          { q: "Can I use EXIT360 on both my phone and my computer?", a: "Yes. Your account is keyed to your phone number, so the app and the website stay in sync automatically. Start a listing at the premises on your phone and finish it on your laptop — it's all one account." },
+          { q: "How does it work for brokers with multiple listings?", a: "Brokers manage every client business from one dashboard, build tours and IM reports for each, share NDA-gated listing links with their buyer database, and report live analytics — views, NDAs signed and requests by type — back to each vendor." },
+        ] }],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "See the whole platform in action" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "Build your 360° listing and information memorandum today, or browse verified businesses for sale across Australia. No lock-in, full control." },
+          { key: "cta.primary", label: "Primary button", default: "List your business" },
+          { key: "cta.secondary", label: "Secondary button", default: "Browse listings" },
+        ],
+      },
+    ],
+  },
+  "/compare": {
+    label: "Compare",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.eyebrow", label: "Eyebrow", default: "EXIT360 vs traditional listing sites" },
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "The best way to buy and sell a business, ==side by side.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "Most Australian businesses are still advertised on classified-style listing portals — the same channels people use to sell a car or rent a shopfront. EXIT360 was built specifically for business sales, so here's an honest, feature-by-feature look at everything we do that a traditional listing site can't." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "List your business" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "See how it works" },
+        ],
+      },
+      {
+        key: "intro", label: "Intro copy",
+        lists: [{ key: "intro.paras", label: "Paragraphs", itemNoun: "paragraph", fields: [{ key: "text", label: "Paragraph", type: "textarea" }], default: [
+          { text: "Selling a business is one of the biggest financial decisions an owner will ever make, yet most listings still get the same treatment as a used-car ad: a handful of photos, an asking price and a contact form. Buyers are left guessing, sellers are buried in unqualified enquiries, and good deals stall because there's no easy way to build trust before a meeting." },
+          { text: "Australia's main selling channels are classified-style listing sites — think **Seek Business, Bsale and the commercial listing portals**. They're great at putting a listing in front of a large audience, and for a small, simple sale that can be enough. But they were designed as directories, not as a place to actually run a confidential, high-value transaction. That's the gap EXIT360 closes." },
+          { text: "The table below compares **EXIT360** against a generic **traditional listing site**. We're not naming names or claiming any single competitor lacks a particular tick — these are the structural differences between a classified directory and a purpose-built business-sale platform." },
+        ] }],
+      },
+      {
+        key: "table", label: "Comparison table",
+        fields: [
+          { key: "table.colA", label: "Column A header", default: "EXIT360" },
+          { key: "table.colB", label: "Column B header", default: "Traditional listing sites" },
+          { key: "table.footnote", label: "Footnote", type: "textarea", default: "Comparison reflects the typical feature set of classified-style business-for-sale listing portals. Individual sites vary; EXIT360 combines all of the above in one platform." },
+        ],
+        lists: [{ key: "table.rows", label: "Rows", itemNoun: "row", fields: [{ key: "feature", label: "Capability" }, { key: "detail", label: "Detail", type: "textarea" }], default: [
+          { feature: "Immersive 360° guided walkthroughs", detail: "Navigable, room-to-room virtual tours of the actual premises." },
+          { feature: "Verified (phone-checked) buyers", detail: "Every enquiry comes from a buyer who verified their mobile number." },
+          { feature: "NDA-gated financials with per-buyer control", detail: "Numbers stay hidden until a buyer signs your NDA — and you can revoke access." },
+          { feature: "Data-room-grade IM report builder", detail: "Your listing becomes a polished information memorandum automatically." },
+          { feature: "Live analytics (views, NDAs, requests by type)", detail: "Real-time engagement data, not a monthly view count." },
+          { feature: "Native app AND web, synced by phone number", detail: "Build and manage a listing on either — everything stays in sync." },
+          { feature: "In-platform secure messaging", detail: "Talk to buyers without handing out your personal contact details." },
+          { feature: "Broker multi-listing management + shareable client analytics", detail: "One dashboard for every mandate, with reports you can send to vendors." },
+          { feature: "One-tap enquiries (info / call / site visit)", detail: "Buyers signal exactly what they want, so you triage in seconds." },
+          { feature: "Anonymous / confidential selling", detail: "Run a discreet sale and reveal your identity only when you choose." },
+        ] }],
+      },
+      {
+        key: "deepdive", label: "Category deep-dives",
+        fields: [
+          { key: "deepdive.heading", label: "Heading", default: "Where the biggest differences show up" },
+          { key: "deepdive.body", label: "Intro paragraph", type: "textarea", default: "A tick in a table is one thing — knowing why it changes your sale is another. These are the four capabilities that most reliably separate a fast, clean sale from a listing that drifts." },
+        ],
+        lists: [{ key: "deepdive.items", label: "Cards", itemNoun: "card", fields: CARD, default: [
+          { title: "360° guided walkthroughs vs a photo gallery", body: "A traditional listing gives buyers a few staged photos and a floor-area figure, then asks them to book an inspection to fill in the blanks. Most won't — they self-select out, or they turn up unconvinced. An EXIT360 walkthrough lets a buyer move through the premises room by room, understand the layout, condition and fit-out, and arrive at inspection already sold on the space. Fewer wasted visits, more committed buyers." },
+          { title: "Verified buyers and NDA-gated financials vs an open contact form", body: "On a classified site, anyone can fire off an enquiry, and your financials are either public or emailed out on trust. EXIT360 flips that: every enquiry comes from a phone-verified buyer, and your P&L, add-backs and equipment register sit behind an NDA gate you control per buyer. You see exactly who signed and when — and you can switch access off. That's the difference between advertising a business and running a data room." },
+          { title: "Live analytics vs a monthly view count", body: "Traditional portals might tell you how many times a listing was viewed last month. EXIT360 shows you engagement as it happens: tour views, NDAs signed, and enquiries broken down by type — request for information, phone call or site visit. You know which buyers are hot before you spend a minute on the phone, and brokers can share those reports straight with their vendors." },
+          { title: "App-and-web, synced by phone number vs a single web form", body: "Most listing sites are a web form and nothing more. EXIT360 is a native app and a full website that share one account keyed to your phone number. Start a listing on your phone at the premises, finish it on your laptop, and manage enquiries from whichever is closest — everything stays in sync, so nothing lives on a single device or in one inbox." },
+        ] }],
+      },
+      {
+        key: "honest", label: "When traditional is enough",
+        fields: [
+          { key: "honest.heading", label: "Heading", default: "When a traditional listing site might be enough" },
+          { key: "honest.body", label: "Body", type: "textarea", default: "We'll be straight with you: EXIT360 isn't the only sensible choice for every sale. If you're selling a very small, low-value business — a home-based side venture, a simple online store with nothing physical to inspect, or an asset sale where the premises don't matter — a classified-style listing on a high-traffic portal may do the job at low cost, and there's no shame in that. Where EXIT360 earns its place is the moment your sale involves a real location worth walking through, financials worth protecting, or enough buyer interest that you need to qualify and track it. That's most genuine business sales — but not quite all of them." },
+        ],
+      },
+      {
+        key: "faq", label: "FAQ",
+        fields: [{ key: "faq.heading", label: "Heading", default: "Comparison questions, answered" }],
+        lists: [{ key: "faq.items", label: "Questions", itemNoun: "question", fields: [{ key: "q", label: "Question" }, { key: "a", label: "Answer", type: "textarea" }], default: [
+          { q: "How is EXIT360 different from a traditional business-for-sale website?", a: "Traditional listing sites are classified-style directories: photos, a price and a contact form. EXIT360 adds immersive 360° walkthroughs, phone-verified buyers, NDA-gated financials, a built-in information memorandum and live analytics — all in one app-and-web platform built specifically for business sales." },
+          { q: "Is EXIT360 an alternative to Seek Business or Bsale?", a: "Yes. Australia's main channels are classified-style listing portals such as Seek Business, Bsale and the commercial listing sites. EXIT360 is a modern alternative that treats a business sale like the high-value, confidential transaction it is — with virtual tours, verified buyers and a secure data room rather than a directory ad." },
+          { q: "Do 360° virtual tours actually help sell a business?", a: "They do. A navigable walkthrough lets buyers understand the premises, layout and fit-out before they enquire, which filters out tyre-kickers, cuts wasted inspections and brings more committed buyers to the table. It's the closest thing to being there without booking a visit." },
+          { q: "Can brokers manage multiple listings and share reports?", a: "Yes. Brokers get one dashboard to manage every mandate, plus shareable analytics — views, tour engagement, NDAs and enquiry types — that they can send straight to their vendor clients as a professional progress report." },
+          { q: "Does switching to EXIT360 mean giving up reach?", a: "No. You can run EXIT360 as your primary, purpose-built sale platform while still advertising elsewhere. The difference is that every EXIT360 enquiry lands from a verified buyer into a controlled data room, so the reach you do get converts far better." },
+        ] }],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "See the difference for your own sale" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "List on the platform built for business sales — 360° tours, verified buyers and a secure data room, with no lock-in and full control." },
           { key: "cta.primary", label: "Primary button", default: "List your business" },
           { key: "cta.secondary", label: "Secondary button", default: "See how it works" },
         ],
