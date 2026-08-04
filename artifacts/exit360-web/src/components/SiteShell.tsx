@@ -28,9 +28,23 @@ function useSignedIn() {
   return signedIn;
 }
 
+/** True when the signed-in web user is a site admin (checks once per mount). */
+function useIsAdmin() {
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let token: string | null = null;
+    try { token = localStorage.getItem("biz360_web_auth_token"); } catch { /* ignore */ }
+    if (!token) { setIsAdmin(false); return; }
+    fetch("/api/admin/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json()).then((d) => setIsAdmin(!!d?.isAdmin)).catch(() => setIsAdmin(false));
+  }, []);
+  return isAdmin;
+}
+
 export function SiteNav() {
   const [open, setOpen] = useState(false);
   const signedIn = useSignedIn();
+  const isAdmin = useIsAdmin();
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
       <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
@@ -54,6 +68,7 @@ export function SiteNav() {
                 <Link href="/buyers/portal"><div className="px-3 py-2 rounded-lg hover:bg-muted text-sm cursor-pointer">My Portal <span className="text-[11px] text-muted-foreground">· buyer</span></div></Link>
                 <Link href="/seller"><div className="px-3 py-2 rounded-lg hover:bg-muted text-sm cursor-pointer">Seller dashboard <span className="text-[11px] text-muted-foreground">· selling</span></div></Link>
                 <Link href="/seller"><div className="px-3 py-2 rounded-lg hover:bg-muted text-sm cursor-pointer text-primary font-semibold">＋ Start selling</div></Link>
+                {isAdmin && <Link href="/manage"><div className="px-3 py-2 rounded-lg hover:bg-muted text-sm cursor-pointer border-t border-border mt-1 pt-2">🛡 Manage site <span className="text-[11px] text-muted-foreground">· admin</span></div></Link>}
                 <button onClick={() => { try { localStorage.removeItem("exit360_buyer_token"); localStorage.removeItem("biz360_web_auth_token"); } catch {} window.location.href = "/"; }} className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted text-sm text-red-400">Sign out</button>
               </div>
             </details>
