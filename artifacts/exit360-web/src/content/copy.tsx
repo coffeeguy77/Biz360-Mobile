@@ -9,22 +9,6 @@ export interface Slot { key: string; label: string; type?: "text" | "textarea"; 
 export interface PageContent { label: string; slots: Slot[]; }
 
 export const PAGE_CONTENT: Record<string, PageContent> = {
-  "/selling": {
-    label: "Selling",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "For business owners ready to exit" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "Sell your business the way ==buyers actually want to buy it.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "Static photos and a one-page teaser don't sell a business. EXIT360 lets serious, verified buyers **walk through your premises in immersive 360°**, read your real financials under NDA, and enquire in one tap — so you sell faster, for a stronger price, with far less tyre-kicking." },
-    ],
-  },
-  "/buying": {
-    label: "Buying",
-    slots: [
-      { key: "heroEyebrow", label: "Hero eyebrow", default: "For buyers hunting the right business" },
-      { key: "heroTitle", label: "Hero title", type: "textarea", default: "Buy a business you've ==already walked through.==" },
-      { key: "heroSubtitle", label: "Hero subtitle", type: "textarea", default: "Stop booking flights and Saturdays around blurry photos. EXIT360 lets you **explore businesses for sale in immersive 360°**, review real financials under NDA, and send a verified enquiry in one tap — so you shortlist faster, travel only for the deals worth chasing, and buy with genuine confidence." },
-    ],
-  },
   "/brokers": {
     label: "Brokers",
     slots: [

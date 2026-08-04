@@ -68,6 +68,169 @@ export const PAGE_MODEL: Record<string, MPage> = {
       },
     ],
   },
+  "/buying": {
+    label: "Buying",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.eyebrow", label: "Eyebrow", default: "For buyers hunting the right business" },
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "Buy a business you've ==already walked through.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "Stop booking flights and Saturdays around blurry photos. EXIT360 lets you **explore businesses for sale in immersive 360°**, review real financials under NDA, and send a verified enquiry in one tap — so you shortlist faster, travel only for the deals worth chasing, and buy with genuine confidence." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "Browse listings" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "See how it works" },
+          { key: "hero.cardTitle", label: "Image card title", default: "Touring: Fitzroy café + roastery" },
+          { key: "hero.cardSub", label: "Image card subtitle", default: "Walk the floor before you enquire" },
+        ],
+        lists: [{ key: "hero.chips", label: "Trust chips", itemNoun: "chip", fields: [{ key: "text", label: "Text" }], default: [{ text: "Free to browse" }, { text: "Verified sellers" }, { text: "App & web" }] }],
+      },
+      {
+        key: "why", label: "Why buyers start here",
+        fields: [
+          { key: "why.heading", label: "Heading", type: "textarea", default: "Why buyers start their search on EXIT360" },
+          { key: "why.body", label: "Intro paragraph", type: "textarea", default: "Buying a business is one of the biggest decisions you'll make — yet most marketplaces still ask you to judge it from a handful of photos and a vague teaser. EXIT360 gives you the context, the numbers and the direct line you actually need to move with confidence." },
+        ],
+        lists: [{ key: "why.cards", label: "Cards", itemNoun: "card", fields: CARD, default: [
+          { title: "Walk through in 360° first", body: "Explore the shopfront, kitchen, workshop or plant room from your couch. You'll know whether a business is worth a trip before you ever book one — and arrive at inspection already knowing the space." },
+          { title: "Verified listings & sellers", body: "Every seller is phone-verified and every listing is reviewed, so you spend your time on genuine opportunities instead of chasing dead ends and anonymous ghost ads." },
+          { title: "Financials under NDA", body: "Request access, sign the seller's NDA in-app, and unlock the P&L, add-backs and equipment register. Do real due diligence on real numbers — not a rounded 'from' figure." },
+          { title: "One-tap verified enquiries", body: "Send an enquiry, request more information or book an inspection in a single tap. Sellers see you're a verified buyer, so your message goes to the top of the pile." },
+          { title: "Your buyer portal", body: "Save listings, track NDAs, follow your enquiries and revisit every tour from one dashboard. Never lose the thread on a business you're seriously considering." },
+          { title: "Seamless app & web", body: "Start a search on your laptop at work, keep exploring tours on your phone on the train. Your account is keyed to your number, so everything stays perfectly in sync." },
+        ] }],
+      },
+      {
+        key: "steps", label: "How buying works",
+        fields: [
+          { key: "steps.heading", label: "Heading", type: "textarea", default: "How buying works, in four steps" },
+          { key: "steps.body", label: "Intro paragraph", type: "textarea", default: "From first browse to booked inspection — a clearer, faster path to the right business." },
+        ],
+        lists: [{ key: "steps.items", label: "Steps", itemNoun: "step", fields: [{ key: "n", label: "Number" }, { key: "title", label: "Title" }, { key: "body", label: "Body", type: "textarea" }], default: [
+          { n: "01", title: "Browse & shortlist", body: "Filter businesses for sale by industry, location, price and cash flow. Save the ones that fit to your buyer portal to compare side by side." },
+          { n: "02", title: "Take the 360° walkthrough", body: "Move through the premises room to room like Google Street View. Get a real feel for size, layout, fit-out and foot traffic before you commit any time." },
+          { n: "03", title: "Request info & sign the NDA", body: "Ask the seller for the detail that matters, sign their NDA in-app, and unlock verified financials and the full information memorandum." },
+          { n: "04", title: "Enquire & inspect", body: "Send a one-tap verified enquiry, message the seller directly, and book your on-site inspection knowing the numbers already stack up." },
+        ] }],
+      },
+      {
+        key: "trust", label: "Buy with confidence",
+        fields: [
+          { key: "trust.eyebrow", label: "Eyebrow", default: "Buy with confidence" },
+          { key: "trust.heading", label: "Heading", type: "textarea", default: "Serious buyers deserve real information" },
+          { key: "trust.body", label: "Paragraph", type: "textarea", default: "A business is only worth what its numbers and its premises can prove. EXIT360 is built so you can verify both — privately, respectfully and on your terms. You stay in control of your details until you decide a business is worth pursuing." },
+        ],
+        lists: [
+          { key: "trust.checklist", label: "Reassurance points", itemNoun: "point", fields: [{ key: "text", label: "Text" }], default: [
+            { text: "Financials stay confidential until you request access and sign the NDA" },
+            { text: "Your contact details are only shared with sellers you choose to enquire with" },
+            { text: "Every enquiry is logged in your buyer portal so nothing slips through the cracks" },
+            { text: "Message sellers securely in-app before revealing your phone number" },
+          ] },
+          { key: "trust.cards", label: "Stat cards", itemNoun: "card", fields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }], default: [
+            { value: "Tour before you travel", label: "See it in 360° from anywhere" },
+            { value: "100% verified sellers", label: "Every listing phone-checked" },
+            { value: "Direct to the owner", label: "No broker gatekeeping" },
+            { value: "Shortlist in minutes", label: "Not weeks of phone tag" },
+          ] },
+        ],
+      },
+      {
+        key: "faq", label: "FAQ",
+        fields: [{ key: "faq.heading", label: "Heading", default: "Buyer questions, answered" }],
+        lists: [{ key: "faq.items", label: "Questions", itemNoun: "question", fields: [{ key: "q", label: "Question" }, { key: "a", label: "Answer", type: "textarea" }], default: [
+          { q: "Does it cost anything to browse and enquire?", a: "No. Browsing listings, exploring 360° walkthroughs and sending verified enquiries is free for buyers. You only ever deal directly with sellers — there's no buyer's fee to use EXIT360." },
+          { q: "How do I see a business's financials?", a: "Open the listing, request financial access and sign the seller's NDA in-app. Once you're verified and the NDA is signed, the P&L, add-backs, equipment register and full information memorandum unlock for you." },
+          { q: "What exactly is the 360° walkthrough?", a: "It's an immersive, navigable tour of the premises built from panoramic scenes. You move from room to room like Google Street View, so you can judge the space, layout and fit-out properly before spending a day travelling to inspect." },
+          { q: "Are the listings and sellers verified?", a: "Yes. Every seller is phone-verified and each listing is reviewed before it goes live, so you're dealing with genuine businesses and real owners — not anonymous or duplicate ads." },
+          { q: "Can I keep track of everything I'm interested in?", a: "Your buyer portal saves shortlisted listings, tracks the NDAs you've signed and follows every enquiry you've sent. Start on the web, continue on the app — your account and history stay in sync across both." },
+        ] }],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "Find the business that's right for you" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "Browse verified listings, walk through in 360° and enquire in one tap. It's free to start your search on EXIT360." },
+          { key: "cta.primary", label: "Primary button", default: "Browse listings" },
+          { key: "cta.secondary", label: "Secondary button", default: "Open your buyer portal" },
+        ],
+      },
+    ],
+  },
+  "/selling": {
+    label: "Selling",
+    sections: [
+      {
+        key: "hero", label: "Hero",
+        fields: [
+          { key: "hero.eyebrow", label: "Eyebrow", default: "For business owners ready to exit" },
+          { key: "hero.title", label: "Headline (H1)", type: "textarea", default: "Sell your business the way ==buyers actually want to buy it.==" },
+          { key: "hero.subtitle", label: "Subheadline", type: "textarea", default: "Static photos and a one-page teaser don't sell a business. EXIT360 lets serious, verified buyers **walk through your premises in immersive 360°**, read your real financials under NDA, and enquire in one tap — so you sell faster, for a stronger price, with far less tyre-kicking." },
+          { key: "hero.ctaPrimary", label: "Primary button", default: "List your business" },
+          { key: "hero.ctaSecondary", label: "Secondary button", default: "See how it works" },
+          { key: "hero.cardTitle", label: "Image card title", default: "360° walkthrough live" },
+          { key: "hero.cardSub", label: "Image card subtitle", default: "Buyers explored 43 times this week" },
+        ],
+        lists: [{ key: "hero.chips", label: "Trust chips", itemNoun: "chip", fields: [{ key: "text", label: "Text" }], default: [{ text: "No lock-in contracts" }, { text: "You control who sees financials" }, { text: "App & web" }] }],
+      },
+      {
+        key: "why", label: "Why sellers get better outcomes",
+        fields: [
+          { key: "why.heading", label: "Heading", type: "textarea", default: "Why EXIT360 sellers get better outcomes" },
+          { key: "why.body", label: "Intro paragraph", type: "textarea", default: "The businesses that sell fastest are the ones buyers can understand and trust before they ever pick up the phone. EXIT360 is built to remove doubt at every step — the two things that kill deals. Here's how we do it." },
+        ],
+        lists: [{ key: "why.cards", label: "Cards", itemNoun: "card", fields: CARD, default: [
+          { title: "Immersive 360° tours", body: "Buyers walk your floor, kitchen, plant room and storefront from anywhere. They arrive at inspection already sold on the space — not deciding whether it's worth the drive." },
+          { title: "Verified financials, gated by NDA", body: "Upload your P&L, add-backs and equipment register. Buyers must sign an NDA before a single figure is revealed, and you see exactly who signed and when." },
+          { title: "Live buyer analytics", body: "See views, tour engagement, NDAs signed and enquiry types in real time. Know which buyers are hot before you spend a minute on the phone." },
+          { title: "Only verified buyers", body: "Every enquiry comes from a phone-verified buyer. No anonymous time-wasters — just real people who've raised their hand for your business." },
+          { title: "Automatic information memorandum", body: "Your listing becomes a polished, data-room-grade IM report — financials, divisions, equipment and tour in one professional document buyers can trust." },
+          { title: "You stay in control", body: "Stay anonymous, message-only, or reveal your number after a buyer verifies theirs. Turn financial access on and off per buyer. It's your sale, your rules." },
+        ] }],
+      },
+      {
+        key: "steps", label: "Four steps",
+        fields: [
+          { key: "steps.heading", label: "Heading", type: "textarea", default: "From listing to sold in four steps" },
+          { key: "steps.body", label: "Intro paragraph", type: "textarea", default: "Most sellers are live within an afternoon. Build it on the app or on the web — your listing syncs across both." },
+        ],
+        lists: [{ key: "steps.items", label: "Steps", itemNoun: "step", fields: [{ key: "n", label: "Number" }, { key: "title", label: "Title" }, { key: "body", label: "Body", type: "textarea" }], default: [
+          { n: "01", title: "Create your listing", body: "Add your business details, asking price and divisions on the app or website. Everything is saved to your phone-verified account and stays in sync." },
+          { n: "02", title: "Capture the 360° tour", body: "Add panoramic scenes and link them into a guided walkthrough. Buyers move through your business like Street View." },
+          { n: "03", title: "Add financials & set NDA", body: "Upload your numbers and equipment register, then require an NDA so only serious, committed buyers can see them." },
+          { n: "04", title: "Field verified enquiries", body: "Requests for info, calls and site visits land in one inbox. Track engagement and reveal your number only when you're ready." },
+        ] }],
+      },
+      {
+        key: "stats", label: "Stats band",
+        lists: [{ key: "stats.items", label: "Stats", itemNoun: "stat", fields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }], default: [
+          { value: "Live in an afternoon", label: "Typical time to publish" },
+          { value: "Higher engagement", label: "Tours vs. photos-only listings" },
+          { value: "100% verified", label: "Every buyer, phone-checked" },
+          { value: "NDA-gated", label: "Financials protected by default" },
+        ] }],
+      },
+      {
+        key: "faq", label: "FAQ",
+        fields: [{ key: "faq.heading", label: "Heading", default: "Selling questions, answered" }],
+        lists: [{ key: "faq.items", label: "Questions", itemNoun: "question", fields: [{ key: "q", label: "Question" }, { key: "a", label: "Answer", type: "textarea" }], default: [
+          { q: "How much does it cost to list?", a: "You can build your listing and 360° tour with no lock-in contract. Talk to us about a plan that suits a private sale or a broker managing multiple listings." },
+          { q: "Do I have to show my financials to everyone?", a: "No. Financials sit behind an NDA gate and per-buyer access controls. A buyer must verify their phone and sign your NDA before any numbers are revealed — and you can see exactly who has." },
+          { q: "Can I stay anonymous?", a: "Yes. You can run a fully confidential sale where buyers only reach you through secure in-platform messages, and reveal your phone number only once a buyer has verified theirs." },
+          { q: "Can I build my listing on my computer and my phone?", a: "Absolutely. Your account is keyed to your phone number, so you can start on the app, keep going on the website, and edit either — everything stays in sync." },
+          { q: "What is the 360° walkthrough?", a: "It's an immersive, navigable tour of your premises built from panoramic scenes. Buyers explore room to room like Google Street View, which dramatically reduces wasted inspections." },
+        ] }],
+      },
+      {
+        key: "cta", label: "Bottom call-to-action",
+        fields: [
+          { key: "cta.heading", label: "Heading", default: "Ready to sell your business?" },
+          { key: "cta.sub", label: "Subtext", type: "textarea", default: "Create your 360° listing today. No lock-in, full control, and buyers who've already proven they're serious." },
+          { key: "cta.primary", label: "Primary button", default: "List your business" },
+          { key: "cta.secondary", label: "Secondary button", default: "Talk to our team" },
+        ],
+      },
+    ],
+  },
   "/walkthroughs": {
     label: "Walkthroughs",
     sections: [
