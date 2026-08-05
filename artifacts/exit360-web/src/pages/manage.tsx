@@ -59,6 +59,7 @@ export function Manage() {
     ["menus", "Menus", ListTree],
     ["listings", "Listings", FileCheck2],
     ["support", "Support", LifeBuoy],
+    ["background", "Background", Sparkles],
     ["users", "Users & roles", Users],
     ["settings", "Site settings", SettingsIcon],
   ];
@@ -107,6 +108,7 @@ export function Manage() {
               {section === "menus" && <Menus auth={auth} />}
               {section === "listings" && <Listings auth={auth} />}
               {section === "support" && <SupportInbox auth={auth} />}
+              {section === "background" && <BackgroundPanel />}
               {section === "users" && <UsersTab auth={auth} isSuper={me.isSuperAdmin} />}
               {section === "settings" && <Settings auth={auth} />}
             </div>
@@ -652,6 +654,31 @@ function SupportInbox({ auth }: { auth: any }) {
           </div>
         </Card>
       ))}
+    </div>
+  );
+}
+
+// ─── Animated background (mesh gradient) ──────────────────────────────────────
+function BackgroundPanel() {
+  return (
+    <div className="max-w-2xl space-y-4">
+      <div className="rounded-2xl border border-border bg-card/50 p-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-11 h-11 rounded-xl grid place-items-center theme-btn-gradient"><Sparkles className="text-primary-foreground" size={20} /></div>
+          <div>
+            <h3 className="font-bold">Mesh Gradient background</h3>
+            <p className="text-xs text-muted-foreground">The silky, drifting colour field behind your site.</p>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground leading-relaxed mb-5">
+          Open the live remix playground to tune every knob — colours, drift speed, scale, warp,
+          softness, contrast, grain and cursor pull. Preview it on your own device, then apply it
+          site-wide for all visitors when you’re happy.
+        </p>
+        <Link href="/effects/mesh-remix">
+          <Button className="gap-1.5 theme-btn-gradient border-0"><Sparkles size={15} /> Open the remix playground</Button>
+        </Link>
+      </div>
     </div>
   );
 }

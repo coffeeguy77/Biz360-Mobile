@@ -28,6 +28,7 @@ import { ReportBuilder } from "@/pages/report-builder";
 import { Valuation } from "@/pages/valuation";
 import { Leases } from "@/pages/leases";
 import { Manage } from "@/pages/manage";
+import { MeshRemix } from "@/pages/mesh-remix";
 import { Help } from "@/pages/help";
 import { HelpAssistant } from "@/components/HelpAssistant";
 import { BrokerAnalytics } from "@/pages/broker-analytics";
@@ -63,6 +64,8 @@ function Router() {
       <Route path="/seller/valuation/:listingId" component={Valuation} />
       <Route path="/seller/leases" component={Leases} />
       <Route path="/manage" component={Manage} />
+      <Route path="/effects/mesh-remix" component={MeshRemix} />
+      <Route path="/effects/mesh" component={MeshRemix} />
       <Route path="/help" component={Help} />
       <Route path="/support" component={Help} />
       <Route path="/broker/analytics/:listingId" component={BrokerAnalytics} />

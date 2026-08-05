@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getStoredEffect, effectKind, BG_CHANGE_EVENT } from "@/lib/bg";
 import { GLBackground } from "@/components/GLBackground";
 
@@ -31,6 +31,7 @@ export function AnimatedBackground() {
     typeof window !== "undefined" ? getStoredEffect() : "dot-grid-wave"
   );
   const [glFailed, setGlFailed] = useState(false);
+  const onGlUnsupported = useCallback(() => setGlFailed(true), []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointer = useRef({ tx: 0, ty: 0, x: 0, y: 0, active: false });
 
@@ -200,7 +201,7 @@ export function AnimatedBackground() {
   return (
     <div className="bg-fx-root" aria-hidden="true">
       {showGL ? (
-        <GLBackground mode={effect === "topo-lines" ? "topo" : "mesh"} onUnsupported={() => setGlFailed(true)} />
+        <GLBackground mode={effect === "topo-lines" ? "topo" : "mesh"} onUnsupported={onGlUnsupported} />
       ) : kind === "canvas" ? (
         <canvas ref={canvasRef} className="bg-fx-canvas" />
       ) : kind === "webgl" && glFailed ? (

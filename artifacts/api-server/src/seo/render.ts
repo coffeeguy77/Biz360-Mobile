@@ -180,6 +180,9 @@ export async function injectMeta(html: string, pathname: string): Promise<string
   if (settings.menus && (settings.menus.primary?.length || settings.menus.footer?.length)) {
     extra.push(`<script>window.__EXIT360_MENUS__=${JSON.stringify(settings.menus).replace(/</g, "\\u003c")}</script>`);
   }
+  if (settings.mesh) {
+    extra.push(`<script>window.__EXIT360_MESH__=${JSON.stringify(settings.mesh).replace(/</g, "\\u003c")}</script>`);
+  }
 
   out = out.replace(/<\/head>/i, `${extra.join("\n    ")}\n  </head>`);
   return out;

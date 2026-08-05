@@ -297,6 +297,7 @@ router.put("/admin/seo", requireAdmin, async (req, res) => {
     defaults: body.defaults,
     pages: body.pages,
     menus: (body as any).menus,
+    mesh: (body as any).mesh,
   });
   res.json(saved);
 });

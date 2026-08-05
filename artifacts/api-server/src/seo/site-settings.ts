@@ -39,6 +39,12 @@ export interface SiteSettings {
     primary?: { label: string; href: string }[];
     footer?: { title: string; links: { label: string; href: string }[] }[];
   };
+  /** Mesh-gradient background settings from the remix playground (site-wide). */
+  mesh?: {
+    colors?: string[]; bg?: string; bgAlpha?: number;
+    speed?: number; scale?: number; warp?: number; softness?: number;
+    contrast?: number; grain?: number; mouse?: number;
+  } | null;
 }
 
 const DEFAULTS: SiteSettings = {
@@ -65,6 +71,7 @@ export async function getSiteSettings(force = false): Promise<SiteSettings> {
       defaults: { ...DEFAULTS.defaults, ...(stored.defaults ?? {}) },
       pages: stored.pages ?? {},
       menus: stored.menus ?? {},
+      mesh: stored.mesh ?? null,
     };
     cache = { value, at: Date.now() };
     return value;
@@ -80,6 +87,7 @@ export async function saveSiteSettings(partial: Partial<SiteSettings>): Promise<
     defaults: { ...cur.defaults, ...(partial.defaults ?? {}) },
     pages: partial.pages ? { ...cur.pages, ...partial.pages } : cur.pages,
     menus: partial.menus ? { ...cur.menus, ...partial.menus } : cur.menus,
+    mesh: partial.mesh !== undefined ? partial.mesh : cur.mesh,
   };
   await db
     .insert(kvStore)
