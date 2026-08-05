@@ -57,31 +57,32 @@ void main(){
 
   if(u_mode == 0){
     // ── Silky domain-warped mesh gradient (vivid, Stripe-grade) ──
-    vec2 p = uv * asp * 2.7;
+    // Broad sweeping forms (low freq) with marbled warp edges, luminous colour
+    // cores and a shadow tint that breathes into the luminance valleys.
+    vec2 p = uv * asp * 2.0;
     float t = u_time * 0.06;
     vec2 q = vec2(fbm(p + vec2(0.0, t)), fbm(p + vec2(5.2, -t)));
-    vec2 r = vec2(fbm(p + 2.4 * q + vec2(1.7, 9.2) + 0.5 * t),
-                  fbm(p + 2.4 * q + vec2(8.3, 2.8) - 0.5 * t));
-    float f = fbm(p + 2.4 * r);
+    vec2 r = vec2(fbm(p + 2.2 * q + vec2(1.7, 9.2) + 0.5 * t),
+                  fbm(p + 2.2 * q + vec2(8.3, 2.8) - 0.5 * t));
+    float f = fbm(p + 2.2 * r);
     float pull = 0.0;
     if(u_mouseOn > 0.5){ float d = distance(uv, m); pull = exp(-d * d * 7.0) * 0.6; r += pull * 0.4; f += pull * 0.32; }
-    // Tight, punchy colour regions (low softness → saturated zones, not fluffy).
-    vec3 col = mix(u_c0, u_c1, smoothstep(0.34, 0.66, r.x));
-    col = mix(col, u_c2, smoothstep(0.36, 0.68, r.y));
-    col = mix(col, u_c3, smoothstep(0.38, 0.72, f));
+    // Silky-but-saturated colour regions — each hue owns a drifting zone.
+    vec3 col = mix(u_c0, u_c1, smoothstep(0.32, 0.68, r.x));
+    col = mix(col, u_c2, smoothstep(0.34, 0.70, r.y));
+    col = mix(col, u_c3, smoothstep(0.36, 0.74, f));
     // Enrich: saturation boost + mid-deepen + contrast punch → dense, premium colour.
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    col = clamp(mix(vec3(lum), col, 1.55), 0.0, 1.0);
-    col = pow(col, vec3(1.18));
-    col = clamp((col - 0.5) * 1.16 + 0.5, 0.0, 1.0);
-    // Shadow tint breathes into the luminance valleys — deep base in the troughs,
-    // vivid glowing cores on the peaks (contrast, not a flat wash). Keeps white
-    // hero text readable; cursor brightens the local pigment (pigment-pull).
-    float depth = smoothstep(0.10, 0.86, f);
-    float bright = mix(0.26, 0.92, depth) + pull * 0.5;
+    col = clamp(mix(vec3(lum), col, 1.5), 0.0, 1.0);
+    col = pow(col, vec3(1.16));
+    col = clamp((col - 0.5) * 1.14 + 0.5, 0.0, 1.0);
+    // Deep base in the troughs, vivid glowing cores on the peaks (contrast, not a
+    // flat wash). Keeps white hero text readable; cursor brightens local pigment.
+    float depth = smoothstep(0.12, 0.86, f);
+    float bright = mix(0.30, 0.94, depth) + pull * 0.5;
     col = mix(u_bg, col, clamp(bright, 0.0, 1.0));
-    float core = smoothstep(0.60, 0.96, f);
-    col += core * 0.14 * col;
+    float core = smoothstep(0.62, 0.97, f);
+    col += core * 0.16 * col;
     float g = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + u_time) * 43758.5453);
     col += (g - 0.5) * 0.03;
     gl_FragColor = vec4(col, 1.0);
