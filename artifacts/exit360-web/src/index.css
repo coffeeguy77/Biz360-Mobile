@@ -513,11 +513,11 @@
 /* Mesh gradient — smooth drifting colour mesh (far crisper than the old aurora) */
 .bg-fx-mesh-gradient {
   background:
-    radial-gradient(42% 55% at 18% 22%, hsl(var(--grad-from) / 0.32), transparent 62%),
-    radial-gradient(40% 52% at 82% 18%, hsl(var(--grad-to) / 0.28), transparent 62%),
-    radial-gradient(46% 58% at 68% 88%, hsl(var(--grad-via) / 0.26), transparent 64%),
-    radial-gradient(38% 50% at 30% 82%, hsl(var(--glow) / 0.20), transparent 60%);
-  filter: blur(6px) saturate(1.15);
+    radial-gradient(42% 55% at 18% 22%, hsl(var(--grad-from) / 0.62), transparent 60%),
+    radial-gradient(40% 52% at 82% 18%, hsl(var(--grad-to) / 0.55), transparent 60%),
+    radial-gradient(46% 58% at 68% 88%, hsl(var(--grad-via) / 0.52), transparent 62%),
+    radial-gradient(38% 50% at 30% 82%, hsl(var(--glow) / 0.42), transparent 58%);
+  filter: blur(6px) saturate(1.5);
   animation: fxMeshDrift 26s ease-in-out infinite alternate;
 }
 /* A colour blob that follows the cursor over the mesh. */
