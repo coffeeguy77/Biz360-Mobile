@@ -49,6 +49,8 @@ float vnoise(vec2 x){
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 float fbm(vec2 p){ float v = 0.0, a = 0.5; for(int i = 0; i < 5; i++){ v += a * vnoise(p); p *= 2.02; a *= 0.5; } return v; }
+// Smooth, low-octave fbm → broad sweeping colour pools (no fine filaments).
+float sfbm(vec2 p){ float v = 0.0, a = 0.5; for(int i = 0; i < 3; i++){ v += a * vnoise(p); p *= 1.9; a *= 0.5; } return v; }
 
 void main(){
   vec2 uv = gl_FragCoord.xy / u_res.xy;
@@ -56,35 +58,36 @@ void main(){
   vec2 m = u_mouse / u_res; m.y = 1.0 - m.y;
 
   if(u_mode == 0){
-    // ── Silky domain-warped mesh gradient (vivid, Stripe-grade) ──
-    // Broad sweeping forms (low freq) with marbled warp edges, luminous colour
-    // cores and a shadow tint that breathes into the luminance valleys.
-    vec2 p = uv * asp * 2.0;
-    float t = u_time * 0.06;
-    vec2 q = vec2(fbm(p + vec2(0.0, t)), fbm(p + vec2(5.2, -t)));
-    vec2 r = vec2(fbm(p + 2.2 * q + vec2(1.7, 9.2) + 0.5 * t),
-                  fbm(p + 2.2 * q + vec2(8.3, 2.8) - 0.5 * t));
-    float f = fbm(p + 2.2 * r);
+    // ── Silky broad mesh gradient (soft sweeping colour pools, Stripe-grade) ──
+    // Low frequency + gentle single-level domain warp = big dreamy colour pools
+    // with soft organic boundaries — NOT marbled turbulence.
+    vec2 p = uv * asp * 1.15;
+    float t = u_time * 0.05;
+    vec2 q = vec2(sfbm(p + vec2(0.0, t)), sfbm(p + vec2(3.3, -t)));
+    vec2 pw = p + (q - 0.5) * 1.1;
     float pull = 0.0;
-    if(u_mouseOn > 0.5){ float d = distance(uv, m); pull = exp(-d * d * 7.0) * 0.6; r += pull * 0.4; f += pull * 0.32; }
-    // Silky-but-saturated colour regions — each hue owns a drifting zone.
-    vec3 col = mix(u_c0, u_c1, smoothstep(0.32, 0.68, r.x));
-    col = mix(col, u_c2, smoothstep(0.34, 0.70, r.y));
-    col = mix(col, u_c3, smoothstep(0.36, 0.74, f));
-    // Enrich: saturation boost + mid-deepen + contrast punch → dense, premium colour.
+    if(u_mouseOn > 0.5){ float d = distance(uv, m); pull = exp(-d * d * 7.0) * 0.5; pw += (m - uv) * pull * 0.8; }
+    float a = sfbm(pw + vec2(1.7, 9.2));
+    float b = sfbm(pw * 1.12 + vec2(7.4, 2.1) + 0.25 * t);
+    float c = sfbm(pw * 0.92 + vec2(2.8, 5.5) - 0.20 * t);
+    // Wide, dreamy blends between big colour pools (high softness).
+    vec3 col = mix(u_c0, u_c1, smoothstep(0.26, 0.74, a));
+    col = mix(col, u_c2, smoothstep(0.28, 0.74, b));
+    col = mix(col, u_c3, smoothstep(0.30, 0.76, c));
+    // Gentle enrich — silky, luminous, not neon.
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    col = clamp(mix(vec3(lum), col, 1.5), 0.0, 1.0);
-    col = pow(col, vec3(1.16));
-    col = clamp((col - 0.5) * 1.14 + 0.5, 0.0, 1.0);
-    // Deep base in the troughs, vivid glowing cores on the peaks (contrast, not a
-    // flat wash). Keeps white hero text readable; cursor brightens local pigment.
-    float depth = smoothstep(0.12, 0.86, f);
-    float bright = mix(0.30, 0.94, depth) + pull * 0.5;
+    col = clamp(mix(vec3(lum), col, 1.4), 0.0, 1.0);
+    col = clamp((col - 0.5) * 1.08 + 0.5, 0.0, 1.0);
+    // Soft shadow tint pools into the low valleys (one smoky dark region); bright
+    // elsewhere. Cursor eases the field toward it and brightens local pigment.
+    float depth = smoothstep(0.20, 0.80, c * 0.5 + b * 0.5);
+    float bright = mix(0.47, 1.0, depth) + pull * 0.4;
     col = mix(u_bg, col, clamp(bright, 0.0, 1.0));
-    float core = smoothstep(0.62, 0.97, f);
-    col += core * 0.16 * col;
+    // Soft luminous lift on the brightest pools (broad glow, not filaments).
+    float lift = smoothstep(0.56, 0.92, max(a, max(b, c)));
+    col += lift * 0.10 * col;
     float g = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + u_time) * 43758.5453);
-    col += (g - 0.5) * 0.03;
+    col += (g - 0.5) * 0.025;
     gl_FragColor = vec4(col, 1.0);
   } else {
     // ── Morphing topographic contour lines ──
